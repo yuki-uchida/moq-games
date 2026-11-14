@@ -21,7 +21,7 @@ async function main() {
   if (!root) return
   const params = new URLSearchParams(location.search)
   const options: AppOptions = {
-    debug: debugEnabled(isDev, location.search),
+    debug: debugEnabled(isDev),
     attract: params.get('attract') !== '0'
   }
   if (isDev && params.has('hud-demo')) {

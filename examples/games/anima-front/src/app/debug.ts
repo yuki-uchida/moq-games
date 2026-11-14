@@ -1,6 +1,6 @@
 /**
- * `window.__anima`: a read-mostly debug hook for E2E tests (dev server or `?debug` only, never on by default in
- * production builds). It lets a test assert that a match really runs: the sim time advances, foes exist,
+ * `window.__anima`: a read-mostly debug hook for E2E tests (Vite dev server only: production builds never install it, `?debug`
+ * does not enable it). It lets a test assert that a match really runs: the sim time advances, foes exist,
  * holding W moves the player and shooting lowers a foe's hp.
  */
 import type { RendererStats } from '../render/api'
@@ -38,8 +38,9 @@ export function setMatchProbe(p: MatchProbe | null): void {
   probe = p
 }
 
-export function debugEnabled(isDev: boolean, search: string): boolean {
-  return isDev || new URLSearchParams(search).has('debug')
+/** The hook (an aim / fire control API) exists only on the Vite dev server. */
+export function debugEnabled(isDev: boolean): boolean {
+  return isDev
 }
 
 export function installDebugHook(o: { screen: () => string; backdrop: () => Backdrop | null }): void {

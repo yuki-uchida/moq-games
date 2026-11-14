@@ -98,6 +98,8 @@ export interface PawCard {
   item: ItemId | null
   name: string
   cost: string
+  /** Anima per use (or per second for draining antiques); 0 when free. */
+  costValue: number
   /** 0..1 of the cooldown ring still to go (0 = ready). */
   cooldown: number
   /** 0..1 charge / zoom / lock / guard. */
@@ -108,7 +110,7 @@ export interface PawCard {
 
 export function pawCard(hand: HandView | undefined): PawCard {
   if (!hand || hand.sel < 0 || hand.items.length === 0) {
-    return { item: null, name: '—', cost: '', cooldown: 0, charge: 0, swapping: false, list: [] }
+    return { item: null, name: '—', cost: '', costValue: 0, cooldown: 0, charge: 0, swapping: false, list: [] }
   }
   const item = hand.items[Math.min(hand.sel, hand.items.length - 1)]
   const def = ITEMS[item]
@@ -117,11 +119,17 @@ export function pawCard(hand: HandView | undefined): PawCard {
     item,
     name: def.name,
     cost: def.cost != null ? trim(def.cost) : def.drain != null ? `${trim(def.drain)}/秒` : '',
+    costValue: def.cost ?? def.drain ?? 0,
     cooldown: total > 0 ? clamp01(hand.cooldown / total) : hand.cooldown > 0 ? 1 : 0,
     charge: clamp01(hand.charge),
     swapping: hand.swap > 0,
     list: hand.items.map((id, i) => ({ item: id, active: i === hand.sel }))
   }
+}
+
+/** The paw cannot be used when the anima would drop below 1 after paying (the sim keeps 1 to stay armoured). */
+export function pawAffordable(anima: number, costValue: number): boolean {
+  return costValue <= 0 || anima >= costValue + 1
 }
 
 function useInterval(item: ItemId): number {

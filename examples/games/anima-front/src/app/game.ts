@@ -11,11 +11,12 @@ import type { PlayerView, View } from '../sim/types'
 import { ControlState, PlayerInputBuilder, type UiAction } from '../input/controls'
 import { GamePad } from '../input/gamepad'
 import { attachKeyboardMouse, type KeyboardMouse } from '../input/keyboard-mouse'
-import { createTouchControls, type TouchControls } from '../input/touch'
+import { createTouchControls, type TouchControls, type TouchPaw } from '../input/touch'
 import { h, nodes, setClass } from '../ui/dom'
 import { focusInitial } from '../ui/focus'
 import { createGuideCard, guideSeen, markGuideSeen, type GuideDevice } from '../ui/hud/guide'
 import { createHud, type Hud } from '../ui/hud/hud'
+import { pawAffordable, pawCard } from '../ui/hud/model'
 import { controlsHelp, createSettingsPanel } from '../ui/screens/settings'
 import { SPECIES, eyeHeight } from '../data/species'
 import type { AppContext, RouteArgs, Screen } from './context'
@@ -30,6 +31,8 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
   const canvas = h('canvas', { class: 'game-canvas', attrs: { 'aria-label': 'ゲーム画面' } })
   const hud: Hud = createHud()
   const state = new ControlState()
+  // touch devices start in touch mode so the first HUD frame already shows touch wording
+  if (ctx.touch) state.lastDevice = 'touch'
   const builder = new PlayerInputBuilder()
   const pad = new GamePad()
   let session: Session | null = null
@@ -169,13 +172,17 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
     session?.setPaused(true)
     ctx.audio.setDuck(0.7)
     ctx.sfx('uiBack')
-    paintPauseMenu()
+    // pad users get the focus ring right away (it is the only cue where the pad cursor is)
+    if (state.lastDevice === 'gamepad') document.documentElement.classList.add('nav-keys')
+    // visible first: focus only lands on rendered buttons
     setClass(pause, 'is-on', true)
+    paintPauseMenu()
     touch?.setVisible(false)
   }
   function resume() {
     if (mode !== 'paused') return
     mode = 'play'
+    pad.rearm()
     session?.setPaused(false)
     ctx.audio.setDuck(0)
     setClass(pause, 'is-on', false)
@@ -251,6 +258,7 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
     markGuideSeen(ctx.store)
     guide.hide()
     mode = 'play'
+    pad.rearm()
     session?.setPaused(false)
     touch?.setVisible(true)
     if (!ctx.touch) {
@@ -284,6 +292,19 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
       ctx.setProgress({ ...ctx.progress, trainingDone: true })
     }
     ctx.open('results', { selection, view: v, me: start.me, lobby: args.lobby, newBest, unlocked })
+  }
+
+  /** The tutorial counts as completed the moment the sim reports it done (not when the match ends). */
+  let tutorialRecorded = false
+  function recordTutorial(v: View) {
+    if (tutorialRecorded || !selection.training?.tutorial || !v.training) return
+    const done =
+      v.training.step < 0 || v.events.some((e) => e.type === 'tutorial' && e.step >= (v.training?.steps ?? 8))
+    if (!done) return
+    tutorialRecorded = true
+    if (ctx.progress.trainingDone) return
+    ctx.setProgress({ ...ctx.progress, trainingDone: true })
+    ctx.toast('チュートリアルを修了しました！', 'ok')
   }
 
   // ---- music
@@ -379,7 +400,7 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
     if (!ctx.touch) setClass(clickToPlay, 'is-on', true)
   }
 
-  // ---- debug hook (window.__anima, dev / ?debug only): lets E2E drive and observe the real match
+  // ---- debug hook (window.__anima, Vite dev server only): lets E2E drive and observe the real match
   const probe = {
     me: start.me,
     view: () => view,
@@ -527,6 +548,7 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
         setClass(loading, 'is-on', false)
       }
       view = next
+      recordTutorial(next)
       const me = next.players.find((p) => p.id === start.me)
       const follow = followTarget(next, me)
       const active = me?.hands.find((hnd) => hnd.sel >= 0 && hnd.items[hnd.sel] === 'owl' && hnd.act === 'charge')
@@ -557,10 +579,19 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
         follow,
         project: (p) => renderer!.project(p)
       })
-      touch?.setPaws(
-        me ? (me.hands[0].items[me.hands[0].sel] ?? null) : null,
-        me ? (me.hands[1].items[me.hands[1].sel] ?? null) : null
-      )
+      if (touch && me) {
+        const paw = (hand: PlayerView['hands'][number]): TouchPaw => {
+          const c = pawCard(hand)
+          return {
+            item: c.item,
+            cost: c.cost,
+            cooldown: c.cooldown,
+            charge: c.charge,
+            affordable: pawAffordable(me.anima, c.costValue)
+          }
+        }
+        touch.setPaws(paw(me.hands[0]), paw(me.hands[1]))
+      }
       touch?.setInteract(hud.interactLabel)
       hud.setScoreboard(scoreboardOpen && mode === 'play')
       updateMusic(next)

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Browser, type Page } from '@playwright/test'
 
 /** Collects console errors and page errors (dev-server dependency re-optimisation noise excluded). */
 function watchErrors(page: Page): string[] {
@@ -366,6 +366,469 @@ test.describe('portrait phones', () => {
     await page.setViewportSize({ width: 844, height: 390 })
     await expect(page.locator('.game-rotate.is-on')).toHaveCount(0)
     await expect(page.locator('.touch-controls .tc-r')).toBeVisible({ timeout: 90_000 })
+    await context.close()
+  })
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// Gamepad pause menu, touch look, tutorial on touch, touch paw readouts, small landscape phones
+
+const PAD = { A: 0, B: 1, DOWN: 13, UP: 12, MENU: 9 } as const
+type PadWindow = { __padButtons: Record<number, boolean> }
+
+/** An emulated standard gamepad: tests flip buttons through window.__padButtons. */
+async function installPad(page: Page) {
+  await page.addInitScript(() => {
+    const buttons: Record<number, boolean> = {}
+    ;(window as unknown as PadWindow).__padButtons = buttons
+    const pad = () => ({
+      id: 'test pad',
+      index: 0,
+      connected: true,
+      mapping: 'standard',
+      timestamp: performance.now(),
+      axes: [0, 0, 0, 0],
+      buttons: Array.from({ length: 17 }, (_, i) => ({
+        pressed: !!buttons[i],
+        touched: !!buttons[i],
+        value: buttons[i] ? 1 : 0
+      }))
+    })
+    navigator.getGamepads = () => [pad() as unknown as Gamepad, null, null, null]
+  })
+}
+
+/** Presses a pad button for a few frames, then releases it for a few frames. */
+async function padTap(page: Page, index: number) {
+  const frames = () =>
+    page.evaluate(
+      () =>
+        new Promise<void>((r) => {
+          let n = 0
+          const tick = () => (++n >= 4 ? r() : requestAnimationFrame(tick))
+          requestAnimationFrame(tick)
+        })
+    )
+  await page.evaluate((i) => void ((window as unknown as PadWindow).__padButtons[i] = true), index)
+  await frames()
+  await page.evaluate((i) => void ((window as unknown as PadWindow).__padButtons[i] = false), index)
+  await frames()
+}
+
+const phaseOf = (page: Page) => probe(page, (a) => a.view()?.phase ?? '')
+
+/** Solo PvE with the first-match card already seen; resolves once the match is in its play phase. */
+async function startSoloPve(page: Page) {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.setItem('anima-front-v1:guide', JSON.stringify({ seen: true })))
+  await openTitle(page)
+  await page.click('[data-menu="sortie"]')
+  await page.click('[data-mode="pve"]')
+  await page.click('[data-go]')
+  await page.click('[data-room="solo"]')
+  await page.click('.lobby-go')
+  await page.click('.brief-go')
+  await expect.poll(() => phaseOf(page), { timeout: 90_000 }).toBe('play')
+}
+
+async function startTutorial(page: Page) {
+  await openTitle(page)
+  await page.click('[data-menu="sortie"]')
+  await page.click('[data-mode="training"]')
+  await page.click('[data-training="tutorial"]')
+  await page.click('.brief-go')
+  await expect.poll(() => phaseOf(page), { timeout: 90_000 }).toBe('play')
+}
+
+const pauseFocus = (page: Page, which: string) => expect(page.locator(`[data-pause="${which}"]`)).toBeFocused()
+
+test.describe('gamepad in the pause menu', () => {
+  test('d-pad, A and B reach and activate every pause item', async ({ page }) => {
+    await installPad(page)
+    await startSoloPve(page)
+    await padTap(page, PAD.MENU)
+    await expect(page.locator('.game-pause.is-on')).toBeVisible()
+    await pauseFocus(page, 'resume')
+    // a visible focus ring
+    expect(await page.evaluate(() => document.documentElement.classList.contains('nav-keys'))).toBe(true)
+    expect(await page.evaluate(() => getComputedStyle(document.activeElement!).boxShadow)).not.toBe('none')
+    for (const id of ['settings', 'help', 'abort']) {
+      await padTap(page, PAD.DOWN)
+      await pauseFocus(page, id)
+    }
+    await padTap(page, PAD.UP)
+    await pauseFocus(page, 'help')
+    await padTap(page, PAD.UP)
+    await pauseFocus(page, 'settings')
+
+    // 設定: A opens the panel, B goes back to the list
+    await padTap(page, PAD.A)
+    await expect(page.locator('.pause-scroll')).toBeVisible()
+    await padTap(page, PAD.B)
+    await expect(page.locator('.pause-scroll')).toHaveCount(0)
+    await pauseFocus(page, 'resume')
+    // 操作説明
+    await padTap(page, PAD.DOWN)
+    await padTap(page, PAD.DOWN)
+    await pauseFocus(page, 'help')
+    await padTap(page, PAD.A)
+    await expect(page.locator('.pause-scroll')).toBeVisible()
+    await padTap(page, PAD.B)
+    await pauseFocus(page, 'resume')
+
+    // 再開: A resumes, the world runs again and gameplay input is back
+    await padTap(page, PAD.A)
+    await expect(page.locator('.game-pause.is-on')).toHaveCount(0)
+    const t0 = (await probe(page, (a) => a.view()?.time)) ?? 0
+    await expect.poll(() => probe(page, (a) => a.view()?.time ?? 0)).toBeGreaterThan(t0 + 0.3)
+
+    // 任務を中断: A opens the confirm modal, B cancels it, A on the default button leaves the match
+    await padTap(page, PAD.MENU)
+    await expect(page.locator('.game-pause.is-on')).toBeVisible()
+    await padTap(page, PAD.DOWN)
+    await padTap(page, PAD.DOWN)
+    await padTap(page, PAD.DOWN)
+    await pauseFocus(page, 'abort')
+    await padTap(page, PAD.A)
+    await expect(page.locator('.modal-veil')).toBeVisible()
+    await padTap(page, PAD.B)
+    await expect(page.locator('.modal-veil')).toHaveCount(0)
+    await pauseFocus(page, 'abort')
+    await padTap(page, PAD.A)
+    await expect(page.locator('.modal-veil')).toBeVisible()
+    await padTap(page, PAD.A)
+    await expect(current(page, 'lobby')).toBeVisible()
+  })
+
+  test('B resumes from the pause list and the world stays frozen while paused', async ({ page }) => {
+    await installPad(page)
+    await startSoloPve(page)
+    await padTap(page, PAD.MENU)
+    await expect(page.locator('.game-pause.is-on')).toBeVisible()
+    const t0 = (await probe(page, (a) => a.view()?.time)) ?? 0
+    await page.waitForTimeout(600)
+    expect((await probe(page, (a) => a.view()?.time)) ?? 0).toBe(t0)
+    await padTap(page, PAD.B)
+    await expect(page.locator('.game-pause.is-on')).toHaveCount(0)
+  })
+})
+
+/** Raw multi-touch through the DevTools protocol (real touch events, several fingers at once). */
+async function touches(page: Page) {
+  const cdp = await page.context().newCDPSession(page)
+  const pts = new Map<number, { x: number; y: number }>()
+  const send = (type: string, ids: number[]) =>
+    cdp.send('Input.dispatchTouchEvent', {
+      type,
+      touchPoints: ids.map((id) => ({ id, x: pts.get(id)!.x, y: pts.get(id)!.y }))
+    })
+  return {
+    async down(id: number, x: number, y: number) {
+      pts.set(id, { x, y })
+      await send('touchStart', [...pts.keys()])
+    },
+    async move(id: number, x: number, y: number) {
+      pts.set(id, { x, y })
+      await send('touchMove', [...pts.keys()])
+    },
+    async up(id: number) {
+      await send('touchEnd', [id])
+      pts.delete(id)
+    }
+  }
+}
+
+const centre = async (page: Page, sel: string) => {
+  const b = (await page.locator(sel).boundingBox())!
+  return { x: b.x + b.width / 2, y: b.y + b.height / 2 }
+}
+const myYaw = async (page: Page) =>
+  (await page.evaluate(() => {
+    const a = (
+      window as unknown as {
+        __anima?: { view(): { players: { id: string; yaw: number }[] } | null; match: { me: string } | null }
+      }
+    ).__anima
+    return a?.view()?.players.find((p) => p.id === a.match?.me)?.yaw ?? 0
+  })) as number
+
+const touchContext = (browser: Browser, width: number, height: number) =>
+  browser.newContext({ viewport: { width, height }, hasTouch: true, isMobile: true })
+
+test.describe('touch controls', () => {
+  test('only the buttons capture touches: look drags work on every other point, even with the stick and fire held', async ({
+    browser
+  }) => {
+    const context = await touchContext(browser, 844, 390)
+    const page = await context.newPage()
+    await startSoloPve(page)
+    // every non-button point of the right half belongs to the look zone
+    const stray = await page.evaluate(() => {
+      const bad: string[] = []
+      const w = window.innerWidth
+      const h = window.innerHeight
+      for (let x = Math.round(w * 0.45); x < w; x += 8)
+        for (let y = 0; y < h; y += 8) {
+          const el = document.elementFromPoint(x, y) as HTMLElement | null
+          if (!el || !el.closest('.touch-controls')) continue
+          if (el.closest('.tc-btn, .tc-menu, .tc-score')) continue
+          if (!el.classList.contains('tc-look')) bad.push(`${x},${y}:${el.className}`)
+        }
+      return bad
+    })
+    expect(stray).toEqual([])
+
+    // a drag on empty space inside the button cluster's box turns the camera (stick + right paw held)
+    const t = await touches(page)
+    const cluster = (await page.locator('.tc-cluster').boundingBox())!
+    const spot = await page.evaluate((c) => {
+      for (let x = c.x + 4; x < c.x + c.width; x += 6)
+        for (let y = c.y + 4; y < c.y + c.height; y += 6) {
+          const el = document.elementFromPoint(x, y) as HTMLElement | null
+          if (el?.classList.contains('tc-look')) return { x, y }
+        }
+      return null
+    }, cluster)
+    expect(spot).not.toBeNull()
+    const stick = { x: 110, y: 290 }
+    await t.down(1, stick.x, stick.y)
+    await t.move(1, stick.x, stick.y - 40)
+    const fire = await centre(page, '.tc-r')
+    await t.down(2, fire.x, fire.y)
+    await expect(page.locator('.tc-r.is-down')).toHaveCount(1)
+    const yaw0 = await myYaw(page)
+    await t.down(3, spot!.x, spot!.y)
+    for (let i = 1; i <= 10; i++) await t.move(3, spot!.x - i * 8, spot!.y)
+    await t.up(3)
+    // the stick and the fire button are still held after the look finger lifted
+    await expect(page.locator('.tc-r.is-down')).toHaveCount(1)
+    await expect
+      .poll(async () => Math.abs((((await myYaw(page)) - yaw0 + Math.PI * 3) % (Math.PI * 2)) - Math.PI))
+      .toBeGreaterThan(0.05)
+    await t.up(2)
+    await t.up(1)
+    await context.close()
+  })
+
+  for (const [w, h] of [
+    [568, 320],
+    [667, 375],
+    [844, 390]
+  ]) {
+    test(`small landscape ${w}×${h}: the dash button clears the gauge and the controls card fits`, async ({
+      browser
+    }) => {
+      const context = await touchContext(browser, w, h)
+      const page = await context.newPage()
+      await page.goto(`/?hud-demo=pve&attract=0`)
+      await expect(page.locator('.hud .ag-value:not(:empty)')).toBeVisible({ timeout: 90_000 })
+      const rects = await page.evaluate(() => {
+        const r = (s: string) => {
+          const b = document.querySelector(s)!.getBoundingClientRect()
+          return { l: b.left, t: b.top, r: b.right, b: b.bottom }
+        }
+        return { gauge: r('.hud-anima'), dash: r('.tc-dash'), jump: r('.tc-jump') }
+      })
+      const overlap = (a: { l: number; t: number; r: number; b: number }, b: typeof a) =>
+        a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b
+      expect(overlap(rects.gauge, rects.dash)).toBe(false)
+      expect(overlap(rects.gauge, rects.jump)).toBe(false)
+      await context.close()
+
+      // the first-match card: 「わかった」 is fully inside the screen
+      const fresh = await touchContext(browser, w, h)
+      const p2 = await fresh.newPage()
+      await p2.goto('/?attract=0')
+      await p2.locator('.title-press').click({ timeout: 90_000 })
+      await p2.click('[data-menu="sortie"]')
+      await p2.click('[data-mode="pve"]')
+      await p2.click('[data-go]')
+      await p2.click('[data-room="solo"]')
+      await p2.click('.lobby-go')
+      await p2.click('.brief-go')
+      await expect(p2.locator('.game-guide.is-on')).toBeVisible({ timeout: 90_000 })
+      await p2.waitForTimeout(600)
+      const ok = (await p2.locator('[data-guide-ok]').boundingBox())!
+      expect(ok.y).toBeGreaterThanOrEqual(0)
+      expect(ok.y + ok.height).toBeLessThanOrEqual(h)
+      const overflow = await p2.evaluate(() => {
+        const el = document.querySelector('.guide-panel') as HTMLElement
+        return el.scrollHeight - el.clientHeight
+      })
+      expect(overflow).toBeLessThanOrEqual(1)
+      await fresh.close()
+    })
+  }
+
+  test('paw buttons show the anima cost, a cooldown sweep, charge and the unaffordable state', async ({ browser }) => {
+    const context = await touchContext(browser, 667, 375)
+    const page = await context.newPage()
+    await startSoloPve(page)
+    await expect(page.locator('.tc-r .tc-cost')).toContainText('◆')
+    await expect(page.locator('.tc-l .tc-cost')).toContainText('◆')
+    // the paw cards of the keyboard HUD are hidden on touch: the buttons carry the numbers
+    await expect(page.locator('.hud .hud-paw').first()).toBeHidden()
+    // cooling / charging / broke states paint from the same controller the game uses
+    const painted = await page.evaluate(async () => {
+      const mod = await import(/* @vite-ignore */ '/src/input/touch.ts')
+      const noop = () => {}
+      const state = new Proxy({}, { get: () => noop }) as never
+      const tc = mod.createTouchControls({
+        state,
+        sensitivity: () => 1,
+        invertY: () => false,
+        assist: () => 0,
+        onUi: noop
+      })
+      document.body.append(tc.el)
+      const base = { item: 'hippo' as const, cost: '4', cooldown: 0, charge: 0, affordable: true }
+      tc.setPaws({ ...base, cooldown: 0.5, charge: 0.25 }, { ...base, affordable: false })
+      const r = tc.el.querySelector('.tc-r')!
+      const l = tc.el.querySelector('.tc-l')!
+      const out = {
+        cooling: r.classList.contains('is-cooling'),
+        cd: r.querySelector('.tc-ring-cd')!.getAttribute('stroke-dasharray'),
+        ch: r.querySelector('.tc-ring-ch')!.getAttribute('stroke-dasharray'),
+        cost: r.querySelector('.tc-cost')!.textContent,
+        broke: l.classList.contains('is-broke'),
+        label: l.querySelector('.tc-label')!.textContent,
+        rBroke: r.classList.contains('is-broke')
+      }
+      tc.dispose()
+      return out
+    })
+    expect(painted).toEqual({
+      cooling: true,
+      cd: '50.0 100',
+      ch: '25.0 100',
+      cost: '◆ 4',
+      broke: true,
+      label: '不足',
+      rBroke: false
+    })
+    await context.close()
+  })
+})
+
+test.describe('tutorial on touch', () => {
+  test('touch hints, the 救助 button at the marker, completion is recorded and shows 修了', async ({ browser }) => {
+    const context = await touchContext(browser, 844, 390)
+    const page = await context.newPage()
+    await startTutorial(page)
+    const hint = page.locator('.top-training b')
+    await expect(hint).toContainText('ドラッグして移動')
+    expect(await hint.textContent()).not.toMatch(/WASD|クリック|マウス/)
+    const t = await touches(page)
+    const step = () =>
+      page.evaluate(
+        () =>
+          (window as unknown as { __anima: { view(): { training?: { step: number } } | null } }).__anima.view()
+            ?.training?.step ?? -2
+      )
+    /** Turns toward the nearest prop of a kind; returns the horizontal distance to it. */
+    const aim = (kind: string) =>
+      page.evaluate((k) => {
+        const a = (window as unknown as { __anima: Probe }).__anima
+        const v = a.view() as unknown as {
+          props: { kind: string; p: number[] }[]
+          players: { id: string; p: number[] }[]
+        }
+        const me = v.players.find((p) => p.id === a.match?.me)!
+        let best: number[] | null = null
+        let bd = Infinity
+        for (const p of v.props)
+          if (p.kind === k) {
+            const d = Math.hypot(p.p[0] - me.p[0], p.p[2] - me.p[2])
+            if (d < bd) {
+              bd = d
+              best = p.p
+            }
+          }
+        if (best) a.match?.aimAt([best[0], best[1] + 1, best[2]])
+        return bd
+      }, kind)
+    const stick = { x: 110, y: 290 }
+    // 1 move
+    await t.down(1, stick.x, stick.y)
+    await t.move(1, stick.x, stick.y - 50)
+    await expect.poll(step, { timeout: 30_000 }).toBeGreaterThanOrEqual(1)
+    await t.up(1)
+    // 2 look: drag on the right half
+    await expect(hint).toContainText('右側をドラッグ')
+    await t.down(2, 500, 200)
+    for (let sweep = 0; sweep < 8; sweep++)
+      for (let i = 1; i <= 20; i++) await t.move(2, 500 + (sweep % 2 ? 20 - i : i) * 15, 200)
+    await expect.poll(step, { timeout: 15_000 }).toBeGreaterThanOrEqual(2)
+    await t.up(2)
+    // 3 jump, 4 dash (the on-screen buttons)
+    await expect(hint).toContainText('「ジャンプ」')
+    const jump = await centre(page, '.tc-jump')
+    await t.down(3, jump.x, jump.y)
+    await expect.poll(step, { timeout: 15_000 }).toBeGreaterThanOrEqual(3)
+    await t.up(3)
+    await expect(hint).toContainText('「ダッシュ」')
+    const dash = await centre(page, '.tc-dash')
+    await t.down(4, dash.x, dash.y)
+    await expect.poll(step, { timeout: 15_000 }).toBeGreaterThanOrEqual(4)
+    await t.up(4)
+    // 5 right paw on a target
+    await expect(hint).toContainText('「右」ボタン')
+    const right = await centre(page, '.tc-r')
+    // walk up to the nearest target (stick forward, camera on it) and tap the right paw (a held melee paw guards)
+    await t.down(11, stick.x, stick.y)
+    for (let i = 0; i < 150 && (await step()) === 4; i++) {
+      const d = await aim('target')
+      await t.move(11, stick.x, d > 2.2 ? stick.y - 50 : stick.y)
+      if (d <= 3.5) {
+        await t.down(5, right.x, right.y)
+        await page.waitForTimeout(120)
+        await t.up(5)
+      }
+      await page.waitForTimeout(100)
+    }
+    await t.up(11)
+    expect(await step()).toBeGreaterThanOrEqual(5)
+    // 6 switch (the ↻ above the right paw)
+    await expect(hint).toContainText('↻')
+    const cyc = await centre(page, '.tc-cycle-r')
+    for (let i = 0; i < 6 && (await step()) === 5; i++) {
+      await t.down(6, cyc.x, cyc.y)
+      await t.up(6)
+      await page.waitForTimeout(300)
+    }
+    // 7 left paw
+    const left = await centre(page, '.tc-l')
+    await t.down(7, left.x, left.y)
+    await expect.poll(step, { timeout: 15_000 }).toBeGreaterThanOrEqual(7)
+    await t.up(7)
+    // 8 walk to the marker; the 救助 prompt and the touch button appear only near it
+    await expect(hint).toContainText('救助')
+    await expect(page.locator('.tc-interact.is-on')).toHaveCount(0)
+    await t.down(8, stick.x, stick.y)
+    for (let i = 0; i < 200; i++) {
+      const d = await aim('tutorial')
+      await t.move(8, stick.x, stick.y - 50)
+      if (d < 2.2) break
+      await page.waitForTimeout(100)
+    }
+    await t.up(8)
+    await expect(page.locator('.tc-interact.is-on')).toHaveCount(1)
+    await expect(page.locator('.hud-revive.is-on')).toBeVisible()
+    const interact = await centre(page, '.tc-interact')
+    await t.down(9, interact.x, interact.y)
+    await expect(page.locator('.tc-interact.is-down')).toHaveCount(1)
+    await expect.poll(step, { timeout: 15_000 }).toBe(-1)
+    await t.up(9)
+    // completion is recorded at once (before leaving the match)
+    await expect(page.locator('.hud-banner.is-on')).toContainText('チュートリアル完了')
+    expect(await page.evaluate(() => localStorage.getItem('anima-front-v1:progress'))).toContain('"trainingDone":true')
+    // leave and reload: the training select shows 修了
+    await page.reload()
+    await expect(current(page, 'title')).toBeVisible({ timeout: 90_000 })
+    await page.locator('.title-press').click()
+    await page.click('[data-menu="sortie"]')
+    await page.click('[data-mode="training"]')
+    await expect(page.locator('[data-training="tutorial"]')).toContainText('修了')
     await context.close()
   })
 })

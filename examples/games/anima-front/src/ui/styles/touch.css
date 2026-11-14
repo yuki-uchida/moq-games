@@ -70,12 +70,21 @@
   font-size: 12px;
   pointer-events: none;
 }
+/* The cluster only groups the buttons: it must never swallow look drags on the empty space between them. */
 .tc-cluster {
   position: absolute;
   right: calc(18px + var(--safe-r));
   bottom: calc(14px + var(--safe-b));
   width: 250px;
   height: 200px;
+  pointer-events: none;
+  transform-origin: right bottom;
+}
+.tc-cluster .tc-btn,
+.tc-interact,
+.tc-menu,
+.tc-score {
+  pointer-events: auto;
 }
 .tc-paw {
   width: 84px;
@@ -85,6 +94,75 @@
   position: absolute;
   bottom: 6px;
   font-size: 13px;
+}
+/* ring (cooldown sweep + charge), icon and anima cost of a paw button */
+.tc-paw-extra {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.tc-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.tc-ring circle {
+  fill: none;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-dasharray: 0 100;
+}
+.tc-ring-cd {
+  stroke: rgba(255, 255, 255, 0.85);
+}
+.tc-ring-ch {
+  stroke: var(--anima-2);
+}
+.tc-cost {
+  position: absolute;
+  left: 50%;
+  top: -10px;
+  transform: translateX(-50%);
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(10, 16, 36, 0.88);
+  color: var(--anima-2);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  line-height: 1.5;
+}
+.tc-cost:empty {
+  display: none;
+}
+.tc-paw.is-cooling .tc-paw-icon {
+  opacity: 0.5;
+}
+.tc-paw.is-empty {
+  opacity: 0.45;
+}
+/* anima < cost + 1: the paw cannot fire */
+.tc-paw.is-broke {
+  border-style: dashed;
+  border-color: #ff6b7a;
+  background: rgba(70, 12, 22, 0.6);
+}
+.tc-paw.is-broke .tc-paw-icon {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+.tc-paw.is-broke .tc-cost {
+  background: #c8283c;
+  border-color: #ff9aa6;
+  color: #fff;
+}
+.tc-paw.is-broke .tc-label {
+  color: #ffb3bb;
 }
 .tc-paw-icon {
   width: 46px;
@@ -185,4 +263,27 @@
 }
 .touch .hud-feed {
   right: calc(120px + var(--safe-r));
+}
+
+/* The gauge sits between the left edge and the button cluster (its reach is the cluster width + margin). */
+.touch {
+  --tc-reach: 268px;
+}
+.touch .hud .hud-bottom {
+  right: calc(var(--tc-reach) + var(--safe-r) + 8px);
+}
+
+/* short landscape phones (568x320, 667x375): a smaller cluster so nothing overlaps the gauge or the radar */
+@media (max-height: 380px) {
+  .touch {
+    --tc-reach: 222px;
+  }
+  .tc-cluster {
+    transform: scale(0.78);
+  }
+  .tc-interact {
+    width: 76px;
+    height: 76px;
+    bottom: calc(80px + var(--safe-b));
+  }
 }
