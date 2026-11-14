@@ -4,7 +4,17 @@
  * stomp). bossHitModifier applies their weak points / armour to incoming hits.
  */
 import { blast, damagePlayer, type DamageInfo } from '../combat'
-import { DT, MAW_CLOSED } from '../constants'
+import {
+  DT,
+  GOUTETSU_ARMOR,
+  GOUTETSU_ENRAGED_CD,
+  GOUTETSU_KNEEL,
+  GOUTETSU_KNEEL_CAP,
+  GOUTETSU_LEG_HP,
+  MAW_CLOSED,
+  MAW_PHASE_GUARD,
+  MAW_WINDOW_CAP
+} from '../constants'
 import { ballistic, spawnShot } from '../projectiles'
 import { emit, FOE_SIDE, type Foe, type Player, type Sim } from '../state'
 import type { Vec } from '../vec'
@@ -20,7 +30,7 @@ import {
   startWindup,
   windupDone
 } from './common'
-import { liveFoes, spawnFoe } from './index'
+import { bossDifficultyHp, liveFoes, spawnFoe } from './index'
 
 const nearestPlayer = (sim: Sim, f: Foe, max = Infinity): Player | null => {
   let best: Player | null = null
@@ -53,8 +63,10 @@ export function kuitsukushi(sim: Sim, f: Foe) {
   if (parts[0] === 0 && sim.time >= f.mem.coreNext) {
     parts[0] = 1
     f.mem.coreClose = sim.time + 5
+    f.mem.openHp = f.hp
     emit(sim, { type: 'bossPart', foe: f.id, kind: f.kind, part: 0 })
-  } else if (parts[0] === 1 && sim.time >= f.mem.coreClose) {
+  } else if (parts[0] === 1 && (sim.time >= f.mem.coreClose || f.mem.openHp - f.hp >= f.maxHp * MAW_WINDOW_CAP)) {
+    // Closes on time, or early once the exposed core has taken MAW_WINDOW_CAP of its health (it flinches shut).
     parts[0] = 0
     f.mem.coreNext = sim.time + 12 * PHASE_CD[f.mem.phase]
   }
@@ -65,6 +77,10 @@ export function kuitsukushi(sim: Sim, f: Foe) {
     f.mem.phase = phase
     f.mem.cdScale = PHASE_CD[phase]
     parts[1] = phase
+    // Phase change: the maw snaps shut and the body hardens for a moment (no damage), then the core reopens.
+    parts[0] = 0
+    f.mem.guardUntil = sim.time + MAW_PHASE_GUARD
+    f.mem.coreNext = sim.time + MAW_PHASE_GUARD + 2
     emit(sim, { type: 'bossPhase', foe: f.id, kind: f.kind, phase })
   }
   const target = nearestPlayer(sim, f)
@@ -80,7 +96,7 @@ export function kuitsukushi(sim: Sim, f: Foe) {
         knockUp: 5
       })
     } else if (atk.id === 'acidRain') {
-      const n = (atk.count ?? 14) + 4 * (f.mem.phase - 1)
+      const n = (atk.count ?? 8) + 3 * (f.mem.phase - 1)
       const victims = sim.players.filter((p) => p.state === 'alive' && hDist(p.p, f.p) <= atk.range)
       for (let i = 0; i < n && victims.length; i++) {
         const v = victims[i % victims.length]
@@ -153,7 +169,8 @@ export function goutetsuLegs(f: Foe): Vec[] {
 }
 
 const legMax = (sim: Sim, f: Foe) => {
-  if (f.mem.legMax === undefined) f.mem.legMax = 800 * sim.diff.hp * (0.55 + 0.15 * Math.max(1, sim.humans))
+  if (f.mem.legMax === undefined)
+    f.mem.legMax = GOUTETSU_LEG_HP * bossDifficultyHp(sim) * (0.55 + 0.15 * Math.max(1, sim.humans))
   return f.mem.legMax
 }
 
@@ -167,9 +184,18 @@ export function goutetsu(sim: Sim, f: Foe) {
     f.parts = [lm, lm, lm, lm]
     f.mem.nextAct = sim.time + 3
   }
+  // Half health: it rises at once (even from a kneel), enraged, with faster attacks.
+  if (f.mem.half !== 1 && f.hp < f.maxHp * 0.5) {
+    f.mem.half = 1
+    f.mem.cdScale = GOUTETSU_ENRAGED_CD
+    if (f.state === 'stagger') f.mem.kneelUntil = sim.time
+    emit(sim, { type: 'bossPhase', foe: f.id, kind: f.kind, phase: 2 })
+  }
   if (f.state === 'stagger') {
+    // The exposed core can take GOUTETSU_KNEEL_CAP of its health per kneel; then it staggers up at once.
+    if (f.mem.kneelHp - f.hp >= f.maxHp * GOUTETSU_KNEEL_CAP) f.mem.kneelUntil = sim.time
     if (sim.time >= f.mem.kneelUntil) {
-      for (let i = 0; i < 4; i++) if (f.parts[i] <= 0) f.parts[i] = lm * 0.5
+      for (let i = 0; i < 4; i++) if (f.parts[i] <= 0) f.parts[i] = lm
       setState(f, 'move')
       f.mem.nextAct = sim.time + 1.5
     }
@@ -294,16 +320,22 @@ export function goutetsu(sim: Sim, f: Foe) {
 export function bossHitModifier(sim: Sim, f: Foe, d: DamageInfo): { mult: number; weak: boolean; absorbed?: boolean } {
   const at = d.at
   if (f.kind === 'kuitsukushi') {
-    if (f.parts?.[0] === 1 && at[1] >= f.p[1] + f.h * 0.6) return { mult: f.def.weak ?? 2.5, weak: true }
-    return { mult: f.parts?.[0] === 1 ? 1 : MAW_CLOSED, weak: false }
+    if (sim.time < (f.mem.guardUntil ?? 0)) return { mult: 0, weak: false }
+    // Damage stops at the next phase threshold: every phase change plays out (no skipping a phase in one window).
+    const floor = f.maxHp * (f.hp > f.maxHp * 0.66 ? 0.66 : f.hp > f.maxHp * 0.33 ? 0.33 : 0) - 1
+    if (f.parts?.[0] === 1 && at[1] >= f.p[1] + f.h * 0.6)
+      return { mult: capTo(f, d, f.def.weak ?? 2.5, floor), weak: true }
+    return { mult: capTo(f, d, f.parts?.[0] === 1 ? 1 : MAW_CLOSED, floor), weak: false }
   }
   if (f.kind === 'goutetsu') {
     const y = at[1] - f.p[1]
+    // Until it has risen enraged, damage stops at half health.
+    const floor = f.mem.half === 1 ? 0 : f.maxHp * 0.5 - 1
     if (kneeling(f)) {
-      if (y >= f.h * 0.3 && y <= f.h * 0.8) return { mult: f.def.weak ?? 2.5, weak: true }
-      return { mult: 0.35, weak: false }
+      if (y >= f.h * 0.3 && y <= f.h * 0.8) return { mult: capTo(f, d, f.def.weak ?? 2.5, floor), weak: true }
+      return { mult: capTo(f, d, GOUTETSU_ARMOR, floor), weak: false }
     }
-    if (!f.parts) return { mult: 0.35, weak: false }
+    if (!f.parts) return { mult: capTo(f, d, GOUTETSU_ARMOR, floor), weak: false }
     if (y <= 6.5) {
       const legs = goutetsuLegs(f)
       let best = -1
@@ -326,13 +358,21 @@ export function bossHitModifier(sim: Sim, f: Foe, d: DamageInfo): { mult: number
             setState(f, 'stagger')
             f.attack = null
             f.aim = null
-            f.mem.kneelUntil = sim.time + 8
+            f.mem.kneelUntil = sim.time + GOUTETSU_KNEEL
+            f.mem.kneelHp = f.hp
           }
         }
         return { mult: 1, weak: false, absorbed: true }
       }
     }
-    return { mult: 0.35, weak: false }
+    return { mult: capTo(f, d, GOUTETSU_ARMOR, floor), weak: false }
   }
   return { mult: 1, weak: false }
+}
+
+/** Multiplier that keeps the boss's health at or above `floor` after this hit. */
+function capTo(f: Foe, d: DamageInfo, mult: number, floor: number): number {
+  const raw = d.amount * (d.head ? (d.headMult ?? 1) : 1)
+  if (raw <= 0 || f.hp - raw * mult >= floor) return mult
+  return Math.max(0, (f.hp - floor) / raw)
 }

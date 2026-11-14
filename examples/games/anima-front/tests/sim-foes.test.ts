@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAW_CLOSED } from '../src/sim/constants'
+import { MAW_CLOSED, MAW_PHASE_GUARD } from '../src/sim/constants'
 import { FOES, type FoeKind } from '../src/data/enemies'
 import { damageFoe } from '../src/sim/combat'
 import { goutetsuLegs } from '../src/sim/foes/bosses'
@@ -133,7 +133,7 @@ describe('damage modifiers', () => {
 })
 
 describe('bosses', () => {
-  it('ゴウテツ: two broken legs → kneels with the core exposed → legs come back', () => {
+  it('ゴウテツ: two broken legs → kneels with the core exposed → legs come back whole', () => {
     const { w, sim } = setup()
     const f = spawnFoe(sim, 'goutetsu', [0, 0, 30])
     ready(f)
@@ -169,7 +169,7 @@ describe('bosses', () => {
     expect(ev.filter((e) => e.type === 'bossPart').length).toBe(2)
     run(w, 60 * 8 + 10)
     expect(f.state).not.toBe('stagger')
-    expect(f.parts![0]).toBeCloseTo(legMax * 0.5, 3)
+    expect(f.parts![0]).toBeCloseTo(legMax, 3)
     // Armoured body away from legs.
     const hp1 = f.hp
     damageFoe(sim, f, {
@@ -183,7 +183,7 @@ describe('bosses', () => {
     expect(hp1 - f.hp).toBeCloseTo(35, 3)
   }, 20000)
 
-  it('クイツクシ: open core takes ×2.5, phases at 66 % / 33 %', () => {
+  it('クイツクシ: open core takes ×2, phases at 66 % / 33 % with a hardened pause between', () => {
     const { w, sim } = setup()
     const f = spawnFoe(sim, 'kuitsukushi', [0, 0, 30])
     ready(f)
@@ -197,7 +197,7 @@ describe('bosses', () => {
     f.parts![0] = 1
     hp = f.hp
     damageFoe(sim, f, { amount: 10, kind: 'ranged', side: 0, by: 'a', at: top, from: [0, 1, 0] })
-    expect(hp - f.hp).toBeCloseTo(25, 5)
+    expect(hp - f.hp).toBeCloseTo(10 * FOES.kuitsukushi.weak!, 5)
     f.parts![0] = 0
     w.view()
     damageFoe(sim, f, {
@@ -209,6 +209,13 @@ describe('bosses', () => {
       from: [0, 1, 0]
     })
     w.step(new Map())
+    // One hit cannot skip a phase: it stops just past the 66 % line.
+    expect(f.hp / f.maxHp).toBeGreaterThan(0.65)
+    // Phase change: no damage while the maw is shut (MAW_PHASE_GUARD).
+    hp = f.hp
+    damageFoe(sim, f, { amount: 500, kind: 'ranged', side: 0, by: 'a', at: [0, 1, 26], from: [0, 1, 0] })
+    expect(f.hp).toBe(hp)
+    run(w, Math.ceil(MAW_PHASE_GUARD * 60) + 2)
     damageFoe(sim, f, {
       amount: (f.maxHp * 0.36) / MAW_CLOSED,
       kind: 'ranged',

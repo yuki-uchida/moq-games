@@ -1,16 +1,19 @@
 /**
- * Wave director (DESIGN §12): schedules each wave's spawn groups in bursts (counts × peak / 90), spawns them at the
+ * Wave director (DESIGN §12): schedules each wave's spawn groups in bursts (counts × countScale(peak)), spawns them at the
  * map's tagged spawn points while the live count is below the difficulty peak (the rest waits in a queue), detects
  * clears and — for auto-paced missions — starts the next wave 8 s after a clear or 70 s after the wave began.
  */
 import { FOES, type FoeKind } from '../../data/enemies'
 import type { MissionDef } from '../../data/missions'
-import { WAVE_GAP, WAVE_MAX } from '../constants'
+import { WAVE_COUNT_SCALE, WAVE_GAP, WAVE_MAX } from '../constants'
 import { spawnFoe } from '../foes/index'
 import { settle } from '../player'
 import { emit, type Foe, type Sim } from '../state'
 import type { Vec } from '../vec'
 import { foeSpawnPoints } from './common'
+
+/** Spawn count multiplier of a difficulty: half of its peak's offset from 正規 (訓練 ×0.83, 決死 ×1.17). */
+export const countScale = (peak: number) => 1 + (peak / 90 - 1) * WAVE_COUNT_SCALE
 
 interface Pending {
   kind: FoeKind
@@ -45,9 +48,10 @@ export class WaveDirector {
     const w = this.mission.waves[i]
     emit(sim, { type: 'wave', wave: i + 1, waves: this.waves, ...(boss ? { boss: true } : {}) })
     if (w.radio) emit(sim, { type: 'radio', who: w.radio.who, text: w.radio.text })
-    const scale = this.peak / 90
+    const scale = countScale(this.peak)
     for (const g of w.groups) {
-      const n = Math.max(1, Math.round(g.count * scale))
+      // クロヅメ come as fixed squads; only crowds grow with the difficulty.
+      const n = Math.max(1, Math.round(g.count * (g.kind === 'kurozume' ? 1 : scale)))
       const burst = Math.max(1, g.burst ?? 4)
       const interval = g.interval ?? 0.35
       for (let k = 0; k < n; k++) {
@@ -64,7 +68,7 @@ export class WaveDirector {
 
   /** Immediate extra spawns that do not belong to a wave (node spawns). */
   extra(sim: Sim, kind: FoeKind, count: number, tag?: string) {
-    const n = Math.max(1, Math.round(count * (this.peak / 90)))
+    const n = Math.max(1, Math.round(count * countScale(this.peak)))
     for (let k = 0; k < n; k++) this.queue.push({ kind, at: sim.time + k * 0.3, tag, wave: -2 })
     this.queue.sort((a, b) => a.at - b.at)
   }

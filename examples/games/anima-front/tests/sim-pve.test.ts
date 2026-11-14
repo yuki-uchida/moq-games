@@ -80,7 +80,7 @@ describe('pve rules', () => {
     const m = mission('sakura', idle(), 'easy', 0)
     m.step(10)
     const lh = m.sim.props.find((r) => r.kind === 'lighthouse')!
-    expect(lh.hp).toBe(2000)
+    expect(lh.hp).toBe(MISSIONS.sakura.objective.kind === 'defend' ? MISSIONS.sakura.objective.hp : -1)
     damageProp(m.sim, lh, { amount: 5000, kind: 'ranged', side: FOE_SIDE, at: lh.p, from: lh.p })
     m.step(2)
     const v = m.world.view()

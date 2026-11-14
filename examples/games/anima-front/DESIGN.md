@@ -140,7 +140,7 @@ orange anima core on the chest that glows with the remaining anima):
     allies. An ally holding interact (F) within 2.5 m for 2.0 s **revives** it: the reviver pays 15 anima, the
     downed animal returns with 30% anima and 1 s of invulnerability. If nobody does, it is **away** (帰巣): it
     warps out, waits 8 s and respawns at the squad's base with full anima, using one of the squad's **転送枠**
-    (respawn tickets: 訓練 8, 正規 5, 決死 3). No tickets left → it stays away. All players down/away with no
+    (respawn tickets: 訓練 8, 正規 4, 決死 3). No tickets left → it stays away. All players down/away with no
     tickets → mission failed.
   - PvP: the armour breaks and the animal warps out at once (KO). The team that dealt the last damage within 10 s
     scores; respawn after 5 s at the team base with full anima and 2 s of protection.
@@ -165,53 +165,53 @@ as that animal from 10 m away. The exact numbers live in `src/data/items.ts`; th
 
 | id        | 名前       | motif            | use                                                                 | cost |
 | --------- | ---------- | ---------------- | ------------------------------------------------------------------- | ---- |
-| `claw`    | ネコノツメ | cat paw gauntlet | 3-hit combo, 12 dmg each, 0.26 s, reach 1.9 m, 100°                 | 0.3  |
-| `orca`    | シャチマル | orca blade       | slash 26 dmg, 0.5 s, reach 2.6 m, 120°; hold: guard (front 100°)    | 0.8  |
+| `claw`    | ネコノツメ | cat paw gauntlet | 3-hit combo, 14 dmg each, 0.26 s, reach 1.9 m, 100°                 | 0.3  |
+| `orca`    | シャチマル | orca blade       | slash 26 dmg, 0.5 s, reach 2.6 m, 120°; hold: guard (front 100°)    | 0.6  |
 | `narwhal` | イッカク   | narwhal lance    | lunge 7 m forward, 36 dmg to everything on the path, cooldown 1.2 s | 2.2  |
-| `mammoth` | マンモス   | mammoth hammer   | 0.35 s wind-up, slam 48 dmg radius 3.5 m, knocks up, cooldown 1.1 s | 3.5  |
+| `mammoth` | マンモス   | mammoth hammer   | 0.35 s wind-up, slam 42 dmg radius 3.5 m, knocks up, cooldown 1.1 s | 3.5  |
 | `mantis`  | カマキリ   | mantis scythe    | wide sweep 22 dmg, 160°, reach 3.0 m, 0.6 s                         | 1.2  |
 
 Guarding with シャチマル blocks melee fully and bullets/blasts at 60%; each blocked hit costs 0.3 anima.
 
 ### Ranged
 
-| id        | 名前         | motif              | use                                                                                    | cost       |
-| --------- | ------------ | ------------------ | -------------------------------------------------------------------------------------- | ---------- |
-| `bee`     | ミツバチ     | bee pistol         | semi-auto, 10 dmg, 0.18 s, 140 m/s, spread 0.6°                                        | 0.15/shot  |
-| `wood`    | キツツキ     | woodpecker rifle   | full-auto 9/s, 7 dmg, 160 m/s, spread 1.2° (+0.25° per shot, max 3°)                   | 0.35/shot  |
-| `humming` | ハチドリ     | hummingbird SMG    | full-auto 14/s, 4.5 dmg, 130 m/s, spread 2.5°                                          | 0.22/shot  |
-| `puffer`  | フグ         | pufferfish shotgun | 9 pellets × 6 dmg, 0.8 s, 90 m/s, cone 7°, pellets fade after 25 m                     | 1.8/shot   |
-| `owl`     | フクロウアイ | owl sniper         | hold: zoom (FOV 24°, 0.35 s to steady); release: 65 dmg, head ×1.8, 400 m/s, 1.2 s     | 5/shot     |
-| `swallow` | ツバメ       | swallow launcher   | hold: lock up to 4 targets in a 12° cone ≤ 60 m (0.3 s each); release: homing darts 15 | 4.5/volley |
-| `pillbug` | ダンゴムシ   | pill bug grenade   | lobbed 22 m/s, bounces, explodes on a foe or after 1.4 s: 50 dmg radius 4 m            | 3.5        |
-| `eel`     | デンキウナギ | electric eel beam  | continuous beam 35 m, 55 dmg/s, arcs to 1 more foe within 4 m at 50%                   | 6/s        |
-| `hippo`   | カバキャノン | hippo cannon       | hold 0.8 s to charge; release: shell 60 m/s, 100 dmg radius 5 m, cooldown 2 s          | 11         |
+| id        | 名前         | motif              | use                                                                                    | cost      |
+| --------- | ------------ | ------------------ | -------------------------------------------------------------------------------------- | --------- |
+| `bee`     | ミツバチ     | bee pistol         | semi-auto, 9 dmg, 0.18 s, 140 m/s, spread 0.6°                                         | 0.15/shot |
+| `wood`    | キツツキ     | woodpecker rifle   | full-auto 9/s, 7.5 dmg, 160 m/s, spread 1.2° (+0.25° per shot, max 3°)                 | 0.35/shot |
+| `humming` | ハチドリ     | hummingbird SMG    | full-auto 14/s, 5 dmg, 130 m/s, spread 2.5°                                            | 0.16/shot |
+| `puffer`  | フグ         | pufferfish shotgun | 9 pellets × 7 dmg, 0.8 s, 90 m/s, cone 7°, pellets fade after 25 m                     | 1.8/shot  |
+| `owl`     | フクロウアイ | owl sniper         | hold: zoom (FOV 24°, 0.35 s to steady); release: 36 dmg, head ×1.6, 400 m/s, 1.2 s     | 4/shot    |
+| `swallow` | ツバメ       | swallow launcher   | hold: lock up to 4 targets in a 12° cone ≤ 60 m (0.3 s each); release: homing darts 15 | 2/volley  |
+| `pillbug` | ダンゴムシ   | pill bug grenade   | lobbed 22 m/s, bounces, explodes on a foe or after 1.4 s: 50 dmg radius 4 m            | 3         |
+| `eel`     | デンキウナギ | electric eel beam  | continuous beam 35 m, 48 dmg/s, arcs to 1 more foe within 4 m at 50%                   | 2.5/s     |
+| `hippo`   | カバキャノン | hippo cannon       | hold 0.8 s to charge; release: shell 60 m/s, 85 dmg radius 5 m, cooldown 2 s           | 4         |
 
 Bullets are visible anima projectiles shaped by their weapon (honeycomb sparks, seed bolts, feather streaks).
-Headshots ×1.5 (owl ×1.8, puffer ×1.0). Blast damage falls off linearly to 40% at the edge.
+Headshots ×1.5 (owl ×1.6, puffer ×1.0). Blast damage falls off linearly to 40% at the edge.
 
 ### Armour
 
-| id          | 名前           | kind    | effect                                                                                         | cost       |
-| ----------- | -------------- | ------- | ---------------------------------------------------------------------------------------------- | ---------- |
-| `turtle`    | カメノコウラ   | passive | damage taken −25%, speed −4%; a turtle shell on the back                                       | 0.4/s      |
-| `armadillo` | アルマジロ     | active  | hold: curled-armadillo shield in front (120°), blocks everything; blocked damage ×0.3 is spent | 0.4/s held |
-| `hedgehog`  | ハリネズミ     | passive | melee attackers take 50% of their damage back; touching foes take 8/s; quills on the back      | 0.25/s     |
-| `jelly`     | クラゲヴェール | passive | one hit every 5 s is negated completely (a jelly bubble pops)                                  | 0.35/s     |
+| id          | 名前           | kind    | effect                                                                                        | cost       |
+| ----------- | -------------- | ------- | --------------------------------------------------------------------------------------------- | ---------- |
+| `turtle`    | カメノコウラ   | passive | damage taken −20%, speed −4%; a turtle shell on the back                                      | 0.4/s      |
+| `armadillo` | アルマジロ     | active  | hold: curled-armadillo shield in front (120°); blocked damage ×0.65 is spent instead of taken | 0.4/s held |
+| `hedgehog`  | ハリネズミ     | passive | melee attackers take 50% of their damage back; touching foes take 8/s; quills on the back     | 0.25/s     |
+| `jelly`     | クラゲヴェール | passive | one hit every 6 s is negated completely (a jelly bubble pops)                                 | 0.35/s     |
 
 While アルマジロ is raised the animal moves at 70% speed and cannot use that paw's other antique.
 
 ### Enhancements (stack up to 3 of the same; effects and costs add up)
 
-| id        | 名前       | effect per copy                                                    |
-| --------- | ---------- | ------------------------------------------------------------------ |
-| `fang`    | キバ       | melee damage +15%, melee costs +10%                                |
-| `hawk`    | タカノメ   | ranged damage +12%, spread −15%, ranged costs +10%                 |
-| `rhino`   | サイノカワ | armour effects +30% (e.g. カメノコウラ −32.5%), armour upkeep +25% |
-| `sloth`   | ナマケモノ | every cost and upkeep −10%, fire and swing rate −6%                |
-| `koala`   | コアラ     | regeneration +0.8/s, regeneration delay −1 s                       |
-| `cheetah` | チーター   | move speed +5%, dash cooldown −15%                                 |
-| `camel`   | ラクダ     | max anima +12, regeneration −0.2/s                                 |
+| id        | 名前       | effect per copy                                                  |
+| --------- | ---------- | ---------------------------------------------------------------- |
+| `fang`    | キバ       | melee damage +15%, melee costs +10%                              |
+| `hawk`    | タカノメ   | ranged damage +8%, spread −15%, ranged costs +5%                 |
+| `rhino`   | サイノカワ | armour effects +10% (e.g. カメノコウラ −22%), armour upkeep +25% |
+| `sloth`   | ナマケモノ | every cost and upkeep −10%, fire and swing rate −6%              |
+| `koala`   | コアラ     | regeneration +0.8/s, regeneration delay −1 s                     |
+| `cheetah` | チーター   | move speed +5%, dash cooldown −15%                               |
+| `camel`   | ラクダ     | max anima +5, regeneration −0.2/s                                |
 
 ### Gadgets
 
@@ -221,11 +221,11 @@ While アルマジロ is raised the animal moves at 70% speed and cannot use tha
 | `gecko`    | ヤモリフック | active  | fires a sticky gecko pad on a line (≤ 35 m); pulls you to it at 26 m/s; cooldown 1 s                                        | 2.5           |
 | `momonga`  | モモンガ     | passive | hold jump while falling: glide (fall 2.2 m/s, forward 10 m/s)                                                               | 1.2/s gliding |
 | `leaf`     | コノハムシ   | active  | toggle camouflage: foes lose you beyond 5 m; attacking reveals you for 1 s                                                  | 2.5/s         |
-| `bat`      | コウモリ     | active  | sonar pulse: foes within 50 m are revealed to the squad for 6 s (through walls); cooldown 8 s                               | 4             |
+| `bat`      | コウモリ     | active  | sonar pulse: foes within 50 m are revealed to the squad for 6 s (through walls); cooldown 8 s                               | 3             |
 | `octopus`  | タコスミ     | active  | throws an ink cloud (radius 6 m, 8 s) that blocks sight                                                                     | 3             |
 | `pigeon`   | ハトポッポ   | active  | sends a hologram of you running forward for 6 s; foes target it; cooldown 6 s                                               | 4             |
-| `hermit`   | ヤドカリ     | active  | deploys a shell wall (4 m × 2.5 m, 250 HP, 25 s) at the aim point (≤ 10 m); max 1                                           | 6             |
-| `honeyant` | ミツツボアリ | active  | plants a honey jar: allies within 4.5 m regain 4/s for 8 s; cooldown 15 s                                                   | 9             |
+| `hermit`   | ヤドカリ     | active  | deploys a shell wall (4 m × 2.5 m, 250 HP, 25 s) at the aim point (≤ 10 m); max 1                                           | 5             |
+| `honeyant` | ミツツボアリ | active  | plants a honey jar: allies within 4.5 m regain 4/s for 8 s; cooldown 15 s                                                   | 7             |
 
 ## 7. Loadout (`src/sim/loadout.ts`, `src/data/presets.ts`)
 
@@ -293,22 +293,22 @@ plus separation; special units steer individually. Every attack is telegraphed (
 
 ### 蝕獣 (creatures): glossy indigo-black chitin, violet glowing veins, orange eye-cores. Creepy, never gory.
 
-| id            | 名前              | HP   | speed | behaviour                                                                                      |
-| ------------- | ----------------- | ---- | ----- | ---------------------------------------------------------------------------------------------- |
-| `tsubute`     | ツブテ            | 18   | 7.0   | six-legged crawler (0.7 m); packs of 8–30; bite 6 / 0.8 s; leaps 5 m at targets within 6 m     |
-| `harigane`    | ハリガネ          | 45   | 4.5   | stilt-legged spitter (2.4 m); keeps 12–22 m; acid glob arc 12 dmg + puddle 4/s for 4 s         |
-| `oagos`       | オオアゴ          | 260  | 4.0   | brute (2.4 m); front 90° takes −60%; charge 25 dmg + knockback; glowing back sac takes ×2      |
-| `kagerou`     | カゲロウ          | 30   | 9.0   | flyer, hovers 5–8 m; dives 14 dmg; erratic weaving                                             |
-| `kuitsukushi` | クイツクシ (boss) | 6000 | —     | a crater-maw flower 9 m tall: tentacle slams, acid rain, summons ツブテ, opens its core (×2.5) |
+| id            | 名前              | HP   | speed | behaviour                                                                                    |
+| ------------- | ----------------- | ---- | ----- | -------------------------------------------------------------------------------------------- |
+| `tsubute`     | ツブテ            | 22   | 7.0   | six-legged crawler (0.7 m); packs of 8–30; bite 7 / 0.8 s; leaps 5 m (11 dmg) within 6 m     |
+| `harigane`    | ハリガネ          | 54   | 4.5   | stilt-legged spitter (2.4 m); keeps 12–22 m; acid glob arc 14 dmg + puddle 4/s for 4 s       |
+| `oagos`       | オオアゴ          | 310  | 4.0   | brute (2.4 m); front 90° takes −60%; charge 30 dmg + knockback; glowing back sac takes ×2    |
+| `kagerou`     | カゲロウ          | 36   | 9.0   | flyer, hovers 5–8 m; dives 17 dmg; erratic weaving                                           |
+| `kuitsukushi` | クイツクシ (boss) | 9500 | —     | a crater-maw flower 9 m tall: tentacle slams, acid rain, summons ツブテ, opens its core (×2) |
 
 ### 蝕機 (machines): pearl-white ceramic plates, cyan light seams, single lens eyes. Elegant and cold.
 
 | id          | 名前            | HP   | speed | behaviour                                                                                           |
 | ----------- | --------------- | ---- | ----- | --------------------------------------------------------------------------------------------------- |
-| `mitsume`   | ミツメ          | 35   | 8.0   | three-eyed scout drone, flies 3–6 m, laser burst 3 × 5, strafes                                     |
-| `ashinaga`  | アシナガ        | 180  | 3.0   | four-legged walker (2.2 m), plasma mortar arc 25 dmg radius 3, slow                                 |
-| `korogashi` | コロガシ        | 25   | 9.0   | rolling sphere bomb, explodes near targets 40 dmg radius 3 (also when destroyed, 50%)               |
-| `tategami`  | タテガミ        | 140  | 3.5   | shield projector: a dome (radius 6 m) over nearby machines blocks shots from outside                |
+| `mitsume`   | ミツメ          | 42   | 8.0   | three-eyed scout drone, flies 3–6 m, laser burst 3 × 5, strafes                                     |
+| `ashinaga`  | アシナガ        | 215  | 3.0   | four-legged walker (2.2 m), plasma mortar arc 30 dmg radius 3, slow                                 |
+| `korogashi` | コロガシ        | 30   | 9.0   | rolling sphere bomb, explodes near targets 40 dmg radius 3 (also when destroyed, 50%)               |
+| `tategami`  | タテガミ        | 170  | 3.5   | shield projector: a dome (radius 6 m) over nearby machines blocks shots from outside                |
 | `goutetsu`  | ゴウテツ (boss) | 7000 | 1.5   | walking fortress 12 m: 4 breakable legs (800 each) → kneels, core exposed; missiles, sweeping laser |
 
 ### クロヅメ連合 (foreign animals)
@@ -319,7 +319,10 @@ with fixed loadouts. HP = their species anima.
 - Spawns telegraph: creatures burrow up with violet cracks; machines drop from the sky in light pillars;
   クロヅメ arrive by warp flashes.
 - `ANIMA_DROP`: shards per kill (ツブテ 25% × 3, others 100% × 4–12, bosses a burst of 40).
-- Difficulty: 訓練 HP ×0.7 dmg ×0.7; 正規 ×1; 決死 HP ×1.35 dmg ×1.3. Boss HP also × (0.55 + 0.15 × humans).
+- Difficulty: 訓練 HP ×0.7 dmg ×0.7; 正規 ×1; 決死 HP ×1.1 dmg ×1.05, and wave counts follow each difficulty's
+  concurrency peak at half strength (`WAVE_COUNT_SCALE`). Bosses take a quarter of the difficulty's HP change and
+  × (0.55 + 0.15 × humans); クイツクシ's body takes ×0.25 while its maw is shut, ゴウテツ's armour ×0.35 outside its
+  legs and exposed core (src/sim/constants.ts).
 
 ## 12. Modes
 
@@ -329,10 +332,10 @@ Missions unlock in order. Each has a briefing (commander + operator lines), obje
 
 | #   | id          | 名前             | map             | foes              | objective                                                                     |
 | --- | ----------- | ---------------- | --------------- | ----------------- | ----------------------------------------------------------------------------- |
-| 1   | `sakura`    | サクラ通り防衛線 | `oldtown`       | 蝕獣              | defend the anima lighthouse (HP 2000) for 5 waves; wave 5 has two オオアゴ    |
+| 1   | `sakura`    | サクラ通り防衛線 | `oldtown`       | 蝕獣              | defend the anima lighthouse (HP 1150) for 5 waves; wave 5 has two オオアゴ    |
 | 2   | `harbor`    | 港湾ブロック奪還 | `harbor`        | 蝕機              | capture 3 points in order (hold 25 s, no foes inside), then the boss ゴウテツ |
-| 3   | `nightraid` | 黒爪の夜襲       | `oldtown` night | クロヅメ + ツブテ | escort the antique cart to the gate (it moves while a player is near it)      |
-| 4   | `blight`    | 侵蝕域突入       | `blight`        | 蝕獣 + 蝕機       | destroy 3 hive nodes (1500 HP each) that spawn foes while they live           |
+| 3   | `nightraid` | 黒爪の夜襲       | `oldtown` night | クロヅメ + ツブテ | escort the antique cart (HP 700) to the gate; it moves while a player is near |
+| 4   | `blight`    | 侵蝕域突入       | `blight`        | 蝕獣 + 蝕機       | destroy 3 hive nodes (2400 HP each) that spawn foes while they live           |
 | 5   | `maw`       | 喰らう柱         | `blight` crater | 蝕獣              | defeat クイツクシ                                                             |
 
 - Wave pacing: a wave starts with a banner and radio line, spawns in bursts from map spawn points; the next wave

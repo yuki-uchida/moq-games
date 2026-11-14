@@ -85,7 +85,7 @@ export const PRESETS: PresetDef[] = [
     name: 'サポート',
     text: '蜜壺と壁と音波で仲間を支える。自分の燃費も抜群。',
     loadout: makeLoadout(
-      ['humming', 'pillbug'],
+      ['bee', 'pillbug'],
       ['honeyant', 'bat', 'hermit', 'armadillo'],
       ['koala', 'koala', 'koala', 'sloth', 'sloth', 'turtle', 'jelly', 'hawk', 'camel', 'cheetah']
     )

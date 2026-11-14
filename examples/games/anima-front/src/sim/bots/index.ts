@@ -7,12 +7,15 @@ import { ITEMS } from '../../data/items'
 import { targetCenter, type Target } from '../actors'
 import { MAX_PITCH } from '../constants'
 import { navGrid } from '../grid'
-import { pivotOf } from '../player'
+import { weaponRate } from '../loadout'
+import { muzzleOf, pivotOf } from '../player'
 import { FOE_SIDE, type Player, type Sim } from '../state'
 import { BTN } from '../types'
 import { clamp, hdist, vdist, wrapAngle, type Vec } from '../vec'
 import {
   aimErrorDeg,
+  bossOpen,
+  dodgeChance,
   homeBase,
   inEnemyBase,
   lanePoints,
@@ -24,6 +27,7 @@ import {
   squadCentroid,
   type Brain
 } from './brain'
+import { aimPoint, evadeBlasts } from './evade'
 import { findPath } from './nav'
 import { chooseWeapons, findKind, pawControl, planGadget, runGadget, weaponStats } from './weapons'
 
@@ -94,6 +98,16 @@ export function botThink(sim: Sim, p: Player) {
     }
     b.cluster = cluster
     b.close = seen.filter((s) => s.d < 8).length
+    b.objThreat = p.side !== FOE_SIDE && objectiveThreatened(sim)
+    // Line of fire from the shoulder (crosshair) and the main paw: no shots into cover.
+    const tgtNow = resolve(sim, b.target)
+    if (tgtNow) {
+      const ap = aimPoint(tgtNow, pivotOf(p))
+      const side = p.side
+      const blocked = !sim.phys.clear(pivotOf(p), ap, side) || !sim.phys.clear(muzzleOf(p, 'R'), ap, side)
+      if (blocked && b.clearShot) b.strafe = -b.strafe
+      b.clearShot = !blocked
+    } else b.clearShot = true
   }
   const ext = b
   let tgt: Target | null = resolve(sim, b.target)
@@ -105,8 +119,12 @@ export function botThink(sim: Sim, p: Player) {
   // --- anima / retreat ---------------------------------------------------------------------------------------
   const frac = p.anima / p.maxAnima
   if (!p.foe && !p.infinite) {
-    if (frac < 0.25) b.retreat = true
-    else if (frac > 0.6) b.retreat = false
+    // Back to the fight sooner when foes are on the objective.
+    // Small pools leave earlier: below a quarter, or below ~28 anima (one burst from breaking). PvP fights are
+    // decided closer to the edge (the base heals fast, a KO only costs a respawn).
+    const pvp = sim.cfg.mode === 'pvp'
+    if (frac < (pvp ? Math.max(0.18, 20 / p.maxAnima) : Math.max(0.25, 28 / p.maxAnima))) b.retreat = true
+    else if (frac > (b.objThreat ? 0.4 : 0.55)) b.retreat = false
   } else b.retreat = false
   if (sim.tick % 15 === 0) {
     b.taken.push(sim.time, p.stats.taken)
@@ -140,7 +158,9 @@ export function botThink(sim: Sim, p: Player) {
         shard = s.p
       }
     }
-    goal = shard ?? homeBase(sim, p) ?? focus ?? null
+    // Guarding an objective (灯台 / 荷車): fall back behind it, away from the threat, instead of the far base.
+    const guard = focus && sim.props.some((r) => !r.gone && (r.kind === 'lighthouse' || r.kind === 'cart'))
+    goal = shard ?? (guard && focus ? fallBack(focus, tc ?? p.p, p) : homeBase(sim, p)) ?? focus ?? null
     if (goal && hdist(goal, p.p) < 2.5) goal = null
   } else if (tgt && tc && engaged) {
     const pref = choice.pref
@@ -172,9 +192,10 @@ export function botThink(sim: Sim, p: Player) {
     const main = choice.item
     const speed = main ? weaponStats(ITEMS[main]).speed : Infinity
     const tv = tgt.k === 'p' ? tgt.p.v : tgt.k === 'f' ? tgt.f.v : [0, 0, 0]
-    const lead = Number.isFinite(speed) ? (vdist(tc, piv) / speed) * (0.3 + 0.6 * skill) : 0
-    const aimAt: Vec = [tc[0] + tv[0] * lead, tc[1] + tv[1] * lead * 0.5, tc[2] + tv[2] * lead]
-    if (main && ITEMS[main].use?.kind === 'lob') aimAt[1] += Math.min(6, vdist(tc, piv) * 0.08)
+    const ap = aimPoint(tgt, piv)
+    const lead = Number.isFinite(speed) ? (vdist(ap, piv) / speed) * (0.3 + 0.6 * skill) : 0
+    const aimAt: Vec = [ap[0] + tv[0] * lead, ap[1] + tv[1] * lead * 0.5, ap[2] + tv[2] * lead]
+    if (main && ITEMS[main].use?.kind === 'lob') aimAt[1] += Math.min(6, vdist(ap, piv) * 0.08)
     wantYaw = Math.atan2(aimAt[0] - piv[0], aimAt[2] - piv[2])
     wantPitch = Math.atan2(aimAt[1] - piv[1], Math.hypot(aimAt[0] - piv[0], aimAt[2] - piv[2]))
     // Slowly wandering aim error.
@@ -185,8 +206,10 @@ export function botThink(sim: Sim, p: Player) {
     }
     b.errYaw += (b.errTo[0] - b.errYaw) * 0.08
     b.errPitch += (b.errTo[1] - b.errPitch) * 0.08
-    wantYaw += b.errYaw
-    wantPitch += b.errPitch
+    // A steadied scope (フクロウアイ zoomed in) settles most of the wander.
+    const steady = p.hands.some((h) => h.mode === 'zoom' && h.charge > 0.5) ? 0.5 : 1
+    wantYaw += b.errYaw * steady
+    wantPitch += b.errPitch * steady
   } else {
     const d = p.v[0] * p.v[0] + p.v[2] * p.v[2]
     if (d > 1) wantYaw = Math.atan2(p.v[0], p.v[2])
@@ -196,7 +219,9 @@ export function botThink(sim: Sim, p: Player) {
   const dy = wrapAngle(wantYaw - p.yaw)
   const yaw = wrapAngle(p.yaw + clamp(dy, -turn, turn))
   let pitch = clamp(p.pitch + clamp(wantPitch - p.pitch, -turn, turn), -MAX_PITCH, MAX_PITCH)
-  const aimOk = Math.abs(wrapAngle(wantYaw - yaw)) < 0.1 && Math.abs(wantPitch - pitch) < 0.12
+  // On target: the turn has caught up within about a body width (tighter at range).
+  const tol = clamp(0.9 / Math.max(1, dist), 0.02, 0.1)
+  const aimOk = Math.abs(wrapAngle(wantYaw - yaw)) < tol && Math.abs(wantPitch - pitch) < tol * 1.2
   inp.yaw = yaw
   if (b.gadget?.pitch !== undefined && !b.gadget.pressed) pitch = b.gadget.pitch
   inp.pitch = pitch
@@ -213,7 +238,16 @@ export function botThink(sim: Sim, p: Player) {
     const l = Math.hypot(fx, fz) || 1
     dir = [(-fz / l) * b.strafe * 0.8, (fx / l) * b.strafe * 0.8]
   }
+  // Step out of predicted foe blast zones (acid, mortars, missiles, acid rain).
+  const ev = p.side !== FOE_SIDE && !reviving ? evadeBlasts(sim, p, b, skill) : null
+  if (ev) {
+    dir = ev.dir
+    if (ev.dash && sim.time >= p.dashReadyAt) inp.presses.dash++
+  }
   setMove(p, dir)
+  // Retreating under fire: dash away toward safety.
+  if (b.retreat && goal && sim.time - p.lastHurt < 0.6 && sim.time >= p.dashReadyAt && b.rng.chance(skill * 0.1))
+    inp.presses.dash++
 
   // --- dodge wind-ups -----------------------------------------------------------------------------------------
   if (p.side !== FOE_SIDE && sim.time >= p.dashReadyAt) {
@@ -225,7 +259,7 @@ export function botThink(sim: Sim, p: Player) {
       if (b.dodged.has(key)) continue
       if (b.dodged.size > 64) b.dodged.clear()
       b.dodged.add(key)
-      if (!b.rng.chance(0.15 + 0.7 * skill)) continue
+      if (!b.rng.chance(dodgeChance(skill))) continue
       const fx = p.p[0] - f.p[0]
       const fz = p.p[2] - f.p[2]
       const l = Math.hypot(fx, fz) || 1
@@ -253,10 +287,28 @@ export function botThink(sim: Sim, p: Player) {
     allies,
     alliesMean: allies ? sum / allies : 1,
     newContact: engaged && sim.time - b.contactAt < 1,
-    goalHigh: !!goal && goal[1] > 3
+    goalHigh: !!goal && goal[1] > 3,
+    // Hook in on crowds and weakened rivals only (a full-health rival waits for the jump).
+    closeIn:
+      engaged &&
+      !b.retreat &&
+      choice.pref <= 8 &&
+      dist >= 10 &&
+      dist <= 30 &&
+      b.clearShot &&
+      (tgt?.k !== 'p' || tgt.p.anima / tgt.p.maxAnima < 0.6)
   })
   const busy = runGadget(sim, p, b)
-  const fire = engaged && !reviving && !(b.retreat && dist > 8)
+  // Fire discipline: low on anima, let a foe that is busy elsewhere go (no spending lets regeneration start).
+  // Skilled bots hold their fire from higher reserves.
+  let hold = false
+  if (tgt?.k === 'f' && !p.foe && !p.infinite && frac < 0.2 + 0.25 * skill && dist > 10) {
+    const ft = tgt.f.target
+    const onMe = ft?.k === 'p' && ft.id === p.id
+    const onObjective = ft?.k === 'r' && b.objThreat
+    hold = !onMe && !onObjective && !tgt.f.def.boss
+  }
+  const fire = engaged && b.clearShot && !reviving && !hold && !(b.retreat && dist > 8)
   const hurt = sim.time - p.lastHurt < 1.2
   const shield = findKind(p, ['shield'])
   for (const hi of [0, 1] as const) {
@@ -271,9 +323,21 @@ export function botThink(sim: Sim, p: Player) {
       continue
     }
     const pick = choice.picks[hi]
-    const usable =
-      pick !== null && (choice.main === hi || choice.scores[hi] > choice.scores[choice.main === 0 ? 0 : 1] - 6)
-    pawControl(sim, p, b, hi, fire && usable, aimOk, ext.seenCount ?? 1)
+    // The off paw joins in when it is nearly as good and either cheap or worth it (a crowd, a boss's weak spot,
+    // a weakened rival); two expensive antiques at once empty the pool in seconds.
+    const offOk = (() => {
+      if (pick === null || choice.main === hi) return pick !== null
+      if (choice.scores[hi] <= choice.scores[choice.main === 0 ? 0 : 1] - 6) return false
+      const id = (hi === 0 ? p.build.R : p.build.L)[pick]
+      const cheap = !!p.foe || p.infinite || weaponRate(ITEMS[id], p.build.mods) < 1.6
+      const worth =
+        (ext.cluster ?? 0) >= 3 ||
+        (tgt?.k === 'f' && tgt.f.def.boss && bossOpen(tgt.f)) ||
+        (tgt?.k === 'p' && tgt.p.anima / tgt.p.maxAnima < 0.35)
+      return cheap || (worth && frac > 0.4)
+    })()
+    const usable = offOk
+    pawControl(sim, p, b, hi, fire && usable, aimOk, ext.seenCount ?? 1, dist)
   }
   inp.selR = b.sel[0]
   inp.selL = b.sel[1]
@@ -281,6 +345,30 @@ export function botThink(sim: Sim, p: Player) {
     inp.mx = 0
     inp.mz = 0
   }
+}
+
+/** A point 10 m from the objective on the side away from `threat` (toward the player when it is on top). */
+function fallBack(focus: Vec, threat: Vec, p: Player): Vec {
+  let dx = focus[0] - threat[0]
+  let dz = focus[2] - threat[2]
+  let l = Math.hypot(dx, dz)
+  if (l < 1) {
+    dx = p.p[0] - focus[0]
+    dz = p.p[2] - focus[2]
+    l = Math.hypot(dx, dz) || 1
+  }
+  return [focus[0] + (dx / l) * 10, focus[1], focus[2] + (dz / l) * 10]
+}
+
+/** True when a foe next to our objective (灯台 / 荷車) is attacking it. */
+function objectiveThreatened(sim: Sim): boolean {
+  for (const r of sim.props) {
+    if (r.gone || (r.kind !== 'lighthouse' && r.kind !== 'cart')) continue
+    for (const f of sim.foeHash.query(r.p[0], r.p[2], 8)) {
+      if (!f.dead && f.target && f.target.k === 'r' && f.target.id === r.id) return true
+    }
+  }
+  return false
 }
 
 function nearestDownAlly(sim: Sim, p: Player): Player | null {

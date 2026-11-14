@@ -5,7 +5,7 @@
 import { FOES, KUROZUME_SQUADS, type FoeKind } from '../../data/enemies'
 import { makeLoadout } from '../../data/loadout'
 import { dropShards } from '../anima'
-import { DT, FOE_DYING_TIME, FOE_SPAWN_TIME } from '../constants'
+import { AVATAR_SKILL, BOSS_DIFFICULTY_SCALE, DT, FOE_DYING_TIME, FOE_SPAWN_TIME } from '../constants'
 import { createPlayer } from '../player'
 import { emit, FOE_SIDE, type Foe, type Sim } from '../state'
 import type { ActorRef } from '../types'
@@ -23,7 +23,7 @@ export interface SpawnOpts {
 
 export function spawnFoe(sim: Sim, kind: FoeKind, at: Vec, opts: SpawnOpts = {}): Foe {
   const def = FOES[kind]
-  let hp = def.hp * sim.diff.hp
+  let hp = def.hp * (def.boss ? bossDifficultyHp(sim) : sim.diff.hp)
   if (def.boss) hp *= 0.55 + 0.15 * Math.max(1, sim.humans)
   const id = sim.nextFoe++
   const f: Foe = {
@@ -68,7 +68,7 @@ export function spawnFoe(sim: Sim, kind: FoeKind, at: Vec, opts: SpawnOpts = {})
         species: sq.species,
         loadout: makeLoadout(sq.r, sq.l, ['cheetah']),
         team: 0,
-        bot: 0.45
+        bot: AVATAR_SKILL[sim.cfg.difficulty ?? 'normal'] ?? AVATAR_SKILL.normal
       },
       { p: f.p, yaw: f.yaw },
       FOE_SIDE
@@ -84,6 +84,9 @@ export function spawnFoe(sim: Sim, kind: FoeKind, at: Vec, opts: SpawnOpts = {})
   emit(sim, { type: 'foeSpawn', foe: id, kind, at: r3v(f.p) })
   return f
 }
+
+/** Difficulty hp multiplier of bosses (and their parts): half the offset of the regular one. */
+export const bossDifficultyHp = (sim: Sim) => 1 + (sim.diff.hp - 1) * BOSS_DIFFICULTY_SCALE
 
 export const liveFoes = (sim: Sim) => sim.foes.reduce((n, f) => n + (f.dead ? 0 : 1), 0)
 

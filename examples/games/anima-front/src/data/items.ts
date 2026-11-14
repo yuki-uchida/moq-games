@@ -228,7 +228,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     text: '肉球つきの爪で三連撃。安くて速いが、懐に入る勇気がいる。',
     color: 0xff8fb1,
     cost: 0.3,
-    use: { kind: 'combo', damage: 12, interval: 0.26, reach: 1.9, arc: 100, hits: 3, comboReset: 0.6 }
+    use: { kind: 'combo', damage: 14, interval: 0.26, reach: 1.9, arc: 100, hits: 3, comboReset: 0.6 }
   }),
   orca: melee({
     id: 'orca',
@@ -236,7 +236,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     motif: 'シャチ',
     text: 'シャチの形の刀。長押しで構えて防御できる万能の一振り。',
     color: 0x4fc3f7,
-    cost: 0.8,
+    cost: 0.6,
     use: {
       kind: 'slash',
       damage: 26,
@@ -264,7 +264,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     color: 0xffb74d,
     cost: 3.5,
     cooldown: 1.1,
-    use: { kind: 'slam', damage: 48, windup: 0.35, radius: 3.5, reach: 1.6, knockUp: 7 }
+    use: { kind: 'slam', damage: 42, windup: 0.35, radius: 3.5, reach: 1.6, knockUp: 7 }
   }),
   mantis: melee({
     id: 'mantis',
@@ -283,7 +283,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     text: 'ハチの拳銃。一発の威力は小さいが、ほとんどアニマを使わない。',
     color: 0xffd54f,
     cost: 0.15,
-    use: { kind: 'semi', damage: 10, interval: 0.18, speed: 140, spread: 0.6, headMult: 1.5, range: 90 }
+    use: { kind: 'semi', damage: 9, interval: 0.18, speed: 140, spread: 0.6, headMult: 1.5, range: 90 }
   }),
   wood: ranged({
     id: 'wood',
@@ -294,7 +294,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     cost: 0.35,
     use: {
       kind: 'auto',
-      damage: 7,
+      damage: 7.5,
       rate: 9,
       speed: 160,
       spread: 1.2,
@@ -310,10 +310,10 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     motif: 'ハチドリ',
     text: '小さなハチドリの機関銃。近距離で弾をばらまく。',
     color: 0x26c6da,
-    cost: 0.22,
+    cost: 0.16,
     use: {
       kind: 'auto',
-      damage: 4.5,
+      damage: 5,
       rate: 14,
       speed: 130,
       spread: 2.5,
@@ -330,7 +330,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     text: 'ふくらむフグの散弾銃。至近距離なら一撃が重い。',
     color: 0xffca28,
     cost: 1.8,
-    use: { kind: 'spread', damage: 6, pellets: 9, interval: 0.8, speed: 90, cone: 7, range: 25 }
+    use: { kind: 'spread', damage: 7, pellets: 9, interval: 0.8, speed: 90, cone: 7, range: 25 }
   }),
   owl: ranged({
     id: 'owl',
@@ -338,8 +338,8 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     motif: 'フクロウ',
     text: '長押しで覗き、離して撃つ狙撃銃。頭を狙えば大きな一撃。',
     color: 0xb39ddb,
-    cost: 5,
-    use: { kind: 'zoom', damage: 65, interval: 1.2, speed: 400, headMult: 1.8, fov: 24, steady: 0.35, range: 260 }
+    cost: 4,
+    use: { kind: 'zoom', damage: 36, interval: 1.2, speed: 400, headMult: 1.6, fov: 24, steady: 0.35, range: 260 }
   }),
   swallow: ranged({
     id: 'swallow',
@@ -347,7 +347,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     motif: 'ツバメ',
     text: '長押しで最大4体を捉え、離すと追尾するツバメを放つ。',
     color: 0x5c6bc0,
-    cost: 4.5,
+    cost: 2,
     use: {
       kind: 'lock',
       damage: 15,
@@ -366,27 +366,27 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     motif: 'ダンゴムシ',
     text: '丸まったダンゴムシを放り投げる。跳ねて転がり、まとめて吹き飛ばす。',
     color: 0x8d6e63,
-    cost: 3.5,
+    cost: 3,
     use: { kind: 'lob', damage: 50, radius: 4, speed: 22, fuse: 1.4, interval: 0.9, gravity: 20, bounce: 0.45 }
   }),
   eel: ranged({
     id: 'eel',
     name: 'デンキウナギ',
     motif: 'デンキウナギ',
-    text: '撃っている間ずっと電撃を流す。強力だがアニマをみるみる消費する。',
+    text: '撃っている間ずっと電撃を流し、近くの敵にも飛び移る。撃ち続けるほどアニマが減っていく。',
     color: 0x7cf9ff,
-    drain: 6,
-    use: { kind: 'beam', dps: 55, range: 35, chainRange: 4, chainFactor: 0.5, headMult: 1.25 }
+    drain: 2.5,
+    use: { kind: 'beam', dps: 48, range: 35, chainRange: 4, chainFactor: 0.5, headMult: 1.25 }
   }),
   hippo: ranged({
     id: 'hippo',
     name: 'カバキャノン',
     motif: 'カバ',
-    text: '大きな口から砲弾を撃つ。溜めて放つ一撃は最大火力、そして最大消費。',
+    text: '大きな口から砲弾を撃つ。溜めて放つ一撃は最大火力。一発ごとの消費も重い。',
     color: 0xba68c8,
-    cost: 11,
+    cost: 4,
     cooldown: 2,
-    use: { kind: 'charge', damage: 100, radius: 5, charge: 0.8, speed: 60, gravity: 9 }
+    use: { kind: 'charge', damage: 85, radius: 5, charge: 0.8, speed: 60, gravity: 9 }
   }),
 
   turtle: {
@@ -396,10 +396,10 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     category: 'armor',
     active: false,
     stack: 1,
-    text: '背中の甲羅が受けるダメージを25%減らす。少し重い。',
+    text: '背中の甲羅が受けるダメージを20%減らす。少し重い。',
     color: 0x66bb6a,
     upkeep: 0.4,
-    passive: { kind: 'armor', reduce: 0.25, speed: -0.04 }
+    passive: { kind: 'armor', reduce: 0.2, speed: -0.04 }
   },
   armadillo: {
     id: 'armadillo',
@@ -408,10 +408,10 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     category: 'armor',
     active: true,
     stack: 1,
-    text: '長押しで丸まったアルマジロの盾を構える。正面の攻撃をすべて防ぐ。',
+    text: '長押しで丸まったアルマジロの盾を構える。正面の攻撃を受け止め、ダメージを大きく減らす。',
     color: 0xa1887f,
     drain: 0.4,
-    use: { kind: 'shield', arc: 120, blockCostFactor: 0.3, moveFactor: 0.7 }
+    use: { kind: 'shield', arc: 120, blockCostFactor: 0.65, moveFactor: 0.7 }
   },
   hedgehog: {
     id: 'hedgehog',
@@ -432,10 +432,10 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     category: 'armor',
     active: false,
     stack: 1,
-    text: '5秒ごとに一度だけ、攻撃をクラゲの泡が完全に受け止める。',
+    text: '6秒ごとに一度だけ、攻撃をクラゲの泡が完全に受け止める。',
     color: 0xf48fb1,
     upkeep: 0.35,
-    passive: { kind: 'negate', every: 5 }
+    passive: { kind: 'negate', every: 6 }
   },
 
   fang: enhance({
@@ -450,17 +450,17 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     id: 'hawk',
     name: 'タカノメ',
     motif: 'タカ',
-    text: '遠隔ダメージ+12%、ばらつき-15%。遠隔の消費+10%。',
+    text: '遠隔ダメージ+8%、ばらつき-15%。遠隔の消費+5%。',
     color: 0xffb300,
-    passive: { kind: 'mod', rangedDamage: 0.12, spread: -0.15, rangedCost: 0.1 }
+    passive: { kind: 'mod', rangedDamage: 0.08, spread: -0.15, rangedCost: 0.05 }
   }),
   rhino: enhance({
     id: 'rhino',
     name: 'サイノカワ',
     motif: 'サイ',
-    text: '防具の効果+30%。防具の維持消費+25%。',
+    text: '防具の効果+10%。防具の維持消費+25%。',
     color: 0x90a4ae,
-    passive: { kind: 'mod', armorEffect: 0.3, armorUpkeep: 0.25 }
+    passive: { kind: 'mod', armorEffect: 0.1, armorUpkeep: 0.25 }
   }),
   sloth: enhance({
     id: 'sloth',
@@ -490,9 +490,9 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     id: 'camel',
     name: 'ラクダ',
     motif: 'ラクダのこぶ',
-    text: '最大アニマ+12。自然回復-0.2/秒。',
+    text: '最大アニマ+5。自然回復-0.2/秒。',
     color: 0xd7b98e,
-    passive: { kind: 'mod', maxAnima: 12, regen: -0.2 }
+    passive: { kind: 'mod', maxAnima: 5, regen: -0.2 }
   }),
 
   frog: gadget({
@@ -543,7 +543,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     active: true,
     text: '音波を放ち、50m以内の敵を6秒間、壁越しに味方全員へ知らせる。',
     color: 0x7e57c2,
-    cost: 4,
+    cost: 3,
     cooldown: 8,
     use: { kind: 'pulse', radius: 50, duration: 6 }
   }),
@@ -576,7 +576,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     active: true,
     text: '狙った場所に貝殻の壁を建てる。味方の弾は通り抜ける。',
     color: 0xff8a65,
-    cost: 6,
+    cost: 5,
     use: { kind: 'wall', range: 10, width: 4, height: 2.5, hp: 250, life: 25, max: 1 }
   }),
   honeyant: gadget({
@@ -586,7 +586,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     active: true,
     text: '蜜壺を置き、周りの味方のアニマを8秒間回復する。',
     color: 0xffb74d,
-    cost: 9,
+    cost: 7,
     cooldown: 15,
     use: { kind: 'jar', radius: 4.5, heal: 4, duration: 8 }
   })
