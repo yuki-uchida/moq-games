@@ -890,9 +890,14 @@ async function enterStage(page, stageNo, { storyWait = 2500 } = {}) {
   await finishStory(page)
 }
 
+/** True while the story's last page has been confirmed and play waits behind the loading card. */
+const loadingCardUp = (page) => page.evaluate(() => Boolean(document.querySelector('.warm-note:not([hidden])')))
+
 async function finishStory(page) {
   for (let index = 0; index < 40; index++) {
     if ((await screenOf(page)) !== 'story') break
+    // Nothing more to tap: the stage starts by itself once it is ready.
+    if (await loadingCardUp(page)) break
     await page.evaluate(() => window.__hamham.app.screens.typer?.finish())
     await tap(page, '#story-next', 'story next')
     await page.waitForTimeout(280)
@@ -1026,6 +1031,7 @@ async function sectionMenus() {
     await step('story idle 4 s', async () => {}, 4000)
     for (let i = 1; i <= 40; i++) {
       if ((await screenOf(page)) !== 'story') break
+      if (await loadingCardUp(page)) break
       await step(
         `story next ${i}`,
         async () => {
