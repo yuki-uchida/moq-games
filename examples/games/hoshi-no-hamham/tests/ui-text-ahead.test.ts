@@ -117,6 +117,46 @@ describe('text laid out ahead', () => {
     expect([...b.laid('a')].sort().join('')).toBe([...'あいうえおかきくけこ'].sort().join(''))
   })
 
+  it('takes a text wished for again in the same way as nothing new, whatever was laid out meanwhile', () => {
+    const b = box()
+    b.ahead.want('a', 'かじって たおそう')
+    b.ahead.want('a', 'かじって たおそう')
+    b.drain(true)
+    expect(b.laid('a')).toBe('かじってたおそう')
+    // Every start of a stage asks again, for later and first.
+    b.ahead.want('a', 'かじって たおそう')
+    b.ahead.want('a', 'かじって たおそう', true)
+    b.ahead.want('a', 'かじって たおそう', true)
+    expect(b.ahead.idle(true)).toBe(true)
+    expect(b.laid('a')).toBe('かじってたおそう')
+  })
+
+  it('moves a waiting character up once, however many texts want it first', () => {
+    const b = box()
+    b.ahead.want('a', 'あいう')
+    b.ahead.want('a', 'う', true)
+    b.ahead.want('a', 'うう', true)
+    b.ahead.want('a', 'あう', true)
+    b.drain(false)
+    expect(b.laid('a')).toBe('うあ')
+    b.drain(true)
+    expect(b.laid('a')).toBe('うあい')
+  })
+
+  it('does not look among the waiting for a character that was laid out from there', () => {
+    const b = box()
+    b.ahead.want('a', 'あいうえ')
+    // A menu's frame lays the first two out.
+    b.ahead.step(2, true)
+    expect(b.laid('a')).toBe('あい')
+    // The stage wants one that is laid out and one that waits: only the waiting one moves, and none is lost.
+    b.ahead.want('a', 'あう', true)
+    b.drain(false)
+    expect(b.laid('a')).toBe('あいう')
+    b.drain(true)
+    expect(b.laid('a')).toBe('あいうえ')
+  })
+
   it('keeps a wish by its font: another font is laid out anew, the first stays done', () => {
     const b = box()
     b.ahead.want('800 14px Test', 'はしる', true)

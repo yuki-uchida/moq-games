@@ -97,6 +97,17 @@ function fontOf(node: HTMLElement): string {
   return `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
 }
 
+/** Every text a stage can show (hud-model.ts), put together once for each stage. */
+const stageTexts = new WeakMap<StageDef, string>()
+function textOf(stage: StageDef): string {
+  let text = stageTexts.get(stage)
+  if (text === undefined) {
+    text = stageText(stage)
+    stageTexts.set(stage, text)
+  }
+  return text
+}
+
 /** `value` (0..1) on a grid of `steps`; 0 and 1 stay exactly 0 and 1. */
 const snap = (value: number, steps: number) => Math.round(value * steps) / steps
 
@@ -137,6 +148,11 @@ export class Hud implements HudApi, PrimeTarget {
   private ahead: TextAhead
   /** The stages wished for besides the one that is on. */
   private aheadStages: readonly StageDef[] = []
+  /** The fonts of the places texts are shown in, as last read (null: to be read; they follow the stage's size). */
+  private aheadFonts: Map<HTMLElement, string> | null = null
+  /** The stage's width and whether the deck was on when the scale was last set (`measure`). */
+  private measuredWidth = 0
+  private measuredDecked: boolean | null = null
 
   private stage: StageDef | null = null
   private hp = -1
@@ -343,7 +359,14 @@ export class Hud implements HudApi, PrimeTarget {
     this.root.style.setProperty('--bk', s >= 2 ? '3' : '2')
     this.root.classList.toggle('is-narrow', width < 520)
     this.placeButtons()
+    // Every start of a stage looks (`reveal`): the same stage width and the same place for the deck as at the last
+    // look leave the fonts as they were, and there is nothing new to wish for.
+    const decked = this.deck.active
+    if (width === this.measuredWidth && decked === this.measuredDecked) return
+    this.measuredWidth = width
+    this.measuredDecked = decked
     // The fonts of the texts follow the stage's size: what is laid out ahead is laid out in the new ones.
+    this.aheadFonts = null
     this.wishAhead()
   }
 
@@ -363,9 +386,14 @@ export class Hud implements HudApi, PrimeTarget {
     const bossNames = [this.bossName, this.plateName, this.deck.textHosts.who]
     const bossTitles = [this.bossTitle, this.plateTitle]
     const counters = [this.collectText, this.deck.textHosts.count]
-    const fonts = new Map<HTMLElement, string>()
-    for (const host of [...free, ...names, ...bossNames, ...bossTitles, ...counters, this.bannerSub, this.call])
-      fonts.set(host, fontOf(host))
+    // Reading a font makes the browser work the styles out on the spot: the fonts are read when the stage's size
+    // has changed, not at every start of a stage (which asks from inside the tap that starts it).
+    if (!this.aheadFonts) {
+      this.aheadFonts = new Map()
+      for (const host of [...free, ...names, ...bossNames, ...bossTitles, ...counters, this.bannerSub, this.call])
+        this.aheadFonts.set(host, fontOf(host))
+    }
+    const fonts = this.aheadFonts
     const want = (hosts: HTMLElement[], text: string, first: boolean) => {
       for (const host of hosts) ahead.want(fonts.get(host)!, text, first)
     }
@@ -376,7 +404,7 @@ export class Hud implements HudApi, PrimeTarget {
         want([this.call], CALLS, true)
         want(counters, '0123456789/', true)
       }
-      want(free, stageText(stage), first)
+      want(free, textOf(stage), first)
       want(bossNames, stage.boss.name, first)
       want(bossTitles, stage.boss.title, first)
     }

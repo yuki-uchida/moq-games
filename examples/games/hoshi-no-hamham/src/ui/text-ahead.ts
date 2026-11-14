@@ -30,10 +30,12 @@ export interface AheadLine {
 
 interface Font {
   line: AheadLine
-  /** Characters wanted in this font, laid out or waiting. */
-  known: Set<string>
+  /** Characters wanted in this font, laid out or waiting: true while one waits among those for later. */
+  known: Map<string, boolean>
   first: string[]
   later: string[]
+  /** The wishes as they came. The same text wished for again in the same way is nothing new. */
+  wished: Set<string>
 }
 
 export class TextAhead {
@@ -45,30 +47,34 @@ export class TextAhead {
   /**
    * The characters of `text` are going to be shown in `font` (a CSS `font` shorthand). With `first` they are laid
    * out before everything else and also while a stage is played; without, when there is time.
+   *
+   * Every start of a stage asks for all of its texts again, in the frame the stage starts in: a text asked for
+   * before in the same way is not looked through again, and a character is looked for among those waiting only
+   * when it is known to wait there.
    */
   want(font: string, text: string, first = false) {
     if (!font) return
     let entry = this.fonts.get(font)
     if (!entry) {
-      entry = { line: this.line(), known: new Set(), first: [], later: [] }
+      entry = { line: this.line(), known: new Map(), first: [], later: [], wished: new Set() }
       entry.line.style.font = font
       this.fonts.set(font, entry)
     }
+    const wish = first ? `1${text}` : `0${text}`
+    if (entry.wished.has(wish)) return
+    entry.wished.add(wish)
     for (const char of text) {
       if (char <= ' ') continue
-      if (entry.known.has(char)) {
+      const later = entry.known.get(char)
+      if (later === undefined) {
+        entry.known.set(char, !first)
+        ;(first ? entry.first : entry.later).push(char)
+      } else if (later && first) {
         // Wanted before for later, wanted first now: it moves up.
-        if (first) {
-          const at = entry.later.indexOf(char)
-          if (at >= 0) {
-            entry.later.splice(at, 1)
-            entry.first.push(char)
-          }
-        }
-        continue
+        entry.later.splice(entry.later.indexOf(char), 1)
+        entry.first.push(char)
+        entry.known.set(char, false)
       }
-      entry.known.add(char)
-      ;(first ? entry.first : entry.later).push(char)
     }
   }
 
@@ -88,7 +94,9 @@ export class TextAhead {
         const list = entry[queue]
         if (!list.length) continue
         // The line holds only the newest characters: the ones before are known, and a short line is quick to lay out.
-        entry.line.textContent = list.splice(0, chunk).join('')
+        const taken = list.splice(0, chunk)
+        if (queue === 'later') for (const char of taken) entry.known.set(char, false)
+        entry.line.textContent = taken.join('')
         return !this.idle(all)
       }
     return false
