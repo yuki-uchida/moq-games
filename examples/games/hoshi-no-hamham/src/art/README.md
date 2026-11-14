@@ -2,7 +2,12 @@
 
 Every picture in the game is drawn by code into indexed rasters. This guide is the working method for adding or
 changing a sheet, a tileset or a backdrop. Read it together with `../../DESIGN.md` (sections 3 and 4),
-`contract.ts` (what has to exist), `palette.ts`, `raster.ts` and `chars/hero.ts` (the style reference).
+`contract.ts` (what has to exist), `palette.ts` and `raster.ts`.
+
+**Characters have their own standard: `CHARACTERS.md`.** Everything alive (the hero and his family, the gang,
+the bosses, the piglet, the portraits) is built on the rig toolkit (`rig.ts`, `motion.ts`) with `chars/hero.ts`
+and `chars/bosses/wolf.ts` as the references; the rules of the style below about `ball()`, `shadeEdges()` and
+frame lists describe props, terrain, effects and interface art.
 
 ## The loop
 
@@ -15,10 +20,14 @@ changing a sheet, a tileset or a backdrop. Read it together with `../../DESIGN.m
    node scripts/hoshi-no-hamham-art.mjs --scale 6 --anim idle,run hero   # a close look at two clips
    node scripts/hoshi-no-hamham-art.mjs --scale 3 hero                   # the whole sheet
    node scripts/hoshi-no-hamham-art.mjs terrain:meadow scene:meadow      # terrain sample and a composed scene
+   node scripts/hoshi-no-hamham-art.mjs --draft --gif --onion --motion hero   # see the animation: GIFs, onion skins, numbers
+   node scripts/hoshi-no-hamham-art.mjs --draft --game hero               # every clip at 2x (game size) on four grounds
+   node scripts/hoshi-no-hamham-art.mjs --draft --lineup                  # the cast side by side on one ground line
+   node scripts/hoshi-no-hamham-art.mjs --draft --stage cave --stage castle hero   # the clips over a world's backdrop
    ```
 
    Output goes to `.build/hoshi-no-hamham-art/`: `<id>.png` (enlarged, anchor marked in magenta), `<id>@1.png`
-   (native size on the grounds of three worlds), `<id>.txt` (row index), `pending.txt` (what is still undrawn, or `nothing pending`).
+   (native size on the grounds of three worlds), `<id>/<clip>.gif` and `<id>/all.gif` (`--gif`, real timing), `<id>.onion.png` (`--onion`), `<id>.motion.md` (`--motion`, thresholds in `quality.ts`), `<id>@2.png` (`--game`), `lineup.png` and `lineup.txt` (`--lineup`), `<id>@<theme>.png` (`--stage`), `<id>.txt` (row index), `pending.txt` (what is still undrawn, or `nothing pending`).
    Open the PNGs and judge them as a player would. Nobody ships pixel art they have not looked at: expect five to
    ten rounds of draw → export → look → fix per character.
 
@@ -26,12 +35,13 @@ changing a sheet, a tileset or a backdrop. Read it together with `../../DESIGN.m
 
 ## Rules of the style
 
-- **Light from the top-left.** Use `ball()` for round volumes and `shadeEdges()` for flat shapes so every sprite
-  shares one light. Three or four values per material, in clean clusters. No single-pixel noise, no dithering
-  inside sprites, no pillow shading (dark all around a light middle).
+- **Light from the top-left.** Use `ball()` for round volumes and `shadeEdges()` for flat shapes so every prop
+  shares one light (characters: `cel()`, see `CHARACTERS.md`). Three or four values per material, in clean
+  clusters. No single-pixel noise, no dithering inside sprites, no pillow shading (dark all around a light
+  middle).
 - **Ramps** are `[highlight, base, shade, deep, line]`. Paint with `base`; let shading pick the others.
   Shadows are already hue-shifted in the ramp, so never darken a colour by hand. Limbs behind the body use
-  `farRamp(ramp)`. A sprite uses 24 colours or fewer.
+  `farRamp(ramp)`. A prop uses 24 colours or fewer, a frame of a character 28.
 - **Selective outline.** Build characters with `Painter`: each part is drawn on its own layer and outlined with a
   dark of its own material, so overlapping parts get inner contours for free. Paint details that belong to a part
   (belly, muzzle, stripes, eyes) with `line: false` or directly onto the part.
@@ -46,15 +56,16 @@ changing a sheet, a tileset or a backdrop. Read it together with `../../DESIGN.m
 
 ## Animation
 
-Characters are **pose-parametric**: one draw function takes a pose object, and a clip is a list of poses.
+Characters are **pose-parametric**: one draw function takes a pose object, and a clip is a list of poses. A
+cycle is computed from its phase; an action is a few key poses on a `track()` (`motion.ts`) sampled once per
+frame; the soft parts follow the body a beat late through `lag()`.
 
 ```ts
-const run = Array.from({ length: 8 }, (_, i) => {
-  const t = i / 8
-  return drawHero(
-    heroPose({ bob: Math.abs(Math.sin(t * Math.PI * 2)) * 2, nearFoot: stride(t), farFoot: stride(t + 0.5) })
-  )
-})
+const bob = Array.from({ length: 8 }, (_, i) => [1, 0, 1, 2][i % 4]) // contact, down, passing, up
+const late = lag(bob, { stiffness: 0.3, damping: 0.4, loop: true }) // the same curve, a beat behind
+const run = bob.map((b, i) =>
+  drawHam(hamPose({ y: 3 + b, lean: 12, earN: 24 + late[i] * 8, footN: STRIDE[i], footF: STRIDE[(i + 4) % 8] }))
+)
 ```
 
 - Every frame of a clip differs from its neighbours, and a loop closes without a pop (the last frame leads into
@@ -86,4 +97,5 @@ const run = Array.from({ length: 8 }, (_, i) => {
 - [ ] No stray pixels, broken outlines, clipped limbs or frames touching the frame edge.
 - [ ] Loops close; attacks anticipate and follow through; nothing slides.
 - [ ] The sheet looks like it belongs next to `hero` (same light, outline weight, eye style, saturation).
-- [ ] `tests/art-contract.test.ts` passes and `pending.txt` no longer lists your sheets.
+- [ ] `tests/art-contract.test.ts` passes and `pending.txt` no longer lists your sheets; for a character,
+      `tests/art-rig-quality.test.ts` passes too.

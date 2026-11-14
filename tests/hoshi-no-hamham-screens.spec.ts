@@ -342,7 +342,7 @@ test('the game over card shows the hero lying dazed, swapping between the last t
   const seen = await page.evaluate(async () => {
     const pixel = await import('/src/ui/pixel.ts')
     const canvas = document.querySelector<HTMLCanvasElement>('#dead-art canvas')!
-    const frames = [0, 1, 2, 3, 4, 5].map((i) => pixel.spriteUrl('hero', 'die', i))
+    const frames = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => pixel.spriteUrl('hero', 'die', i))
     const shown = new Set<number>()
     for (let i = 0; i < 26; i++) {
       shown.add(frames.indexOf(canvas.toDataURL()))
@@ -350,8 +350,9 @@ test('the game over card shows the hero lying dazed, swapping between the last t
     }
     return Array.from(shown).sort()
   })
-  // Never a tumbling frame (and never an unknown picture): only 4 (flat on his back) and 5 (eyes swirling).
-  expect(seen).toEqual([4, 5])
+  // Never a tumbling or a landing frame (and never an unknown picture): only the last two of the eight, flat on
+  // his back with his eyes swirling.
+  expect(seen).toEqual([6, 7])
   expect(errors).toEqual([])
 })
 
@@ -593,6 +594,8 @@ for (const viewport of VIEWPORTS)
     await page.waitForTimeout(300)
     await checkLayout(page, label, '#story-screen')
     await page.locator('#story-skip').click()
+    // The stage starts once its art is here: at once, or after the loading card.
+    await page.waitForFunction(() => Boolean((window as unknown as { __hamham: { world: unknown } }).__hamham.world))
     await page.waitForTimeout(400)
     await page.keyboard.press('Escape')
     await expect(page.locator('#pause-screen')).toBeVisible()

@@ -7,6 +7,7 @@ import {
   clipReady,
   flashReady,
   flashSheet,
+  frameAt,
   hasTile,
   sheet,
   tile,
@@ -33,6 +34,7 @@ const snapshot = (id: string, name: string, flash = false) => {
     loop: a.loop,
     hold: a.hold ?? null,
     anchor: a.anchor ?? null,
+    sustain: a.sustain ?? null,
     frames: a.frames.map((f) => [f.w, f.h, Array.from(f.data)])
   }
 }
@@ -77,6 +79,37 @@ describe('answering and adopting', () => {
     expect(snapshot('walker', 'move', true)).toEqual(flashBefore)
     expect(artStats.clips).toBe(painted)
     expect(Raster.created).toBe(created)
+  })
+
+  it('carries the sustained tail of a clip that does not loop, for the clip and for its flash', () => {
+    clearArtCache()
+    // The hero's jump keeps cycling its last two frames for as long as he rises.
+    expect(sheet('hero').jump.sustain).toBe(2)
+    expect(flashSheet('hero').jump.sustain).toBe(2)
+    const before = snapshot('hero', 'jump')
+    const flashBefore = snapshot('hero', 'jump', true)
+    const request: ArtRequest = { kind: 'clip', sheet: 'hero', clip: 'jump', flash: true }
+    const { reply } = fromElsewhere(request)
+    if (reply.kind !== 'clip') throw new Error('expected a clip')
+    expect(reply.clip.sustain).toBe(2)
+    adopt(request, reply)
+    expect(snapshot('hero', 'jump')).toEqual(before)
+    expect(snapshot('hero', 'jump', true)).toEqual(flashBefore)
+    // Long after the clip has played, the adopted clip and its flash still swap the same two frames.
+    const jump = sheet('hero').jump
+    const white = flashSheet('hero').jump
+    const last = jump.frames.length - 1
+    const seen = new Set<number>()
+    for (let tick = 20; tick < 28; tick++) {
+      const t = (tick + 0.5) / jump.fps
+      seen.add(frameAt(jump, t))
+      expect(frameAt(white, t)).toBe(frameAt(jump, t))
+    }
+    expect([...seen].sort()).toEqual([last - 1, last])
+    // A clip without a tail travels without one.
+    const plain = answer({ kind: 'clip', sheet: 'hero', clip: 'run', flash: false }).reply
+    if (plain.kind !== 'clip') throw new Error('expected a clip')
+    expect('sustain' in plain.clip).toBe(false)
   })
 
   it('copies the pixels it sends, so the answering registry keeps its own', () => {

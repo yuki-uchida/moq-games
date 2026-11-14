@@ -1,471 +1,495 @@
 /**
- * ハム姫 (`princess`): the star princess, a small white hamster in three-quarter view facing right, with pink ears,
- * a gold star tiara, a pink ribbon bow at the neck and big sparkling eyes with lashes. She wears the family face
- * of ハム彦: no snout, a broad pale lower face painted onto the head ball with a soft bulge at the near cheek, a
- * tiny nose with an "ω" mouth under it, two short whiskers, round ears set wide apart. One pose-parametric draw
- * function; every clip is a list of poses (see PRINCESS_SPEC in contract.ts).
+ * ハム姫 (`princess`): the star princess, drawn on the hamster family build (`hamster.ts`) a touch smaller and
+ * rounder than ハム彦. Snow-white fur with a pink-lavender shadow, a cream-white muzzle, rose ear bowls and paws,
+ * big sparkling eyes with a second highlight and lashes, a soft curl on the forehead instead of his spiky tuft, a
+ * gold star tiara between the ears that glints, and a pink ribbon collar tied in a bow at the side of the neck
+ * with two short tails (her soft, lagging part, as the scarf is his).
+ *
+ * Her accessories are the look's hooks: the bow tails, the collar, the bow, the tiara (and its glint), a tear, and
+ * the skirt-like flare of the belly fur in the cheer.
+ *
+ * Depth (back to front): far ear, tail, far leg, far foot, near leg, belly flare, body, far arm, near foot, collar,
+ * bow tails, bow, near ear, head + face, tiara, near arm, tear (over the clasped paws) (the kit's list in `hamster.ts`, plus hers).
  */
 import type { SheetModule } from '../module'
-import { C, R, ramp } from '../palette'
-import { Painter, Raster, ball, bar, farRamp, shadeEdges } from '../raster'
+import { clamp, ease, lag, lerp, type Key } from '../motion'
+import { C, R, color, ramp } from '../palette'
+import { Raster, farRamp, type Pt, type Ramp } from '../raster'
+import {
+  Frame,
+  carve,
+  cel,
+  fill,
+  minus,
+  oval,
+  overlap,
+  polygon,
+  ribbon,
+  shadow,
+  smooth,
+  spline,
+  squircle,
+  union
+} from '../rig'
 import { lazyAnim, memo } from '../sheet'
+import {
+  cyc,
+  drawHamster,
+  hamFrames,
+  hamLook,
+  hamPose,
+  hamStamps,
+  sample,
+  stampOn,
+  type Eyes,
+  type HamAccessory,
+  type HamPose,
+  type StampPair,
+  type Tuft
+} from './hamster'
 
 const WHITE = R.princessWhite
-const FAR = farRamp(WHITE)
 const PINK = R.princessPink
-const FAR_PINK = farRamp(PINK)
 const GOLD = R.gold
 const WATER = R.water
-/** Her "cream": a pale pink-white a shade off the body white, so the lower face still reads. */
-const FACE = ramp('#fff6fb', '#fbe1ed', '#ecd3e6', '#b99ac4', '#2a1230')
+const INK = '#2a1230'
+/** Her muzzle and belly: a cream-white only a shade off the fur; it shades into the fur's lavender. */
+const MASK = ramp('#fffcf8', '#fff0e6', '#ecd3e6', '#b99ac4', INK)
+/** Paws and feet: the palest rose, shading into the ear pink. */
+const PAW: Ramp = [PINK[0], PINK[0], PINK[1], PINK[2], PINK[4]]
+const PAW_FAR: Ramp = [PINK[0], PINK[1], PINK[2], PINK[3], PINK[4]]
+const BLUSH = color('#ff6f9f')
 
-export type PrincessEyes = 'open' | 'sad' | 'happy' | 'closed' | 'half'
-export type PrincessMouth = 'smile' | 'open' | 'frown' | 'small' | 'o'
+// ---------------------------------------------------------------------------------------------------- stamps
 
-export interface PrincessPose {
-  /** Body lifted off its rest height (px, positive = up). */
-  bob: number
-  /** Positive squashes (wider, shorter), negative stretches. */
-  squash: number
-  /** Whole-body shake sideways (px), for trembling. */
-  jx: number
-  /** Ear droop 0 (upright) .. 1 (hanging down), plus a sideways sway of the tips (px). */
-  earNear: number
-  earFar: number
-  earSway: number
-  /** Head tilt: positive leans to the right (ears swing clockwise around the head, face slides forward). */
-  tilt: number
-  /** Ribbon tails: sideways swing of the tips (px) and how long they hang (px). */
-  ribbon: number
-  ribbonDrop: number
-  /** Hand positions relative to the body centre; the arm is a short chubby bar from the shoulder to the paw. */
-  nearHand: readonly [number, number]
-  farHand: readonly [number, number] | null
-  /** Shoulders: when set, the arm is drawn as a bar from there to the hand; otherwise only the paw shows. */
-  nearShoulder: readonly [number, number] | null
-  farShoulder: readonly [number, number] | null
-  /** A second paw in front (clasped hands). */
-  paw2: readonly [number, number] | null
-  /** Near and far foot: forward offset and lift (px). */
-  nearFoot: readonly [number, number]
-  farFoot: readonly [number, number]
-  eyes: PrincessEyes
-  mouth: PrincessMouth
-  /** Worried brows. */
-  brows: boolean
-  /** Extra sparkle in the eyes (wet eyes). */
-  glint: boolean
-  /** Tears: [x, y, size 1..3] relative to the body centre. */
-  tears: readonly (readonly [number, number, number])[]
-  /** Twinkle on the tiara, 0 none .. 2 full. */
-  twinkle: number
-}
-
-export const princessPose = (p: Partial<PrincessPose> = {}): PrincessPose => ({
-  bob: 0,
-  squash: 0,
-  jx: 0,
-  earNear: 0,
-  earFar: 0,
-  earSway: 0,
-  tilt: 0,
-  ribbon: 0,
-  ribbonDrop: 6,
-  nearHand: [-3, 11],
-  farHand: null,
-  nearShoulder: null,
-  farShoulder: null,
-  paw2: null,
-  nearFoot: [0, 0],
-  farFoot: [0, 0],
-  eyes: 'open',
-  mouth: 'smile',
-  brows: false,
-  glint: false,
-  tears: [],
-  twinkle: 0,
-  ...p
-})
-
-/** The head ball of a pose (centre and radii), for tests that measure the silhouette against it. */
-export function princessHeadBall(pose: PrincessPose) {
-  const ry = 15 - pose.squash
-  return { cx: 30 + pose.jx, cy: 57 - ry - pose.bob, rx: 16 + pose.squash * 0.6, ry }
-}
-
-const EYE_KEY = { K: C.black, w: C.white, a: PINK[3], p: PINK[2], i: C.ink, t: WATER[0], u: WATER[1] }
-
-/** Hand-placed eye shapes: [near eye, far eye]. The far eye is a pixel narrower (three-quarter view). */
-const EYE_SHAPES: Record<PrincessEyes, readonly [readonly string[], readonly string[]]> = {
+/**
+ * Her eyes: the family's tall dark eye with a deep rose iris low in it, the big highlight at the top-left, a
+ * second one low on the other side, and two lash pixels at the outer corner (left of the near eye, right of the
+ * far one). `a` iris, `s` a rose glint, `t` / `u` the water of a welling tear.
+ */
+const EYES_P: Record<Eyes, StampPair> = {
   open: [
-    ['iiKKK.', '.KKKKK', '.KwwKK', '.KwwKK', '.KKKKK', '.KaaKK', '.KpwaK', '..KKK.'],
-    ['.KKKii', 'KKKKK.', 'KwwKK.', 'KwwKK.', 'KKKKK.', 'KaaKK.', 'KpwaK.', '.KKK..']
+    ['i.KKKK.', '.KwwKKK', 'iKwwKKK', '.KKKKKK', '.KKKKaK', '.KKaawK', '.KaaawK', '..KKKK.'],
+    ['.KKK.i', 'KwwKK.', 'KwwKKi', 'KKKKK.', 'KKKaK.', 'KaawK.', 'KaawK.', '.KKK..']
   ],
-  sad: [
-    ['iiKKK.', '.KKKKK', '.KwwKK', '.KwwKK', '.KKwKK', '.KaaaK', '.tpwwK', '.uuuK.'],
-    ['.KKKii', 'KKKKK.', 'KwwKK.', 'KwwKK.', 'KKwKK.', 'KaaaK.', 'tpwwK.', '.uuK..']
+  wet: [
+    ['i.KKKK.', '.KwwKKK', 'iKwwKKK', '.KKKKKK', '.KKKKwK', '.KKaawK', '.KaaatK', '..KKuu.'],
+    ['.KKK.i', 'KwwKK.', 'KwwKKi', 'KKKKK.', 'KKKwK.', 'KaawK.', 'KaatK.', '.Kuu..']
   ],
   half: [
-    ['......', '......', 'iiiiii', '.KwKKK', '.KKKKK', '.KaaaK', '.KpwaK', '..KKK.'],
-    ['......', '......', 'iiiiii', 'KwKKK.', 'KKKKK.', 'KaaaK.', 'KpwaK.', '.KKK..']
+    ['i......', '.......', 'iiiiiii', '.KwwKKK', '.KKKKaK', '.KKaawK', '.KaaawK', '..KKKK.'],
+    ['.....i', '......', 'iiiiii', 'KwwKK.', 'KKKaK.', 'KaawK.', 'KaawK.', '.KKK..']
   ],
   closed: [
-    ['......', '......', '......', 'i.....', '.iiiii', '.....i', '......', '......'],
-    ['......', '......', '......', '.....i', 'iiiii.', 'i.....', '......', '......']
+    ['.......', '.......', '.......', '.......', 'ii....i', '..iiii.', '.......', '.......'],
+    ['......', '......', '......', '......', 'i...ii', '.iii..', '......', '......']
   ],
   happy: [
-    ['......', '......', 'i.....', '.iiii.', 'i....i', 'i....i', '......', '......'],
-    ['......', '......', '.....i', '.iiii.', 'i....i', 'i....i', '......', '......']
+    ['.......', '.......', '.......', '..iiii.', 'ii....i', '.i....i', '.......', '.......'],
+    ['......', '......', '......', '.iii..', 'i...ii', 'i...i.', '......', '......']
+  ],
+  wide: [
+    ['i.KKKK.', '.KwwKKK', 'iKwwKKK', '.KKKKKK', '.KKKKaK', '.KKaawK', '.KaawwK', '..KKKK.'],
+    ['.KKK.i', 'KwwKK.', 'KwwKKi', 'KKKKK.', 'KKKaK.', 'KawwK.', 'KaawK.', '.KKK..']
+  ],
+  squint: [
+    ['.......', '.......', '.......', 'iii....', '..iiiii', '.......', '.......', '.......'],
+    ['......', '......', '......', '....ii', 'iiii..', '......', '......', '......']
+  ],
+  hurt: [
+    ['.......', '.ii....', '...ii..', '.....ii', '...ii..', '.ii....', '.......', '.......'],
+    ['......', '....i.', '..ii..', 'ii....', '..ii..', '....i.', '......', '......']
+  ],
+  dizzy: [
+    ['.......', '..iiii.', '.i....i', '.i.ii.i', '.i.i..i', '.i...i.', '..ii...', '.......'],
+    ['......', '.iii..', 'i...i.', 'i.i.i.', 'i.ii..', '.i....', '......', '......']
+  ],
+  dizzy2: [
+    ['.......', '....ii.', '..i...i', '.i..i.i', '.i.ii.i', '.i....i', '..iiii.', '.......'],
+    ['......', '..ii..', '.i..i.', 'i.i.i.', 'i...i.', '.iii..', '......', '......']
   ]
 }
 
-function drawEyes(l: Raster, x: number, y: number, kind: PrincessEyes, glint: boolean) {
-  const [near, far] = EYE_SHAPES[kind]
-  l.stamp(near, x, y, EYE_KEY)
-  l.stamp(far, x + 9, y + 1, EYE_KEY)
-  if (glint) {
-    l.set(x + 4, y + 3, C.white)
-    l.set(x + 12, y + 4, C.white)
-  }
+/** Soft rose brows (thinner than the hero's ink ones). */
+const BROWS_P = {
+  angry: [
+    ['bb..', '.bbb'],
+    ['.bb', 'bb.']
+  ],
+  hard: [
+    ['bbb..', '.bbbb'],
+    ['..bb', 'bbb.']
+  ],
+  worried: [
+    ['...bb', '.bb..'],
+    ['bb..', '..bb']
+  ],
+  raised: [
+    ['.bb.', 'b..b'],
+    ['.b.', 'b.b']
+  ]
+} as const
+
+/**
+ * The forehead curl: one soft lock that rolls forward and curls back on itself (`L` lit side, `P` base, `S` the
+ * skull rows it grows from). All variants share a height so the skull rows stay on one line.
+ */
+const CURLS: Record<Tuft, readonly string[]> = {
+  neutral: ['..LLPP.', '.LP..PD', '.LP..PD', '..LP.D.', 'SSSSSSS', 'SSSSSSS'],
+  // blown back (flying up in the cheer)
+  back: ['.......', 'LLLPP..', 'LP..PD.', '.LP.PD.', 'SSSSSSS', 'SSSSSSS'],
+  // lifted and springy
+  up: ['.LLPP..', 'LP..PD.', 'LP..PD.', '.LP.D..', 'SSSSSSS', 'SSSSSSS']
 }
 
-const MOUTH_KEY = { K: C.ink, m: C.mouth, t: C.tongue }
-/** Mouths all hang from the same spot right under the nose; the "ω" is the resting one. */
-const MOUTHS: Record<PrincessMouth, readonly string[]> = {
-  smile: ['K.K.K', '.K.K.'],
-  small: ['.KKK.'],
-  frown: ['.KKK.', 'K...K'],
-  o: ['.KK.', 'KmmK', 'KmmK', '.KK.'],
-  open: ['KKKKK', 'KmmmK', 'KmtmK', '.KKK.']
+const BASE = hamStamps(WHITE, PINK)
+const STAMPS = {
+  ...BASE,
+  eyes: EYES_P,
+  eyeKey: { K: C.black, w: C.white, a: PINK[3], s: PINK[1], i: C.ink, b: PINK[3], t: WATER[0], u: WATER[1] },
+  brows: BROWS_P,
+  mouths: {
+    ...BASE.mouths,
+    smile: ['K.K.K', '.K.K.'],
+    grin: ['KKKKK', 'KmmmK', '.KKK.'],
+    open: ['KKKKK', 'KmtmK', '.KKK.'],
+    wide: ['KKKKKK', 'KmmmmK', 'KmttmK', '.KKKK.'],
+    small: ['K.K', '.K.'],
+    frown: ['.KKK.', 'K...K']
+  },
+  nose: ['hn', 'nn'],
+  noseKey: { h: PINK[0], n: PINK[2] },
+  tufts: CURLS,
+  tuftShape: { L: WHITE[1], P: WHITE[1], D: WHITE[1], S: WHITE[1] },
+  tuftLit: { L: WHITE[0], P: WHITE[1], D: WHITE[2] }
 }
 
-/** A round ear: flat rim, darker bowl. `back` draws the far ear a step darker. Elliptical so it can hang. */
-function ear(l: Raster, x: number, y: number, rx: number, ry: number, back: boolean) {
-  const rim = back ? FAR_PINK : PINK
-  l.ellipse(x, y, rx, ry, rim[1])
-  l.ellipse(x - 1, y - 1, rx - 1.5, ry - 1.5, rim[back ? 1 : 0])
-  l.ellipse(x, y, rx - 2, ry - 2, rim[1])
-  if (rx > 3.5) l.ellipse(x, y - 0.5, rx - 3, ry - 3, rim[2])
-  if (rx > 4.5) l.ellipse(x + 0.5, y + 0.5, rx - 4.5, ry - 4.5, rim[3])
-}
+// ------------------------------------------------------------------------------------------------ accessories
 
-/** A short chubby limb ending in a round paw, like ハム彦's. */
-function limb(l: Raster, a: readonly [number, number] | null, b: readonly [number, number], ramp: typeof WHITE) {
-  if (a && Math.hypot(b[0] - a[0], b[1] - a[1]) > 3) {
-    bar(l, [a[0], a[1]], [b[0], b[1]], 5, ramp[1])
-    shadeEdges(l, ramp, 1, true)
-  }
-  ball(l, b[0], b[1], 3.1, 3.2, ramp, false)
-}
-
-/** A four-pointed-ish gold star, 7×6. */
-const STAR = ['...y...', '...y...', '..yyy..', 'yyyyyyy', '.yyyyy.', '.yy.yy.']
-
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t
-
-/** One frame of ハム姫. */
-export function drawPrincess(pose: PrincessPose): Raster {
-  const g = new Painter(64, 64)
-  const { cx, cy, rx, ry } = princessHeadBall(pose)
-  const top = cy - ry
-  const hx = pose.tilt * 0.5
-  const t = pose.tilt
-  /** Face-relative pixel positions (the face slides with the head tilt). */
-  const X = (u: number) => Math.round(cx + u + hx)
-  const Y = (v: number) => Math.round(cy + v)
-
-  // tail: a small round puff
-  g.add(-4, (l) => ball(l, cx - rx + 1, cy + 8, 3, 3, FAR, false))
-
-  // ears: set wide apart at about 10 and 2 o'clock; the tilt swings them round the head, a droop lets them hang
-  const earSpot = (side: -1 | 1) => {
-    const a = ((side * 42 + t * 6) * Math.PI) / 180
-    return [cx + hx + Math.sin(a) * rx * 1.02, cy - Math.cos(a) * ry * 1.02] as const
-  }
-  {
-    const [x, y] = earSpot(1)
-    const d = pose.earFar
-    g.add(-3, (l) =>
-      ear(l, lerp(x, cx + hx + 13, d) + pose.earSway, lerp(y, cy - 10, d), lerp(5.2, 4, d), lerp(5.2, 6, d), true)
-    )
-  }
-  {
-    const [x, y] = earSpot(-1)
-    const d = pose.earNear
-    g.add(d > 0.5 ? 2 : -3, (l) =>
-      ear(l, lerp(x, cx + hx - 11.5, d) + pose.earSway, lerp(y, cy - 4, d), lerp(6, 3.8, d), lerp(6, 6.4, d), false)
-    )
-  }
-
-  // far arm behind the body
-  if (pose.farHand && pose.farShoulder) {
-    const [fx, fy] = pose.farHand
-    const [sx, sy] = pose.farShoulder
-    g.add(-2, (l) => {
-      limb(l, [cx + sx, cy + sy], [cx + fx, cy + fy], FAR)
-    })
-  }
-  // far foot
-  g.add(-3, (l) => {
-    const [fx, lift] = pose.farFoot
-    l.ellipse(cx + 8 + fx - pose.jx, 58 - lift, 4.5, 2.8, FAR[1])
-    l.rect(Math.round(cx + 5 + fx - pose.jx), 59 - lift, 7, 1, FAR[2])
-  })
-
-  // body: the head ball; the pale lower face, cheeks and tiara band are painted onto it
-  g.add(0, (l) => {
-    ball(l, cx, cy, rx, ry, WHITE)
-    // tiara band hugging the skull
-    for (let x = Math.round(cx + hx - 5); x <= cx + hx + 5; x++) {
-      const nx = (x + 0.5 - cx) / rx
-      const yy = Math.round(cy - ry * Math.sqrt(Math.max(0, 1 - nx * nx))) + 1
-      l.paint(x, yy, GOLD[1])
-      l.paint(x, yy + 1, GOLD[2])
-    }
-    // the lower face of a hamster: both cheeks and the chin, with only a soft bulge at the near cheek
-    patch(l, cx + 8.5 + hx, cy + 4.5, 8.4, 5.2, FACE[1])
-    patch(l, cx + 7.5 + hx, cy + 2, 5, 1.8, FACE[0])
-    patch(l, cx + 10 + hx, cy + 8.6, 6.4, 1.8, FACE[2])
-    ball(l, cx + 12.6 + hx, cy + 4.6, 3.8, 3.7, FACE, false)
-  })
-
-  // ribbon tails, then the bow
-  const bx = cx - 3
-  const by = cy + 11
+/** The pink ribbon collar round the neck. */
+const collar: HamAccessory = ({ g, torso, head, headShape, s }) =>
   g.add(1, (l) => {
-    const s = pose.ribbon
-    const drop = Math.min(pose.ribbonDrop, ry - 10)
-    bar(l, [bx - 1, by + 1], [bx - 3 + s, by + drop], 3, PINK[1])
-    bar(l, [bx + 1, by + 1], [bx + 3 + s * 0.6, by + drop - 1], 3, PINK[2])
-    shadeEdges(l, PINK, 1)
-  })
-  g.add(2, (l) => {
-    l.ellipse(bx - 3.5, by - 0.5, 3.4, 2.8, PINK[1])
-    l.ellipse(bx + 3.5, by - 0.5, 3.4, 2.8, PINK[1])
-    shadeEdges(l, PINK, 1, true)
-    l.rect(bx - 4, by - 1, 2, 1, PINK[3])
-    l.rect(bx + 3, by - 1, 2, 1, PINK[3])
-    l.ellipse(bx, by, 1.6, 1.6, PINK[2])
-    l.set(bx - 1, by - 1, PINK[0])
+    const band = spline([torso.pt(-9, -14.6), torso.pt(-3, -12.4), torso.pt(4.5, -12.2), torso.pt(10, -14)])
+    ribbon(l, band, () => 2.8 * s, PINK[1])
+    cel(l, { shade: 1.2 * s, rim: 1 })
+    shadow(l, head.moved(0.5 * s, 1.2 * s), headShape)
   })
 
-  // face
+/** Where the bow sits: the side of the neck, on the collar, where it shows against the sky. */
+const BOW: Pt = [-8.4, -14.6]
+
+/** The two bow tails, hanging from the bow and driven by `pose.scarf` (direction, length, ripple, phase). */
+const tails: HamAccessory = ({ g, pose: p, torso, s }) => {
+  const at = torso.pt(BOW[0], BOW[1] + 1)
+  const end = (angle: number, len: number, phase: number): Pt[] => {
+    const a = ((angle + p.turn + p.lean * 0.3) * Math.PI) / 180
+    const dir = [-Math.cos(a), Math.sin(a)]
+    const perp = [-dir[1], dir[0]]
+    const pts: Pt[] = []
+    for (let i = 0; i <= 4; i++) {
+      const t = i / 4
+      const w = p.scarf[2] * Math.sin(phase - t * 3.2) * t * 1.4
+      pts.push([at[0] + (dir[0] * len * t + perp[0] * w) * s, at[1] + (dir[1] * len * t + perp[1] * w) * s])
+    }
+    return spline(pts)
+  }
+  const tail = (depth: number, angle: number, len: number, phase: number, c: number) =>
+    g.add(depth, (l) => {
+      const path = end(angle, len, phase)
+      ribbon(l, path, (t) => (2 + t * 1.2) * s, c)
+      // a V notch at the cut end
+      const e = path[path.length - 1]
+      const b = path[Math.max(0, path.length - 4)]
+      const d = Math.hypot(e[0] - b[0], e[1] - b[1]) || 1
+      const [ux, uy] = [(e[0] - b[0]) / d, (e[1] - b[1]) / d]
+      carve(
+        l,
+        Frame.at(0, 0),
+        polygon([
+          [e[0] + ux * 2 - uy * 1.2, e[1] + uy * 2 + ux * 1.2],
+          [e[0] - ux * 1.2, e[1] - uy * 1.2],
+          [e[0] + ux * 2 + uy * 1.2, e[1] + uy * 2 - ux * 1.2]
+        ])
+      )
+      smooth(l)
+      cel(l, { shade: 1.1 * s, rim: 1 })
+    })
+  tail(-4, p.scarf[0] - 14, p.scarf[1], p.scarf[3], PINK[1])
+  tail(-4.2, p.scarf[0] + 16, p.scarf[1] * 0.8, p.scarf[3] + 1.4, PINK[2])
+}
+
+/** The bow: two loops and a knot, lifting with `acc.bowUp` (0 rests … 1 flies up). */
+const bow: HamAccessory = ({ g, pose: p, torso, s }) =>
+  g.add(1.1, (l) => {
+    const up = p.acc.bowUp ?? 0
+    const k = torso.child(BOW[0], BOW[1], -8 - up * 14)
+    // two loops spreading up and back from the knot, like a butterfly seen from the side
+    fill(l, k, union(oval(-2.6, -2.2 - up, 2.8, 2.3), oval(-2.4, 2.2 - up * 0.4, 2.6, 2)), PINK[1])
+    fill(l, k, oval(0, 0, 1.6, 1.7), PINK[1])
+    smooth(l)
+    cel(l, { shade: 1.4 * s, rim: 1 })
+    // the folds inside the loops, the knot
+    shadow(l, k, union(oval(-1.6, -1.4 - up, 1.2, 0.7), oval(-1.5, 1.5 - up * 0.4, 1.1, 0.6)))
+    fill(l, k, oval(0.2, 0, 1.2, 1.3), PINK[2])
+  })
+
+/** The gold star tiara on the crown: a thin band hugging the skull and a star; `acc.glint` makes it sparkle. */
+const STAR = ['...h...', '..hhy..', 'hhhhyyY', '.hhyyY.', '..yyY..', '.yY.YY.']
+const STAR_GLINT = ['...w...', '..whh..', 'hhwhyyY', '.hhyyY.', '..yyY..', '.yY.YY.']
+const STAR_FLASH = ['...w...', '..www..', 'wwwwwyY', '.wwhyY.', '..hyY..', '.yY.YY.']
+const tiara: HamAccessory = ({ g, pose: p, head, s }) =>
+  g.add(2.2, (l) => {
+    const skull = squircle(0.5, -12, 14.5, 11.5, 2.5)
+    const band = overlap(
+      minus(squircle(0.5, -12, 15.6, 12.6, 2.5), skull),
+      polygon([
+        [-9.5, -30],
+        [0.5, -30],
+        [0.5, -20],
+        [-9.5, -20]
+      ])
+    )
+    fill(l, head, band, GOLD[1])
+    cel(l, { shade: 1.2 * s })
+    const glint = p.acc.glint ?? 0
+    stampOn(l, head, glint > 1 ? STAR_FLASH : glint > 0 ? STAR_GLINT : STAR, -4.2, -26.6, {
+      h: GOLD[0],
+      y: GOLD[1],
+      Y: GOLD[2],
+      w: C.white
+    })
+  })
+
+/**
+ * A tear at the near eye: `acc.tear` 0 (none) … 1 swelling on the lower lid, … 2 running down the cheek, … 3 off
+ * the chin. Painted on the face without an outline (it is water on fur).
+ */
+const tear: HamAccessory = ({ g, pose: p, head, fc, look }) => {
+  const t = p.acc.tear ?? 0
+  if (t <= 0) return
+  const u = Math.max(look.face.eyeMin, fc - look.face.eyeGap) + 1
   g.add(
-    1,
+    3.2,
     (l) => {
-      const fx = cx + 1 + hx
-      const fy = cy - 6 + t * 0.3
-      drawEyes(l, Math.round(fx), Math.round(fy), pose.eyes, pose.glint)
-      if (pose.brows) {
-        for (const [dx, dy] of [
-          [0, 1],
-          [1, 1],
-          [2, 0],
-          [3, 0]
-        ])
-          l.set(Math.round(fx) + dx + 1, Math.round(fy) - 3 + dy, PINK[3])
-        for (const [dx, dy] of [
-          [0, 0],
-          [1, 0],
-          [2, 1],
-          [3, 1]
-        ])
-          l.set(Math.round(fx) + 9 + dx, Math.round(fy) - 2 + dy, PINK[3])
-      }
-      // a tiny pink nose between the eyes, the mouth right under it
-      l.rect(X(8), Y(2), 3, 2, PINK[2])
-      l.set(X(8), Y(2), PINK[0])
-      const rows = MOUTHS[pose.mouth]
-      l.stamp(rows, X(9) - Math.floor(rows[0].length / 2), Y(5), MOUTH_KEY)
-      // two short whiskers at the cheek
-      l.line(X(15), Y(4), X(18), Y(3), WHITE[3])
-      l.line(X(15), Y(7), X(18), Y(8), WHITE[3])
-      // blush on the near cheek
-      l.ellipse(X(3.5), Y(5.5), 2.6, 1.6, C.blush)
-      for (const [tx, ty, s] of pose.tears) {
-        // the wet track behind a falling tear
-        if (ty > 3) l.line(Math.round(cx + tx), Y(2), Math.round(cx + tx), Math.round(cy + ty - s), WATER[0])
-        l.ellipse(cx + tx, cy + ty, s * 0.6 + 0.4, s * 0.8 + 0.5, WATER[1])
-        l.set(Math.round(cx + tx) - 1 + (s > 1 ? 0 : 1), Math.round(cy + ty) - 1, C.white)
+      if (t < 1) {
+        // swelling on the lid
+        const r = 0.6 + t * 0.7
+        fill(l, head, oval(u, -5.6, r + 0.3, r), WATER[1])
+        fill(l, head, oval(u - 0.4, -6, 0.5, 0.5), WATER[0])
+      } else {
+        const v = -5.6 + (t - 1) * 4.5
+        // the wet track behind it
+        fill(l, head, overlap(oval(u, -5.6, 0.55, 0.6 + (v + 5.6)), oval(u, v - 1, 1, 9)), WATER[0])
+        fill(l, head, oval(u, v, 1.1, 1.4), WATER[1])
+        fill(l, head, oval(u - 0.4, v - 0.6, 0.5, 0.5), C.white)
       }
     },
     false
   )
-
-  // tiara star on top of the head
-  g.add(2, (l) => {
-    const sx = Math.round(cx + hx - 2)
-    const sy = Math.round(top - 4 + t * 0.2)
-    l.stamp(STAR, sx, sy, { y: GOLD[1] })
-    // shade bottom-right, highlight top-left
-    const src = l.clone()
-    for (let y = sy; y < sy + 6; y++)
-      for (let x = sx; x < sx + 7; x++) {
-        if (src.get(x, y) !== GOLD[1]) continue
-        if (!src.get(x + 1, y) || !src.get(x, y + 1)) l.set(x, y, GOLD[2])
-        else if (!src.get(x - 1, y) || !src.get(x, y - 1)) l.set(x, y, GOLD[0])
-      }
-    if (pose.twinkle > 0) {
-      l.set(sx + 3, sy - 2, C.white)
-      l.set(sx + 3, sy - 1, C.white)
-      if (pose.twinkle > 1) {
-        l.set(sx + 1, sy + 2, C.white)
-        l.set(sx + 5, sy + 2, C.white)
-      }
-    }
-  })
-
-  // near foot
-  g.add(2, (l) => {
-    const [fx, lift] = pose.nearFoot
-    l.ellipse(cx - 4 + fx - pose.jx, 58 - lift, 5, 3, WHITE[2])
-    l.rect(Math.round(cx - 8 + fx - pose.jx), 57 - lift, 5, 1, WHITE[1])
-    l.rect(Math.round(cx - 7 + fx - pose.jx), 59 - lift, 4, 1, PINK[1])
-  })
-
-  // near arm
-  g.add(3, (l) => {
-    const [ax, ay] = pose.nearHand
-    limb(
-      l,
-      pose.nearShoulder ? [cx + pose.nearShoulder[0], cy + pose.nearShoulder[1]] : null,
-      [cx + ax, cy + ay],
-      WHITE
-    )
-    l.set(Math.round(cx + ax) + 1, Math.round(cy + ay) + 1, PINK[1])
-    if (pose.paw2) {
-      ball(l, cx + pose.paw2[0], cy + pose.paw2[1], 3.1, 3.2, WHITE, false)
-      l.set(Math.round(cx + pose.paw2[0]) + 1, Math.round(cy + pose.paw2[1]) + 1, PINK[1])
-    }
-  })
-  return g.render()
 }
 
-/** Paints an ellipse only where the layer already has pixels, so patches never leave the silhouette. */
-function patch(l: Raster, cx: number, cy: number, rx: number, ry: number, c: number) {
-  for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++)
-    for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
-      const nx = (x + 0.5 - cx) / rx
-      const ny = (y + 0.5 - cy) / ry
-      if (nx * nx + ny * ny <= 1.0001) l.paint(x, y, c)
-    }
+/** The belly fur flaring out like a skirt (`acc.flare` 0 … 1), behind the body and over the legs. */
+const flare: HamAccessory = ({ g, pose: p, torso, s }) => {
+  const k = p.acc.flare ?? 0
+  if (k <= 0) return
+  g.add(-0.9, (l) => {
+    const w = 11 + k * 3
+    const hem = [oval(0, -3.5, w, 4.2 + k)]
+    for (const du of [-w + 2, -w / 2 + 1, 0, w / 2 - 1, w - 2]) hem.push(oval(du, -0.6 + k, 2.4, 1.6))
+    fill(l, torso, union(...hem), WHITE[1])
+    smooth(l)
+    cel(l, { shade: 1.6 * s })
+  })
 }
 
-// ------------------------------------------------------------------------------------------------ clips
+/** ハム姫's look. */
+export const PRINCESS_LOOK = hamLook({
+  scale: 0.92,
+  head: 1.04,
+  body: 1.04,
+  ear: 0.96,
+  fur: WHITE,
+  furFar: farRamp(WHITE),
+  mask: MASK,
+  earBowl: PINK,
+  paw: PAW,
+  pawFar: PAW_FAR,
+  blush: BLUSH,
+  streak: PINK[1],
+  headShade: 3.6,
+  headDeep: 1.4,
+  bodyShade: 3,
+  stamps: STAMPS,
+  face: { tuftU: 3.6, tuftV: -23.5, eyeGap: 4.5, blushR: [2.3, 1.3] },
+  accessories: [flare, collar, tails, bow, tear, tiara],
+  outline: 'ink'
+})
 
-const idle = memo(() =>
-  [0, 1, 2, 1].map((k, i) =>
-    drawPrincess(
+// ------------------------------------------------------------------------------------------------------ pose
+
+/** Her pose: the family pose with her own rest (paws together in front, the bow tails hanging). */
+export const princessPose = (p: Partial<HamPose> = {}): HamPose =>
+  hamPose({ armN: [5, 4], armF: [2, 2.5], scarf: [60, 6, 0.6, 0], ...p })
+
+export const drawPrincess = (p: HamPose): Raster => drawHamster(PRINCESS_LOOK, p)
+
+/**
+ * Her head ball (for tests that measure the silhouette against it): the centre of the skull on screen and the
+ * half-width of the jaw, the widest part of the head.
+ */
+export function princessHeadBall(pose: HamPose) {
+  const { head } = hamFrames(PRINCESS_LOOK, pose)
+  const [cx, cy] = head.pt(0.5, -9)
+  const [rx] = [Math.hypot(head.a, head.b) * 16]
+  return { cx, cy, rx, ry: Math.hypot(head.c, head.d) * 12 }
+}
+
+// ----------------------------------------------------------------------------------------------------- clips
+
+const draw = (poses: HamPose[]) => poses.map(drawPrincess)
+
+/** A gentle breath; she tilts her head once; the bow tails sway; the tiara glints. */
+const idle = memo(() => {
+  const n = 8
+  const breath = Array.from({ length: n }, (_, i) => 0.5 - 0.5 * Math.cos(cyc(i, n)))
+  const late = lag(breath, { stiffness: 0.35, damping: 0.5, loop: true })
+  const tilt = [0, 0, -3, -6, -6, -3, 0, 0]
+  return draw(
+    breath.map((b, i) =>
       princessPose({
-        squash: -k * 0.35 + 0.35,
-        bob: k * 0.45,
-        ribbon: [0, 1, 0, -1][i],
-        earSway: [0, 0, 1, 0][i],
-        nearShoulder: [-10, 3],
-        nearHand: [-9, 9 + (i === 1 ? 0.5 : 0)],
-        twinkle: i === 2 ? 2 : i === 1 ? 1 : 0
+        squash: 0.4 - b * 0.9,
+        head: [0, b > 0.6 ? 1 : 0],
+        nod: tilt[i],
+        earN: 2 + late[i] * 7 - tilt[i] * 0.6,
+        earF: 1 + late[i] * 5 - tilt[i] * 0.5,
+        armN: [5, 4 - Math.round(b)],
+        armF: [2, 2.5 - Math.round(b)],
+        scarf: [60 + Math.sin(cyc(i, n)) * 10, 6, 0.8, cyc(i, n)],
+        tail: -late[i],
+        acc: { glint: i === 2 ? 1 : i === 3 ? 2 : 0 }
       })
     )
   )
-)
+})
 
-/** Sad: ears hang, paws meet in front of the chest, wet eyes, one tear running down the cheek over the loop. */
-const sad = memo(() =>
-  [0, 1, 2, 3].map((i) =>
-    drawPrincess(
+/** Caged: slumped, ears drooping, paws clasped under the chin, head bowed and trembling, a tear falls. */
+const sad = memo(() => {
+  const n = 6
+  // a sob: the shoulders hitch up on the in-breath (1, 2) and sink with the out-breath (3 … 5)
+  const sob = [0, 0.7, 1, 0.5, 0.15, 0]
+  const late = lag(sob, { stiffness: 0.4, damping: 0.45, loop: true })
+  // the head trembles a pixel, never back and forth on neighbouring frames (no on-off-on-off)
+  const shake = [0, 1, 1, 0, 1, 1]
+  return draw(
+    Array.from({ length: n }, (_, i) =>
       princessPose({
-        squash: 1.2,
-        jx: [-1, 1, -1, 1][i],
-        earNear: [0.9, 1, 1, 0.95][i],
-        earFar: [0.9, 1, 1, 0.95][i],
-        earSway: [0, 0.5, 0, -0.5][i],
-        tilt: -1,
-        ribbon: [0, 1, 0, -1][i],
-        ribbonDrop: 5,
-        nearShoulder: [-2, 6],
-        nearHand: [3, 10 + [0, 0.5, 0, -0.5][i]],
-        paw2: [8, 9 + [0.5, 0, -0.5, 0][i]],
-        eyes: 'sad',
-        mouth: 'frown',
-        brows: true,
-        glint: i % 2 === 0,
-        twinkle: 0,
-        tears: [
-          [[3.5, 2.2, 1]],
-          [[3.5, 3.8, 2]],
-          [[3.2, 6.2, 2]],
-          [
-            [3, 8.4, 1],
-            [3.6, 2.2, 1]
-          ]
-        ][i] as [number, number, number][]
+        y: -1 + sob[i] * 0.8,
+        squash: 1.2 - sob[i] * 1.4,
+        lean: 6,
+        head: [shake[i] * 0.9, -3 + Math.round(sob[i])],
+        nod: 14 - sob[i] * 2,
+        earN: 76 + late[i] * 8,
+        earF: -48 - late[i] * 8,
+        earLift: -1.5,
+        farFront: true,
+        paw: 0.3,
+        armN: [9, -4 - Math.round(sob[i])],
+        armF: [2, -3.5 - Math.round(sob[i])],
+        tuft: 'neutral',
+        scarf: [84 + late[i] * 6, 5, 0.4, i],
+        eyes: 'wet',
+        brow: 'worried',
+        mouth: i === 2 ? 'o' : 'frown',
+        acc: { tear: [0.3, 0.8, 1, 1.4, 1.8, 2.2][i] }
       })
     )
   )
-)
+})
 
-const hop = memo(() => [
-  { bob: 0, squash: 3, arms: 0 },
-  { bob: 3, squash: -2, arms: 0.6 },
-  { bob: 8, squash: -2, arms: 1 },
-  { bob: 7, squash: -1, arms: 1 },
-  { bob: 2, squash: -2, arms: 0.7 },
-  { bob: 0, squash: 2, arms: 0.2 }
-])
-/** Cheer: a hop with short chubby arms thrown up and round paws. */
-const cheer = memo(() =>
-  hop().map((h, i) =>
-    drawPrincess(
-      princessPose({
-        bob: h.bob,
-        squash: h.squash,
-        earNear: 0,
-        earSway: [1, 0, -1, -1, 0, 1][i],
-        ribbon: [1, -1, -2, -1, 1, 2][i],
-        ribbonDrop: 6 + (h.bob > 5 ? -1 : 0),
-        nearShoulder: [-11, 3],
-        farShoulder: [12, 2],
-        nearHand: [-12 - h.arms * 3.5, 6 - h.arms * 14],
-        farHand: [13 + h.arms * 3.5, 5 - h.arms * 14],
-        nearFoot: [-1, h.bob > 1 ? h.bob - 1 : 0],
-        farFoot: [1, h.bob > 1 ? h.bob : 0],
-        eyes: 'happy',
-        mouth: 'open',
-        twinkle: [0, 1, 2, 2, 1, 0][i]
-      })
-    )
+/** Freed: crouch, a hop with both arms thrown up, eyes closed in arcs, mouth wide, ears and bow flying. */
+const cheer = memo(() => {
+  const keys: Key<HamPose>[] = [
+    { at: 0, pose: { squash: 3, headSquash: 0.8, y: -1.5, air: 0, nod: 8, up: false, armN: [5, 3], armF: [3, 4] } },
+    {
+      at: 1,
+      pose: { squash: -2.8, headSquash: -0.8, y: 0, air: 3, nod: -6, up: true, armN: [-16, -10], armF: [15, -10] }
+    },
+    {
+      at: 2,
+      pose: { squash: -1.2, headSquash: -0.3, air: 6, nod: -8, armN: [-17, -13], armF: [16, -13] },
+      ease: ease.out
+    },
+    { at: 3, pose: { squash: 0, headSquash: 0, air: 7, nod: -6, armN: [-18, -12], armF: [17, -12] } },
+    { at: 4, pose: { air: 6, nod: -4, armN: [-17, -11], armF: [16, -11] }, ease: ease.inOut },
+    { at: 5, pose: { air: 3, squash: -1, nod: -2, up: false, armN: [-8, -5], armF: [9, -5] }, ease: ease.in },
+    { at: 6, pose: { air: 0, squash: 2.6, headSquash: 0.8, y: -1.5, nod: 7, armN: [-4, -2], armF: [6, -2] } },
+    { at: 7, pose: { squash: 0.6, headSquash: 0.2, y: -0.5, nod: 4, armN: [3, 1], armF: [4, 1] } }
+  ]
+  const poses = sample(princessPose({ reach: 1.5, paw: 0.4, eyes: 'happy', mouth: 'wide' }), keys, 8)
+  const late = lag(
+    poses.map((p) => p.air),
+    { stiffness: 0.35, damping: 0.4, loop: true }
   )
-)
+  const falling = [0, 0, 0, 0, 0.6, 1, 0.5, 0]
+  return draw(
+    poses.map((p, i) => ({
+      ...p,
+      footN: [0, p.air > 1 ? 2 : 0, p.air > 1 ? 30 : 0] as const,
+      footF: [1, p.air > 1 ? 1.5 : 0, p.air > 1 ? 22 : 0] as const,
+      earN: 4 + late[i] * 4,
+      earF: 3 + late[i] * 3.5,
+      earLift: clamp(-late[i] * 0.6, -1, 2),
+      tuft: late[i] > 1 ? ('back' as const) : late[i] < -1 ? ('up' as const) : ('neutral' as const),
+      scarf: [lerp(70, -60, clamp(late[i] / 6, 0, 1)), 6.5, 1.2, i * 0.9] as const,
+      mouth: i === 0 || i === 6 ? ('grin' as const) : ('wide' as const),
+      acc: { flare: falling[i], bowUp: clamp(late[i] / 5, 0, 1), glint: i === 2 ? 2 : i === 3 ? 1 : 0 }
+    }))
+  )
+})
 
-/** Wave: the far arm swings through a wide arc from the shoulder while the head tilts with it. */
-const wave = memo(() =>
-  [0, 1, 2, 3].map((i) => {
-    const a = (([82, 56, 28, 54][i] * Math.PI) / 180) as number
-    const reach = 11
-    const sh: [number, number] = [13, 1]
-    return drawPrincess(
+/** At the goal: one arm up waving from the wrist, a little bounce on her toes, eyes on the hero, smiling. */
+const wave = memo(() => {
+  const n = 6
+  // the waving paw on an arc over her head: out, up, in, up (from the wrist)
+  const hand: readonly (readonly [number, number])[] = [
+    [17, -8],
+    [16, -12],
+    [13, -16],
+    [11, -18],
+    [14, -15],
+    [17, -11]
+  ]
+  const bounce = [0, 1, 1.5, 1, 0, -0.5]
+  const late = lag(bounce, { stiffness: 0.4, damping: 0.45, loop: true })
+  return draw(
+    Array.from({ length: n }, (_, i) =>
       princessPose({
-        squash: 0,
-        tilt: [2.2, 1, -0.4, 1][i],
-        earSway: [0, 1, 0, -1][i],
-        ribbon: [0, 1, 0, -1][i],
-        nearShoulder: [-10, 3],
-        nearHand: [-9, 9],
-        farShoulder: sh,
-        farHand: [sh[0] + Math.sin(a) * reach, sh[1] - Math.cos(a) * reach],
-        eyes: i === 2 ? 'happy' : 'open',
+        reach: 1.5,
+        paw: 0.4,
+        upF: true,
+        y: bounce[i],
+        squash: -bounce[i] * 0.5,
+        footN: [0, 0, bounce[i] > 0.5 ? -10 : 0],
+        nod: -3,
+        look: 0.5,
+        armF: hand[i],
+        armN: [7, -1],
+        earN: 3 - late[i] * 3,
+        earF: 2 - late[i] * 2.5,
+        scarf: [78 - late[i] * 8, 6, 0.8, i * 1.05],
+        eyes: 'open',
         mouth: i === 2 ? 'open' : 'smile',
-        twinkle: i === 1 ? 1 : 0
+        acc: { glint: i === 4 ? 1 : 0 }
       })
     )
-  })
-)
+  )
+})
 
 export const sheets: SheetModule = {
   princess: () => ({
-    idle: lazyAnim(idle, 6, true),
-    sad: lazyAnim(sad, 5, true),
-    cheer: lazyAnim(cheer, 10, true),
+    idle: lazyAnim(idle, 8, true),
+    sad: lazyAnim(sad, 6, true),
+    cheer: lazyAnim(cheer, 12, true),
     wave: lazyAnim(wave, 8, true)
   })
 }

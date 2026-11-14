@@ -3,12 +3,25 @@ import { sheet } from '../src/art'
 import type { Raster } from '../src/art/raster'
 import { anchorOf, defaultAnchor, duration, frameAt, type Anim } from '../src/art/sheet'
 
-/** The formulas as they were before `frameAt`, `duration` and `anchorOf` stopped allocating. */
+/**
+ * The formulas as they were before `frameAt`, `duration` and `anchorOf` stopped allocating (a clip that does not
+ * loop holds its last frame, or keeps cycling its last `sustain` frames).
+ */
 function oldFrameAt(anim: Anim, t: number) {
   const hold = anim.hold ?? anim.frames.map(() => 1)
   const total = hold.reduce((a, b) => a + b, 0)
   let tick = Math.floor(Math.max(0, t) * anim.fps)
-  if (!anim.loop && tick >= total) return anim.frames.length - 1
+  if (!anim.loop && tick >= total) {
+    const tail = Math.min(anim.sustain ?? 0, anim.frames.length)
+    if (tail < 2) return anim.frames.length - 1
+    const first = anim.frames.length - tail
+    let rest = (tick - total) % hold.slice(first).reduce((a, b) => a + b, 0)
+    for (let i = first; i < hold.length; i++) {
+      rest -= hold[i]
+      if (rest < 0) return i
+    }
+    return anim.frames.length - 1
+  }
   tick %= total
   for (let i = 0; i < hold.length; i++) {
     tick -= hold[i]
@@ -47,6 +60,15 @@ describe('frameAt, duration and anchorOf', () => {
       compare({ frames, fps: 10, loop, hold: [1, 3, 2, 1] })
       compare({ frames, fps: 7, loop, hold: [4, 1, 1, 1] })
       compare({ frames, fps: 12, loop })
+    }
+  })
+
+  it('give the old results for a clip that keeps cycling its last frames', () => {
+    const frames = [frame(64, 64), frame(64, 64), frame(64, 64), frame(64, 64)]
+    for (const sustain of [0, 1, 2, 3, 4, 9]) {
+      compare({ frames, fps: 10, loop: false, sustain })
+      compare({ frames, fps: 10, loop: false, sustain, hold: [1, 3, 2, 1] })
+      compare({ frames, fps: 7, loop: true, sustain, hold: [4, 1, 1, 1] })
     }
   })
 

@@ -1,84 +1,137 @@
 import { describe, expect, test } from 'vitest'
-import { missingAnims, sheet } from '../src/art/index'
-import { C, R } from '../src/art/palette'
+import { KING_MANTLE, KING_RAGE_RED } from '../src/art/chars/king'
+import { bossSpec } from '../src/art/contract'
+import { sheet } from '../src/art/index'
+import { R } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
 
-const reach = (f: Raster) => {
-  const b = f.bounds()!
-  return b.x + b.w - 1
-}
+const ID = 'king'
+const spec = bossSpec(ID)
+const purple = new Set<number>([...R.kingPurple.slice(0, 4), KING_MANTLE[1]])
+const crimson = new Set<number>(R.crimson.slice(0, 4))
+const gold = new Set<number>(R.gold.slice(0, 4))
+const red = new Set<number>([KING_RAGE_RED])
 
-/** Pixels of the given colours, optionally only in rows [y0, y1). */
-const count = (f: Raster, colours: readonly number[], y0 = 0, y1 = f.h) => {
+const box = (f: Raster) => f.bounds()!
+const bottom = (f: Raster) => box(f).y + box(f).h - 1
+const reach = (f: Raster) => box(f).x + box(f).w - 1
+const count = (f: Raster, set: Set<number>, y0 = 0, y1 = f.h) => {
   let n = 0
-  for (let y = y0; y < y1; y++) for (let x = 0; x < f.w; x++) if (colours.includes(f.get(x, y))) n++
+  for (let y = y0; y < y1; y++) for (let x = 0; x < f.w; x++) if (set.has(f.get(x, y))) n++
   return n
 }
+/** The highest row holding a colour of the set. */
+const topOf = (f: Raster, set: Set<number>) => {
+  for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) if (set.has(f.get(x, y))) return y
+  return f.h
+}
 
-describe('黒ハム王 (king)', () => {
-  test('every clip is drawn', () => {
-    expect(missingAnims('king')).toEqual([])
+describe('黒ハム王 (king) on the hamster kit', () => {
+  const s = sheet(ID)
+
+  test('every clip of the new spec is drawn with its frame count, timing and sustain', () => {
+    for (const [name, want] of Object.entries(spec)) {
+      expect(s[name], `${name} is missing`).toBeDefined()
+      expect(s[name].frames.length, `${name} frames`).toBe(want.frames)
+      expect(s[name].fps, `${name} fps`).toBe(want.fps)
+      expect(s[name].loop, `${name} loop`).toBe(want.loop)
+      expect(s[name].sustain, `${name} sustain`).toBe(want.sustain)
+    }
   })
 
-  test('he is far bigger than the hero', () => {
-    const king = sheet('king').idle.frames[0].count()
+  test('dark purple, with the crimson cape and the gold crown in every idle and move frame', () => {
+    for (const clip of ['idle', 'move'])
+      for (const [i, f] of s[clip].frames.entries()) {
+        expect(count(f, purple) / f.count(), `${clip} ${i} is mostly purple`).toBeGreaterThan(0.35)
+        expect(count(f, crimson), `${clip} ${i} wears the cape`).toBeGreaterThan(150)
+        expect(count(f, gold), `${clip} ${i} wears the crown`).toBeGreaterThan(60)
+      }
+  })
+
+  test('he towers over the hero: at least three times the painted area of her idle', () => {
     const hero = sheet('hero').idle.frames[0].count()
-    expect(king).toBeGreaterThanOrEqual(hero * 3.5)
+    for (const f of s.idle.frames) expect(f.count()).toBeGreaterThanOrEqual(hero * 3)
   })
 
-  test('he is built like a hamster: lilac lower face, round pink-lined ears, glowing eyes', () => {
-    const f = sheet('king').idle.frames[0]
-    const b = f.bounds()!
-    const face = b.y + Math.round(b.h * 0.6)
-    // the lilac patch hugs the front of the face in the upper part of the egg
-    expect(count(f, [R.kingBelly[1]], b.y, face)).toBeGreaterThan(150)
-    // inner ears
-    expect(count(f, [R.hamEar[1], R.hamEar[2]])).toBeGreaterThan(60)
-    // big glowing yellow eyes with a dark slit
-    expect(count(f, [C.glow, R.fire[1]])).toBeGreaterThan(40)
-  })
-
-  test('nothing pokes out in front of the face like a snout', () => {
-    const k = sheet('king')
-    for (const f of k.idle.frames) expect(reach(f)).toBeLessThan(108)
+  test('the crown is the highest material when he stands', () => {
+    for (const f of s.idle.frames) expect(topOf(f, gold)).toBe(box(f).y)
   })
 
   test('the charge reaches further forward than standing', () => {
-    const k = sheet('king')
-    const idle = Math.max(...k.idle.frames.map(reach))
-    for (const f of k.attack.frames) expect(reach(f)).toBeGreaterThan(idle)
+    const idle = Math.max(...s.idle.frames.map(reach))
+    for (const f of s.attack.frames) expect(reach(f)).toBeGreaterThan(idle)
   })
 
-  test('the cape spreads on the way down', () => {
-    const { air } = sheet('king')
-    expect(air.frames[1].bounds()!.w).toBeGreaterThan(air.frames[0].bounds()!.w)
+  test('air: the top of the leap (cape spread) is the widest of the three', () => {
+    const [up, top, down] = s.air.frames.map((f) => box(f).w)
+    expect(top).toBeGreaterThan(up)
+    expect(top).toBeGreaterThan(down)
   })
 
-  test('the slam flattens him', () => {
-    const k = sheet('king')
-    expect(k.land.frames[0].bounds()!.h).toBeLessThan(k.idle.frames[0].bounds()!.h)
+  test('the slam: land frame 0 is lower and wider than idle', () => {
+    const idle = box(s.idle.frames[0])
+    const slam = box(s.land.frames[0])
+    expect(slam.y).toBeGreaterThan(idle.y)
+    expect(slam.w).toBeGreaterThan(idle.w)
   })
 
-  test('rage: dark flames grow behind him and his eyes turn red', () => {
-    const { rage } = sheet('king')
-    const flame = [R.dark[1], R.dark[2]]
-    expect(count(rage.frames[4], flame)).toBeGreaterThan(count(rage.frames[0], flame) * 2)
-    for (const f of rage.frames.slice(2)) {
-      expect(count(f, flame)).toBeGreaterThan(400)
-      expect(count(f, [R.fire[1]])).toBe(0)
+  test('the cast: shoot frame 3 (the hit frame) reaches furthest forward of its clip', () => {
+    const reaches = s.shoot.frames.map(reach)
+    expect(spec.shoot.hit).toBe(3)
+    expect(reaches[3]).toBe(Math.max(...reaches))
+    for (const [i, r] of reaches.entries()) if (i !== 3) expect(r).toBeLessThan(reaches[3])
+  })
+
+  test('red eyes appear only in the rage, and there in the second half', () => {
+    for (const [name, anim] of Object.entries(s))
+      for (const [i, f] of anim.frames.entries()) if (name !== 'rage') expect(count(f, red), `${name} ${i}`).toBe(0)
+    for (const f of s.rage.frames.slice(3)) expect(count(f, red)).toBeGreaterThan(6)
+  })
+
+  test('the rage: dark fire grows behind him', () => {
+    const fire = new Set<number>(R.dark.slice(0, 3))
+    const n = s.rage.frames.map((f) => count(f, fire))
+    expect(n[6]).toBeGreaterThan(n[0] * 3)
+    expect(n[6]).toBeGreaterThan(800)
+  })
+
+  test('defeat ends low and flat, with the crown on the ground away from his head', () => {
+    const idle = box(s.idle.frames[0])
+    for (const f of s.defeat.frames.slice(-2)) {
+      const b = box(f)
+      expect(b.w).toBeGreaterThan(b.h)
+      expect(b.h).toBeLessThan(idle.h * 0.85)
+      // the crown lies in the lower half of the picture, at the far right, not on the head at the left
+      const crownTop = topOf(f, gold)
+      expect(crownTop).toBeGreaterThan(b.y + b.h * 0.3)
+      let gx = 0
+      let gn = 0
+      for (let y = 0; y < f.h; y++)
+        for (let x = 0; x < f.w; x++)
+          if (gold.has(f.get(x, y))) {
+            gx += x
+            gn++
+          }
+      expect(gx / gn).toBeGreaterThan(b.x + b.w * 0.75)
     }
-    // the flames change from frame to frame
-    for (let i = 1; i < rage.frames.length; i++) expect(rage.frames[i].equals(rage.frames[i - 1])).toBe(false)
   })
 
-  test('defeat ends lying on his back with the crown on the ground beside him', () => {
-    const { defeat, idle } = sheet('king')
-    const last = defeat.frames[defeat.frames.length - 1]
-    const b = last.bounds()!
-    expect(b.w).toBeGreaterThan(b.h)
-    expect(b.h).toBeLessThan(idle.frames[0].bounds()!.h * 0.8)
-    // the crown lies low, not on his head
-    const gold = R.gold.slice(0, 3)
-    expect(count(last, gold, 0, b.y + Math.round(b.h / 2))).toBeLessThan(count(last, gold) * 0.25)
+  test('every frame stays at least 1 px clear of the cell edge', () => {
+    for (const [name, anim] of Object.entries(s))
+      for (const [i, f] of anim.frames.entries()) {
+        const b = box(f)
+        expect(b.x, `${name} ${i}`).toBeGreaterThanOrEqual(1)
+        expect(b.y, `${name} ${i}`).toBeGreaterThanOrEqual(1)
+        expect(b.x + b.w, `${name} ${i}`).toBeLessThanOrEqual(f.w - 1)
+        expect(b.y + b.h, `${name} ${i}`).toBeLessThanOrEqual(f.h - 1)
+      }
+  })
+
+  test('standing clips keep their lowest row on the anchor (rows 118–123)', () => {
+    for (const name of ['idle', 'intro', 'hurt', 'move', 'windup', 'attack', 'land', 'shoot', 'recover', 'rage'])
+      for (const [i, f] of s[name].frames.entries()) {
+        expect(bottom(f), `${name} ${i}`).toBeGreaterThanOrEqual(118)
+        expect(bottom(f), `${name} ${i}`).toBeLessThanOrEqual(123)
+      }
   })
 })

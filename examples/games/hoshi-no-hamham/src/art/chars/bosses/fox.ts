@@ -1,1113 +1,1176 @@
 /**
- * きつね旋風 (`foxBoss`): the whirlwind ninja fox, captain of the pursuers. A pose-parametric character in the
- * style of the hero (ball-shaded volumes, white patches painted onto them, stamped eyes with one highlight),
- * assembled from parts by a small rig that can also tilt the whole body (dizzy sway, the fall) with correct
- * lighting. The spin dash is a separate polar drawing: a curled fox, a spiral tail and trailing headband ends.
+ * きつね旋風 (`foxBoss`): the captain of the pursuers, a cocky ninja fox built on the rig toolkit. Lean and upright on
+ * his toes: a wedge-shaped head with a long pointed muzzle, a white cheek ruff, tall black-tipped ears and slanted
+ * amber eyes; a dark navy sleeveless jacket with a red sash, bare orange upper arms and black gloves, black leggings
+ * and split-toe boots; the gang's red headband with a steel plate, knotted behind the head with two long tails; and
+ * a great brush of a tail, as big as his body, held in an S behind him. His dash turns him into a wheel: the tucked
+ * rig itself is turned a sixth of a circle per frame. 128×128, facing right, feet on (64, 120).
+ *
+ * Rendering (CHARACTERS.md "Big furry bodies"): the tail and the head are single silhouettes with a russet mantle on
+ * the back, fur teeth on the shadow and hand-placed locks; the jacket, chest fur and sash are one silhouette shaded
+ * once; limbs are two-bone capsules with joints; eyes, nose, mouth lines, the plate and the stars are stamps.
+ *
+ * Depth (back to front): wind behind, tail (when behind), far leg, far arm, headband tails, body, near leg, far ear,
+ * lower jaw, head, near ear, headband, face, near arm, tail (when wrapped in front), wind in front, stars.
  */
 import type { SheetModule } from '../../module'
-import { C, R } from '../../palette'
-import { Raster, ball, bar, farRamp, outline, shadeEdges, shadeIndex, type Pt, type Ramp } from '../../raster'
+import { TAU, ease, lag, track } from '../../motion'
+import { C, R, ramp } from '../../palette'
+import { Painter, Raster, farRamp, type Pt, type Ramp } from '../../raster'
+import {
+  Frame,
+  capsule,
+  carve,
+  cel,
+  fill,
+  half,
+  joint,
+  mantle,
+  oval,
+  overlap,
+  polygon,
+  ribbon,
+  shadow,
+  smooth,
+  spline,
+  stampAt,
+  tint,
+  union,
+  within,
+  type Shape
+} from '../../rig'
 import { lazyAnim, memo } from '../../sheet'
 
-const FOX = R.foxOrange
-const FAR = farRamp(FOX)
-const WHITE = R.paper
-const DARK = R.darkFur
-const FAR_DARK = farRamp(DARK)
+const FUR = R.foxOrange
+const FAR = farRamp(FUR)
+/** The russet mantle along the back of the head, the back and the upper side of the tail. */
+const RUSSET = ramp('#ec8a48', '#c4561f', '#93391a', '#783818', '#3a1a22')
+/** White cheeks, chin, chest, inner ears and the tail tip. */
+const PALE = ramp('#ffffff', '#f7efe8', '#dccbc4', '#a68c8c', '#3a1a22')
+/** The dark navy jacket; one step down it is the black of the gloves, leggings, boots and ear tips. */
+const NAVY = ramp('#6c7cc0', '#3e4a86', '#2a3260', '#1b2040', '#1c1830')
 const BAND = R.bandana
+const STEEL = R.steel
 const GOLD = R.gold
 
-export type Eyes = 'sly' | 'smirk' | 'glare' | 'wide' | 'swirl' | 'hurt' | 'closed' | 'dead'
-export type Mouth = 'smirk' | 'grin' | 'open' | 'o' | 'flat' | 'tongue'
-
-// ---------------------------------------------------------------------------------------------- rig
-
-/** Light rotation of the part being drawn, so balls keep their top-left light when the body is tilted. */
-let lightTurn = 0
-
-/** Like `ball`, but the light follows the rig's tilt. */
-function lit(l: Raster, cx: number, cy: number, rx: number, ry: number, ramp: Ramp, spec = true) {
-  const c = Math.cos(lightTurn)
-  const s = Math.sin(lightTurn)
-  for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++)
-    for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
-      const nx = (x + 0.5 - cx) / rx
-      const ny = (y + 0.5 - cy) / ry
-      const q = nx * nx + ny * ny
-      if (q > 1.0001) continue
-      const nz = Math.sqrt(Math.max(0, 1 - q))
-      l.set(x, y, ramp[shadeIndex(nx * c - ny * s, nx * s + ny * c, nz, spec)])
-    }
-  return l
-}
-
-/** One part turned about the pivot: rotated on its own so the outline can be drawn afterwards. */
-function turn(layer: Raster, angle: number, pivot: Pt) {
-  const b = layer.bounds()
-  if (!b) return layer
-  let s = Math.ceil(Math.hypot(b.w, b.h)) + 4
-  s += s % 2
-  const x0 = Math.round(b.x + b.w / 2 - s / 2)
-  const y0 = Math.round(b.y + b.h / 2 - s / 2)
-  const turned = layer.crop(x0, y0, s, s).rotate(angle)
-  const dx = x0 + s / 2 - pivot[0]
-  const dy = y0 + s / 2 - pivot[1]
-  const c = Math.cos(angle)
-  const sn = Math.sin(angle)
-  const nx = pivot[0] + dx * c - dy * sn
-  const ny = pivot[1] + dx * sn + dy * c
-  return new Raster(layer.w, layer.h).blit(turned, nx - s / 2, ny - s / 2)
-}
-
-/** Depth-ordered parts with per-part outlines; the whole body may be tilted about a pivot and shifted. */
-class Rig {
-  private list: { depth: number; seq: number; draw: (l: Raster) => void; line: boolean }[] = []
-  constructor(
-    private angle = 0,
-    private pivot: Pt = [64, 120],
-    private shift: Pt = [0, 0]
-  ) {}
-
-  add(depth: number, draw: (l: Raster) => void, line = true) {
-    this.list.push({ depth, seq: this.list.length, draw, line })
-    return this
-  }
-
-  render() {
-    const out = new Raster(128, 128)
-    this.list.sort((a, b) => a.depth - b.depth || a.seq - b.seq)
-    for (const it of this.list) {
-      let layer = new Raster(128, 128)
-      lightTurn = this.angle
-      it.draw(layer)
-      lightTurn = 0
-      // shift first, so the turned body never swings out of the canvas
-      if (this.shift[0] || this.shift[1]) layer = layer.shifted(this.shift[0], this.shift[1])
-      if (this.angle) layer = turn(layer, this.angle, [this.pivot[0] + this.shift[0], this.pivot[1] + this.shift[1]])
-      const b = layer.bounds()
-      if (!b) continue
-      const crop = layer.crop(b.x - 2, b.y - 2, b.w + 4, b.h + 4)
-      if (it.line) outline(crop)
-      out.blit(crop, b.x - 2, b.y - 2)
-    }
-    return out
-  }
-}
-
-/** Paints an ellipse only where the layer already has pixels. */
-function patch(l: Raster, cx: number, cy: number, rx: number, ry: number, c: number) {
-  for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++)
-    for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
-      const nx = (x + 0.5 - cx) / rx
-      const ny = (y + 0.5 - cy) / ry
-      if (nx * nx + ny * ny <= 1.0001) l.paint(x, y, c)
-    }
-}
-
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t
-const lerpPt = (a: Pt, b: Pt, t: number): Pt => [lerp(a[0], b[0], t), lerp(a[1], b[1], t)]
-
-function bezier(p: Pt[], t: number): Pt {
-  const u = 1 - t
-  return [
-    u * u * u * p[0][0] + 3 * u * u * t * p[1][0] + 3 * u * t * t * p[2][0] + t * t * t * p[3][0],
-    u * u * u * p[0][1] + 3 * u * u * t * p[1][1] + 3 * u * t * t * p[2][1] + t * t * t * p[3][1]
-  ]
-}
-
-// ---------------------------------------------------------------------------------------------- pose
+type Eyes = 'sly' | 'angry' | 'wide' | 'shut' | 'hurt' | 'dizzy' | 'tired' | 'happy'
+type Mouth = 'smirk' | 'grin' | 'open' | 'flat'
+type Hand = 'fist' | 'two' | 'open'
+/** Hand position relative to the shoulder (torso units), hand turn (degrees, 0 = along the forearm), elbow bend. */
+type Arm = readonly [number, number, number, 1 | -1]
+/** Ball of the foot: forward (px), lift (px), turn (degrees, + toes down). */
+type Leg = readonly [number, number, number]
 
 export interface FoxPose {
-  /** Hips lowered (px). */
-  crouch: number
-  /** Chest and head pushed forward (px). */
+  /** Whole figure forward (+) and the pelvis up (+); planted feet stay on the ground. */
+  x: number
+  y: number
+  /** The whole rig turned clockwise (degrees) about a point `pivot` px above the ground. */
+  spin: number
+  pivot: number
+  /** Torso tilt (degrees, forward +) and stretch (+ wider and shorter). */
   lean: number
-  headDy: number
-  /** Near and far foot: forward offset and lift (px). */
-  nearFoot: readonly [number, number]
-  farFoot: readonly [number, number]
-  /** Hand positions relative to the shoulder. */
-  nearHand: Pt
-  farHand: Pt
-  /** Tail: streaming straight back (0..1), curled round the front (0..1), swing (-1..1), fluff scale. */
-  tailStream: number
-  tailCurl: number
-  tailSwing: number
-  puff: number
-  /** Headband ends: wave phase (radians), how straight they stream (0..1), droop (px per segment). */
-  bandPhase: number
-  bandStream: number
-  bandDroop: number
+  squash: number
+  breath: number
+  /** Head offset from its seat on the neck, and nod (degrees, nose down +). */
+  head: readonly [number, number]
+  nod: number
   eyes: Eyes
   mouth: Mouth
-  /** Ears folded back (px). */
-  earBack: number
-  /** Whole-body tilt (radians, clockwise) about the feet, and a shift after it. */
-  angle: number
-  shift: Pt
-  /** Dizzy stars orbiting the head (phase, radians) or undefined. */
-  stars?: number
-  /** Wind arcs round the body (0..3 of them). */
+  /** Lower jaw opening 0..1 (with mouth 'open'). */
+  jaw: number
+  /** Ears turned back (degrees). */
+  earN: number
+  earF: number
+  armN: Arm
+  armF: Arm
+  handN: Hand
+  handF: Hand
+  /** The far arm reaches across in front of the chest (drawn over the body, under the near arm). */
+  farFront: boolean
+  /** Feet relative to their rest place on the ground (or, when `feetFree`, still in the ground frame). */
+  legN: Leg
+  legF: Leg
+  /** The tail's spine: five points in pelvis units (u forward, v down), its width factor (0 = no tail) and a sway phase. */
+  tail: readonly Pt[]
+  puff: number
+  sway: number
+  /** How far the sway moves the tail (px at the tip). */
+  swayAmp: number
+  /** The tail drawn in front of the body (wrapped round him). */
+  tailFront: boolean
+  /** Headband tails: direction (0 = straight back, + down), length, ripple, phase, droop toward the end (degrees). */
+  band: readonly [number, number, number, number, number]
+  /** Stars circling over the head: phase 0..1, −1 = none. */
+  stars: number
+  /** Wind streaks round the turning centre: how many (0..3), their angle (degrees) and radius. */
   wind: number
-  sweat: boolean
-  /** Rotation pivot for `angle` (default the feet). */
-  pivot?: Pt
-  /** Tail control points relative to the root, replacing the stream/curl blend. */
-  tailPts?: Pt[]
+  windAt: number
+  windR: number
+  /** The whole figure lifted on screen (px), for bounces of a lying or tumbling body. */
+  rise: number
 }
 
+/** The tail at rest: down and back from the rump, up behind him, the tip curling forward at head height. */
+const TAIL_REST: readonly Pt[] = [
+  [-6, -1],
+  [-20, 7],
+  [-35, 0],
+  [-38, -20],
+  [-27, -38]
+]
+
 export const foxPose = (p: Partial<FoxPose> = {}): FoxPose => ({
-  crouch: 0,
-  lean: 0,
-  headDy: 0,
-  nearFoot: [0, 0],
-  farFoot: [0, 0],
-  nearHand: [12, 7],
-  farHand: [10, 4],
-  tailStream: 0,
-  tailCurl: 0,
-  tailSwing: 0,
-  puff: 1,
-  bandPhase: 0,
-  bandStream: 0,
-  bandDroop: 0,
+  x: 0,
+  y: 0,
+  spin: 0,
+  pivot: 30,
+  lean: 4,
+  squash: 0,
+  breath: 0,
+  head: [0, 0],
+  nod: 0,
   eyes: 'sly',
   mouth: 'smirk',
-  earBack: 0,
-  angle: 0,
-  shift: [0, 0],
+  jaw: 0,
+  earN: 0,
+  earF: 0,
+  armN: [12, 6, -10, 1],
+  armF: [-7, 15, 30, 1],
+  handN: 'two',
+  handF: 'fist',
+  farFront: false,
+  legN: [0, 0, 0],
+  legF: [0, 0, 0],
+  tail: TAIL_REST,
+  puff: 1,
+  sway: 0,
+  swayAmp: 2.5,
+  tailFront: false,
+  band: [6, 30, 1.5, 0, 34],
+  stars: -1,
   wind: 0,
-  sweat: false,
+  windAt: 0,
+  windR: 34,
+  rise: 0,
   ...p
 })
 
-const EYE_KEY = { K: C.black, w: C.white, i: C.ink, s: FOX[0], b: FOX[3], g: GOLD[1], x: GOLD[0] }
+/** Pelvis height above the ground at rest (standing on his toes). */
+const HIP = 23
+/** The head is drawn larger than nature. */
+const HS = 1.12
+/** Rest places of the balls of the feet (x relative to the anchor). */
+const REST = { N: 6, F: -5 } as const
 
-/** Hand-placed eye shapes: [near eye, far eye]. */
-const EYE_SHAPES: Record<Eyes, readonly [readonly string[], readonly string[]]> = {
-  sly: [
-    ['ii....', 'iKKKK.', 'KwKKKK', '.KKKK.'],
-    ['i....', 'iKKK.', 'KwKKK', '.KKK.']
-  ],
-  smirk: [
-    ['iiiiii', 'KwKKKK', '.KKKK.', '......'],
-    ['iiiii', 'KwKKK', '.KKK.', '.....']
-  ],
-  glare: [
-    ['ii....', '.iiii.', 'KwKKKi', '.KKKK.'],
-    ['i....', '.iiii', 'KwKKi', '.KKK.']
-  ],
+// ------------------------------------------------------------------------------------------------ stamps
+
+const EYE_KEY = { K: C.black, w: C.white, y: GOLD[1], o: FUR[1], B: RUSSET[3], i: C.inkWarm }
+/** The near eye: slanted (the outer corner high), a heavy upper lid, amber iris with a slit pupil. */
+const EYES: Record<Eyes, readonly string[]> = {
+  sly: ['BB........', '.BBBB.....', '..KKKKKKK.', '..KwwyyKKK', '..KwyyKyoK', '...KyyKoK.', '....KKKK..'],
+  angry: ['B.........', '.BBB......', '...BBBBB..', '..KKKKKKBB', '..KwyyKKK.', '...KyyKoK.', '....KKKK..'],
   wide: [
-    ['.KKK.', 'KwwwK', 'KwKwK', 'KwwwK', '.KKK.'],
-    ['.KK.', 'KwwK', 'KKwK', 'KwwK', '.KK.']
+    '..BBB.....',
+    '.B........',
+    '..KKKKKK..',
+    '.KwwyyyKK.',
+    '.KwyyKyyK.',
+    '.KyyyKyoK.',
+    '..KyyyyK..',
+    '...KKKK...'
   ],
-  swirl: [
-    ['.KKK.', 'KwwwK', 'KwKwK', 'KwwKK', '.KKK.'],
-    ['.KK.', 'KwwK', 'KKwK', 'KwKK', '.KK.']
-  ],
-  hurt: [
-    ['i....', '.ii..', '...ii', '.ii..', 'i....'],
-    ['...i', '.ii.', 'i...', '.ii.', '...i']
-  ],
-  closed: [
-    ['......', '......', 'i....i', '.iiii.', '......'],
-    ['.....', '.....', 'i...i', '.iii.', '.....']
-  ],
-  dead: [
-    ['K...K', '.K.K.', '..K..', '.K.K.', 'K...K'],
-    ['K..K', '.KK.', '.KK.', '.KK.', 'K..K']
-  ]
+  shut: ['BB........', '.BBBB.....', '..........', '..iiiiiii.', '...iiiiiii', '..........'],
+  hurt: ['B.........', '.BB.......', '..ii......', '....iii...', '......iii.', '....iii...', '..ii......'],
+  dizzy: ['..........', '..iiiii...', '.i.....i..', '.i.iii.i..', '.i.i.i.i..', '.i...i.i..', '..iii..i..'],
+  tired: ['..........', 'BBBB......', '..iiiiiii.', '..KKKKKKKK', '..KyyyKyoK', '...KKKKK..'],
+  happy: ['BB........', '.BBBB.....', '..........', '...iiiii..', '..i.....i.', '.i.......i']
+}
+const NOSE = ['.KKK', 'KhKK', 'KKKK', '.KK.']
+/** The steel plate on the headband: hard highlight, dark core, an engraved swirl. */
+const PLATE = ['.ddddd.', 'dhhsssd', 'dhsmmsd', 'dssmssd', '.ddddd.']
+const PLATE_KEY = { h: STEEL[0], s: STEEL[1], d: STEEL[2], m: NAVY[3], '.': STEEL[2] }
+const STAR = ['..y..', '.yYy.', 'yyYyy', '.yYy.', '..y..']
+const STAR_SMALL = ['.y.', 'yYy', '.y.']
+
+// ------------------------------------------------------------------------------------------------ helpers
+
+const ID = Frame.at(0, 0)
+const RAD = Math.PI / 180
+
+/** A path from `from` heading in direction `deg` (0 = back, + down), bending by `curl` degrees along its length. */
+function bentPath(from: Pt, deg: number, curl: number, len: number, wobble: (s: number) => number): Pt[] {
+  const pts: Pt[] = [from]
+  let [x, y] = from
+  const n = 5
+  for (let i = 1; i <= n; i++) {
+    const s = i / n
+    const a = (deg + curl * s) * RAD
+    const w = wobble(s)
+    x += -Math.cos(a) * (len / n)
+    y += Math.sin(a) * (len / n)
+    pts.push([x - Math.sin(a) * w, y - Math.cos(a) * w])
+  }
+  return spline(pts)
 }
 
-function eyes(l: Raster, x: number, y: number, kind: Eyes) {
-  const [near, far] = EYE_SHAPES[kind]
-  l.stamp(near, x, y, EYE_KEY)
-  l.stamp(far, x + 9, y + 1, EYE_KEY)
+/** Direction of a path near its point i, in degrees on screen. */
+const heading = (path: readonly Pt[], i: number) => {
+  const a = path[Math.max(0, i - 2)]
+  const b = path[Math.min(path.length - 1, i + 2)]
+  return (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI
 }
 
-/** The mouth on the underside of the snout; (x, y) is the snout's lower rim. */
-function mouth(l: Raster, x: number, y: number, kind: Mouth) {
-  switch (kind) {
-    case 'smirk':
-      l.line(x - 2, y, x + 3, y + 1, C.ink)
-      l.line(x + 3, y + 1, x + 5, y - 1, C.ink)
-      break
-    case 'grin':
-      l.line(x - 3, y - 1, x + 2, y + 1, C.ink)
-      l.line(x + 2, y + 1, x + 6, y - 2, C.ink)
-      l.rect(x - 1, y + 1, 4, 1, C.white)
-      break
-    case 'flat':
-      l.rect(x - 2, y, 7, 1, C.ink)
-      break
-    case 'o':
-      l.ellipse(x + 3, y + 1.5, 2.5, 3, C.mouth)
-      l.rect(x + 2, y + 3, 2, 1, C.tongue)
-      break
-    case 'open':
-      l.ellipse(x + 2.5, y + 1.5, 4.5, 3.5, C.mouth)
-      l.rect(x, y - 2, 2, 2, C.white)
-      l.rect(x + 4, y - 2, 2, 2, C.white)
-      l.rect(x + 1, y + 2, 4, 1, C.tongue)
-      break
-    case 'tongue':
-      l.line(x - 2, y, x + 4, y, C.ink)
-      l.rect(x + 1, y + 1, 3, 3, C.tongue)
-      l.rect(x + 1, y + 3, 3, 1, C.mouth)
-      break
+/** Index of the point at a share `t` of a path's length. */
+function along(path: readonly Pt[], t: number) {
+  let total = 0
+  const acc = [0]
+  for (let i = 1; i < path.length; i++) {
+    total += Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1])
+    acc.push(total)
   }
+  const want = total * t
+  let i = 0
+  while (i < acc.length - 1 && acc[i] < want) i++
+  return i
 }
 
-const REST_TAIL: Pt[] = [
-  [0, 0],
-  [-17, 7],
-  [-36, -2],
-  [-30, -36]
-]
-const STREAM_TAIL: Pt[] = [
-  [0, 0],
-  [-18, 1],
-  [-37, -1],
-  [-56, -8]
-]
-const CURL_TAIL: Pt[] = [
-  [0, 4],
-  [-10, 18],
-  [14, 20],
-  [36, 2]
-]
-
-/** Draws the big brush: a bezier spine with a fluffy radius profile and a white tip. */
-function drawTail(l: Raster, root: Pt, p: FoxPose) {
-  let ctl = REST_TAIL.map((q, i) => lerpPt(q, STREAM_TAIL[i], p.tailStream))
-  ctl = ctl.map((q, i) => lerpPt(q, CURL_TAIL[i], p.tailCurl))
-  if (p.tailPts) ctl = p.tailPts.map((q): Pt => [q[0], q[1]])
-  ctl[3] = [ctl[3][0] + p.tailSwing * 8 * (1 - p.tailCurl), ctl[3][1] + Math.abs(p.tailSwing) * 3 * (1 - p.tailCurl)]
-  ctl[2] = [ctl[2][0], ctl[2][1] + p.tailSwing * 4 * (1 - p.tailCurl)]
-  const pts = ctl.map((q): Pt => [root[0] + q[0], root[1] + q[1]])
-  const N = 34
-  const radius = (t: number) => (3 + 9.5 * Math.sin(Math.PI * Math.min(1, t * 1.08) ** 0.8)) * p.puff
-  const body: { c: Pt; r: number; t: number }[] = []
-  for (let i = 0; i <= N; i++) {
-    const t = i / N
-    body.push({ c: bezier(pts, t), r: radius(t), t })
-  }
-  // fur tufts jut out of the outline
-  for (const t of [0.34, 0.52, 0.68, 0.84]) {
-    const a = bezier(pts, t - 0.02)
-    const b = bezier(pts, t + 0.02)
-    const m = bezier(pts, t)
-    const nx = -(b[1] - a[1])
-    const ny = b[0] - a[0]
-    const k = Math.hypot(nx, ny) || 1
-    const side = t > 0.5 ? 1 : -1
-    const r = radius(t)
-    body.push({ c: [m[0] + (nx / k) * (r - 0.5) * side, m[1] + (ny / k) * (r - 0.5) * side], r: 3.4 * p.puff, t })
-  }
-  body.sort((a, b) => a.t - b.t)
-  for (const s of body) l.ellipse(s.c[0], s.c[1], s.r, s.r, s.t > 0.8 ? WHITE[1] : FOX[1])
-  shadeEdges(l, FOX, 2, true)
-  shadeEdges(l, WHITE, 2, true)
-  // a few strands of grain along the brush
-  for (let i = 3; i < N - 8; i += 3) {
-    const a = bezier(pts, i / N)
-    const b = bezier(pts, (i + 2) / N)
-    const off = radius(i / N) * 0.45
-    l.paint(a[0] + 1, a[1] + off, FOX[2])
-    l.paint(b[0] + 2, b[1] + off, FOX[2])
-  }
-  return pts
+/**
+ * White fur on the very edge of a part takes the pale base colour instead, so the outline next to it stays a dark
+ * line (as on the wolf). Candidate for the toolkit (`cel` option).
+ */
+function dimEdge(l: Raster) {
+  const b = l.bounds()
+  if (!b) return
+  const src = l.clone()
+  for (let y = b.y; y < b.y + b.h; y++)
+    for (let x = b.x; x < b.x + b.w; x++)
+      if (
+        src.get(x, y) === PALE[0] &&
+        !(src.get(x - 1, y) && src.get(x + 1, y) && src.get(x, y - 1) && src.get(x, y + 1))
+      )
+        l.set(x, y, PALE[1])
 }
 
-function leg(l: Raster, hip: Pt, foot: Pt, ramp: Ramp, sock: Ramp, w: number) {
-  const dist = Math.hypot(foot[0] - hip[0], foot[1] - hip[1])
-  const k = Math.max(2, Math.min(10, (21 - dist) * 0.9 + 3))
-  const knee: Pt = [(hip[0] + foot[0]) / 2 + k, (hip[1] + foot[1]) / 2]
-  const ankle: Pt = [foot[0], foot[1] - 2]
-  bar(l, hip, knee, w + 1, ramp[1])
-  bar(l, knee, ankle, w, sock[1])
-  l.ellipse(foot[0] + 2.5, foot[1] - 0.5, 6, 3, sock[1])
-  shadeEdges(l, ramp, 1, false)
-  shadeEdges(l, sock, 1, false)
-}
-
-function arm(l: Raster, shoulder: Pt, hand: Pt, ramp: Ramp, sock: Ramp) {
-  const mid: Pt = [(shoulder[0] + hand[0]) / 2, (shoulder[1] + hand[1]) / 2]
-  const dx = hand[0] - shoulder[0]
-  const dy = hand[1] - shoulder[1]
-  const len = Math.hypot(dx, dy) || 1
-  let nx = -dy / len
-  let ny = dx / len
-  if (ny < 0) {
-    nx = -nx
-    ny = -ny
-  }
-  const bend = Math.max(1, 6 - len * 0.12)
-  const elbow: Pt = [mid[0] + nx * bend, mid[1] + ny * bend]
-  bar(l, shoulder, elbow, 6, ramp[1])
-  bar(l, elbow, hand, 5, ramp[1])
-  shadeEdges(l, ramp, 1, false)
-  lit(l, hand[0], hand[1], 3.6, 3.4, sock, false)
-}
-
-/** One headband streamer from the knot. */
-function streamer(l: Raster, knot: Pt, p: FoxPose, i: number) {
-  const segs = i === 0 ? 6 : 5
-  const pts: Pt[] = []
-  for (let j = 0; j <= segs; j++) {
-    const run = lerp(4.6, 5.8, p.bandStream)
-    const amp = lerp(1, 0.45, p.bandStream)
-    pts.push([
-      knot[0] - j * run,
-      knot[1] +
-        i * 3 +
-        Math.sin(p.bandPhase + j * 0.9 + i * 1.7) * (0.8 + j * 0.55) * amp +
-        p.bandDroop * j * j * 0.18 -
-        (i === 0 ? 1 : 0)
-    ])
-  }
-  // a ribbon drawn column by column: smooth, tapering, light on top and dark underneath
-  const x0 = pts[0][0]
-  const x1 = pts[segs][0]
-  for (let x = Math.round(x0); x >= Math.round(x1); x--) {
-    const f = Math.max(0, Math.min(1, (x0 - x) / (x0 - x1 || 1)))
-    const j = Math.min(segs - 1, Math.floor(f * segs))
-    const u = f * segs - j
-    const y = lerp(pts[j][1], pts[j + 1][1], u)
-    const th = f < 0.4 ? 5 : f < 0.75 ? 4 : 3
-    const top = Math.round(y - th / 2)
-    for (let k = 0; k < th; k++) l.set(x, top + k, k === 0 ? BAND[0] : k === th - 1 && th > 2 ? BAND[2] : BAND[1])
-    // swallow-tail notch at the very end
-    if (f > 0.93) l.set(x, top + 1, 0)
-  }
-}
-
-function ear(l: Raster, x: number, y: number, tipDx: number, tipDy: number, far: boolean) {
-  const base = far ? FAR : FOX
-  const sock = far ? FAR_DARK : DARK
-  const tip: Pt = [x + tipDx, y - 18 + tipDy]
-  l.poly([x - 7, y + 3, tip[0], tip[1], x + 7, y + 3], base[1])
-  l.poly([x - 3.5, y + 2, lerp(x, tip[0], 0.55), lerp(y + 2, tip[1], 0.55) + 2, x + 3.5, y + 2], WHITE[far ? 2 : 1])
-  for (let yy = tip[1] - 1; yy < tip[1] + 7; yy++)
-    for (let xx = x - 10 + tipDx; xx < x + 12 + tipDx; xx++) {
-      const c = l.get(xx, yy)
-      if (c === base[1] || c === WHITE[1] || c === WHITE[2]) l.set(xx, yy, sock[1])
-    }
-  shadeEdges(l, base, 1, !far)
-  shadeEdges(l, sock, 1, false)
-}
-
-function stars(l: Raster, hx: number, hy: number, phase: number) {
-  for (let k = 0; k < 3; k++) {
-    const a = phase + (k * Math.PI * 2) / 3
-    const x = hx + 3 + Math.cos(a) * 17
-    const y = hy - 17 + Math.sin(a) * 4
-    l.stamp(['..x..', '.xgx.', 'xgggx', '.xgx.', '..x..'], x - 2, y - 2, EYE_KEY)
-  }
-}
-
-/** One frame of the standing fox. */
-export function drawFox(p: FoxPose, only?: string): Raster {
-  const rig = new Rig(p.angle, p.pivot ?? [64, 120], p.shift)
-  const g = {
-    add(depth: number, draw: (l: Raster) => void, line = true) {
-      if (!only || only === tag) rig.add(depth, draw, line)
-    },
-    render: () => rig.render()
-  }
-  let tag = ''
-  const hipY = 102 + p.crouch
-  const hip: Pt = [58, hipY]
-  const chest: Pt = [61 + p.lean * 0.55, hipY - 16 + p.crouch * 0.25]
-  const head: Pt = [64 + p.lean, hipY - 38 + p.headDy + p.crouch * 0.4]
-  const shoulder: Pt = [chest[0] + 4, chest[1] - 7]
-  const nearFoot: Pt = [54 + p.nearFoot[0], 119 - p.nearFoot[1]]
-  const farFoot: Pt = [66 + p.farFoot[0], 119 - p.farFoot[1]]
-  const root: Pt = [hip[0] - 7, hipY - 4]
-
-  tag = 'tail'
-  // tail: behind the body, or curled round the front
-  const curled = p.tailCurl > 0.45 && !p.tailPts
-  g.add(curled ? 5 : -4, (l) => {
-    drawTail(l, root, p)
-  })
-  tag = 'head'
-  // far ear and far limbs
-  g.add(-3, (l) => ear(l, head[0] + 6, head[1] - 7, 3 - p.earBack, p.earBack * 0.8, true))
-  tag = 'farleg'
-  g.add(-1.5, (l) => leg(l, [hip[0] + 5, hipY - 1], farFoot, FAR, FAR_DARK, 6))
-  tag = 'fararm'
-  g.add(-1.4, (l) =>
-    arm(
-      l,
-      [shoulder[0] + 2, shoulder[1] + 1],
-      [shoulder[0] + 2 + p.farHand[0], shoulder[1] + p.farHand[1]],
-      FAR,
-      FAR_DARK
-    )
+/** A hand in its own frame (wrist at the origin, fingers toward +u). */
+function handShape(kind: Hand): Shape {
+  const palm = oval(2.8, 0, 3.3, 3)
+  const thumb = capsule([2.2, -2.2], [4.6, -3.2], 1.4, 1.2)
+  if (kind === 'fist') return union(oval(3, 0, 3.6, 3.2), thumb)
+  if (kind === 'two') return union(palm, capsule([4, -0.6], [8, -0.8], 1.5, 1.2), thumb)
+  return union(
+    palm,
+    capsule([4.5, -1.8], [8.2, -3.6], 1.2, 1),
+    capsule([5, 0], [9, 0.2], 1.2, 1),
+    capsule([4.5, 1.8], [8, 3.4], 1.2, 1),
+    capsule([2, -2.4], [3.6, -5], 1.2, 1)
   )
-  // headband streamers, trailing behind the head
-  tag = 'band'
-  g.add(-0.5, (l) => {
-    const knot: Pt = [head[0] - 12, head[1] - 7]
-    streamer(l, knot, p, 0)
-    streamer(l, knot, p, 1)
-  })
-  // hips and torso
-  tag = 'torso'
-  g.add(0, (l) => {
-    lit(l, hip[0], hipY - 4, 11, 9, FOX)
-    lit(l, chest[0], chest[1], 13, 15, FOX)
-    patch(l, chest[0] + 6, chest[1] + 2, 7.5, 11, WHITE[1])
-    patch(l, chest[0] + 8, chest[1] + 10, 6, 3, WHITE[2])
-    patch(l, chest[0] + 4, chest[1] - 5, 3, 3, WHITE[0])
-    // the dark obi at the waist
-    for (let y = hipY - 13; y < hipY - 9; y++)
-      for (let x = hip[0] - 13; x < hip[0] + 16; x++)
-        l.paint(x, y, y === hipY - 13 ? DARK[0] : y === hipY - 10 ? DARK[2] : DARK[1])
-    l.paint(hip[0] + 11, hipY - 12, GOLD[1])
-    l.paint(hip[0] + 12, hipY - 12, GOLD[0])
-    l.paint(hip[0] + 11, hipY - 11, GOLD[2])
-    l.paint(hip[0] + 12, hipY - 11, GOLD[2])
-  })
-  // near leg
-  tag = 'nearleg'
-  g.add(0.8, (l) => leg(l, [hip[0] - 3, hipY - 1], nearFoot, FOX, DARK, 7))
-  // near ear behind the head, then head and snout
-  tag = 'head'
-  g.add(0.4, (l) => ear(l, head[0] - 6, head[1] - 7, -3 - p.earBack, p.earBack * 0.8, false))
-  g.add(0.5, (l) => {
-    const [hx, hy] = head
-    // snout first, so the skull's shaded rim reads as a cheek contour
-    lit(l, hx + 11, hy + 3, 9, 5.5, FOX)
-    patch(l, hx + 12, hy + 6.5, 8, 3, WHITE[1])
-    lit(l, hx, hy, 14, 12.5, FOX)
-    // white cheek fluff flaring back
-    l.poly([hx - 7, hy + 4, hx - 19, hy + 7, hx - 12, hy + 10, hx - 15, hy + 14, hx - 4, hy + 11], WHITE[1])
-    shadeEdges(l, WHITE, 1, true)
-    patch(l, hx + 14, hy + 5.5, 6, 2.5, WHITE[1])
-    // headband across the forehead
-    for (let x = hx - 14; x <= hx + 10; x++) {
-      const y0 = Math.round(hy - 9 + (x - (hx - 14)) * 0.1)
-      l.paint(x, y0, BAND[0])
-      l.paint(x, y0 + 1, BAND[1])
-      l.paint(x, y0 + 2, BAND[1])
-      l.paint(x, y0 + 3, BAND[2])
+}
+
+/** A streak of wind along a circle: thin trailing end, thick head at `a1` (degrees, in frame `f`). */
+function streak(l: Raster, f: Frame, r: number, a0: number, a1: number, w: number, c: number) {
+  const wid = (t: number) => 0.8 + w * Math.sin(Math.PI * Math.min(1, t * 0.62 + 0.38)) * t ** 0.7
+  const pts: Pt[] = []
+  const n = 8
+  for (let i = 0; i <= n; i++) {
+    const a = (a0 + ((a1 - a0) * i) / n) * RAD
+    pts.push(f.pt(Math.cos(a) * r, Math.sin(a) * r))
+  }
+  const path = spline(pts)
+  // a dark rim of its own under the light core, so the streak keeps an edge
+  ribbon(l, path, (t) => wid(t) + 2, NAVY[3])
+  ribbon(l, path, wid, c)
+}
+
+// ------------------------------------------------------------------------------------------------ drawing
+
+/** The rig's key points on screen (used by the tests). */
+export function foxRig(p: FoxPose) {
+  const centre = Frame.at(64 + p.x, 120 - p.pivot - p.rise, p.spin)
+  const ground = centre.child(0, p.pivot)
+  const pelvis = ground.child(0, -HIP - p.y)
+  const k = 1 + p.squash * 0.04
+  const torso = pelvis.child(0, -1, p.lean, k, 1 / k)
+  const head = torso.child(3.5 + p.head[0], -30 + p.head[1], p.nod - p.lean * 0.55, HS)
+  const footN = ground.child(REST.N + p.legN[0], -p.legN[1], p.legN[2])
+  const footF = ground.child(REST.F + p.legF[0], -p.legF[1], p.legF[2])
+  return { centre, ground, pelvis, torso, head, footN, footF }
+}
+
+export function drawFox(p: FoxPose): Raster {
+  const g = new Painter(128, 128, { soft: true })
+  const { centre, pelvis, torso, head, footN, footF } = foxRig(p)
+  const br = p.breath
+
+  // ---- legs: hip → knee → heel (raised: he stands on his toes) → ball of the foot
+  const legGeo = (foot: Frame, lift: number, turn: number, near: boolean) => {
+    const hip = pelvis.pt(near ? 2.5 : -2, near ? 2 : 1)
+    const heel = foot.pt(-4.6, -6.2)
+    const { mid } = joint(hip, heel, 9.5, 10, -1)
+    const grounded = lift < 0.6 && Math.abs(turn) < 12
+    return { hip, heel, knee: mid, foot, grounded }
+  }
+  const legNg = legGeo(footN, p.legN[1], p.legN[2], true)
+  const legFg = legGeo(footF, p.legF[1], p.legF[2], false)
+  const legLayer = (leg: ReturnType<typeof legGeo>, base: number, far: boolean) => (l: Raster) => {
+    fill(l, ID, capsule(leg.hip, leg.knee, far ? 4.2 : 4.6, 3.1), base)
+    fill(l, ID, capsule(leg.knee, leg.heel, 3, 2.1), base)
+    const boot = union(capsule([-4.6, -6.2], [0, -2.4], 2.7, 2.6), oval(2, -2.2, 3.6, 2.2))
+    fill(l, leg.foot, leg.grounded ? overlap(boot, half([0, -0.5], 0, -1)) : boot, base)
+    smooth(l)
+    cel(l, far ? { rim: 1 } : { shade: 2, rim: 1.2 })
+    // the shin wrap and the split toe of the boot
+    within(l, (m) => {
+      stampAt(m, leg.foot, ['k', 'k'], 2.6, -2.4, { k: far ? NAVY[3] : NAVY[3] })
+    })
+  }
+  g.add(-4, legLayer(legFg, NAVY[3], true))
+
+  // ---- arms: bare orange upper arm, black glove with a flared cuff, a shaped hand
+  const armGeo = (s: Pt, a: Arm) => {
+    const sl = torso.local(...s)
+    const w = torso.pt(sl[0] + a[0], sl[1] + a[1])
+    // limbs may cheat: a hand thrust out of reach grows the arm (up to about 1.45×)
+    const k = Math.max(1, Math.min(1.45, Math.hypot(w[0] - s[0], w[1] - s[1]) / 19))
+    const { mid } = joint(s, w, 10 * k, 9.5 * k, a[3])
+    const fore = (Math.atan2(w[1] - mid[1], w[0] - mid[0]) * 180) / Math.PI
+    return { s, elbow: mid, wrist: w, hand: Frame.at(w[0], w[1], fore + a[2]) }
+  }
+  const armLayer = (arm: ReturnType<typeof armGeo>, hand: Hand, fur: number, glove: number) => (l: Raster) => {
+    fill(l, ID, capsule(arm.s, arm.elbow, 3.7, 2.9), fur)
+    const d = Math.hypot(arm.wrist[0] - arm.elbow[0], arm.wrist[1] - arm.elbow[1]) || 1
+    const cuff: Pt = [
+      arm.elbow[0] + ((arm.wrist[0] - arm.elbow[0]) / d) * 2.2,
+      arm.elbow[1] + ((arm.wrist[1] - arm.elbow[1]) / d) * 2.2
+    ]
+    fill(l, ID, capsule(cuff, arm.wrist, 3.6, 2.5), glove)
+    fill(l, arm.hand, handShape(hand), glove)
+    smooth(l)
+    cel(l, { shade: 1.8, rim: 1.2 })
+  }
+  const armF = armGeo(torso.pt(4, -17), p.armF)
+  const armN = armGeo(torso.pt(0.5, -16.5), p.armN)
+  g.add(p.farFront ? 5.2 : -3.5, armLayer(armF, p.handF, FAR[1], NAVY[3]))
+
+  // ---- tail: a great brush with locks along its edges, a russet top and a white tip
+  const tailLayer = (l: Raster) => {
+    const n = p.tail.length - 1
+    const pts = p.tail.map(([u, v], i) => {
+      const s = i / n
+      const w = Math.sin(p.sway - s * 2.4) * s * p.swayAmp
+      return pelvis.pt(u + w * 0.4, v + w)
+    })
+    const path = spline(pts)
+    const width = (t: number) => p.puff * (6 + 13 * Math.sin(Math.PI * Math.min(1, t * 0.92 + 0.04) ** 0.9))
+    ribbon(l, path, width, FUR[1])
+    // locks: pointed tufts along both edges, swept toward the tip
+    const last = path.length - 1
+    for (const [t, side] of [
+      [0.3, 1],
+      [0.48, 1],
+      [0.66, 1],
+      [0.86, 1],
+      [0.4, -1],
+      [0.6, -1],
+      [0.8, -1]
+    ] as const) {
+      const i = Math.min(last, along(path, t))
+      const a = heading(path, i)
+      const f = Frame.at(path[i][0], path[i][1], a)
+      const r = width(t) / 2
+      fill(
+        l,
+        f,
+        polygon([
+          [-4.5, side * (r - 2.5)],
+          [3, side * (r - 2)],
+          [5 * p.puff, side * (r + 3.4 * p.puff)]
+        ]),
+        FUR[1]
+      )
     }
-    l.rect(hx + 1, hy - 8, 6, 4, GOLD[1])
-    l.rect(hx + 1, hy - 8, 6, 1, GOLD[0])
-    l.rect(hx + 1, hy - 5, 6, 1, GOLD[2])
-    l.set(hx + 3, hy - 7, C.ink)
-    l.set(hx + 4, hy - 6, C.ink)
-    // the knot
-    l.ellipse(hx - 13, hy - 6.5, 3, 3, BAND[1])
-    l.rect(hx - 15, hy - 5, 3, 1, BAND[2])
-    // face
-    eyes(l, hx - 1, hy - 3, p.eyes)
-    l.ellipse(hx + 19.5, hy + 1, 2.5, 2, C.black)
-    l.set(hx + 19, hy, WHITE[0])
-    mouth(l, hx + 10, hy + 7, p.mouth)
-    l.ellipse(hx - 4, hy + 5, 2.6, 1.6, C.blush)
-    if (p.sweat) {
-      l.stamp(['.c.', 'ccc', 'ccc', '.c.'], hx - 15, hy - 12, { c: R.water[1] })
-    }
-  })
-  // near arm
-  tag = 'neararm'
-  g.add(1, (l) => arm(l, shoulder, [shoulder[0] + p.nearHand[0], shoulder[1] + p.nearHand[1]], FOX, DARK))
-  // dizzy stars and wind arcs
-  tag = 'fx'
-  if (p.stars !== undefined) g.add(2, (l) => stars(l, head[0], head[1], p.stars!), false)
-  if (p.wind > 0)
-    g.add(
-      6,
-      (l) => {
-        for (let k = 0; k < p.wind; k++) {
-          const r = 26 + k * 4
-          const a0 = Math.PI * (0.75 + k * 0.2)
-          l.ring(chest[0] - 2, 100, r, r + 1.6, WHITE[k === 0 ? 0 : 1], a0, a0 + 1.1)
-          l.ring(chest[0] - 2, 100, r, r + 1.6, WHITE[1], a0 + 3.3, a0 + 4.2)
+    // the white tip, its border cut into locks
+    const ti = along(path, 0.74)
+    const tf = Frame.at(path[ti][0], path[ti][1], heading(path, ti))
+    const zig: Pt[] = [[60, -30]]
+    for (let v = -30; v <= 30; v += 3) zig.push([Math.abs(v / 3) % 2 === 0 ? 0 : 2.6, v])
+    zig.push([60, 30])
+    tint(l, tf, polygon(zig), PALE[1])
+    smooth(l)
+    const base = pelvis.pt(-6, -1)
+    mantle(l, FUR[1], RUSSET[1], { depth: 6 * p.puff, tooth: 3, pitch: 5, origin: base })
+    cel(l, { shade: 5, deep: 1.8, rim: 1.6, tooth: 3, pitch: 5, origin: base })
+    dimEdge(l)
+  }
+  if (p.puff > 0) g.add(p.tailFront ? 6 : -5, tailLayer)
+
+  // ---- headband tails, streaming from the knot behind the head
+  const knot = head.pt(-11, -4)
+  const bandDir = p.band[0] - head.angle
+  for (const [k, dd, ll] of [
+    [1, 10, 0.86],
+    [0, 0, 1]
+  ] as const)
+    g.add(-3 + k * 0.1, (l) => {
+      const wave = (s: number) => Math.sin(p.band[3] + k * 1.7 - s * 4) * p.band[2] * s * 2
+      const path = bentPath(knot, bandDir + dd, p.band[4], p.band[1] * ll, wave)
+      ribbon(l, path, (t) => 3.6 + t * 2.4, k ? BAND[2] : BAND[1])
+      const m = path.length - 1
+      carve(
+        l,
+        Frame.at(path[m][0], path[m][1], heading(path, m)),
+        polygon([
+          [4, -3.4],
+          [-2, 0],
+          [4, 3.4]
+        ])
+      )
+      cel(l, { shade: 1.4, rim: k ? 0 : 1 })
+      if (!k)
+        for (let i = Math.round(m * 0.4); i <= Math.round(m * 0.62); i++) {
+          const a = heading(path, i) * RAD
+          l.paint(path[i][0] - Math.sin(a) * 0.8, path[i][1] + Math.cos(a) * 0.8, BAND[2])
         }
+    })
+
+  // ---- body: hips, waist and chest in the navy jacket, the white chest fur in its collar, the red sash, the neck
+  const neckEnd = torso.local(...head.pt(-3, 6))
+  const bodyShape = union(
+    oval(-0.5, -1, 8.2, 6.2),
+    capsule([0, -4], [1.5, -12], 6.6, 8.6 + br * 0.3),
+    oval(2, -14 - br * 0.4, 9.4 + br * 0.3, 7.6),
+    polygon([
+      [-9, -2],
+      [9, -2],
+      [9.5, 6.5],
+      [1.5, 4.5],
+      [-8.5, 6.5]
+    ])
+  )
+  g.add(0, (l) => {
+    fill(l, torso, capsule([2, -17], neckEnd, 5, 4.6), FUR[1])
+    fill(l, torso, bodyShape, NAVY[1])
+    // the open collar shows the white chest fur and throat
+    tint(
+      l,
+      torso,
+      union(
+        polygon([
+          [3, -21.5],
+          [11.5, -19.5],
+          [7.5, -10.5]
+        ]),
+        overlap(capsule([2, -17], neckEnd, 5, 4.6), half([3.5, -17], 1, -0.5))
+      ),
+      PALE[1]
+    )
+    // the sash
+    tint(
+      l,
+      torso,
+      polygon([
+        [-10, -6.5],
+        [10, -8],
+        [10, -3.5],
+        [-10, -2.5]
+      ]),
+      BAND[1]
+    )
+    fill(l, torso, capsule([6, -5], [9.5, 3], 1.8, 2.4), BAND[1])
+    fill(l, torso, oval(6.5, -5.5, 2.4, 2.2), BAND[1])
+    smooth(l)
+    cel(l, { shade: 3.6, deep: 1.4, rim: 1.4 })
+    dimEdge(l)
+    // the lapel line and a fold
+    within(
+      l,
+      (m) => {
+        fill(m, torso, capsule([1, -21], [7, -10.5], 0.6, 0.6), NAVY[3])
+      },
+      true
+    )
+    shadow(l, head.moved(-1, 2), oval(0, 2, 10, 8))
+  })
+
+  // ---- near leg, in front of the jacket's skirt only where it hangs free
+  g.add(-0.5, legLayer(legNg, NAVY[2], false))
+
+  // ---- head
+  const skull = oval(0, -1, 10.5, 9.5)
+  const bridge = capsule([2, -3.5], [12, 0.5], 6, 4.4)
+  const muzzle = capsule([6, 1.5], [19.5, 3.6], 5.2, 1.9)
+  const ruff = union(
+    oval(-3.5, 5, 6, 4.4),
+    polygon([
+      [-6, 2.5],
+      [-13.5, 5.5],
+      [-9, 7],
+      [-11.5, 10.5],
+      [-5, 9.5],
+      [-5, 12.5],
+      [1, 9]
+    ])
+  )
+  const headShape = union(skull, bridge, muzzle, ruff, oval(4, 5.5, 4.5, 3))
+  const headAt = head.pt(0, -1)
+
+  // far ear (behind the skull)
+  const earShape = (s: number) =>
+    polygon([
+      [-5 * s, 1],
+      [-1.5 * s, -17 * s],
+      [5 * s, 0]
+    ])
+  const tipShape = polygon([
+    [-9, -11],
+    [9, -11],
+    [0, -24]
+  ])
+  const earF = head.child(5, -8, -p.earF)
+  g.add(3.5, (l) => {
+    fill(l, earF, earShape(0.9), FAR[1])
+    tint(
+      l,
+      earF,
+      polygon([
+        [-1.5, -1],
+        [-0.8, -9.5],
+        [2.2, -1]
+      ]),
+      PALE[2]
+    )
+    tint(l, earF, overlap(tipShape, half([0, -10], 0, -1)), NAVY[3])
+    cel(l, { shade: 1.4 })
+  })
+
+  // mouth and lower jaw
+  const open = p.mouth === 'open' && p.jaw > 0.08
+  const jaw = head.child(5, 5, open ? p.jaw * 30 : 0)
+  if (open) {
+    g.add(
+      3.7,
+      (l) => {
+        fill(l, ID, polygon([head.pt(5, 3.5), head.pt(19, 4.6), jaw.pt(13, 0), jaw.pt(0, -0.5)]), RUSSET[2])
       },
       false
     )
-  return g.render()
-}
-
-// ---------------------------------------------------------------------------------------------- spin
-
-/** The 旋風 spin dash: a curled fox turned by `theta` inside a spiral tail and trailing headband ends. */
-export function drawSpin(theta: number, wobble: number): Raster {
-  const g = new Rig()
-  const cx = 64
-  const cy = 90 - wobble
-  const rot = (px: number, py: number, extra = 0): Pt => {
-    const a = theta + extra
-    return [cx + px * Math.cos(a) - py * Math.sin(a), cy + px * Math.sin(a) + py * Math.cos(a)]
+    g.add(3.8, (l) => {
+      fill(l, jaw, capsule([0, 0], [12.5, 1.6], 2.8, 1.6), PALE[1])
+      cel(l, { shade: 1.2 })
+      stampAt(l, jaw, ['w.w', 'W.W'], 10, -1.6, { w: C.white, W: PALE[2] })
+    })
   }
-  // the brush: a spiral around the curled body, white tip last
-  g.add(-2, (l) => {
-    const N = 30
-    for (let i = 0; i <= N; i++) {
-      const t = i / N
-      const r = lerp(15, 24, t)
-      const a = theta + 0.5 + t * 5
-      const c: Pt = [cx + Math.cos(a) * r, cy + Math.sin(a) * r]
-      const rad = 4.5 + 5 * Math.sin(Math.PI * Math.min(1, t * 1.05) ** 0.8)
-      l.ellipse(c[0], c[1], rad, rad, t > 0.78 ? WHITE[1] : FOX[1])
-    }
-    shadeEdges(l, FOX, 2, true)
-    shadeEdges(l, WHITE, 2, true)
+
+  g.add(4, (l) => {
+    fill(l, head, headShape, FUR[1])
+    tint(l, head, union(ruff, capsule([6, 5.2], [18.5, 4.8], 2.4, 1), oval(4, 6, 4.5, 3), oval(-4, 6, 6, 4)), PALE[1])
+    smooth(l)
+    mantle(l, FUR[1], RUSSET[1], { depth: 4, tooth: 2, pitch: 4, origin: headAt })
+    cel(l, { shade: 3.4, deep: 1.3, rim: 1.6, tooth: 1.5, pitch: 4, origin: headAt })
+    dimEdge(l)
   })
-  // the curled body
-  g.add(0, (l) => {
-    ball(l, cx, cy, 16, 16, FOX)
-    const belly = rot(5, 4)
-    patch(l, belly[0], belly[1], 8, 9, WHITE[1])
-    for (const [px, py, r] of [
-      [-9, 12, 4.4],
-      [8, 13, 4.4]
-    ] as const) {
-      const f = rot(px, py)
-      ball(l, f[0], f[1], r, r, DARK, false)
-    }
-    // the dark obi
-    const o0 = rot(-15, 3)
-    const o1 = rot(15, 3)
-    bar(l, o0, o1, 4, DARK[1])
+
+  // near ear
+  const earN = head.child(-3, -7.5, -p.earN)
+  g.add(4.5, (l) => {
+    fill(l, earN, earShape(1), FUR[1])
+    tint(
+      l,
+      earN,
+      polygon([
+        [-2, -1],
+        [-1.2, -11],
+        [2.6, -1]
+      ]),
+      PALE[1]
+    )
+    tint(l, earN, overlap(tipShape, half([0, -11.5], 0, -1)), NAVY[2])
+    smooth(l)
+    mantle(l, FUR[1], RUSSET[1], { depth: 2 })
+    cel(l, { shade: 1.6, rim: 1 })
   })
-  // head, ears and face turn with the body
-  g.add(0.5, (l) => {
-    const h = rot(10, -9)
-    for (const s of [-1, 1]) {
-      const e0 = rot(10 + s * 6 - 3, -16)
-      const tip = rot(10 + s * 8 - 5, -27)
-      const e1 = rot(10 + s * 6 + 5, -15)
-      l.poly([e0[0], e0[1], tip[0], tip[1], e1[0], e1[1]], FOX[1])
-    }
-    ball(l, h[0], h[1], 10, 9.5, FOX)
-    const sn = rot(18, -7)
-    ball(l, sn[0], sn[1], 6.5, 4.5, FOX, false)
-    const mz = rot(19, -4)
-    patch(l, mz[0], mz[1], 5, 2.6, WHITE[1])
-    const nose = rot(23, -9)
-    l.ellipse(nose[0], nose[1], 1.8, 1.6, C.black)
-    // glaring slit eyes
-    for (const [ex, ey] of [
-      [9, -11],
-      [15, -10]
-    ] as const) {
-      const a = rot(ex - 2, ey - 1)
-      const b = rot(ex + 2, ey + 1)
-      l.line(a[0], a[1], b[0], b[1], C.black)
-      const w = rot(ex, ey - 1)
-      l.set(w[0], w[1], C.white)
-    }
-    // headband
-    for (let k = -9; k <= 9; k++) {
-      const a = rot(10 + k * 0.4, -14 + k * 0.1)
-      l.paint(a[0], a[1], BAND[1])
-      l.paint(a[0], a[1] + 1, BAND[2])
-    }
-    shadeEdges(l, FOX, 1, true)
+
+  // headband: red cloth over the forehead with the steel plate, the knot behind
+  g.add(4.8, (l) => {
+    const band = polygon([
+      [-11.5, -4.6],
+      [9.5, -6.8],
+      [10.5, -3.4],
+      [-11, -0.8]
+    ])
+    fill(l, head, overlap(band, union(oval(0, -1, 11.2, 10.2), capsule([2, -3.5], [12, 0.5], 6.6, 5))), BAND[1])
+    fill(l, Frame.at(knot[0], knot[1]), oval(0, 0, 2.8, 2.8), BAND[1])
+    cel(l, { shade: 1.6, rim: 1 })
+    stampAt(l, head, PLATE, 4, -5, PLATE_KEY)
   })
-  // headband ends tracing the circle
-  g.add(1, (l) => {
-    const knot = rot(1, -14)
-    const a0 = Math.atan2(knot[1] - cy, knot[0] - cx)
-    for (const [k, r0, len] of [
-      [0, 27, 1.5],
-      [1, 22, 1.1]
-    ] as const) {
-      const pts: Pt[] = []
-      for (let j = 0; j <= 7; j++) {
-        const a = a0 - (j / 7) * len
-        const r = r0 - j * 0.3
-        pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r])
-      }
-      for (let j = 1; j < pts.length; j++)
-        bar(l, pts[j - 1], pts[j], j < 4 ? 4 : j < 6 ? 3 : 2, k === 0 ? BAND[1] : BAND[0])
-    }
-    shadeEdges(l, BAND, 1, true)
-  })
-  // a wind ring
+
+  // face
   g.add(
-    2,
+    5,
     (l) => {
-      l.ring(cx, cy, 30, 31.4, WHITE[1], theta + 0.4, theta + 1.4)
-      l.ring(cx, cy, 30, 31.4, WHITE[1], theta + 3.6, theta + 4.4)
+      stampAt(l, head, EYES[p.eyes], 6, -0.5, EYE_KEY)
+      stampAt(l, head, NOSE, 20, 2.2, { K: C.black, h: NAVY[1] })
+      const lip = { K: C.inkWarm }
+      if (p.mouth === 'smirk') stampAt(l, head, ['K.........', '.KK.......', '...KKKKKKK'], 12.5, 5.6, lip)
+      else if (p.mouth === 'flat') stampAt(l, head, ['KKKKKKKKKK'], 13, 5.6, lip)
+      else if (p.mouth === 'grin')
+        stampAt(l, head, ['K..........', '.KKKKKKKKKK', '..wWwWwWwWK', '..KKKKKKKKK'], 12.5, 5.4, {
+          ...lip,
+          w: C.white,
+          W: PALE[2]
+        })
     },
     false
   )
+
+  // ---- near arm, in front of everything but a wrapped tail
+  g.add(5.5, armLayer(armN, p.handN, FUR[1], NAVY[2]))
+
+  // ---- wind streaks round the turning centre
+  if (p.wind > 0) {
+    const r = p.windR
+    for (let k = 0; k < Math.min(3, Math.ceil(p.wind)); k++) {
+      const a1 = p.windAt + k * 120
+      const span = 64 * Math.min(1, p.wind - k)
+      g.add(k === 1 ? -6 : 7, (l) => {
+        streak(l, centre, r + (k === 2 ? 3 : 0), a1 - span, a1, 2.6, k === 1 ? FUR[0] : PALE[1])
+      })
+    }
+  }
+
+  // ---- stars over a knocked-out head, outlined
+  if (p.stars >= 0)
+    g.add(8, (l) => {
+      const [cx, cy] = head.pt(0, 0)
+      for (let i = 0; i < 3; i++) {
+        const a = (p.stars + i / 3) * TAU
+        l.stamp(
+          Math.sin(a) > 0 ? STAR : STAR_SMALL,
+          Math.round(cx + Math.cos(a) * 13) - 2,
+          Math.round(cy - 16 + Math.sin(a) * 3.5) - 2,
+          { y: GOLD[1], Y: C.white }
+        )
+      }
+    })
+
   return g.render()
 }
 
-// ---------------------------------------------------------------------------------------------- clips
+// ------------------------------------------------------------------------------------------------ clips
 
-const TAU = Math.PI * 2
+const P = foxPose
+const phase = (i: number, n: number) => (i / n) * TAU
+const draw = (poses: FoxPose[]) => poses.map(drawFox)
 
-/** Nudges a frame so it keeps one empty pixel to every edge. */
-function fit(r: Raster) {
-  const b = r.bounds()!
-  const dx = Math.max(2 - b.x, Math.min(0, 125 - (b.x + b.w - 1)))
-  const dy = Math.max(2 - b.y, Math.min(0, 125 - (b.y + b.h - 1)))
-  return dx || dy ? r.shifted(dx, dy) : r
+/** Points on a circle round `c` (pelvis units): the tail wrapped round the wheel. */
+const arc = (c: Pt, r0: number, r1: number, degs: readonly number[]): Pt[] =>
+  degs.map((d, i) => {
+    const r = r0 + ((r1 - r0) * i) / Math.max(1, degs.length - 1)
+    return [c[0] + Math.cos(d * RAD) * r, c[1] + Math.sin(d * RAD) * r]
+  })
+
+/** The tail curled round the front of his legs (crouch, windup). */
+const TAIL_WRAP: readonly Pt[] = [
+  [-6, -1],
+  [-17, 2],
+  [-10, 6],
+  [6, 5],
+  [16, -1]
+]
+/** The tail fanned high behind the intro pose. */
+const TAIL_FAN: readonly Pt[] = [
+  [-6, -2],
+  [-21, 3],
+  [-34, -6],
+  [-36, -25],
+  [-24, -40]
+]
+
+/** idle: a ready stance on the balls of his feet, a light bounce, a ninja sign at the chest, the tail in a slow S. */
+const idle = memo(() => {
+  const N = 6
+  const bob = Array.from({ length: N }, (_, i) => 0.5 - 0.5 * Math.cos(phase(i, N)))
+  const headLag = lag(bob, { stiffness: 0.4, damping: 0.5, loop: true })
+  return Array.from({ length: N }, (_, i) =>
+    P({
+      y: Math.round(bob[i] * 1.6),
+      breath: bob[i],
+      head: [0, -Math.round(bob[i] * 1.6) + headLag[i] * 1.2],
+      armN: [12, 6 - bob[i], -10, 1],
+      earF: i === 3 ? 24 : i === 4 ? 8 : 0,
+      eyes: i === 4 ? 'happy' : 'sly',
+      mouth: i >= 3 && i <= 4 ? 'grin' : 'smirk',
+      sway: phase(i, N),
+      band: [6 + Math.sin(phase(i, N) + 1) * 5, 30, 1.5, phase(i, N), 34]
+    })
+  )
+})
+
+/** The finished intro pose: arm thrust out with two fingers raised, the other hand on the hip, tail fanned, a grin. */
+const POSE: Partial<FoxPose> = {
+  y: 0,
+  lean: -3,
+  head: [1, -1],
+  nod: -4,
+  eyes: 'sly',
+  mouth: 'grin',
+  armN: [26, 1, -80, 1],
+  handN: 'two',
+  armF: [-7, 15, 30, 1],
+  handF: 'fist',
+  legN: [5, 0, 0],
+  legF: [-4, 0, 0],
+  tail: TAIL_FAN,
+  puff: 1.15,
+  band: [0, 32, 1.6, 0, 26]
 }
 
-const idle = memo(() =>
-  [0, 1, 2, 3].map((i) => {
-    const t = i / 4
-    const s = Math.sin(t * TAU)
-    const c = Math.cos(t * TAU)
-    return drawFox(
-      foxPose({
-        crouch: 1.2 - c * 1.2,
-        lean: s * 1.4,
-        nearFoot: [s * 0.6, 0],
-        farFoot: [-s * 0.6, 0],
-        nearHand: [13 + s * 1.5, 6 - c * 1.5],
-        farHand: [10 - s, 5 + c],
-        tailSwing: s,
-        bandPhase: t * TAU,
-        earBack: c > 0.5 ? 1 : 0
-      })
-    )
-  })
-)
+/** intro: a low crouch wrapped in his tail, a spin up onto one foot (one smear frame), then the pose, held alive. */
+const intro = memo(() => [
+  P({
+    y: -8,
+    lean: 22,
+    head: [1, 3],
+    nod: 14,
+    eyes: 'shut',
+    mouth: 'flat',
+    earN: 20,
+    earF: 20,
+    armN: [9, 9, -20, 1],
+    handN: 'fist',
+    armF: [11, 7, 0, 1],
+    farFront: true,
+    legN: [2, 0, 0],
+    legF: [-1, 0, 0],
+    tail: TAIL_WRAP,
+    tailFront: true,
+    swayAmp: 0,
+    band: [30, 26, 0.6, 0, 50]
+  }),
+  // the smear: stretched tall, spinning, the tail swept round him in an arc
+  P({
+    y: 4,
+    lean: -2,
+    squash: -3,
+    head: [0, -1],
+    nod: -6,
+    eyes: 'shut',
+    mouth: 'flat',
+    earN: 35,
+    earF: 35,
+    armN: [4, 10, 0, 1],
+    handN: 'fist',
+    armF: [-4, 12, 0, 1],
+    legN: [1, 4, 30],
+    legF: [-3, 0, 0],
+    tail: [
+      [-6, -1],
+      [-18, 2],
+      [-26, -10],
+      [-24, -26],
+      [-12, -38]
+    ],
+    puff: 0.85,
+    swayAmp: 0,
+    band: [-40, 30, 1, 1, 60],
+    wind: 2.6,
+    windAt: 40,
+    windR: 30,
+    pivot: 38
+  }),
+  // up on one foot, the near knee high, arms opening
+  P({
+    y: 4,
+    lean: -6,
+    head: [0, -2],
+    nod: -8,
+    eyes: 'wide',
+    mouth: 'smirk',
+    earN: 10,
+    earF: 10,
+    armN: [14, -10, -40, 1],
+    handN: 'two',
+    armF: [-12, 4, 0, 1],
+    handF: 'open',
+    legN: [7, 13, -20],
+    legF: [-2, 0, 0],
+    tail: [
+      [-6, -1],
+      [-20, 0],
+      [-30, -12],
+      [-28, -30],
+      [-16, -42]
+    ],
+    puff: 1,
+    swayAmp: 0,
+    band: [10, 32, 1.4, 2, 16]
+  }),
+  // the pose lands: a dip, then up into the hold
+  P({ ...POSE, y: -2, squash: 1.5, puff: 1.25, band: [8, 32, 1.8, 3, 24] }),
+  P({ ...POSE, y: 0.6, squash: -0.5, puff: 1.2, band: [2, 32, 1.6, 4, 26], sway: 1 }),
+  P({ ...POSE, band: [0, 32, 1.5, 5, 28], sway: 1.8 }),
+  P({ ...POSE, earF: 18, band: [-2, 32, 1.4, 6, 28], sway: 2.6 }),
+  P({ ...POSE, y: 1, head: [1, -2], band: [3, 32, 1.4, 7.2, 26], sway: 3.6, eyes: 'happy' })
+])
 
-const intro = memo(() =>
-  [
-    foxPose({
-      crouch: 5,
-      lean: -3,
-      nearHand: [4, 9],
-      farHand: [2, 10],
-      tailCurl: 0.25,
-      eyes: 'glare',
-      mouth: 'flat',
-      bandPhase: 0.4
-    }),
-    foxPose({ crouch: 2, lean: 2, nearHand: [14, -3], farHand: [13, -1], eyes: 'sly', mouth: 'smirk', bandPhase: 1.6 }),
-    foxPose({
-      crouch: 0,
-      lean: 1,
-      nearHand: [15, -4],
-      farHand: [13, -2],
-      puff: 1.28,
-      tailSwing: 0.8,
-      eyes: 'smirk',
+/** hurt: knocked off balance with the tail puffed to twice its size, recoil, a glare. */
+const hurt = memo(() => [
+  P({
+    x: -3,
+    y: 1,
+    lean: -18,
+    head: [-2, -2],
+    nod: -16,
+    eyes: 'hurt',
+    mouth: 'open',
+    jaw: 0.7,
+    earN: 45,
+    earF: 45,
+    armN: [6, -16, 0, -1],
+    handN: 'open',
+    armF: [-12, -8, 0, 1],
+    handF: 'open',
+    legN: [3, 3, 20],
+    tail: [
+      [-6, -1],
+      [-20, 3],
+      [-32, -6],
+      [-33, -24],
+      [-22, -38]
+    ],
+    puff: 1.7,
+    swayAmp: 0,
+    band: [-24, 30, 2, 1, 30]
+  }),
+  P({
+    x: -5,
+    y: -3,
+    lean: 10,
+    head: [0, 2],
+    nod: 12,
+    eyes: 'shut',
+    mouth: 'flat',
+    earN: 35,
+    earF: 35,
+    armN: [8, 10, 0, 1],
+    handN: 'fist',
+    armF: [-6, 14, 30, 1],
+    legN: [-1, 0, 0],
+    legF: [-4, 0, 0],
+    puff: 1.45,
+    swayAmp: 1,
+    sway: 1,
+    band: [24, 30, 1.6, 2.5, 20]
+  }),
+  P({
+    x: -3,
+    y: -1,
+    lean: 6,
+    head: [1, 1],
+    nod: 6,
+    eyes: 'angry',
+    mouth: 'grin',
+    earN: 15,
+    earF: 12,
+    armN: [12, 6, -10, 1],
+    handN: 'two',
+    puff: 1.15,
+    sway: 2,
+    band: [12, 30, 1.4, 4, 30]
+  })
+])
+
+/** move: the ninja run, leaning far forward with the arms trailing straight back, tail and headband streaming level. */
+const move = memo(() => {
+  const N = 8
+  const foot = (t: number): Leg => {
+    const f = ((t % 1) + 1) % 1
+    if (f < 0.45) return [11 - 22 * (f / 0.45), 0, 0]
+    const s = (f - 0.45) / 0.55
+    return [-11 + 22 * ease.inOut(s), Math.sin(Math.PI * s) * 10, Math.sin(Math.PI * s) * 30]
+  }
+  const bob = Array.from({ length: N }, (_, i) => -Math.cos(((i - 1) / 4) * TAU))
+  const headLag = lag(bob, { stiffness: 0.45, damping: 0.55, loop: true })
+  return Array.from({ length: N }, (_, i) => {
+    const n = foot(i / N)
+    const f = foot(i / N + 0.5)
+    return P({
+      x: 4,
+      y: -3 + bob[i] * 1.5,
+      lean: 42,
+      head: [2, 3 + headLag[i]],
+      nod: -4,
+      eyes: 'angry',
       mouth: 'grin',
-      bandPhase: 2.8
-    }),
-    foxPose({
-      crouch: 0,
-      lean: -1,
-      headDy: -1,
-      nearHand: [7, 8],
-      farHand: [9, 3],
-      puff: 1.28,
-      tailSwing: -0.4,
-      eyes: 'smirk',
-      mouth: 'grin',
-      bandPhase: 4
+      earN: 30,
+      earF: 30,
+      armN: [-17, 7 + bob[i] * 0.5, 10, 1],
+      handN: 'open',
+      armF: [-16, 4 + bob[i] * 0.5, 10, 1],
+      handF: 'open',
+      legN: [n[0] - 4, n[1], n[2]],
+      legF: [f[0] + 7, f[1], f[2]],
+      tail: [
+        [-6, -1],
+        [-17, -3],
+        [-28, -5],
+        [-38, -5],
+        [-47, -8]
+      ],
+      sway: phase(i, N) * 2,
+      swayAmp: 2,
+      band: [-6, 32, 2, phase(i, N) * 2, 6]
     })
-  ].map((p) => drawFox(p))
-)
-
-const move = memo(() =>
-  Array.from({ length: 6 }, (_, i) => {
-    const t = i / 6
-    const s = Math.sin(t * TAU)
-    const c = Math.cos(t * TAU)
-    return drawFox(
-      foxPose({
-        crouch: 6 + Math.abs(s) * -2,
-        lean: 15,
-        headDy: 4,
-        nearFoot: [s * 15 - 2, Math.max(0, -c) * 8],
-        farFoot: [-s * 15, Math.max(0, c) * 8],
-        nearHand: [-10 - s * 4, -2 + c * 3],
-        farHand: [-8 + s * 4, -1 - c * 3],
-        tailStream: 1,
-        tailSwing: c * 0.5,
-        bandPhase: t * TAU * 2,
-        bandStream: 1,
-        earBack: 5,
-        eyes: 'sly',
-        mouth: 'grin'
-      })
-    )
   })
-)
+})
 
-const windup = memo(() =>
-  [
-    foxPose({
-      crouch: 7,
-      lean: -5,
-      nearHand: [-4, 9],
-      farHand: [-6, 8],
-      tailPts: [
-        [0, 0],
-        [-22, 2],
-        [-30, -14],
-        [-16, -30]
+/** windup: he crouches, crosses his arms before his face, the tail whips round him, the first wind; trembles. */
+const windup = memo(() => {
+  const set: Partial<FoxPose> = {
+    y: -6,
+    lean: 16,
+    head: [1, 3],
+    nod: 8,
+    eyes: 'angry',
+    mouth: 'grin',
+    earN: 40,
+    earF: 40,
+    armN: [13, -9, -20, 1],
+    handN: 'fist',
+    armF: [15, -7, -20, 1],
+    handF: 'fist',
+    farFront: true,
+    legN: [3, 0, 0],
+    legF: [-2, 0, 0],
+    tail: TAIL_WRAP,
+    tailFront: true,
+    swayAmp: 0,
+    windR: 26,
+    pivot: 30
+  }
+  return [
+    P({
+      y: -4,
+      lean: 10,
+      head: [1, 1],
+      nod: 4,
+      eyes: 'angry',
+      mouth: 'smirk',
+      earN: 25,
+      earF: 25,
+      armN: [12, -2, -30, 1],
+      handN: 'fist',
+      armF: [13, 0, -30, 1],
+      farFront: true,
+      tail: [
+        [-6, -1],
+        [-20, 1],
+        [-27, 7],
+        [-12, 9],
+        [2, 5]
+      ],
+      swayAmp: 0,
+      band: [10, 30, 1.4, 0, 30]
+    }),
+    P({ ...set, wind: 1.5, windAt: 200, band: [-10, 30, 1.8, 1, 30] }),
+    P({ ...set, x: 1, wind: 2.4, windAt: 214, band: [-14, 30, 2, 2.4, 34] }),
+    P({ ...set, x: -1, y: -5, wind: 2.6, windAt: 232, band: [-12, 30, 2, 3.8, 30] })
+  ]
+})
+
+/**
+ * attack: the whirlwind — the tucked rig turned a sixth of a circle further each frame, the tail wrapped round the
+ * outside, the headband tails tracing a second arc, three wind streaks turning with him.
+ */
+const attack = memo(() => {
+  const N = 6
+  const c: Pt = [1, -11]
+  return Array.from({ length: N }, (_, i) =>
+    P({
+      spin: i * 60,
+      pivot: 34,
+      y: -5,
+      lean: 30,
+      head: [2, 5],
+      nod: 12,
+      eyes: 'angry',
+      mouth: 'grin',
+      earN: 60,
+      earF: 60,
+      armN: [11, 13, 0, 1],
+      handN: 'fist',
+      armF: [13, 11, 0, 1],
+      farFront: true,
+      legN: [4, 15, -50],
+      legF: [0, 13, -50],
+      tail: arc(c, 22, 24, [178, 138, 98, 58, 18]),
+      tailFront: true,
+      puff: 0.85,
+      swayAmp: 0,
+      band: [-10, 36, 0.5, phase(i, N), 110],
+      wind: 3,
+      windAt: 30,
+      windR: 35
+    })
+  )
+})
+
+/** recover: dizzy from his own spin, staggering on the spot with one hand on his head, the tail limp. */
+const recover = memo(() =>
+  [0, 1, 2, 3].map((i) => {
+    const s = Math.sin(phase(i, 4))
+    const c = Math.cos(phase(i, 4))
+    return P({
+      x: Math.round(s * 1.5),
+      y: -2 - Math.abs(c) * 0.6,
+      lean: 2 + s * 7,
+      head: [c * 1.5, 2 + s],
+      nod: 12 + s * 8,
+      eyes: 'dizzy',
+      mouth: 'open',
+      jaw: 0.25 + 0.1 * c,
+      earN: 30 + s * 10,
+      earF: 20 - s * 10,
+      armN: [6, -21, -30, -1],
+      handN: 'open',
+      armF: [-3, 17, 20, 1],
+      handF: 'open',
+      legN: [1 + s, 0, 0],
+      legF: [-1 + s, 0, 0],
+      tail: [
+        [-6, 0],
+        [-15, 7],
+        [-26, 10],
+        [-37, 10],
+        [-46, 9]
       ],
       puff: 0.8,
-      earBack: 2,
-      eyes: 'glare',
-      mouth: 'flat',
-      bandPhase: 0.5,
-      nearFoot: [-3, 0],
-      farFoot: [4, 0]
-    }),
-    foxPose({
-      crouch: 12,
-      lean: -7,
-      headDy: 2,
-      nearHand: [-6, 12],
-      farHand: [-4, 11],
-      tailPts: [
-        [0, 0],
-        [-24, 2],
-        [-34, -20],
-        [-18, -40]
-      ],
-      puff: 0.75,
-      earBack: 3,
-      eyes: 'glare',
-      mouth: 'grin',
-      bandPhase: 1.5,
-      wind: 1,
-      nearFoot: [-4, 0],
-      farFoot: [6, 0]
-    }),
-    foxPose({
-      crouch: 15,
-      lean: 4,
-      headDy: 4,
-      nearHand: [-9, 14],
-      farHand: [-7, 13],
-      tailPts: [
-        [0, 0],
-        [-24, 3],
-        [-36, -20],
-        [-22, -42]
-      ],
-      puff: 0.75,
-      earBack: 5,
-      eyes: 'glare',
-      mouth: 'grin',
-      bandPhase: 2.4,
-      bandStream: 0.5,
-      wind: 2,
-      nearFoot: [-5, 0],
-      farFoot: [7, 0]
+      sway: phase(i, 4),
+      swayAmp: 1.2,
+      band: [40 + s * 6, 28, 0.6, phase(i, 4), 30]
     })
-  ].map((p) => drawFox(p))
+  })
 )
 
-const attack = memo(() => [0, 1, 2, 3].map((i) => drawSpin(i * 1.4 + 0.3, i % 2)))
-
-const recover = memo(() =>
-  [
-    foxPose({
-      crouch: 7,
-      lean: -3,
-      headDy: 3,
-      nearHand: [3, 15],
-      farHand: [-1, 14],
-      tailSwing: -0.7,
-      earBack: 4,
-      eyes: 'swirl',
-      mouth: 'tongue',
-      stars: 0.3,
-      bandPhase: 0.2,
-      bandDroop: 1.2,
-      angle: -0.07,
-      nearFoot: [-4, 0],
-      farFoot: [3, 0]
-    }),
-    foxPose({
-      crouch: 7,
-      lean: 3,
-      headDy: 3,
-      nearHand: [5, 15],
-      farHand: [1, 14],
-      tailSwing: 0.7,
-      earBack: 4,
-      eyes: 'swirl',
-      mouth: 'tongue',
-      stars: 2.4,
-      bandPhase: 2.2,
-      bandDroop: 1.2,
-      angle: 0.07,
-      nearFoot: [-2, 0],
-      farFoot: [5, 0]
-    })
-  ].map((p) => drawFox(p))
-)
-
-const hurt = memo(() =>
-  [
-    foxPose({
-      crouch: 3,
-      lean: -8,
-      headDy: -2,
-      nearHand: [-6, -2],
-      farHand: [-4, -4],
-      puff: 1.15,
-      earBack: 5,
-      eyes: 'hurt',
-      mouth: 'o',
-      tailSwing: 1,
-      bandPhase: 1,
-      bandStream: 0.7,
-      angle: -0.12,
-      sweat: true
-    }),
-    foxPose({
-      crouch: 5,
-      lean: -5,
-      headDy: 0,
-      nearHand: [-2, 6],
-      farHand: [-3, 5],
-      puff: 1.1,
-      earBack: 4,
-      eyes: 'hurt',
-      mouth: 'o',
-      tailSwing: 0.5,
-      bandPhase: 2,
-      bandStream: 0.5,
-      angle: -0.05,
-      sweat: true
-    })
-  ].map((p) => drawFox(p))
-)
-
-/** Lowers a lying frame onto the floor and keeps it inside the frame. */
-function settle(r: Raster) {
-  const b = r.bounds()!
-  const dy = 121 - (b.y + b.h - 1)
-  const dx = Math.max(2 - b.x, Math.min(0, 125 - (b.x + b.w - 1)))
-  return r.shifted(dx, dy)
-}
-
-/** A rigid frame: the standing point `ref` lands on `at`, turned by `a` (radians, clockwise). */
-interface Frame {
-  ref: Pt
-  at: Pt
-  a: number
-}
-
-function mapPt(f: Frame, q: Pt): Pt {
-  const dx = q[0] - f.ref[0]
-  const dy = q[1] - f.ref[1]
-  const c = Math.cos(f.a)
-  const sn = Math.sin(f.a)
-  return [f.at[0] + dx * c - dy * sn, f.at[1] + dx * sn + dy * c]
-}
-
-/** One part of the fox in standing coordinates, carried by a frame and turned a little more on its own. */
-function put(only: string, pose: Partial<FoxPose>, pivot: Pt, f: Frame, extra = 0, off: Pt = [0, 0]): Raster {
-  const at = mapPt(f, pivot)
-  at[0] += off[0]
-  at[1] += off[1]
-  return drawFox(foxPose({ ...pose, angle: f.a + extra, shift: [at[0] - pivot[0], at[1] - pivot[1]], pivot }), only)
-}
-
-const HIP0: Pt = [58, 102]
-const HEAD0: Pt = [64, 64]
-const SHOULDER0: Pt = [65, 79]
-
-interface Down {
-  /** Where the hips land and how the body is turned. */
-  hip: Pt
-  a: number
-  /** Head turn and offset on top of the body's. */
-  headTurn: number
-  headOff?: Pt
-  /** Extra turn of the legs about the hips and of the arms about the shoulder. */
-  nearLeg: number
-  farLeg: number
-  nearArm: number
-  farArm: number
-  /** Where the thighs leave the body (screen offset from the hips). */
-  legOff?: Pt
-  face: Partial<FoxPose>
-  tail: Pt[]
-  band: Partial<FoxPose>
-  bandTurn?: number
-}
-
-/** A fox on the floor, assembled part by part so nothing is tilted into a flat cut. */
-function drawDown(d: Down): Raster {
-  const body: Frame = { ref: HIP0, at: d.hip, a: d.a }
-  const headAt = mapPt(body, HEAD0)
-  const head: Frame = {
-    ref: HEAD0,
-    at: [headAt[0] + (d.headOff?.[0] ?? 0), headAt[1] + (d.headOff?.[1] ?? 0)],
-    a: d.a + d.headTurn
+/** defeat: hit, one more spin out of control, a trip over his own tail, flat on his back, a bounce, out cold. */
+const defeat = memo(() => {
+  const lying: Partial<FoxPose> = {
+    spin: -90,
+    pivot: 10,
+    x: 10,
+    y: 0,
+    lean: 0,
+    head: [1, -3],
+    nod: 26,
+    eyes: 'dizzy',
+    mouth: 'open',
+    jaw: 0.3,
+    earN: 40,
+    earF: 30,
+    armN: [-6, 8, 0, 1],
+    handN: 'open',
+    armF: [13, 7, 0, -1],
+    handF: 'open',
+    legN: [15, 13, -60],
+    legF: [6, 19, -30],
+    tail: [
+      [-5, -1],
+      [-4, 9],
+      [-3, 20],
+      [-3, 31],
+      [-6, 42]
+    ],
+    puff: 0.75,
+    swayAmp: 0,
+    band: [150, 22, 0.6, 0, -10]
   }
-  const out = new Raster(128, 128)
-  const tailRoot = mapPt(body, [51, 98])
-  out.blit(
-    drawFox(
-      foxPose({ puff: 0.9, tailPts: d.tail, pivot: [51, 98], shift: [tailRoot[0] - 51, tailRoot[1] - 98] }),
-      'tail'
-    ),
-    0,
-    0
-  )
-  out.blit(put('farleg', LONG, [63, 101], body, d.farLeg, d.legOff), 0, 0)
-  out.blit(put('fararm', {}, [SHOULDER0[0] + 2, SHOULDER0[1] + 1], body, d.farArm), 0, 0)
-  const knot: Pt = [HEAD0[0] - 12, HEAD0[1] - 7]
-  out.blit(put('band', d.band, knot, { ref: knot, at: mapPt(head, knot), a: d.bandTurn ?? 0 }), 0, 0)
-  out.blit(put('torso', {}, HIP0, body), 0, 0)
-  out.blit(put('nearleg', LONG, [55, 101], body, d.nearLeg, d.legOff), 0, 0)
-  out.blit(put('head', d.face, HEAD0, head), 0, 0)
-  out.blit(put('neararm', {}, SHOULDER0, body, d.nearArm), 0, 0)
-  if (d.face.stars !== undefined) out.blit(put('fx', d.face, HEAD0, { ...head, a: 0 }), 0, 0)
-  return out
-}
-
-const LONG: Partial<FoxPose> = { nearFoot: [0, -8], farFoot: [0, -8] }
-const downBase = { headTurn: 0.1, legOff: [-5, -8] as Pt }
-
-const defeatLate = memo(() =>
-  [
-    // knocked back: thrown backwards, tail whipping behind, feet kicking up
-    drawDown({
-      ...downBase,
-      hip: [70, 98],
-      a: -0.75,
-      headTurn: -0.2,
-      nearLeg: -1.25,
-      farLeg: -1.65,
-      nearArm: -1.75,
-      farArm: -2.15,
-      face: { eyes: 'hurt', mouth: 'o', earBack: 6 },
-      tail: [
-        [0, 0],
-        [14, 4],
-        [30, -6],
-        [40, -26]
-      ],
-      band: { bandPhase: 1, bandStream: 1, bandDroop: 0 },
-      bandTurn: 0.5
+  return [
+    P({
+      x: -2,
+      y: 2,
+      lean: -16,
+      head: [-2, -2],
+      nod: -14,
+      eyes: 'hurt',
+      mouth: 'open',
+      jaw: 0.8,
+      earN: 50,
+      earF: 50,
+      armN: [6, -16, 0, -1],
+      handN: 'open',
+      armF: [-12, -8, 0, 1],
+      handF: 'open',
+      puff: 1.5,
+      swayAmp: 0,
+      band: [-24, 30, 2, 0, 30]
     }),
-    // lands on its back with a bounce
-    drawDown({
-      ...downBase,
-      hip: [70, 106],
-      a: -1.3,
-      headTurn: -0.1,
-      headOff: [-2, 4],
-      nearLeg: -1.2,
-      farLeg: -1.7,
-      nearArm: -0.3,
-      farArm: 0.5,
-      face: { eyes: 'dead', mouth: 'tongue', earBack: 6 },
+    P({
+      spin: -50,
+      pivot: 40,
+      x: -3,
+      y: 2,
+      lean: -10,
+      eyes: 'dizzy',
+      mouth: 'open',
+      jaw: 0.5,
+      earN: 40,
+      earF: 40,
+      armN: [-8, -14, 0, 1],
+      handN: 'open',
+      armF: [10, -12, 0, -1],
+      handF: 'open',
+      legN: [8, 8, -40],
+      legF: [-6, 4, 20],
       tail: [
-        [4, 2],
-        [20, 6],
-        [40, 0],
-        [36, -20]
+        [-6, -1],
+        [-12, 10],
+        [-4, 22],
+        [10, 26],
+        [22, 22]
       ],
-      band: { bandPhase: 2, bandStream: 0.8, bandDroop: 0.6 },
-      bandTurn: 0.3
+      puff: 1.1,
+      swayAmp: 0,
+      band: [-30, 30, 1.6, 1, 60],
+      wind: 1.6,
+      windAt: 150,
+      windR: 32
     }),
-    // settles on its back, legs up
-    drawDown({
-      ...downBase,
-      hip: [70, 108],
-      a: -1.5,
-      headTurn: -0.1,
-      headOff: [-2, 6],
-      nearLeg: -1.25,
-      farLeg: -1.7,
-      nearArm: 0.2,
-      farArm: 1.0,
-      face: { eyes: 'dead', mouth: 'tongue', earBack: 6 },
-      tail: [
-        [4, 2],
-        [20, 6],
-        [40, 0],
-        [36, -20]
-      ],
-      band: { bandPhase: 3, bandStream: 0.7, bandDroop: 1 },
-      bandTurn: 0.1
+    P({
+      ...lying,
+      spin: -75,
+      pivot: 22,
+      x: 6,
+      rise: 6,
+      eyes: 'wide',
+      mouth: 'open',
+      jaw: 0.7,
+      armN: [4, -16, 0, 1],
+      armF: [12, -10, 0, 1],
+      legN: [16, 10, -70],
+      legF: [12, 14, -50],
+      band: [-80, 22, 1.4, 2, 30]
     }),
-    // lies still, feet up, headband loose, dizzy
-    drawDown({
-      ...downBase,
-      hip: [70, 108],
-      a: -1.5,
-      headTurn: 0.05,
-      headOff: [-3, 7],
-      nearLeg: -1.45,
-      farLeg: -1.9,
-      nearArm: 0.3,
-      farArm: 1.1,
-      face: { eyes: 'swirl', mouth: 'tongue', earBack: 7, stars: 0.6 },
-      tail: [
-        [4, 2],
-        [20, 6],
-        [40, 0],
-        [36, -20]
-      ],
-      band: { bandPhase: 4, bandStream: 0.6, bandDroop: 1.6 },
-      bandTurn: 0
-    })
-  ].map(settle)
-)
-
-const defeat = memo(() =>
-  [
-    foxPose({
-      crouch: 6,
-      lean: -6,
-      nearHand: [-3, 6],
-      farHand: [-4, 5],
-      earBack: 4,
-      eyes: 'swirl',
-      mouth: 'o',
-      tailSwing: 1,
-      angle: -0.1,
-      stars: 0.5,
-      nearFoot: [-4, 0],
-      farFoot: [4, 0]
-    }),
-    foxPose({
-      crouch: 9,
-      lean: -2,
-      headDy: 3,
-      nearHand: [2, 13],
-      farHand: [0, 12],
-      earBack: 5,
-      eyes: 'swirl',
-      mouth: 'tongue',
-      tailSwing: -1,
-      angle: 0.08,
-      stars: 2.5,
-      nearFoot: [-3, 0],
-      farFoot: [5, 0],
-      bandDroop: 1
-    })
+    P({ ...lying, squash: 2, eyes: 'shut', band: [120, 24, 1.2, 3, -20] }),
+    P({ ...lying, x: 13, rise: 4, squash: -1, eyes: 'shut', legN: [14, 12, -70], band: [100, 20, 1, 4, -20] }),
+    P({ ...lying, squash: 1, band: [140, 22, 0.8, 5, -14] }),
+    P({ ...lying, stars: 0, band: [148, 22, 0.6, 6, -10] }),
+    P({ ...lying, stars: 1 / 6, legN: [14, 14.6, -62], band: [152, 22, 0.6, 7, -8] })
   ]
-    .map((p) => drawFox(p))
-    .concat(defeatLate())
-)
+})
+
+/** The poses of the idle and move clips (for the tests). */
+export const idlePoses = () => idle()
+export const movePoses = () => move()
 
 export const sheets: SheetModule = {
   foxBoss: () => ({
-    idle: lazyAnim(() => idle().map(fit), 6, true),
-    intro: lazyAnim(() => intro().map(fit), 8, false),
-    move: lazyAnim(() => move().map(fit), 12, true),
-    windup: lazyAnim(() => windup().map(fit), 12, false),
-    attack: lazyAnim(() => attack().map(fit), 16, true),
-    recover: lazyAnim(() => recover().map(fit), 8, true),
-    hurt: lazyAnim(() => hurt().map(fit), 12, false),
-    defeat: lazyAnim(() => defeat().map(fit), 8, false)
+    idle: lazyAnim(() => draw(idle()), 8, true),
+    intro: lazyAnim(() => draw(intro()), 10, false, { sustain: 2 }),
+    hurt: lazyAnim(() => draw(hurt()), 12, false),
+    defeat: lazyAnim(() => draw(defeat()), 10, false, { sustain: 2 }),
+    move: lazyAnim(() => draw(move()), 12, true),
+    windup: lazyAnim(() => draw(windup()), 12, false, { sustain: 2 }),
+    attack: lazyAnim(() => draw(attack()), 16, true),
+    recover: lazyAnim(() => draw(recover()), 8, true)
   })
 }

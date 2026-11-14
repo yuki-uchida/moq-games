@@ -8,7 +8,11 @@ import type { Sheet } from '../src/art/sheet'
  * that observable. The pinned hashes guard the other half of the bargain: laziness must not change a pixel.
  */
 
-/** One hash per sheet over every clip's timing and every frame's size and pixels. */
+/**
+ * One hash per sheet over every clip's timing and every frame's size and pixels. Pixels are hashed as colours
+ * (RGBA), not as palette indices: a module that registers a new colour shifts the indices of the colours
+ * registered after it without changing a single pixel on screen.
+ */
 function hashSheet(s: Sheet): string {
   const h = createHash('sha1')
   for (const name of Object.keys(s).sort()) {
@@ -16,71 +20,70 @@ function hashSheet(s: Sheet): string {
     h.update(
       `${name}|${a.fps}|${a.loop}|${JSON.stringify(a.hold ?? null)}|${JSON.stringify(a.anchor ?? null)}|${a.frames.length}`
     )
-    for (const f of a.frames)
-      h.update(`${f.w}x${f.h}`).update(Buffer.from(f.data.buffer, f.data.byteOffset, f.data.byteLength))
+    for (const f of a.frames) h.update(`${f.w}x${f.h}`).update(Buffer.from(f.rgba()))
   }
   return h.digest('hex').slice(0, 16)
 }
 
 /** Recorded from the eagerly drawn art before the lazy conversion; change only when the art is meant to change. */
 const PINNED: Record<string, string> = {
-  apeBoss: '7fe861c2ad7bfe25',
-  bearBoss: '2cbe7ec521ac3658',
-  beeBoss: 'ac4274b2b2fd7606',
-  boarBoss: '081293f3d158ca5a',
-  crowBoss: '50153f2fbbc52026',
-  flyer: '49442ef57f74fe98',
-  foxBoss: 'aa8193282e68d05a',
-  fx: '7b11d8c732e3f476',
-  hero: '6fab6f9fd55bba6e',
-  jumper: 'f1ce7dde39fc5b1c',
-  king: '80735bb825f39a56',
-  mom: 'e3cb1ac29d1efb7d',
-  princess: '6cbcfd7a36049843',
-  'prop:animal': 'dafef98a3ac62330',
-  'prop:bee': '8623c6cc3fba488e',
-  'prop:berry': 'cf60e93b22e46490',
-  'prop:cage': 'efa1e76b82c05163',
-  'prop:door1': 'd96c3e82963eac01',
-  'prop:door2': '5c58872b334d6427',
-  'prop:feather': '2e29140e4fc3d208',
-  'prop:fruit': '7d8644bf8a24fe70',
-  'prop:gate': 'b38c4b3d05899ea2',
-  'prop:goal': 'f1295434dcca6c78',
-  'prop:hive': 'da1fb4113de2113c',
-  'prop:log': 'ce22a15e997a45c4',
-  'prop:log:cave': '0fd1fe6e09ce6c84',
-  'prop:log:keep': 'e77519d6cafb11da',
-  'prop:log:star': '8c697fd06afd22b8',
-  'prop:nest': 'a10f5f3670152de7',
-  'prop:orb': 'adf1661a0e9feaf8',
-  'prop:pine': '33db2eec5c65f104',
-  'prop:pine:cave': '321644b437d87bc4',
-  'prop:pine:keep': '31cdb3b2e5be87b8',
-  'prop:pine:star': 'e3841366e402959b',
-  'prop:pipe': '698d73d7da831552',
-  'prop:rock': 'ac5511f37e6475a6',
-  'prop:seed': '085c1eb1c0dfbc92',
-  'prop:shock': '3743238bb823de7e',
-  'prop:star': 'bbadf159776b84c5',
-  'prop:stinger': 'bc23bc3b8f411fa4',
-  'prop:switch1': '421079938f2db64a',
-  'prop:switch2': '9acc3e3892122158',
-  'prop:tree': '3615526496bf3307',
-  'prop:tree:cave': '6e935b06d23019e0',
-  'prop:tree:keep': '10ebc7e3705925a9',
-  'prop:tree:star': '45c541171364992d',
-  'prop:twig': 'd084c5dd023fae08',
-  spitter: 'fed3768954873e19',
-  tough: '540a4576cf9bd368',
-  ui: 'acc9511e3b2c17f9',
-  walker: '12c2c345ee93d6f7',
-  weaselBoss: '134d7358fecf910e',
-  wolfBoss: '8bd66c04db43be0d'
+  apeBoss: 'dee4cea90730d6bf',
+  bearBoss: 'b39630da52fef537',
+  beeBoss: 'de6778bac758ffce',
+  boarBoss: 'd935d4b4be8ce9b7',
+  crowBoss: '2565b7b03a9918aa',
+  flyer: 'f1346bc278ccc5ad',
+  foxBoss: '4c8b46c22192dcaf',
+  fx: 'b61fcacb7138b05c',
+  hero: '8b2edaa9b9a9b196',
+  jumper: '0017407d8d8af494',
+  king: '591bcab9bb8b6b74',
+  mom: '1f8dd31225add106',
+  princess: '3e9ce11e1b0f877c',
+  'prop:animal': '3cb39f00b24dcbc1',
+  'prop:bee': '0844d4e7efa1988c',
+  'prop:berry': 'cffd4b471fcbc320',
+  'prop:cage': 'b0ad261892481ef3',
+  'prop:door1': '2663ad7a474b1eb8',
+  'prop:door2': 'af870659aa01e925',
+  'prop:feather': '0fd9a672ea9cab8e',
+  'prop:fruit': '442775821251c312',
+  'prop:gate': '05da0f12afe30ccf',
+  'prop:goal': 'bee0e87f34950224',
+  'prop:hive': '42c5dc6558d9dc29',
+  'prop:log': '0232de2be544d82e',
+  'prop:log:cave': '68a7efb6c9a1f190',
+  'prop:log:keep': '14add3ed8414dadd',
+  'prop:log:star': '93545008ca39649c',
+  'prop:nest': '248f584d49e3ddb1',
+  'prop:orb': 'ed60fcf66f5cfed7',
+  'prop:pine': 'ebe24dea8ede898f',
+  'prop:pine:cave': 'af0b5fd70c2e54d8',
+  'prop:pine:keep': 'e62d4227f14c302f',
+  'prop:pine:star': 'ae7883c2c24e8d80',
+  'prop:pipe': '6349d799709ea1da',
+  'prop:rock': '17a595cf29c75d81',
+  'prop:seed': '378bc3a39454a57f',
+  'prop:shock': 'c462e31904a63e3a',
+  'prop:star': 'c5d0384f8ad0e20b',
+  'prop:stinger': '023d428dc77dbdff',
+  'prop:switch1': '89eb67eecf8588ed',
+  'prop:switch2': 'e3869f683cd9354d',
+  'prop:tree': 'd8d29e5dd485b06f',
+  'prop:tree:cave': 'c1913ad2552bba83',
+  'prop:tree:keep': '24c8e1f01bad5011',
+  'prop:tree:star': '77c758e97ca39997',
+  'prop:twig': 'e339dbc9311bf30c',
+  spitter: '7f291dd64f402b36',
+  tough: '23167ee84770d851',
+  ui: '6db799f583abaac1',
+  walker: '62f0d007e04044c0',
+  weaselBoss: '7af5fbadb1880000',
+  wolfBoss: '23148acfa0051b22'
 }
 
 describe('lazy art', () => {
-  it('draws nothing while the registry is imported', async () => {
+  it('draws nothing while the registry is imported', { timeout: 60_000 }, async () => {
     const { Raster } = await import('../src/art/raster')
     const before = Raster.created
     await import('../src/art')
@@ -133,9 +136,9 @@ describe('lazy art', () => {
     for (const theme of THEMES)
       for (const d of decor(theme)) {
         h.update(`${theme}|${d.where}|${d.weight}|${d.anchor}|${d.image.w}x${d.image.h}`)
-        h.update(Buffer.from(d.image.data.buffer, d.image.data.byteOffset, d.image.data.byteLength))
+        h.update(Buffer.from(d.image.rgba()))
       }
-    expect(h.digest('hex')).toBe('e15a560f551a27934fac740c5dcf59dedeb85452')
+    expect(h.digest('hex')).toBe('4e2396679b68e920edcd5d1471b0eec605c40d39')
   })
 
   it('keeps every sheet pixel for pixel as it was drawn eagerly', { timeout: 120_000 }, async () => {

@@ -16,7 +16,8 @@ describe('ヒョウタン熊 and ごりら警部', () => {
 
     test(`${id} is much bigger than the hero`, () => {
       const hero = sheet('hero').idle.frames[0].count()
-      expect(sheet(id).idle.frames[0].count()).toBeGreaterThanOrEqual(hero * 4)
+      // The hero is a head and a body now (about 1400 px); the two giants are still two and a half times him.
+      expect(sheet(id).idle.frames[0].count()).toBeGreaterThanOrEqual(hero * 2.5)
     })
 
     test(`${id} squashes on the slam and crouches in the wind-up`, () => {

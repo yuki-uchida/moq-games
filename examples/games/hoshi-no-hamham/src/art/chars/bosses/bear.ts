@@ -1,967 +1,1039 @@
 /**
- * ヒョウタン熊 (`bearBoss`): the huge, sleepy-grumpy master of the forest. A violet-brown bear who walks upright,
- * with a pale muzzle and belly, small round ears, leaves stuck on his head and a gourd slung across his back on a
- * rope. One pose-parametric draw function; every clip is a list of poses (see `bossSpec('bearBoss')`).
+ * ヒョウタン熊 (`bearBoss`): the lord of the forest, a huge sleepy violet bear standing upright. A pear of a body on
+ * short thick legs with the belly leading, a big round head set straight on the shoulders with round ears, a broad
+ * cream muzzle with a black nose, small heavy-lidded eyes under thick brows, long heavy arms with broad paws and
+ * dark claws, a sprig of three leaves on the crown and a golden two-bulbed gourd hanging on a rope across his back.
+ * He is not one of the gang: no red anywhere. 128×128, facing right, feet on (64, 120).
  *
- * Drawn at 128×128 with the hero's toolkit: ball-shaded volumes lit from the top-left, parts assembled back to
- * front with the Painter (overlaps become inner contours), pale patches shaded with the same normals as the
- * body, stamped eyes with one highlight.
+ * Rendering (CHARACTERS.md "Big furry bodies"): back, shoulders, belly and the thighs are ONE silhouette shaded
+ * once, with a darker mantle over the shoulders and back, a cream belly patch with a toothed edge, fur teeth on the
+ * shadow and fur-lock stamps; the arms, the shanks and feet hang free as parts of their own.
+ *
+ * Depth (back to front): back dust, far arm, far leg, gourd, body (rope), near leg, far ear, near ear, near arm,
+ * mouth, lower jaw, head, face, leaves, front dust, stars.
  */
 import type { SheetModule } from '../../module'
-import { C, R } from '../../palette'
-import { bossSpec } from '../../contract'
-import { Painter, Raster, bar, farRamp, shadeIndex, type Pt, type Ramp } from '../../raster'
+import { TAU, lag } from '../../motion'
+import { C, R, ramp } from '../../palette'
+import { Painter, Raster, farRamp, type Pt, type Ramp } from '../../raster'
+import {
+  Frame,
+  capsule,
+  cel,
+  fill,
+  half,
+  joint,
+  mantle,
+  oval,
+  overlap,
+  polygon,
+  ribbon,
+  shadow,
+  smooth,
+  spline,
+  stampAt,
+  tint,
+  union,
+  within,
+  type Shape
+} from '../../rig'
 import { lazyAnim, memo } from '../../sheet'
 
-const PELT = R.bearViolet
-const FAR = farRamp(PELT)
-const SNOUT = R.cream
+const FUR = R.bearViolet
+const FAR = farRamp(FUR)
+/** The darker coat over the crown, the shoulders and the back. */
+const MANE = ramp('#a283b6', '#634878', '#4a3460', '#2f2140', '#1c1830')
+const FAR_MANE = farRamp(MANE)
+/** The pale belly, muzzle, inner ears and paw pads (the hamsters' cream: its shades are the ones `cel` steps to). */
+const CREAM = R.hamCream
 const GOURD = R.honey
-const WOOD = R.wood
-const LEAF = R.leaf
-const GOLD = R.gold
-const WATER = R.water
-const DUST = R.paper
+const ROPE = R.wood
+/** The leaf greens of the game, outlined in the coat's ink so the sprig costs no extra line colour. */
+export const LEAF = ramp('#b8f08b', '#4fbf68', '#2f8f4f', '#1f6041', '#1c1830')
 
-const GROUND = 116.5
-
-export type Eyes = 'closed' | 'sleepy' | 'open' | 'angry' | 'squint' | 'hurt' | 'swirl' | 'wide'
-export type Mouth = 'frown' | 'grumble' | 'roar' | 'pant' | 'gasp' | 'yawn'
-
-interface Torso {
-  x: number
-  y: number
-  rx: number
-  ry: number
-  /** Belly patch centre offset and size as fractions of the torso. */
-  belly: [number, number, number, number]
-}
-
-interface Fx {
-  /** Sweat drops: [x, y] of each. */
-  sweat?: Pt[]
-  /** Dust puffs: [x, y, radius]. */
-  dust?: [number, number, number][]
-  /** Stars circling the head: [x, y]. */
-  stars?: Pt[]
-  /** Fur tufts blown outward from the torso edge: [x, y, dx, dy]. */
-  tufts?: [number, number, number, number][]
-  /** Sound arcs in front of the mouth: centre and count. */
-  roar?: number
-}
+type Eyes = 'sleepy' | 'closed' | 'shut' | 'angry' | 'wide' | 'hurt' | 'dizzy' | 'tired'
+type Mouth = 'shut' | 'grump' | 'open'
+/** A hand relative to its shoulder (screen px), the elbow side (1 = behind for a hanging arm) and the paw's turn. */
+type Arm = readonly [number, number, 1 | -1, number]
+/** A foot relative to its rest place: forward, lift, turn in degrees (toes up −). */
+type Leg = readonly [number, number, number]
 
 export interface BearPose {
-  torso: Torso
-  /** Head centre, and how far it is tipped back (-1 chin down … 1 face up). */
-  head: { x: number; y: number; pitch: number }
-  nearHand: Pt
-  farHand: Pt
-  /** Where the near and far elbows prefer to point. */
-  nearBend: Pt
-  farBend: Pt
-  /** Sole centres of the feet. */
-  nearFoot: Pt
-  farFoot: Pt
-  /** Feet seen sole-on (sitting, lying): the foot position is its centre. */
-  soles?: boolean
+  /** Whole figure forward (+) / up (+). */
+  x: number
+  y: number
+  /** Body tilt in degrees (forward +) and squash (+ wider and flatter). */
+  lean: number
+  squash: number
+  /** Breathing 0..1: the belly swells. */
+  breath: number
+  /** The belly's own bounce, px down. */
+  belly: number
+  /** Head offset from its seat and nod in degrees (nose down +); `upright` is how much of the lean the neck undoes. */
+  head: readonly [number, number]
+  nod: number
+  upright: number
   eyes: Eyes
   mouth: Mouth
-  /** Mouth opening 0..1 for the open mouths. */
+  /** Lower jaw opening 0..1 (with mouth 'open'). */
   jaw: number
-  /** Gourd offset (swing). */
-  gourd: Pt
-  /** Ears pushed back (positive) by speed. */
-  earBack: number
-  fx: Fx
+  tongue: boolean
+  /** Ears pressed back, degrees. */
+  earN: number
+  earF: number
+  armN: Arm
+  armF: Arm
+  legN: Leg
+  legF: Leg
+  /** The gourd's swing in degrees (0 = straight down, + toward the back). */
+  gourd: number
+  /** The gourd lying loose on the ground instead (screen x, y of its neck, turn). */
+  gourdAt?: readonly [number, number, number]
+  /** Leaves flopping (degrees, + toward the back) and spread (0 = upright sprig, 1 = drooping). */
+  leaves: number
+  droop: number
+  /** Fur bristling 0..1. */
+  fur: number
+  /** Stars circling over the head: phase 0..1, −1 = none. */
+  stars: number
+  /** Dust thrown out to both sides 0..1+. */
+  dust: number
 }
 
-// -------------------------------------------------------------------------------------------- small tools
+export const bearPose = (p: Partial<BearPose> = {}): BearPose => ({
+  x: 0,
+  y: 0,
+  lean: 0,
+  squash: 0,
+  breath: 0,
+  belly: 0,
+  head: [0, 0],
+  nod: 0,
+  upright: 0.8,
+  eyes: 'sleepy',
+  mouth: 'shut',
+  jaw: 0,
+  tongue: false,
+  earN: 0,
+  earF: 0,
+  armN: [-4, 30, 1, 0],
+  armF: [-1, 29, 1, 0],
+  legN: [0, 0, 0],
+  legF: [0, 0, 0],
+  gourd: 16,
+  leaves: 0,
+  droop: 0,
+  fur: 0,
+  stars: -1,
+  dust: 0,
+  ...p
+})
 
-/** A sphere-shaded ellipse where `pick` chooses the colour for each ramp step, so patches share the light. */
-export function volume(
-  l: Raster,
-  cx: number,
-  cy: number,
-  rx: number,
-  ry: number,
-  pick: (idx: 0 | 1 | 2 | 3, x: number, y: number) => number,
-  spec = true
-) {
-  for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++)
-    for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
-      const nx = (x + 0.5 - cx) / rx
-      const ny = (y + 0.5 - cy) / ry
-      const q = nx * nx + ny * ny
-      if (q > 1.0001) continue
-      l.set(x, y, pick(shadeIndex(nx, ny, Math.sqrt(Math.max(0, 1 - q)), spec), x, y))
-    }
-}
+/** Rest places of the feet (x relative to the anchor) and the hips (torso units). */
+const FOOT = { n: -6, f: 9 } as const
+const HIP = { n: -7, f: 9 } as const
 
-export const ballOf = (l: Raster, cx: number, cy: number, rx: number, ry: number, ramp: Ramp, spec = true) =>
-  volume(l, cx, cy, rx, ry, (i) => ramp[i], spec)
+// ------------------------------------------------------------------------------------------------ stamps
 
-/** A thick limb segment: dark body with a lit core shifted toward the light. */
-export function limb(l: Raster, a: Pt, b: Pt, w: number, ramp: Ramp, lit = false) {
-  bar(l, a, b, w, ramp[2])
-  bar(l, [a[0] - 1, a[1] - 1], [b[0] - 1, b[1] - 1], w - 3, ramp[1])
-  if (lit) bar(l, [a[0] - 2, a[1] - 2], [b[0] - 2, b[1] - 2], Math.max(2, w - 10), ramp[0])
-}
-
-/** Two-bone arm: returns the elbow (and clamps the hand to the reach). */
-export function arm(s: Pt, target: Pt, bend: Pt, l1 = 18, l2 = 18): { e: Pt; h: Pt } {
-  const dx = target[0] - s[0]
-  const dy = target[1] - s[1]
-  const dist = Math.max(1, Math.hypot(dx, dy))
-  const reach = Math.min(dist, l1 + l2 - 0.6)
-  const ux = dx / dist
-  const uy = dy / dist
-  const a = (l1 * l1 - l2 * l2 + reach * reach) / (2 * reach)
-  const hh = Math.sqrt(Math.max(0, l1 * l1 - a * a))
-  const bx = s[0] + ux * a
-  const by = s[1] + uy * a
-  const c1: Pt = [bx - uy * hh, by + ux * hh]
-  const c2: Pt = [bx + uy * hh, by - ux * hh]
-  const score = (p: Pt) => (p[0] - bx) * bend[0] + (p[1] - by) * bend[1]
-  return { e: score(c1) >= score(c2) ? c1 : c2, h: [s[0] + ux * reach, s[1] + uy * reach] }
-}
-
-/** A foot seen sole-on (sitting or lying): a round paw with a pale pad. */
-export function sole(l: Raster, x: number, y: number, ramp: Ramp) {
-  ballOf(l, x, y, 6.8, 8.6, ramp, false)
-  volume(l, x + 1, y + 1, 3.6, 5, (i) => SNOUT[Math.min(3, i + 1) as 0 | 1 | 2 | 3], false)
-}
-
-/** A small cloud of dust: three overlapping puffs. */
-export function puff(l: Raster, x: number, y: number, r: number) {
-  ballOf(l, x, y, r, r * 0.85, DUST, false)
-  ballOf(l, x + r * 0.9, y + r * 0.25, r * 0.7, r * 0.6, DUST, false)
-  ballOf(l, x - r * 0.8, y + r * 0.3, r * 0.6, r * 0.55, DUST, false)
-}
-
-/** Filled pointed leaf from a base point toward a tip, shaded on the lower half. */
-function leaf(l: Raster, x: number, y: number, angle: number, len: number, wid: number) {
-  const ca = Math.cos(angle)
-  const sa = Math.sin(angle)
-  const at = (u: number, v: number): Pt => [x + ca * u - sa * v, y + sa * u + ca * v]
-  const top: Pt[] = []
-  const bot: Pt[] = []
-  for (let i = 0; i <= 6; i++) {
-    const t = i / 6
-    const w = Math.sin(Math.PI * Math.pow(t, 0.8)) * wid
-    top.push(at(t * len, -w))
-    bot.push(at(t * len, w))
-  }
-  l.poly([...top, ...bot.reverse()].flat(), LEAF[1])
-  const half: Pt[] = []
-  for (let i = 0; i <= 6; i++) {
-    const t = i / 6
-    half.push(at(t * len, Math.sin(Math.PI * Math.pow(t, 0.8)) * wid))
-  }
-  l.poly([...[0, 0].map((_, k) => at(k * len, 0)), ...half.reverse()].flat(), LEAF[2])
-  l.line(...at(1, 0), ...at(len * 0.85, 0), LEAF[0])
-}
-
-// -------------------------------------------------------------------------------------------- face
-
-export const EYE_KEY = { K: C.black, w: C.white, i: C.ink, b: PELT[3], s: PELT[2] }
-
-export const EYES: Record<Eyes, readonly [readonly string[], readonly string[]]> = {
-  open: [
-    ['.KKK.', 'KwwKK', 'KwwKK', 'KKKKK', 'KKKKK', '.KKK.'],
-    ['.KK.', 'KwKK', 'KwKK', 'KKKK', 'KKKK', '.KK.']
+const EYE_KEY = { K: C.black, w: C.white, y: GOURD[1], i: C.inkCool, B: MANE[3], s: FUR[2] }
+/** Near eye (8 wide) and far eye (6 wide): small heavy-lidded eyes under thick brows. */
+const EYES: Record<Eyes, readonly [readonly string[], readonly string[]]> = {
+  sleepy: [
+    ['BBBB....', '.BBBBBB.', '..ssssss', '.iiiiiii', '.KwKKKK.', '..KKKK..'],
+    ['...BBB', '.BBBB.', 'ssss..', 'iiiii.', 'KwKK..', '.KK...']
   ],
   closed: [
-    ['.....', '.....', '.....', 'i...i', '.iii.', '.....'],
-    ['....', '....', '....', 'i..i', '.ii.', '....']
+    ['BBBB....', '.BBBBBB.', '........', '........', '.i....i.', '..iiii..'],
+    ['...BBB', '.BBBB.', '......', '......', 'i...i.', '.iii..']
   ],
-  sleepy: [
-    ['.....', '.....', 'iiiii', 'KwKKK', 'KKKKK', '.KKK.'],
-    ['....', '....', 'iiii', 'KwKK', 'KKKK', '.KK.']
+  shut: [
+    ['BB......', '.BBBB...', '....BBBB', '........', 'iiii....', '...iiiii', '........'],
+    ['....BB', '.BBBB.', 'BB....', '......', '..iiii', 'iii...', '......']
   ],
   angry: [
-    ['iii..', '.iiii', 'KKKKK', 'KwKKK', 'KKKKK', '.KKK.'],
-    ['..ii', 'iiii', 'KKKK', 'KwKK', 'KKKK', '.KK.']
-  ],
-  squint: [
-    ['i....', '.ii..', '...ii', '.ii..', 'i....', '.....'],
-    ['....', '..ii', 'ii..', '..ii', '....', '....']
-  ],
-  hurt: [
-    ['i...i', '.i.i.', '..i..', '.i.i.', 'i...i', '.....'],
-    ['i..i', '.ii.', '.ii.', 'i..i', '....', '....']
-  ],
-  swirl: [
-    [
-      '..KKKKK..',
-      '.KwwwwwK.',
-      'KwwKKKwwK',
-      'KwKwwwKwK',
-      'KwKwKwKwK',
-      'KwKwKKKwK',
-      'KwwKwwwwK',
-      '.KwwwwwK.',
-      '..KKKKK..'
-    ],
-    ['.KKKKK.', 'KwwwwwK', 'KwKKKwK', 'KwKwKwK', 'KwKwwwK', 'KwwwwwK', '.KKKKK.']
+    ['BBB.....', '.BBBB...', '...BBBBB', '..KKKKK.', '.KwwKKKK', '.KwKKKyK', '.KKKKKKK', '..KKKKK.'],
+    ['....BB', '..BBB.', 'BBB...', '.KKK..', 'KwKKK.', 'KKKyK.', 'KKKKK.', '.KKK..']
   ],
   wide: [
-    ['.KKKK.', 'KwwwwK', 'KwKKwK', 'KwKKwK', 'KwwwwK', '.KKKK.'],
-    ['.KKK.', 'KwwwK', 'KwKKK', 'KwKKK', 'KwwwK', '.KKK.']
+    ['..BBB...', '.B...B..', '........', '..iiiii.', '.iwwwwwi', '.iwwKKwi', '.iwwKKwi', '..iiiii.'],
+    ['..BB..', '.B..B.', '......', '.iii..', 'iwwwi.', 'iwKKi.', 'iwKKi.', '.iii..']
+  ],
+  hurt: [
+    ['BB......', '.BBB....', '........', 'ii......', '..iii...', '....iiii', '..iii...', 'ii......'],
+    ['....BB', '...BB.', '......', '....ii', '..ii..', 'iiii..', '..ii..', '....ii']
+  ],
+  dizzy: [
+    ['........', '..iiiii.', '.i.....i', '.i.iii.i', '.i.i.i.i', '.i...i.i', '..iii..i'],
+    ['......', '.iiii.', 'i....i', 'i.ii.i', 'i.i..i', '.ii.i.']
+  ],
+  tired: [
+    ['........', 'BBBBBBB.', '.BBBBBBB', '.iiiiiii', '.KwKKK..', '..KKK...'],
+    ['......', 'BBBBB.', '.BBBBB', 'iiiii.', 'KwKK..', '.KK...']
   ]
 }
+const NOSE = ['.KKKK.', 'KhhKKK', 'KKKKKK', '.KKKK.']
+/** The closed mouth: the philtrum and a grumpy downturned line running back under the muzzle. */
+const MOUTH_SHUT = ['......i.', '......i.', '.iiiii.i', 'i.......']
+const MOUTH_GRUMP = ['......i.', '......i.', '..iiii.i', '.i....i.', 'i.......']
+/** Upper teeth under the open muzzle (fangs at both ends) and the lower fangs. */
+const TEETH_UP = ['W.w.w.w.W', 'W.......W']
+const TEETH_DOWN = ['w.....w', 'W.....W']
+const CLAWS = ['kk.', '...', 'kkk', '...', 'kk.']
+const TOE_CLAWS = ['k.', '..', 'kk', '..', 'k.']
+const STAR = ['..y..', '.yYy.', 'yyYyy', '.yYy.', '..y..']
+const STAR_SMALL = ['.y.', 'yYy', '.y.']
+/** Fur locks that break a silhouette. */
+const TUFT_BACK = ['...ff', '..fff', '.ffff', 'ffff.', 'fff..']
+const TUFT_DOWN = ['fffff', 'fffff', '.fff.', '.ff..', '..f..']
+const TUFT_UP = ['..f..', '.ff..', '.fff.', 'fffff']
 
-function drawFace(l: Raster, p: BearPose) {
-  const { x, y, pitch } = p.head
-  const ex = x + 7
-  const ey = y - 4 - pitch * 2
-  const [near, far] = EYES[p.eyes]
-  const big = p.eyes === 'swirl'
-  l.stamp(near, ex - (big ? 3 : 2), ey - 3, EYE_KEY)
-  l.stamp(far, ex + 10 - (big ? 1 : 0), ey - 3, EYE_KEY)
-  // heavy brows: grumpy, sloping down toward the nose
-  if (p.eyes === 'sleepy' || p.eyes === 'angry' || p.eyes === 'open') {
-    const drop = p.eyes === 'angry' ? 2 : 1
-    const dy = p.eyes === 'sleepy' ? -1 : -2
-    l.thick(ex - 4, ey + dy - 3 - drop, ex + 2, ey + dy - 2 + 1, 2.2, PELT[3])
-    l.thick(ex + 8, ey + dy - 2 + 1, ex + 14, ey + dy - 3 - drop, 2.2, PELT[3])
-  }
-}
+// ------------------------------------------------------------------------------------------------ helpers
 
-/** Mouth, nose and chin on the muzzle centred at (mx, my). */
-function drawMuzzle(l: Raster, p: BearPose, mx: number, my: number) {
-  const open = p.mouth === 'roar' || p.mouth === 'pant' || p.mouth === 'gasp' || p.mouth === 'yawn'
-  const jaw = open ? p.jaw : 0
-  // chin / lower jaw drops with the mouth
-  if (open) {
-    const cy = my + 7 + jaw * 7
-    volume(l, mx + 1, cy, 8.5, 4.5, (i) => SNOUT[i === 0 ? 1 : i], false)
+const ID = Frame.at(0, 0)
+
+/**
+ * An oval whose edge is cut into fur locks: `teeth` locks around it, each `depth` (fraction of the radius) deep.
+ * For pale bellies and bibs whose border must be fur, not a smooth curve. Candidate for the toolkit.
+ */
+const furOval = (cu: number, cv: number, ru: number, rv: number, teeth: number, depth: number): Shape => ({
+  box: [cu - ru, cv - rv, cu + ru, cv + rv],
+  has(u, v) {
+    const du = (u - cu) / ru
+    const dv = (v - cv) / rv
+    const s = ((Math.atan2(dv, du) + Math.PI) / TAU) * teeth
+    const saw = s - Math.floor(s)
+    const r = 1 - depth * saw
+    return du * du + dv * dv <= r * r
   }
-  volume(l, mx, my, 11, 8, (i) => SNOUT[i], false)
-  // nose
-  l.ellipse(mx + 9, my - 4.5, 3.6, 2.8, C.black)
-  l.set(mx + 8, my - 6, PELT[0])
-  if (open) {
-    const h = 3 + jaw * 6
-    const cy = my + 3 + h / 2
-    l.ellipse(mx + 2, cy, 8.5, h / 2 + 1, C.mouth)
-    l.rect(mx - 3, Math.round(cy - h / 2), 11, 2, C.white)
-    l.set(mx - 3, Math.round(cy - h / 2) + 2, C.white)
-    l.set(mx + 7, Math.round(cy - h / 2) + 2, C.white)
-    if (p.mouth === 'pant') {
-      l.ellipse(mx + 2, cy + h / 2 - 0.5, 4.5, 3.6, C.tongue)
-      l.line(mx + 2, cy, mx + 2, cy + h / 2 + 1, C.mouth)
-    } else if (p.mouth !== 'gasp') {
-      l.ellipse(mx + 2, cy + h / 2 - 1, 5.5, 2.4, C.tongue)
+})
+
+/**
+ * Light pixels on the very edge of a part take the base colour instead (the selout next to them is two ramp steps
+ * darker, and two steps below cream is still light). Same as the wolf's `dimEdge`; candidate for a `cel` option.
+ */
+function dimEdge(l: Raster, ramps: readonly Ramp[]) {
+  const b = l.bounds()
+  if (!b) return
+  const src = l.clone()
+  for (let y = b.y; y < b.y + b.h; y++)
+    for (let x = b.x; x < b.x + b.w; x++) {
+      const c = src.get(x, y)
+      const r = ramps.find((m) => m[0] === c)
+      if (r && !(src.get(x - 1, y) && src.get(x + 1, y) && src.get(x, y - 1) && src.get(x, y + 1))) l.set(x, y, r[1])
     }
-    return
-  }
-  // philtrum and a down-turned mouth line
-  l.line(mx + 9, my - 1.5, mx + 9, my + 1.5, C.ink)
-  if (p.mouth === 'frown' || p.mouth === 'grumble') {
-    l.line(mx + 9, my + 1.5, mx + 5, my + 3.5, C.ink)
-    l.line(mx + 5, my + 3.5, mx - 1, my + 3, C.ink)
-    l.line(mx - 1, my + 3, mx - 3, my + 1, C.ink)
-    if (p.mouth === 'grumble') l.rect(mx + 3, my + 4, 2, 2, C.white)
-  }
 }
 
-// -------------------------------------------------------------------------------------------- the bear
+/** A leaf pointing up from its base (frame origin), widest a third of the way, with a pointed tip. */
+const leafShape = (len: number, wid: number): Shape => {
+  const pts: Pt[] = []
+  for (let i = 0; i <= 8; i++) {
+    const t = i / 8
+    pts.push([Math.sin(Math.PI * t ** 0.75) * wid, -t * len])
+  }
+  for (let i = 8; i >= 0; i--) {
+    const t = i / 8
+    pts.push([-Math.sin(Math.PI * t ** 0.75) * wid, -t * len])
+  }
+  return polygon(pts)
+}
+
+// ------------------------------------------------------------------------------------------------ drawing
 
 export function drawBear(p: BearPose): Raster {
-  const g = new Painter(128, 128)
-  const t = p.torso
-  const hd = p.head
-  const near: Pt = [t.x + 2, t.y - t.ry * 0.55]
-  const farS: Pt = [t.x + t.rx * 0.6, t.y - t.ry * 0.62]
-  const nearArm = arm(near, [near[0] + p.nearHand[0], near[1] + p.nearHand[1]], p.nearBend)
-  const farArm = arm(farS, [farS[0] + p.farHand[0], farS[1] + p.farHand[1]], p.farBend)
-  const [gx, gy] = p.gourd
-  const mx = hd.x + 16
-  const my = hd.y + 7 - hd.pitch * 5
+  const g = new Painter(128, 128, { soft: true })
+  const k = 1 + p.squash * 0.04
+  const ground = Frame.at(62 + p.x, 120)
+  const root = ground.child(0, -p.y)
+  const torso = root.child(0, -34, p.lean, k, 1 / k)
+  // The head sits on the torso but keeps only some of its squash (none when he lies on his back).
+  const hk = k ** (0.5 * Math.abs(Math.cos((p.lean * Math.PI) / 180)))
+  const head = Frame.at(...torso.pt(6 + p.head[0], -27 + p.head[1]), p.lean + p.nod - p.lean * p.upright, hk, 1 / hk)
+  const br = p.breath
+  const bel = p.belly
+  const backAt = torso.pt(-6, -10)
 
-  // gourd on the back, behind the body
-  g.add(-5, (l) => {
-    // a tilted gourd: big lower belly, small upper one, a pinched waist, a cork on the neck
-    const cx = Math.max(t.x - t.rx - 5 + gx, 20)
-    const cy = Math.min(t.y + 10 + gy, 95)
-    ballOf(l, cx + 4, cy + 10, 14, 13.5, GOURD)
-    ballOf(l, cx - 3, cy - 7, 9.5, 9.5, GOURD)
-    ballOf(l, cx, cy + 1, 8, 6, GOURD)
-    // the waist rope and its knot
-    l.thick(cx - 9, cy + 1, cx + 11, cy + 4, 3, WOOD[2])
-    l.thick(cx - 9, cy, cx + 11, cy + 3, 1.5, WOOD[1])
-    // cork
-    l.thick(cx - 7, cy - 16, cx - 9, cy - 20, 5, WOOD[2])
-    l.thick(cx - 7.5, cy - 16.5, cx - 9.5, cy - 20.5, 2.5, WOOD[1])
-  })
-
-  // far arm and far foot behind the body
-  g.add(-4, (l) => {
-    limb(l, farS, farArm.e, 12, FAR)
-    limb(l, farArm.e, farArm.h, 11, FAR)
-    ballOf(l, farArm.h[0], farArm.h[1], 6.5, 6.2, FAR, false)
-  })
-  g.add(-3, (l) => {
-    const [fx, fy] = p.farFoot
-    limb(l, [t.x + 12, t.y + t.ry * 0.5], [fx, p.soles ? fy : fy - 3], 15, FAR)
-    if (p.soles) sole(l, fx, fy, FAR)
-    else ballOf(l, fx + 3, fy, 10.5, 4.6, FAR, false)
-  })
-  g.add(-2, (l) => {
-    const [fx, fy] = p.nearFoot
-    limb(l, [t.x - 8, t.y + t.ry * 0.5], [fx, p.soles ? fy : fy - 3], 15, PELT)
-  })
-
-  // ears behind the skull
-  g.add(-1, (l) => {
-    const bk = p.earBack
-    ballOf(l, hd.x - 13 - bk, hd.y - 16 + bk * 0.4, 7.5, 7.5, PELT)
-    l.ellipse(hd.x - 13 - bk + 1, hd.y - 15 + bk * 0.4, 3.6, 3.6, SNOUT[2])
-    ballOf(l, hd.x + 9 - bk * 0.5, hd.y - 18, 6.8, 6.8, FAR)
-    l.ellipse(hd.x + 9.5 - bk * 0.5, hd.y - 17.5, 3, 3, SNOUT[3])
-  })
-
-  // torso with belly patch, rope across the chest
-  g.add(0, (l) => {
-    const [bx, by, brx, bry] = t.belly
-    const cx = t.x + bx * t.rx
-    const cy = t.y + by * t.ry
-    volume(l, t.x, t.y, t.rx, t.ry, (i, x, y) => {
-      const nx = (x + 0.5 - cx) / (brx * t.rx)
-      const ny = (y + 0.5 - cy) / (bry * t.ry)
-      return nx * nx + ny * ny <= 1 ? SNOUT[i] : PELT[i]
-    })
-    // the rope runs from the near shoulder down to the gourd
-    const sx = t.x + t.rx * 0.5
-    const sy = t.y - t.ry * 0.78
-    const ex = t.x - t.rx - 2 + gx
-    const ey = t.y + 8 + gy
-    const rope = new Raster(l.w, l.h)
-    rope.thick(sx, sy, ex, ey, 4, WOOD[2])
-    rope.thick(sx - 0.5, sy - 1, ex - 0.5, ey - 1, 2, WOOD[1])
-    for (let y = 0; y < l.h; y++)
-      for (let x = 0; x < l.w; x++) {
-        const c = rope.get(x, y)
-        if (c && l.get(x, y)) l.set(x, y, c)
-      }
-  })
-
-  // head, muzzle, face
-  g.add(1, (l) => {
-    volume(l, hd.x, hd.y, 25.5, 21.5, (i) => PELT[i])
-  })
-  g.add(2, (l) => drawMuzzle(l, p, mx, my))
-  g.add(3, (l) => drawFace(l, p), false)
-
-  // leaves on top of the head
-  g.add(3, (l) => {
-    leaf(l, hd.x - 5, hd.y - 15, -1.9, 10, 3.2)
-    leaf(l, hd.x - 2, hd.y - 16, -1.0, 11, 3.4)
-    leaf(l, hd.x + 1, hd.y - 16, -0.2, 8, 2.8)
-  })
-
-  // near foot and arm in front
-  g.add(4, (l) => {
-    const [fx, fy] = p.nearFoot
-    if (p.soles) return sole(l, fx, fy, PELT)
-    ballOf(l, fx + 3, fy, 10.5, 4.8, PELT, false)
-    l.set(fx + 12, fy - 1, SNOUT[1])
-    l.set(fx + 13, fy + 1, SNOUT[1])
-  })
-  g.add(5, (l) => {
-    limb(l, near, nearArm.e, 15, PELT)
-    limb(l, nearArm.e, nearArm.h, 14, PELT)
-    ballOf(l, nearArm.h[0], nearArm.h[1], 6.8, 6.4, PELT, false)
-  })
-
-  // effects
-  const fx = p.fx
-  fx.tufts?.forEach(([x, y, dx, dy]) =>
-    g.add(-6, (l) => {
-      l.poly([x - dy * 0.5, y + dx * 0.5, x + dx, y + dy, x + dy * 0.5, y - dx * 0.5], PELT[2])
-    })
-  )
-  fx.dust?.forEach(([x, y, r]) => g.add(6, (l) => puff(l, x, y, r)))
-  fx.sweat?.forEach(([x, y]) =>
-    g.add(7, (l) => l.stamp(['..b..', '.bbb.', 'hbbbb', 'bbbbb', '.bbb.'], x - 2, y - 2, { b: WATER[1], h: WATER[0] }))
-  )
-  fx.stars?.forEach(([x, y]) =>
-    g.add(
-      7,
-      (l) => {
-        l.stamp(['..y..', 'yyyyy', '.yYy.', '.Y.Y.'], x - 2, y - 2, { y: GOLD[1], Y: GOLD[2] })
-        l.set(x, y - 2, GOLD[0])
-      },
-      true
-    )
-  )
-  if (fx.roar) {
-    for (let i = 0; i < fx.roar; i++)
-      g.add(7, (l) => l.ring(mx + 4, my + 5, 12 + i * 6, 14 + i * 6, C.white, -0.6, 0.6), false)
+  // ---- legs: the thigh belongs to the body; the shank and the broad flat foot hang free
+  const legGeo = (leg: Leg, rest: number, hip: number) => {
+    const f = ground.child(rest + leg[0], -leg[1], leg[2])
+    const s = torso.pt(hip, 12)
+    const end = f.pt(-1.5, -4.5)
+    return { f, s, end, mid: joint(s, end, 10, 9, -1).mid, grounded: leg[1] < 0.6 && Math.abs(leg[2]) < 10 }
   }
+  type LegGeo = ReturnType<typeof legGeo>
+  const legN = legGeo(p.legN, FOOT.n, HIP.n)
+  const legF = legGeo(p.legF, FOOT.f, HIP.f)
+
+  // ---- arms: two bones hanging from the shoulders, long enough to reach the knees
+  const armGeo = (arm: Arm, s: Pt) => {
+    const { mid, end } = joint(s, [s[0] + arm[0], s[1] + arm[1]], 17, 16, arm[2])
+    const deg = (Math.atan2(end[1] - mid[1], end[0] - mid[0]) * 180) / Math.PI
+    return { s, mid, end, paw: Frame.at(end[0], end[1], deg + arm[3]) }
+  }
+  type ArmGeo = ReturnType<typeof armGeo>
+  const armN = armGeo(p.armN, torso.pt(0, -15))
+  const armF = armGeo(p.armF, torso.pt(10, -17))
+
+  // ---- the head's shapes (head units): a round skull with heavy jowls and a broad muzzle
+  const skull = union(oval(0, -1, 17, 14.5), oval(-3, 6, 14, 8.5))
+  const muzzle = oval(14, 5.5, 10, 6.6)
+  const headShape = union(skull, muzzle)
+
+  /** The body silhouette in torso units: belly egg, shoulders, the round back. */
+  const bellyShape = oval(4, 4 + bel * 0.5, 27 + br * 0.8, 19 + br * 0.5)
+  const bodyShape = union(bellyShape, oval(0, -12, 20, 12.5), oval(-11, 4, 15, 15))
+
+  /** A free-hanging arm: upper arm, forearm and a broad paw with dark claws. */
+  const arm = (l: Raster, a: ArmGeo, tone: Ramp, far: boolean) => {
+    const r = far ? 0.9 : 1
+    fill(l, ID, capsule(a.s, a.mid, 7 * r, 5.6 * r), tone[1])
+    fill(l, ID, capsule(a.mid, a.end, 5.6 * r, 4.8 * r), tone[1])
+    fill(l, a.paw, union(oval(3.5, 0, 7 * r, 6.6 * r), oval(7, 0.5, 4.6 * r, 5.8 * r)), tone[1])
+    // a lock at the back of the elbow
+    stampAt(l, ID, TUFT_DOWN, a.mid[0] - 3, a.mid[1] + 2, { f: tone[1] })
+    smooth(l)
+    cel(l, { shade: 3.2, deep: 1.2, rim: 1.4, tooth: 1.5, pitch: 4, origin: a.s })
+    stampAt(l, a.paw, CLAWS, 11, 0.5, { k: CREAM[3] })
+  }
+
+  /** Shank and foot. */
+  const leg = (l: Raster, lg: LegGeo, tone: Ramp) => {
+    fill(l, ID, capsule(lg.mid, lg.end, 7, 6), tone[1])
+    const foot = union(oval(3.5, -3.6, 8.5, 3.8), oval(-2.5, -4, 4.5, 4.2))
+    fill(l, lg.f, lg.grounded ? overlap(foot, half([0, -0.3], 0, -1)) : foot, tone[1])
+    if (!lg.grounded) tint(l, lg.f, oval(2.5, -1.6, 6, 1.8), CREAM[2])
+    smooth(l)
+    cel(l, { shade: 2.6, deep: 1, rim: 1.2 })
+    stampAt(l, lg.f, TOE_CLAWS, 12, -3.4, { k: CREAM[3] })
+  }
+
+  // ---- far arm and far leg, a ramp step darker, behind everything
+  g.add(-5, (l) => arm(l, armF, FAR, true))
+  g.add(-4.5, (l) => {
+    fill(l, ID, capsule(legF.s, legF.mid, 8, 7), FAR[1])
+    leg(l, legF, FAR)
+  })
+
+  // ---- the gourd: two golden bulbs, a waist string and a wooden stopper, hanging from the rope on his back
+  const knot = torso.pt(-22, 4.5)
+  const neck: Pt = p.gourdAt ? [p.gourdAt[0], p.gourdAt[1]] : torso.pt(-25, -1)
+  const gf = Frame.at(neck[0], neck[1], p.gourdAt ? p.gourdAt[2] : p.gourd)
+  g.add(-3, (l) => {
+    if (!p.gourdAt) ribbon(l, [knot, neck], () => 2.2, ROPE[2])
+    fill(l, gf, capsule([0, -2.5], [0, 0.5], 1.9, 2.1), ROPE[2])
+    fill(l, gf, union(oval(0, 5.5, 5, 5.2), oval(0, 10.5, 3, 2), oval(0, 17.5, 8.6, 8.2)), GOURD[1])
+    tint(l, gf, capsule([-4, 11], [4, 11.5], 1, 1), ROPE[2])
+    smooth(l)
+    cel(l, { shade: 3, deep: 1.2 })
+    dimEdge(l, [GOURD])
+    // the hard highlight on each bulb
+    within(l, (m) => stampAt(m, gf, ['ww', 'w.'], -4, 14, { w: C.white }), true)
+    within(l, (m) => stampAt(m, gf, ['w'], -2, 4, { w: C.white }), true)
+  })
+
+  // ---- the body: back, shoulders, belly and the thighs as ONE silhouette, shaded once
+  g.add(0, (l) => {
+    fill(l, torso, bodyShape, FUR[1])
+    fill(l, ID, capsule(legN.s, legN.mid, 9.5, 7.5), FUR[1])
+    // the cream belly, a big oval with a fur edge
+    tint(l, torso, furOval(9, 5 + bel, 15.5 + br * 0.6, 15 + br * 0.4, 13, 0.12), CREAM[1])
+    // locks on the shoulders, the hump of the back and the rump
+    const up = p.fur * 2.5
+    stampAt(l, torso, TUFT_UP, 4, -25.5 - up, { f: FUR[1] })
+    stampAt(l, torso, TUFT_UP, -8, -24 - up, { f: FUR[1] })
+    stampAt(l, torso, TUFT_BACK, -26 - up, 2, { f: FUR[1] })
+    stampAt(l, torso, TUFT_DOWN, -18, 16, { f: FUR[1] })
+    smooth(l)
+    mantle(l, FUR[1], MANE[1], { depth: 9, tooth: 4, pitch: 5, origin: backAt })
+    cel(l, { shade: 11, deep: 3.5, rim: 2.4, tooth: 3, pitch: 5, origin: backAt })
+    dimEdge(l, [CREAM])
+    // the head's shadow on the chest
+    shadow(l, head.moved(0.5, 3), headShape)
+    // the rope across the chest, from the far shoulder down to the gourd on the back
+    within(l, (m) => {
+      // it sags around the round belly
+      const strap = (dv: number) => spline([torso.pt(23, -9 + dv), torso.pt(0, 3 + dv), torso.pt(-26, 6 + dv)])
+      ribbon(m, strap(0), () => 2.2, ROPE[3])
+      ribbon(m, strap(-0.8), () => 1, ROPE[2])
+    })
+  })
+
+  // ---- near leg
+  g.add(1, (l) => leg(l, legN, FUR))
+
+  // ---- the head's shapes (head units): a round skull with heavy jowls and a broad muzzle
+
+  // ---- ears: round, behind the skull, a pale bowl inside
+  const ear = (u: number, v: number, back: number, tone: Ramp, far: boolean) => (l: Raster) => {
+    const f = head.child(u, v, -back)
+    fill(l, f, oval(0, -2, far ? 5.6 : 6.6, far ? 5.6 : 6.6), tone[1])
+    tint(l, f, oval(far ? 1 : 0.8, -1.4, far ? 2.8 : 3.6, far ? 3 : 3.8), far ? CREAM[3] : CREAM[2])
+    cel(l, { shade: 1.8, rim: 1 })
+  }
+  g.add(2, ear(10, -13, p.earF, FAR_MANE, true))
+  g.add(2.1, ear(-10, -11.5, p.earN, MANE, false))
+
+  // ---- near arm: in front of the body, and in front of the head when it is raised
+  g.add(armN.end[1] < armN.s[1] - 2 ? 4.4 : 3, (l) => arm(l, armN, FUR, false))
+
+  // ---- the open mouth is cut into the muzzle, the lower jaw drops on its hinge in front of it
+  const open = p.mouth === 'open' && p.jaw > 0.05
+  const jaw = head.child(8, 8, p.jaw * 34)
+  if (open) {
+    g.add(
+      4.1,
+      (l) => {
+        fill(
+          l,
+          ID,
+          polygon([head.pt(7, 9.5), head.pt(16, 8.6), head.pt(24, 7.6), jaw.pt(16, 2), jaw.pt(8, 6), jaw.pt(0.5, 3.5)]),
+          C.mouth
+        )
+        tint(l, jaw, capsule([4, 3.5], [13, 2.4], 2.4, 2), C.tongue)
+      },
+      false
+    )
+    g.add(4.15, (l) => {
+      fill(l, jaw, capsule([0.5, 4.8], [15, 2.8], 3.6, 2.6), CREAM[1])
+      smooth(l)
+      cel(l, { shade: 1.8, rim: 1 })
+      dimEdge(l, [CREAM])
+      within(l, (m) => stampAt(m, jaw, TEETH_DOWN, 11, 1.5, { w: C.white, W: CREAM[2] }), true)
+    })
+    // the tongue lolls out over the lower lip
+    if (p.tongue)
+      g.add(4.16, (l) => {
+        fill(l, jaw, union(capsule([9, 2], [13, 7], 2.4, 2.4), oval(13.5, 8.5, 2.6, 2.4)), C.tongue)
+        tint(l, jaw, capsule([10.5, 3], [13.5, 8.5], 0.5, 0.5), C.mouth)
+      })
+  }
+
+  // ---- head: skull, jowls and muzzle as one silhouette
+  const headAt = head.pt(0, -1)
+  g.add(4, (l) => {
+    fill(l, head, headShape, FUR[1])
+    tint(l, head, union(oval(15, 6, 9.4, 6.2), oval(8, 9.5, 6, 4)), CREAM[1])
+    stampAt(l, head, TUFT_BACK, -17, 5, { f: FUR[1] })
+    stampAt(l, head, TUFT_DOWN, -6, 14.5, { f: FUR[1] })
+    smooth(l)
+    mantle(l, FUR[1], MANE[1], { depth: 6, tooth: 2.5, pitch: 4, origin: headAt })
+    cel(l, { shade: 5.5, deep: 1.8, rim: 2, tooth: 1.5, pitch: 4, origin: headAt })
+    dimEdge(l, [CREAM])
+  })
+
+  // ---- face
+  g.add(
+    4.2,
+    (l) => {
+      const [near, far] = EYES[p.eyes]
+      stampAt(l, head, near, 4.5, -3.5, EYE_KEY)
+      stampAt(l, head, far, 14.5, -4.5, EYE_KEY)
+      stampAt(l, head, NOSE, 22, 1, { K: C.black, h: FUR[0] })
+      if (open) stampAt(l, head, TEETH_UP, 16.5, 9.6, { w: C.white, W: CREAM[2] })
+      else stampAt(l, head, p.mouth === 'grump' ? MOUTH_GRUMP : MOUTH_SHUT, 18, 6, { i: C.inkCool })
+    },
+    false
+  )
+
+  // ---- the sprig: three leaves on the crown that flop a beat behind the head
+  const spread = 1 + p.droop * 1.2
+  for (const [u, v, deg, len, wid, depth] of [
+    [-5, -13, -68, 12, 3.6, 4.5],
+    [4, -13.5, 44, 11, 3.4, 4.55],
+    [-0.5, -14.5, -14, 14, 4, 4.6]
+  ] as const)
+    g.add(depth, (l) => {
+      const f = head.child(u, v, deg * spread + p.leaves * (1 + Math.abs(deg) / 90))
+      fill(l, f, union(leafShape(len, wid), capsule([0, 2], [0, -1.5], 0.9, 0.9)), LEAF[1])
+      smooth(l)
+      cel(l, { shade: 1.6, rim: 1 })
+      // the midrib
+      within(l, (m) => fill(m, f, capsule([0, -2], [0, -len * 0.7], 0.45, 0.45), LEAF[2]), true)
+    })
+
+  // ---- dust thrown out to both sides of a slam
+  if (p.dust > 0) {
+    const puffAt = (l: Raster, x: number, side: number) => {
+      const d = p.dust
+      fill(l, Frame.at(x, 117), oval(0, 0, 5 + d * 2, 3 + d), CREAM[2])
+      fill(l, Frame.at(x + side * (7 + d * 4), 115 - d * 2), oval(0, 0, 3.4 + d * 1.4, 2.6 + d), CREAM[2])
+      fill(l, Frame.at(x + side * (2 + d * 2), 112 - d * 3), oval(0, 0, 2.6 + d, 2.2 + d * 0.6), CREAM[2])
+    }
+    g.add(-6, (l) => {
+      puffAt(l, ground.pt(-30, 0)[0], -1)
+      smooth(l)
+      cel(l, { shade: 1.6 })
+    })
+    g.add(6, (l) => {
+      puffAt(l, ground.pt(30, 0)[0], 1)
+      smooth(l)
+      cel(l, { shade: 1.6 })
+    })
+  }
+
+  // ---- stars over a knocked-out head, outlined
+  if (p.stars >= 0)
+    g.add(7, (l) => {
+      // over the head on screen, whichever way the head lies
+      const [hx, hy] = head.pt(2, 0)
+      const cx = hx
+      const cy = hy - 20
+      for (let i = 0; i < 3; i++) {
+        const a = (p.stars + i / 3) * TAU
+        l.stamp(
+          Math.sin(a) > 0 ? STAR : STAR_SMALL,
+          Math.round(cx + Math.cos(a) * 13) - 2,
+          Math.round(cy + Math.sin(a) * 3.5) - 2,
+          { y: GOURD[1], Y: C.white }
+        )
+      }
+    })
+
   return g.render()
 }
 
-// -------------------------------------------------------------------------------------------- pose builders
+// ------------------------------------------------------------------------------------------------ clips
 
-interface StandOpts {
-  sink: number
-  squash: number
-  bob: number
-  lean: number
-  head: [number, number]
-  pitch: number
-  nearHand: Pt
-  farHand: Pt
-  nearBend: Pt
-  farBend: Pt
-  nearFoot: [number, number]
-  farFoot: [number, number]
-  splay: number
-  eyes: Eyes
-  mouth: Mouth
-  jaw: number
-  gourd: Pt
-  earBack: number
-  fx: Fx
-}
+const P = bearPose
+const phase = (i: number, n: number) => (i / n) * TAU
 
-/** An upright pose: the torso bottom rides `sink` px under its rest height, the feet stay on the ground. */
-export function stand(o: Partial<StandOpts> = {}): BearPose {
-  const s: StandOpts = {
-    sink: 0,
-    squash: 0,
-    bob: 0,
-    lean: 0,
-    head: [0, 0],
-    pitch: 0,
-    nearHand: [-2, 31],
-    farHand: [5, 30],
-    nearBend: [-1, 0.6],
-    farBend: [-1, 0.6],
-    nearFoot: [0, 0],
-    farFoot: [0, 0],
-    splay: 0,
-    eyes: 'sleepy',
-    mouth: 'frown',
-    jaw: 0,
-    gourd: [0, 0],
-    earBack: 0,
-    fx: {},
-    ...o
-  }
-  const ry = 34 - s.squash
-  const rx = 36 + s.squash * 0.9
-  const bottom = 111 + s.sink - s.bob
-  const torso: Torso = { x: 64 + s.lean * 0.5, y: bottom - ry, rx, ry, belly: [0.3, 0.18, 0.62, 0.72] }
-  return {
-    torso,
-    head: { x: torso.x + 15 + s.head[0] + s.lean * 0.5, y: torso.y - ry + 6 + s.head[1], pitch: s.pitch },
-    nearHand: s.nearHand,
-    farHand: s.farHand,
-    nearBend: s.nearBend,
-    farBend: s.farBend,
-    nearFoot: [torso.x - 8 - s.splay + s.nearFoot[0], GROUND - s.nearFoot[1]],
-    farFoot: [torso.x + 14 + s.splay + s.farFoot[0], GROUND - s.farFoot[1]],
-    eyes: s.eyes,
-    mouth: s.mouth,
-    jaw: s.jaw,
-    gourd: s.gourd,
-    earBack: s.earBack,
-    fx: s.fx
-  }
-}
-
-/** Sitting heavily on the ground, legs stretched out in front, sole-on. */
-function sit(
-  o: {
-    lean?: number
-    breath?: number
-    head?: Pt
-    nearHand?: Pt
-    farHand?: Pt
-    eyes?: Eyes
-    mouth?: Mouth
-    jaw?: number
-    fx?: Fx
-    gourd?: Pt
-  } = {}
-): BearPose {
-  const breath = o.breath ?? 0
-  const lean = o.lean ?? 0
-  const ry = 31 + breath * 0.8
-  const torso: Torso = { x: 56 + lean * 0.4, y: 118 - ry, rx: 30 - breath * 0.4, ry, belly: [0.35, 0.2, 0.6, 0.7] }
-  const h = o.head ?? [0, 0]
-  return {
-    torso,
-    head: { x: torso.x + 15 + h[0] + lean * 0.4, y: torso.y - ry + 12 + h[1], pitch: -0.3 },
-    nearHand: o.nearHand ?? [20, 34],
-    farHand: o.farHand ?? [16, 34],
-    nearBend: [-0.3, 1],
-    farBend: [-0.3, 1],
-    nearFoot: [91, 110.5],
-    farFoot: [104, 108.5],
-    soles: true,
-    eyes: o.eyes ?? 'swirl',
-    mouth: o.mouth ?? 'pant',
-    jaw: o.jaw ?? 0.5,
-    gourd: o.gourd ?? [0, 0],
-    earBack: 0,
-    fx: o.fx ?? {}
-  }
-}
-
-/** Lying on his back, head to the right, feet in the air on the left. */
-function lie(
-  o: { lift?: number; legs?: number; eyes?: Eyes; mouth?: Mouth; fx?: Fx; head?: Pt; arms?: number } = {}
-): BearPose {
-  const lift = o.lift ?? 0
-  const legs = o.legs ?? 0
-  const arms = o.arms ?? 0
-  const h = o.head ?? [0, 0]
-  const torso: Torso = { x: 60, y: 99 - lift, rx: 35, ry: 23, belly: [0.05, -0.28, 0.72, 0.5] }
-  return {
-    torso,
-    head: { x: 94 + h[0], y: 102 - lift * 0.6 + h[1], pitch: 0.4 },
-    nearHand: [16 + arms * 2, 30 - arms * 3],
-    farHand: [10, 28 + arms],
-    nearBend: [-0.3, 1],
-    farBend: [-0.3, 1],
-    nearFoot: [24 - legs, 84 + legs * 2 - lift],
-    farFoot: [14 - legs, 98 + legs * 1.5 - lift],
-    soles: true,
-    eyes: o.eyes ?? 'swirl',
-    mouth: o.mouth ?? 'pant',
-    jaw: 0.6,
-    gourd: [-2, 0],
-    earBack: 3,
-    fx: o.fx ?? {}
-  }
-}
-
-// -------------------------------------------------------------------------------------------- clips
-
-const TAU = Math.PI * 2
-
-const idle = memo(() =>
-  [0, 1, 2, 1].map((k, i) =>
-    drawBear(
-      stand({
-        squash: -k * 0.8,
-        head: [0, k * 0.8],
-        nearHand: [
-          [12, 24],
-          [9, 26],
-          [14, 23],
-          [10, 25]
-        ][i] as Pt,
-        nearBend: [-0.3, 1],
-        eyes: i === 2 ? 'closed' : 'sleepy',
-        gourd: [0, k * 0.5]
-      })
-    )
-  )
-)
-
-const intro = memo(() =>
-  [
-    stand({
-      sink: 3,
-      squash: 4,
-      head: [-2, 3],
-      pitch: -0.4,
-      nearHand: [-14, 22],
-      farHand: [2, 26],
-      eyes: 'angry',
-      mouth: 'grumble'
-    }),
-    stand({
-      squash: -1,
-      pitch: 0.6,
-      nearHand: [-14, -14],
-      farHand: [20, -10],
-      nearBend: [-1, -0.2],
-      farBend: [1, 0.4],
-      eyes: 'squint',
-      mouth: 'roar',
-      jaw: 0.5,
-      earBack: 2
-    }),
-    stand({
-      squash: -3,
-      bob: 1,
-      head: [-1, -2],
-      pitch: 1,
-      nearHand: [-14, -31],
-      farHand: [24, -22],
-      nearBend: [-1, -0.2],
-      farBend: [1, 0.4],
-      eyes: 'squint',
-      mouth: 'roar',
-      jaw: 1,
-      earBack: 3,
-      fx: { roar: 2 }
-    }),
-    stand({
-      squash: -2.4,
-      head: [0, -1],
-      pitch: 0.9,
-      nearHand: [-16, -29],
-      farHand: [26, -20],
-      nearBend: [-1, -0.2],
-      farBend: [1, 0.4],
-      eyes: 'squint',
-      mouth: 'roar',
-      jaw: 0.85,
-      earBack: 3,
-      gourd: [0, 1],
-      fx: { roar: 3 }
+/** idle: half asleep on his feet — a long breath, the head nodding off, an ear twitch, one belly scratch. */
+const idle = memo(() => {
+  const N = 6
+  const breath = Array.from({ length: N }, (_, i) => 0.5 - 0.5 * Math.cos(phase(i, N)))
+  const sway = Array.from({ length: N }, (_, i) => Math.sin(phase(i, N)))
+  const nod = Array.from({ length: N }, (_, i) => [0, 1, 3, 5, 2, 0][i])
+  const leafLag = lag(nod, { stiffness: 0.35, damping: 0.4, loop: true })
+  const gourdLag = lag(sway, { stiffness: 0.3, damping: 0.35, loop: true })
+  const scratch: Arm[] = [
+    [-3, 30, 1, 0],
+    [2, 27, 1, 0],
+    [12, 18, 1, -40],
+    [13, 21, 1, -30],
+    [10, 22, 1, -40],
+    [1, 28, 1, 0]
+  ]
+  return Array.from({ length: N }, (_, i) =>
+    P({
+      y: breath[i] * 0.8,
+      lean: sway[i] * 1.2,
+      breath: breath[i],
+      belly: -breath[i] * 0.6,
+      head: [0, nod[i] * 0.4],
+      nod: nod[i] * 1.6,
+      eyes: i === 3 ? 'closed' : 'sleepy',
+      mouth: 'shut',
+      earF: i === 4 ? 24 : 0,
+      armN: scratch[i],
+      armF: [-1 + sway[i], 29, 1, 0],
+      gourd: 16 + gourdLag[i] * 8,
+      leaves: leafLag[i] * 4
     })
-  ].map(drawBear)
-)
-
-const move = memo(() =>
-  Array.from({ length: 6 }, (_, i) => {
-    const t = i / 6
-    const sw = Math.sin(t * TAU)
-    const cw = Math.cos(t * TAU)
-    const bob = ((1 + Math.cos(t * TAU * 2)) / 2) * 3
-    return drawBear(
-      stand({
-        bob,
-        lean: 5,
-        head: [2, bob * 0.3 + 1],
-        pitch: -0.1,
-        nearFoot: [sw * 10, Math.max(0, cw) * 7],
-        farFoot: [-sw * 10, Math.max(0, -cw) * 7],
-        nearHand: [-2 - sw * 13, 30 - Math.abs(sw) * 4],
-        farHand: [5 + sw * 13, 29 - Math.abs(sw) * 4],
-        gourd: [-sw * 2, ((1 - Math.cos(t * TAU * 2 - 1.2)) / 2) * 4],
-        earBack: 1
-      })
-    )
-  })
-)
-
-const windup = memo(() =>
-  [0, 1, 2].map((i) =>
-    drawBear(
-      stand({
-        sink: [2, 5, 6][i],
-        squash: [3, 7, 10][i],
-        lean: [-1, -2, -3][i],
-        head: [
-          [0, 2],
-          [-1, 4],
-          [-2, 5]
-        ][i] as Pt,
-        pitch: -0.4,
-        splay: [3, 6, 8][i],
-        nearHand: [
-          [-20, 6],
-          [-22, -8],
-          [-23, -20]
-        ][i] as Pt,
-        farHand: [
-          [-10, 8],
-          [-16, -4],
-          [-20, -14]
-        ][i] as Pt,
-        nearBend: [-0.6, 0.5],
-        farBend: [-0.6, 0.5],
-        eyes: 'angry',
-        mouth: 'grumble',
-        gourd: [0, [1, 2, 3][i]],
-        earBack: 2
-      })
-    )
   )
-)
+})
 
-const air = memo(() =>
-  [
-    stand({
-      bob: 12,
-      squash: -3,
-      head: [0, -1],
-      pitch: 0.5,
-      nearHand: [-14, -26],
-      farHand: [22, -20],
-      nearBend: [-1, -0.2],
-      farBend: [1, 0.4],
-      nearFoot: [-3, 12],
-      farFoot: [3, 10],
-      eyes: 'angry',
-      mouth: 'roar',
-      jaw: 0.4,
-      gourd: [0, 3],
-      earBack: 3
-    }),
-    stand({
-      bob: 24,
-      squash: 5,
-      head: [0, 1],
-      pitch: -0.2,
-      nearHand: [-30, -12],
-      farHand: [30, -12],
-      nearBend: [-0.4, 1],
-      farBend: [0.4, 1],
-      nearFoot: [-8, 20],
-      farFoot: [8, 18],
-      splay: 6,
-      eyes: 'wide',
-      mouth: 'gasp',
+/** intro: a yawn and a stretch, the snap awake, the roar with arms spread (held), then the fighting crouch. */
+const intro = memo(() => {
+  const roar: Partial<BearPose> = {
+    y: 1,
+    squash: -3,
+    lean: -4,
+    head: [-1, -3],
+    nod: -14,
+    eyes: 'angry',
+    mouth: 'open',
+    jaw: 1,
+    armN: [-25, -12, -1, -50],
+    armF: [25, -14, 1, -70],
+    earN: 30,
+    earF: 30,
+    fur: 1,
+    leaves: -30,
+    droop: -0.5
+  }
+  const crouch: Partial<BearPose> = {
+    y: -3,
+    squash: 2.5,
+    lean: 10,
+    head: [2, 2],
+    nod: 4,
+    eyes: 'angry',
+    mouth: 'grump',
+    armN: [15, 17, 1, -60],
+    armF: [20, 13, 1, -70],
+    legN: [-3, 0, 0],
+    legF: [3, 0, 0],
+    earN: 20,
+    earF: 20,
+    fur: 0.4,
+    gourd: 28
+  }
+  return [
+    P({
+      squash: -1,
+      lean: -5,
+      head: [-1, -1],
+      nod: -16,
+      eyes: 'closed',
+      mouth: 'open',
       jaw: 0.6,
-      gourd: [0, -3],
-      earBack: 4
-    })
-  ].map(drawBear)
-)
-
-const land = memo(() =>
-  [
-    stand({
-      sink: 6,
-      squash: 10,
-      lean: 4,
-      head: [2, 6],
-      pitch: -0.2,
-      splay: 10,
-      nearHand: [-30, 26],
-      farHand: [28, 24],
-      nearBend: [-0.6, 1],
-      farBend: [0.6, 1],
-      eyes: 'squint',
-      mouth: 'gasp',
-      jaw: 0.4,
-      earBack: 3,
-      gourd: [0, 4],
-      fx: {
-        dust: [
-          [26, 114, 7],
-          [110, 114, 7]
-        ],
-        tufts: [
-          [101, 100, 13, -4],
-          [97, 92, 12, -9],
-          [93, 85, 8, -12]
-        ]
-      }
+      armN: [-8, -20, -1, -30],
+      armF: [8, -22, 1, -40],
+      gourd: 10
     }),
-    stand({
-      sink: 5,
-      squash: 9,
-      lean: 2,
-      head: [1, 4],
-      splay: 8,
-      nearHand: [-26, 26],
-      farHand: [24, 25],
-      nearBend: [-0.6, 1],
-      farBend: [0.6, 1],
-      eyes: 'angry',
-      mouth: 'grumble',
-      earBack: 2,
-      gourd: [0, -2],
-      fx: {
-        dust: [
-          [22, 113, 8],
-          [112, 113, 8]
-        ]
-      }
-    }),
-    stand({
-      sink: 1,
-      squash: -1,
-      head: [0, -1],
-      splay: 2,
-      nearHand: [-10, 30],
-      farHand: [14, 29],
-      nearBend: [-0.6, 1],
-      farBend: [0.6, 1],
-      eyes: 'angry',
-      mouth: 'frown',
-      gourd: [0, 2],
-      earBack: 1,
-      fx: {
-        dust: [
-          [22, 118, 5],
-          [108, 118, 5]
-        ]
-      }
-    })
-  ].map(drawBear)
-)
-
-const recover = memo(() =>
-  [0, 1].map((i) =>
-    drawBear(
-      sit({
-        breath: i,
-        lean: -3,
-        head: [0, i * 1.5],
-        jaw: 0.5 + i * 0.3,
-        nearHand: [
-          [20, 34],
-          [18, 35]
-        ][i] as Pt,
-        fx: {
-          sweat: [
-            [
-              [46, 70],
-              [92, 54]
-            ],
-            [
-              [44, 78],
-              [94, 60]
-            ]
-          ][i] as Pt[]
-        }
-      })
-    )
-  )
-)
-
-const hurt = memo(() =>
-  [
-    stand({
+    P({
+      y: 1,
+      squash: -2.5,
       lean: -8,
-      head: [-3, -1],
-      pitch: 0.8,
-      nearHand: [-26, -12],
-      farHand: [22, -10],
-      nearBend: [-1, 0],
-      farBend: [1, 0.2],
-      eyes: 'hurt',
-      mouth: 'gasp',
-      jaw: 0.7,
-      earBack: 4,
-      gourd: [-2, 3],
-      nearFoot: [-3, 0],
-      farFoot: [3, 3]
+      head: [-2, -2],
+      nod: -24,
+      eyes: 'closed',
+      mouth: 'open',
+      jaw: 1,
+      tongue: true,
+      armN: [-4, -30, -1, -10],
+      armF: [6, -31, 1, -20],
+      gourd: 6,
+      leaves: 10
     }),
-    stand({
-      lean: -4,
-      head: [-1, 1],
-      pitch: 0.3,
-      nearHand: [-20, 10],
-      farHand: [16, 12],
-      nearBend: [-1, 0.4],
-      farBend: [1, 0.4],
-      eyes: 'squint',
-      mouth: 'grumble',
-      earBack: 2,
-      gourd: [1, 1]
+    P({
+      y: -2,
+      squash: 2,
+      lean: 2,
+      head: [1, 1],
+      nod: 0,
+      eyes: 'wide',
+      mouth: 'shut',
+      armN: [-6, 18, 1, 0],
+      armF: [-2, 16, 1, 0],
+      gourd: 24,
+      leaves: 20,
+      fur: 0.5
+    }),
+    P({ ...roar, gourd: 2, leaves: -40 }),
+    P({
+      ...roar,
+      y: 1.4,
+      fur: 1.4,
+      jaw: 0.9,
+      gourd: -6,
+      leaves: -24,
+      armN: [-26, -14, -1, -56],
+      armF: [26, -16, 1, -74]
+    }),
+    P({ ...crouch, y: -4.5, squash: 3.5, gourd: 4, leaves: 16 }),
+    P({ ...crouch, breath: 1, gourd: 26, leaves: -6 }),
+    P({ ...crouch, y: -2.6, breath: 0.2, gourd: 32, leaves: 4 })
+  ]
+})
+
+/** hurt: a grunt — the head snapped back, eyes shut, arms jerking up; recoil; an annoyed shake of the head. */
+const hurt = memo(() => [
+  P({
+    x: -2,
+    y: 1,
+    lean: -10,
+    squash: -1.5,
+    head: [-3, -3],
+    nod: -26,
+    eyes: 'hurt',
+    mouth: 'open',
+    jaw: 0.6,
+    armN: [-14, -6, -1, -30],
+    armF: [14, -8, 1, -40],
+    earN: 40,
+    earF: 40,
+    fur: 1,
+    gourd: 34,
+    leaves: 30
+  }),
+  P({
+    x: -4,
+    y: -1.5,
+    lean: 6,
+    squash: 1.5,
+    head: [0, 2],
+    nod: 12,
+    eyes: 'shut',
+    mouth: 'grump',
+    armN: [-2, 26, 1, 0],
+    armF: [2, 24, 1, 0],
+    earN: 30,
+    earF: 34,
+    gourd: -4,
+    leaves: -20
+  }),
+  P({
+    x: -2,
+    lean: 2,
+    head: [2, 0],
+    nod: 8,
+    eyes: 'angry',
+    mouth: 'grump',
+    armN: [2, 27, 1, 0],
+    armF: [3, 26, 1, 0],
+    earN: 10,
+    earF: -10,
+    gourd: 22,
+    leaves: 26
+  })
+])
+
+/**
+ * move: the walk of something heavy — contact, sink, pass, rise on each foot, the body rolling, the arms swinging
+ * like pendulums against the legs, the belly bouncing a beat late and the gourd swinging behind.
+ */
+const move = memo(() => {
+  const N = 8
+  const foot = (t: number): Leg => {
+    const u = ((t % 1) + 1) % 1
+    if (u < 0.5) return [9 - 36 * u, 0, 0]
+    const s = (u - 0.5) * 2
+    return [-9 + 18 * s, Math.sin(Math.PI * s) * 6, -Math.sin(Math.PI * s) * 12]
+  }
+  const t = Array.from({ length: N }, (_, i) => i / N)
+  const bob = t.map((u) => -1.8 * Math.cos(TAU * 2 * (u - 0.125)))
+  const roll = t.map((u) => Math.sin(TAU * u))
+  const bellyLag = lag(bob, { stiffness: 0.4, damping: 0.45, loop: true })
+  const gourdLag = lag(roll, { stiffness: 0.3, damping: 0.3, loop: true })
+  const leafLag = lag(bob, { stiffness: 0.35, damping: 0.4, loop: true })
+  return t.map((u, i) => {
+    const swing = Math.cos(TAU * u)
+    return P({
+      x: Math.round(roll[i] * 0.8),
+      y: bob[i],
+      lean: 5 + roll[i] * 2.2,
+      belly: bellyLag[i] * 1.6,
+      head: [1, 1 - bob[i] * 0.3],
+      nod: 4 + bob[i],
+      eyes: 'sleepy',
+      mouth: i === 2 || i === 6 ? 'grump' : 'shut',
+      legN: foot(u),
+      legF: foot(u + 0.5),
+      armN: [-3 - swing * 9, 29 - Math.abs(swing) * 2, 1, swing * 10],
+      armF: [-1 + swing * 9, 28 - Math.abs(swing) * 2, 1, -swing * 10],
+      gourd: 18 + gourdLag[i] * 14 + bob[i] * 2,
+      leaves: leafLag[i] * 8,
+      earN: 4,
+      earF: 4
     })
-  ].map(drawBear)
+  })
+})
+
+/** windup: the crouch before the leap — sinking low, arms pulled back, belly on the knees, eyes on the hero. */
+const windup = memo(() => {
+  const set: Partial<BearPose> = {
+    y: -9,
+    squash: 4,
+    lean: 16,
+    head: [3, 4],
+    nod: -6,
+    eyes: 'angry',
+    mouth: 'grump',
+    armN: [-20, 12, 1, 30],
+    armF: [-14, 10, 1, 30],
+    legN: [-4, 0, 0],
+    legF: [4, 0, 0],
+    earN: 35,
+    earF: 35,
+    fur: 0.8,
+    leaves: 20
+  }
+  return [
+    P({
+      y: -4,
+      squash: 2,
+      lean: 8,
+      head: [2, 2],
+      nod: 0,
+      eyes: 'angry',
+      mouth: 'grump',
+      armN: [-12, 20, 1, 10],
+      armF: [-8, 20, 1, 10],
+      legN: [-2, 0, 0],
+      legF: [2, 0, 0],
+      earN: 20,
+      earF: 20,
+      gourd: 8,
+      leaves: -10
+    }),
+    P({ ...set, y: -10, squash: 5, gourd: 34, leaves: 26 }),
+    P({ ...set, x: 0.6, fur: 1, gourd: 30, leaves: 18 }),
+    P({ ...set, x: -0.6, y: -9.5, breath: 0.6, gourd: 26, leaves: 24 })
+  ]
+})
+
+/** air: rising (stretched, arms thrown up), the top (tucked, arms out), falling (belly first, roaring). */
+const air = memo(() => [
+  P({
+    y: 5,
+    squash: -4,
+    lean: -2,
+    head: [0, -2],
+    nod: -12,
+    eyes: 'angry',
+    mouth: 'open',
+    jaw: 0.5,
+    armN: [-6, -30, -1, -20],
+    armF: [8, -30, 1, -30],
+    legN: [-6, 2, 30],
+    legF: [-2, 4, 30],
+    earN: 30,
+    earF: 30,
+    gourd: 4,
+    leaves: 30,
+    droop: -0.3
+  }),
+  P({
+    y: 8,
+    squash: 2,
+    lean: 6,
+    head: [1, 2],
+    nod: 4,
+    eyes: 'wide',
+    mouth: 'open',
+    jaw: 0.3,
+    armN: [-24, 2, 1, -60],
+    armF: [24, -2, -1, -90],
+    legN: [0, 12, 0],
+    legF: [6, 11, 0],
+    gourd: 90,
+    leaves: -10
+  }),
+  P({
+    y: 6,
+    squash: 1,
+    lean: 24,
+    head: [2, 1],
+    nod: -14,
+    eyes: 'angry',
+    mouth: 'open',
+    jaw: 1,
+    armN: [-24, -14, -1, -40],
+    armF: [24, -18, 1, -70],
+    legN: [-12, 8, 20],
+    legF: [10, 9, -10],
+    earN: 40,
+    earF: 40,
+    fur: 1,
+    gourd: 160,
+    leaves: -40,
+    droop: -0.4
+  })
+])
+
+/** land: the slam — flattened with dust to both sides, the gourd crashing down a frame late, rebound, up. */
+const land = memo(() => [
+  P({
+    y: -14,
+    squash: 7,
+    lean: 14,
+    head: [3, 4],
+    nod: 4,
+    eyes: 'shut',
+    mouth: 'open',
+    jaw: 0.35,
+    armN: [-18, 18, 1, 40],
+    armF: [24, 16, -1, -10],
+    legN: [-8, 0, 0],
+    legF: [8, 0, 0],
+    earN: 40,
+    earF: 40,
+    fur: 1.2,
+    gourd: 130,
+    leaves: -40,
+    dust: 1
+  }),
+  P({
+    y: -9,
+    squash: 3,
+    lean: 10,
+    head: [2, 1],
+    nod: 0,
+    eyes: 'angry',
+    mouth: 'grump',
+    armN: [-12, 22, 1, 30],
+    armF: [18, 20, -1, -10],
+    legN: [-6, 0, 0],
+    legF: [6, 0, 0],
+    earN: 20,
+    earF: 20,
+    fur: 0.6,
+    gourd: -6,
+    leaves: 30,
+    dust: 1.8
+  }),
+  P({
+    y: -4,
+    squash: 1,
+    lean: 12,
+    head: [2, 2],
+    nod: 4,
+    eyes: 'angry',
+    mouth: 'shut',
+    armN: [8, 18, 1, -40],
+    armF: [10, 16, 1, -40],
+    legN: [-4, 0, 0],
+    legF: [4, 0, 0],
+    gourd: 30,
+    leaves: -10,
+    dust: 0.9
+  }),
+  P({
+    y: -0.5,
+    lean: 4,
+    head: [1, 0.5],
+    nod: 2,
+    eyes: 'angry',
+    mouth: 'grump',
+    armN: [-2, 29, 1, 0],
+    armF: [0, 28, 1, 0],
+    gourd: 12,
+    leaves: 6
+  })
+])
+
+/** recover: bent forward with paws on his knees, panting with the tongue out, the leaves drooping. */
+const recover = memo(() =>
+  [0, 1, 0.3, 0.85].map((pant, i) =>
+    P({
+      y: -3 - pant * 0.8,
+      lean: 20,
+      squash: 1,
+      breath: pant,
+      belly: pant * 0.8,
+      head: [3, 5 + pant],
+      nod: 6 - pant * 6,
+      eyes: 'tired',
+      mouth: 'open',
+      jaw: 0.35 + pant * 0.3,
+      tongue: true,
+      armN: [9, 22, 1, -50],
+      armF: [11, 20, 1, -50],
+      legN: [-3, 0, 0],
+      legF: [3, 0, 0],
+      earN: 20 + pant * 6,
+      earF: 18,
+      gourd: 20 + [0, 3, -2, 2][i],
+      leaves: pant * 6,
+      droop: 1
+    })
+  )
 )
 
-const defeat = memo(() =>
-  [
-    stand({
-      lean: -9,
-      head: [-3, 0],
-      pitch: 0.9,
-      nearHand: [-28, -8],
-      farHand: [24, -10],
-      nearBend: [-1, 0],
-      farBend: [1, 0.2],
-      eyes: 'hurt',
-      mouth: 'gasp',
-      jaw: 0.8,
-      earBack: 4,
-      nearFoot: [-4, 0],
-      farFoot: [4, 4],
-      gourd: [-3, 3]
-    }),
-    stand({
-      lean: 6,
-      head: [3, 2],
-      pitch: -0.2,
-      nearHand: [-8, 28],
-      farHand: [12, 27],
-      eyes: 'swirl',
-      mouth: 'pant',
-      jaw: 0.4,
-      nearFoot: [5, 0],
-      farFoot: [-3, 3],
-      gourd: [2, 2],
-      fx: {
-        stars: [
-          [52, 18],
-          [96, 14]
-        ]
-      }
-    }),
-    stand({
-      sink: 4,
-      squash: 7,
-      lean: -3,
-      head: [0, 6],
-      pitch: -0.3,
-      nearHand: [-8, 29],
-      farHand: [10, 28],
-      splay: 5,
-      eyes: 'swirl',
-      mouth: 'pant',
-      jaw: 0.5,
-      gourd: [0, 3],
-      fx: {
-        stars: [
-          [50, 54],
-          [92, 50],
-          [70, 38]
-        ]
-      }
-    }),
-    sit({
-      lean: -10,
-      head: [-4, 2],
-      nearHand: [8, 36],
-      farHand: [2, 36],
+/** defeat: the jolt, a slow sway backward like a felled tree, the crash, a bounce of the belly, out cold. */
+const defeat = memo(() => {
+  const lying: Partial<BearPose> = {
+    x: 0,
+    y: -13,
+    lean: -90,
+    squash: -6,
+    upright: 0,
+    head: [2, -2],
+    nod: 72,
+    eyes: 'dizzy',
+    mouth: 'open',
+    jaw: 0.45,
+    tongue: true,
+    armN: [-10, 14, -1, 30],
+    armF: [8, -18, 1, -30],
+    legN: [36, 24, -90],
+    legF: [17, 38, -100],
+    earN: 0,
+    earF: 0,
+    gourdAt: [92, 104, -65],
+    leaves: 10,
+    droop: 1
+  }
+  return [
+    P({
+      x: -1,
+      y: 1,
+      lean: -6,
+      squash: -1.5,
+      head: [-2, -2],
+      nod: -16,
+      eyes: 'wide',
+      mouth: 'open',
       jaw: 0.6,
-      fx: {
-        stars: [
-          [40, 52],
-          [86, 46]
-        ]
-      }
+      armN: [-12, -4, -1, -30],
+      armF: [12, -6, 1, -40],
+      earN: 30,
+      earF: 30,
+      fur: 1.3,
+      gourd: 30,
+      leaves: 30
     }),
-    lie({
-      lift: 5,
-      legs: 4,
-      arms: 3,
-      fx: {
-        dust: [
-          [18, 117, 8],
-          [112, 117, 7]
-        ]
-      }
+    P({
+      x: -4,
+      y: -1,
+      lean: -16,
+      head: [-1, 0],
+      nod: -6,
+      eyes: 'dizzy',
+      mouth: 'open',
+      jaw: 0.4,
+      armN: [-6, 16, 1, 0],
+      armF: [6, 14, -1, 0],
+      legF: [3, 3, -20],
+      gourd: 2,
+      leaves: -16
     }),
-    lie({
-      fx: {
-        stars: [
-          [96, 70],
-          [116, 78],
-          [78, 66]
-        ]
-      }
-    })
-  ].map(drawBear)
-)
+    P({
+      x: -12,
+      y: -6,
+      lean: -42,
+      head: [-1, 0],
+      nod: -4,
+      eyes: 'dizzy',
+      mouth: 'open',
+      jaw: 0.6,
+      armN: [-10, -8, -1, -20],
+      armF: [10, -12, 1, -40],
+      legN: [6, 3, -30],
+      legF: [10, 8, -40],
+      gourd: 150,
+      leaves: -30
+    }),
+    P({
+      ...lying,
+      y: -14,
+      squash: -5,
+      eyes: 'shut',
+      legN: [34, 30, -70],
+      legF: [14, 42, -80],
+      gourdAt: [88, 86, -150],
+      leaves: -30,
+      dust: 0.8
+    }),
+    P({
+      ...lying,
+      x: 1.5,
+      y: -10.5,
+      squash: -7,
+      belly: -2,
+      legN: [37, 22, -95],
+      gourdAt: [94, 98, -100],
+      leaves: 30,
+      dust: 1.4
+    }),
+    P({ ...lying, y: -13.5, squash: -5.5, belly: 1.5, gourdAt: [93, 104, -60], leaves: -6 }),
+    P({ ...lying, stars: 0, breath: 0.2 }),
+    P({ ...lying, stars: 1 / 6, breath: 0.8, leaves: 16 })
+  ]
+})
 
-const spec = bossSpec('bearBoss')
-const clip = (name: keyof typeof spec, frames: () => Raster[]) => lazyAnim(frames, spec[name].fps, spec[name].loop)
+const draw = (poses: BearPose[]) => poses.map(drawBear)
 
 export const sheets: SheetModule = {
   bearBoss: () => ({
-    idle: clip('idle', idle),
-    intro: clip('intro', intro),
-    move: clip('move', move),
-    windup: clip('windup', windup),
-    air: clip('air', air),
-    land: clip('land', land),
-    recover: clip('recover', recover),
-    hurt: clip('hurt', hurt),
-    defeat: clip('defeat', defeat)
+    idle: lazyAnim(() => draw(idle()), 8, true),
+    intro: lazyAnim(() => draw(intro()), 10, false, { sustain: 2 }),
+    hurt: lazyAnim(() => draw(hurt()), 12, false),
+    defeat: lazyAnim(() => draw(defeat()), 10, false, { sustain: 2 }),
+    move: lazyAnim(() => draw(move()), 10, true),
+    windup: lazyAnim(() => draw(windup()), 10, false, { sustain: 2 }),
+    air: lazyAnim(() => draw(air()), 8, false),
+    land: lazyAnim(() => draw(land()), 14, false),
+    recover: lazyAnim(() => draw(recover()), 6, true)
   })
 }

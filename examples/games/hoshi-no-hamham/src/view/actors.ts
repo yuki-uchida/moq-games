@@ -13,10 +13,10 @@ import {
   RUN_CONTACT_FRAMES,
   RUN_THRESHOLD,
   bossClip,
+  clipLife,
   enemyClip,
   heroClip,
   isSkidding,
-  specDuration,
   type ClipChoice
 } from './clips'
 import type { FxPool } from './fx'
@@ -39,6 +39,47 @@ interface Ghost {
   h: number
   end: 'puff' | 'boom' | 'none'
   clip: string
+}
+
+/** A boss charging or diving faster than this (px/s) leaves speed ghosts. */
+export const GHOST_SPEED = 260
+/** Display frames old and opacity of the two after-images of a fast boss, oldest first. */
+export const TRAIL_AGES = [4, 2] as const
+export const TRAIL_ALPHAS = [0.15, 0.3] as const
+/** The boss's defeat ghost lives this long (s) after its clip has played, so it can fade and burst. */
+export const BOSS_DEFEAT_TAIL = 0.5
+
+/**
+ * The last few positions of a body in a fixed ring (no allocation per frame). `at(age)` is the position `age`
+ * pushes ago (0 is the latest); `has(age)` tells whether the history reaches that far.
+ */
+export class PositionTrail {
+  private xs: Float64Array
+  private ys: Float64Array
+  private count = 0
+  private head = 0
+  constructor(readonly size = 5) {
+    this.xs = new Float64Array(size)
+    this.ys = new Float64Array(size)
+  }
+  push(x: number, y: number) {
+    this.head = (this.head + 1) % this.size
+    this.xs[this.head] = x
+    this.ys[this.head] = y
+    this.count = Math.min(this.size, this.count + 1)
+  }
+  clear() {
+    this.count = 0
+  }
+  has(age: number) {
+    return age < this.count
+  }
+  x(age: number) {
+    return this.xs[(this.head - age + this.size * 2) % this.size]
+  }
+  y(age: number) {
+    return this.ys[(this.head - age + this.size * 2) % this.size]
+  }
 }
 
 /** Who staging can pose. */
@@ -88,6 +129,8 @@ export class ActorsView {
   private blinkAge = 99
   private nextBlink = 2.5
   private skidAge: number | null = null
+  private turnAge: number | null = null
+  private lastFacing: 1 | -1 = 1
   private cheerAt: number | null = null
   private waterTime = 0
   private lastRunFrame = -1
@@ -99,6 +142,10 @@ export class ActorsView {
   private bossPrev: BossState | null = null
   private bossLast: BossState | null = null
   private rageAt: number | null = null
+  /** Where the boss was over the last display frames, while it charges or dives fast (speed ghosts). */
+  private trail = new PositionTrail(TRAIL_AGES[0] + 1)
+  /** The last update was a hit-stop (no time passed): the speed ghosts are skipped. */
+  private held = false
   /** Real seconds (advances while the simulation is held or slowed; staged poses run on it). */
   private realTime = 0
   private poses: Partial<Record<PoseTarget, Pose>> = {}
@@ -109,14 +156,16 @@ export class ActorsView {
     private world: World,
     private fx: FxPool,
     /** Called on the run cycle's contact frames (footstep sound). */
-    private onFootstep: () => void = () => {}
+    private onFootstep: () => void = () => {},
+    /** Reduced motion: no speed ghosts. */
+    private reducedMotion = false
   ) {}
 
   // ------------------------------------------------------------------------------------------- staging hooks
 
   /**
    * Staging: `who` shows `clip` from its first frame for `seconds` of real time (a clip that does not loop holds
-   * its last frame). `hop` lifts the actor on a parabola of that height over `hopSeconds`. A clip the actor's
+   * its last frame, or keeps cycling its last `sustain` frames). `hop` lifts the actor on a parabola of that height over `hopSeconds`. A clip the actor's
    * sheet does not have is ignored when drawing.
    */
   pose(who: PoseTarget, clip: string, seconds: number, options: { hop?: number; hopSeconds?: number } = {}) {
@@ -217,7 +266,7 @@ export class ActorsView {
           vy: -170,
           gravity: 700,
           age: 0,
-          life: specDuration(ENEMY_SPEC[event.kind].defeat),
+          life: clipLife(ENEMY_SPEC[event.kind].defeat),
           flip: enemy ? enemy.facing < 0 : event.dir > 0,
           h,
           end: 'puff'
@@ -238,7 +287,7 @@ export class ActorsView {
           vy: 0,
           gravity: 0,
           age: 0,
-          life: specDuration(spec.defeat ?? spec.hurt) + 0.5,
+          life: clipLife(spec.defeat ?? spec.hurt, BOSS_DEFEAT_TAIL),
           flip: boss.facing < 0,
           h: boss.h,
           end: 'boom'
@@ -281,6 +330,14 @@ export class ActorsView {
       this.skidAge += dt
       if (this.skidAge > 0.3) this.skidAge = null
     }
+    // The hero turns on the spot when his facing flips on the ground without a skid.
+    if (p.facing !== this.lastFacing) {
+      if (p.onGround && !isSkidding({ onGround: true, vx: p.vx, facing: p.facing })) this.turnAge = 0
+      this.lastFacing = p.facing
+    } else if (this.turnAge !== null) {
+      this.turnAge += dt
+      if (!p.onGround || this.turnAge > 0.5) this.turnAge = null
+    }
     this.waterTime = p.inWater ? this.waterTime + dt : 0
     // enemies
     for (const enemy of world.enemies) {
@@ -297,6 +354,7 @@ export class ActorsView {
       this.bossPrev = this.bossLast
       this.bossLast = boss.state
     }
+    this.updateTrail(dt)
     // ghosts
     for (const g of this.ghosts) {
       g.age += dt
@@ -325,6 +383,21 @@ export class ActorsView {
     }
   }
 
+  /** Records the boss's position while it charges or dives fast; clears it otherwise. */
+  private updateTrail(dt: number) {
+    const boss = this.world.boss
+    this.held = dt <= 0
+    if (this.held) return
+    const fast =
+      !this.reducedMotion &&
+      boss !== null &&
+      !boss.dead &&
+      (boss.state === 'charge' || boss.state === 'dive') &&
+      Math.hypot(boss.vx, boss.vy) > GHOST_SPEED
+    if (fast) this.trail.push(boss.x + boss.w / 2, boss.y + boss.h)
+    else this.trail.clear()
+  }
+
   // ------------------------------------------------------------------------------------------- hero
 
   private heroSnapshot() {
@@ -348,7 +421,8 @@ export class ActorsView {
       distance: this.distance,
       idleTime: this.idleTime,
       blinkAge: this.blinkAge,
-      skidAge: this.skidAge
+      skidAge: this.skidAge,
+      turnAge: this.turnAge
     })
   }
 
@@ -474,6 +548,14 @@ export class ActorsView {
     const anim = clip(sheet, choice.name)
     if (!anim) return
     this.drawShadow(ctx, x, y, boss.w * 1.1)
+    if (!this.held && !this.reducedMotion)
+      for (const [i, age] of TRAIL_AGES.entries())
+        if (this.trail.has(age))
+          blit(ctx, anim, choice.t, this.trail.x(age), this.trail.y(age), {
+            flip,
+            frame: choice.frame,
+            alpha: TRAIL_ALPHAS[i]
+          })
     blit(ctx, anim, choice.t, x, y, { flip, frame: choice.frame })
     if (boss.hitFlash > 0) {
       const white = flashClip(sheet, choice.name)

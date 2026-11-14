@@ -2144,10 +2144,131 @@ async function runStaging(dir) {
 /** Loads a TypeScript module of the game through the dev server's SSR loader. */
 const load = (path) => server.ssrLoadModule(`/${path}`)
 
+/** First line of an error's message, for tables. */
+const firstLine = (error) =>
+  String(error?.message ?? error)
+    .split(/\r?\n/)[0]
+    .slice(0, 120)
+
+/** Quiet clips, as in tests/art-rig-quality.test.ts: contour flicker is gated here. */
+const QUIET_CLIPS = new Set(['idle', 'blink', 'sad', 'recover', 'stunned', 'tired'])
+
+/**
+ * The character animation part of the art section: animated exports (GIF, onion skins, motion tables, line-up) for
+ * the characters and the "character animation gates" table (the numbers of tests/art-rig-quality.test.ts).
+ * Returns markdown lines; a character that cannot be built is reported in the table, never thrown.
+ */
+async function runArtAnimation(dir, art) {
+  const contract = await load('src/art/contract.ts')
+  const quality = await load('src/art/quality.ts')
+  const characters = ['hero', 'princess', 'mom', ...contract.ENEMY_KINDS, ...contract.BOSS_ARTS]
+  const exporter = await run(process.execPath, [
+    join(root, 'scripts/hoshi-no-hamham-art.mjs'),
+    '--draft',
+    '--scale',
+    '3',
+    '--gif',
+    '--onion',
+    '--motion',
+    '--lineup',
+    '--game',
+    '--out',
+    dir,
+    ...characters
+  ])
+  const L = quality.LIMITS
+  const mark = (text, bad) => (bad ? `**${text}**` : String(text))
+  const rows = []
+  for (const id of characters) {
+    let sheet
+    try {
+      sheet = art.sheet(id)
+    } catch (error) {
+      try {
+        sheet = art.draftSheet(id)
+        rows.push([id, '(unfinished)', '', '', '', '', '', firstLine(error)])
+      } catch (second) {
+        rows.push([id, '**(broken)**', '', '', '', '', '', firstLine(second)])
+        continue
+      }
+    }
+    for (const [name, anim] of Object.entries(sheet)) {
+      const frames = anim.frames
+      const seam = quality.loopSeam(anim)
+      const twins = quality.stillness(anim)
+      const quiet = QUIET_CLIPS.has(name)
+      const boil = quiet ? quality.boil(anim) : undefined
+      const orphans = frames.reduce((n, f) => n + quality.orphans(f).length, 0)
+      const light = frames.reduce((n, f) => n + quality.lightEdge(f).length, 0)
+      const edge = frames.reduce((n, f) => n + quality.edgeTouch(f).length, 0)
+      const colours = Math.max(...frames.map((f) => quality.colours(f)))
+      rows.push([
+        id,
+        name,
+        anim.loop ? mark(Number.isFinite(seam.ratio) ? seam.ratio.toFixed(2) : '∞', seam.ratio > L.seamRatio) : '–',
+        boil
+          ? boil.measured
+            ? mark(
+                `${(boil.max * 100).toFixed(1)} % (mean ${(boil.mean * 100).toFixed(1)} %)`,
+                boil.max > L.boil || boil.mean > L.boilMean
+              )
+            : 'not measured'
+          : '–',
+        anim.loop ? mark(twins.length, twins.length > 0) : '–',
+        mark(orphans, orphans > 0),
+        mark(light, light > 0),
+        `${mark(colours, colours > L.colours)}${edge ? ` ${mark(`${edge} px on the cell edge`, true)}` : ''}`
+      ])
+    }
+  }
+  const files = (pattern) =>
+    characters.map((id) => `[${id}](${rel(join(dir, pattern.replace('<id>', id)))})`).join(', ')
+  return [
+    '### Character animation gates',
+    '',
+    `The gates of tests/art-rig-quality.test.ts apply to every character sheet. ` +
+      `Bold = past a gate: loop seam ratio above ${L.seamRatio}, quiet-clip boil (pixels flipping back and forth over four frames, in clips of ${L.boilFrames}+ frames) above ${L.boil * 100} % of the outline (or ${L.boilMean * 100} % on average), ` +
+      'near-duplicate neighbours in a loop, any orphan pixel, any light pixel on the silhouette edge, more than ' +
+      `${L.colours} colours in a frame, any pixel on the cell edge.`,
+    '',
+    md.table(
+      [
+        'sheet',
+        'clip',
+        'seam ratio',
+        'boil max (share of outline)',
+        'duplicate pairs',
+        'orphans',
+        'light edge',
+        'colours max'
+      ],
+      rows
+    ),
+    '',
+    `Animated and annotated exports (exporter \`--draft --gif --onion --motion --lineup --game\` exited ${exporter.code} in ${fmt(exporter.seconds, 1)} s):`,
+    '',
+    `- Line-up of the cast on one ground line: [lineup.png](${rel(join(dir, 'lineup.png'))}), native size [lineup@1.png](${rel(join(dir, 'lineup@1.png'))}).`,
+    `- Every clip as a GIF with its real timing, and all clips of a sheet in one grid (\`<id>/<clip>.gif\`, \`<id>/all.gif\`): ${files('<id>/all.gif')}.`,
+    `- Game-size pictures (every clip at 2x on meadow, cave, castle and sky grounds): ${files('<id>@2.png')}.`,
+    `- Onion skins (the previous frame as a magenta ghost): ${files('<id>.onion.png')}.`,
+    `- Motion tables (bounds, centroid step, changed pixels, ground row, colours per frame): ${files('<id>.motion.md')}.`,
+    '',
+    exporter.code === 0
+      ? ''
+      : `Animation exporter output tail:
+
+\`\`\`
+${tail(exporter.output, 20)}
+\`\`\`
+`
+  ]
+}
+
 async function runArt(dir) {
   mkdirSync(dir, { recursive: true })
   const exporter = await run(process.execPath, [
     join(root, 'scripts/hoshi-no-hamham-art.mjs'),
+    '--draft', // sheets that are still being redrawn are exported as far as they are drawn (stand-ins are listed)
     '--scale',
     '3',
     '--out',
@@ -2156,11 +2277,34 @@ async function runArt(dir) {
   const art = await load('src/art/index.ts')
   const sheetModule = await load('src/art/sheet.ts')
   const { duration } = sheetModule
+  const animation = await runArtAnimation(dir, art)
+  // A sheet that is still being drawn is listed from what exists (its missing clips show as stand-ins) instead of failing the section.
+  const safeMissing = (id) => {
+    try {
+      return art.missingAnims(id)
+    } catch {
+      return []
+    }
+  }
+  const broken = []
+  const sheetOrDraft = (id) => {
+    try {
+      return art.sheet(id)
+    } catch {
+      try {
+        return art.draftSheet(id)
+      } catch (error) {
+        broken.push([id, firstLine(error)])
+        return undefined
+      }
+    }
+  }
   const lines = []
   const summary = []
   for (const id of art.sheetIds().sort()) {
-    const sheet = art.sheet(id)
-    const standIns = art.missingAnims(id)
+    const sheet = sheetOrDraft(id)
+    if (!sheet) continue
+    const standIns = safeMissing(id)
     let clips = 0
     let frames = 0
     let maxColours = 0
@@ -2198,8 +2342,9 @@ async function runArt(dir) {
   const bossArt = stages.STAGES.find((stage) => stage.no === 5).boss.art
   const inline = []
   for (const id of ['hero', bossArt]) {
-    const sheet = art.sheet(id)
-    const standIns = art.missingAnims(id)
+    const sheet = sheetOrDraft(id)
+    if (!sheet) continue
+    const standIns = safeMissing(id)
     inline.push(`### ${id}`, '')
     inline.push(
       md.table(
@@ -2223,6 +2368,13 @@ async function runArt(dir) {
       `(${pngs}; \`art/<sheet>.png\` is a labelled contact sheet with one row per clip, \`art/<sheet>.txt\` its row index, ` +
       '`art/pending.txt` lists stand-in art).',
     '',
+    ...animation,
+    broken.length
+      ? `Sheets that are broken (could not be built, even as drafts):
+
+${md.table(['sheet', 'error'], broken)}
+`
+      : '',
     `Every clip of every sheet (frames, fps, duration, loop, colours per frame): [art/clips.md](${rel(join(dir, 'clips.md'))}).`,
     'Colour counts are distinct palette entries per frame (transparent excluded), from `sheet(id)` in `src/art/index.ts`.',
     '',
@@ -2233,7 +2385,9 @@ async function runArt(dir) {
     ...inline,
     exporter.code === 0 ? '' : `Exporter output tail:\n\n\`\`\`\n${tail(exporter.output, 30)}\n\`\`\``
   ].join('\n')
-  if (exporter.code !== 0) throw Object.assign(new Error(`the art exporter exited ${exporter.code}`), { body })
+  // A sheet that could not be built is reported above as broken and does not fail the section; any other failure does.
+  if (exporter.code !== 0 && !broken.length)
+    throw Object.assign(new Error(`the art exporter exited ${exporter.code}`), { body })
   return body
 }
 

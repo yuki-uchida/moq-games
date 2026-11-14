@@ -9,6 +9,11 @@ export interface Anim {
   hold?: number[]
   /** The frame pixel that sits on the entity position (see `defaultAnchor`). */
   anchor?: readonly [number, number]
+  /**
+   * A clip that does not loop: once it has played, it keeps cycling its last `sustain` frames instead of holding
+   * the very last one (see `AnimSpec.sustain` in contract.ts).
+   */
+  sustain?: number
 }
 
 export type Sheet = Record<string, Anim>
@@ -22,14 +27,31 @@ function totalTicks(anim: Anim): number {
   return total
 }
 
-/** Frame index at `t` seconds into the animation (non-looping animations hold their last frame). */
+/**
+ * Frame index at `t` seconds into the animation. A non-looping animation holds its last frame, or keeps cycling
+ * its last `sustain` frames (each for its own hold).
+ */
 export function frameAt(anim: Anim, t: number) {
   const hold = anim.hold
   const total = totalTicks(anim)
-  let tick = Math.floor(Math.max(0, t) * anim.fps)
-  if (!anim.loop && tick >= total) return anim.frames.length - 1
-  tick %= total
   const count = hold ? hold.length : anim.frames.length
+  let tick = Math.floor(Math.max(0, t) * anim.fps)
+  if (!anim.loop && tick >= total) {
+    const last = anim.frames.length - 1
+    const tail = Math.min(anim.sustain ?? 0, anim.frames.length)
+    if (tail < 2) return last
+    const first = anim.frames.length - tail
+    let span = 0
+    for (let i = first; i < count; i++) span += hold ? hold[i] : 1
+    if (span <= 0) return last
+    let rest = (tick - total) % span
+    for (let i = first; i < count; i++) {
+      rest -= hold ? hold[i] : 1
+      if (rest < 0) return i
+    }
+    return last
+  }
+  tick %= total
   for (let i = 0; i < count; i++) {
     tick -= hold ? hold[i] : 1
     if (tick < 0) return i
@@ -124,6 +146,9 @@ export function deferAnim(build: () => Anim): Anim {
     },
     get anchor() {
       return built().anchor
+    },
+    get sustain() {
+      return built().sustain
     }
   }
 }

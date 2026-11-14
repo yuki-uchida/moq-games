@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { allSheetSpecs } from '../src/art/contract'
 import { missingAnims, sheet } from '../src/art/index'
-import { R } from '../src/art/palette'
+import { C, R, color } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
 
 const ui = sheet('ui')
@@ -11,13 +11,14 @@ const PORTRAITS = Object.keys(specs).filter((n) => n.startsWith('face_'))
 const EMBLEMS = Object.keys(specs).filter((n) => n.startsWith('theme_'))
 const ALL = [...PORTRAITS, ...EMBLEMS]
 
-/** The base colour of each character's main ramp: the portrait must carry it. */
+/** The base colour of each character's main ramp (as its sprite paints it): the portrait must carry it. */
 const MAIN: Record<string, number> = {
   face_hero: R.hamPink[1],
   face_princess: R.princessWhite[1],
   face_mom: R.momOrange[1],
   face_king: R.kingPurple[1],
-  face_crowBoss: R.crowBlue[1],
+  // the crow's sprite has its own navy (crow.ts)
+  face_crowBoss: color('#525c9a'),
   face_weaselBoss: R.weaselTan[1],
   face_boarBoss: R.boarBrown[1],
   face_wolfBoss: R.wolfGray[1],
@@ -51,10 +52,11 @@ describe('portraits and stage emblems', () => {
         expect(f.h).toBe(32)
       })
 
-      test('uses between 8 and 24 colours', () => {
+      // portraits are painted with their sprite's ramps: the cast's limit (CHARACTERS.md, 28 a frame) holds
+      test('uses between 8 and 28 colours', () => {
         const n = f.colors().size
         expect(n).toBeGreaterThanOrEqual(8)
-        expect(n).toBeLessThanOrEqual(24)
+        expect(n).toBeLessThanOrEqual(28)
       })
 
       test('leaves a 1-px empty margin', () => {
@@ -80,6 +82,26 @@ describe('portraits and stage emblems', () => {
     test(`${name} carries the base colour of its character`, () => {
       expect(ui[name].frames[0].colors().has(MAIN[name])).toBe(true)
     })
+
+  test('the base colour of each portrait is the one its sprite is painted with', () => {
+    for (const name of PORTRAITS) {
+      const sprite = sheet(name.slice('face_'.length)).idle.frames[0]
+      expect(sprite.colors().has(MAIN[name]), name).toBe(true)
+    }
+  })
+
+  test('the portraits show the designs of the redrawn sprites', () => {
+    const has = (name: string, c: number) => ui[name].frames[0].colors().has(c)
+    // the fox's forehead protector is the gang's red with a steel plate, no longer navy
+    expect(has('face_foxBoss', R.bandana[1])).toBe(true)
+    expect(has('face_foxBoss', R.steel[1])).toBe(true)
+    expect(has('face_foxBoss', R.crowBlue[1])).toBe(false)
+    // the king: glowing eyes, the gold crown, the crimson collar
+    for (const c of [C.glow, R.gold[1], R.crimson[1]]) expect(has('face_king', c)).toBe(true)
+    // the hero's two front teeth, the mother's apron
+    expect(has('face_hero', C.white)).toBe(true)
+    expect(has('face_mom', R.paper[1])).toBe(true)
+  })
 
   test('portraits fill the cell: the head is at least 24 px across', () => {
     for (const name of PORTRAITS) {

@@ -6,30 +6,36 @@
  * cracks). Parts are assembled with the Painter like the cast; the animated ones are pose-parametric.
  */
 import type { SheetModule } from '../../module'
-import { C, R } from '../../palette'
+import { lag } from '../../motion'
+import { C, R, ramp } from '../../palette'
+import { Painter, Raster, ball, bar, farRamp, noiseAt, outline, rng, type Pt, type Ramp } from '../../raster'
 import {
-  Painter,
-  Raster,
-  ball,
-  bar,
-  farRamp,
-  noiseAt,
-  outline,
-  rng,
-  shadeEdges,
-  shadeIndex,
-  type Pt,
-  type Ramp
-} from '../../raster'
-import { lazyAnim } from '../../sheet'
+  Frame,
+  capsule,
+  cel,
+  egg,
+  fill,
+  joint,
+  mantle,
+  oval,
+  polygon,
+  ribbon,
+  shadow,
+  smooth,
+  spline,
+  stampAt,
+  tint,
+  union,
+  within,
+  type Shape
+} from '../../rig'
+import { lazyAnim, memo } from '../../sheet'
 import { cyl, puff } from './trees'
 
 const PIPE = R.pipe
 const WATER = R.water
 const HONEY = R.honey
 const WOOD = R.wood
-const BOAR = R.boarBrown
-const BOAR_FAR = farRamp(R.boarBrown)
 const ROCK = R.rock
 const LEAF = R.leaf
 const LEAF_FAR = farRamp(R.leaf)
@@ -439,328 +445,441 @@ const hiveClips = () => {
 
 // ----------------------------------------------------------------------------------------------------- animal
 
-type Face = 'closed' | 'wide' | 'angry'
+/*
+ * うりぼう: a wild boar piglet, the boar boss's baby cousin, built on the rig toolkit. A round loaf of a body with
+ * the cream stripes every piglet has (bands that follow the body's curve, toothed like fur, carried by the torso
+ * frame so they never crawl), a dark spine line, a big head with a pink snout disc, small pointed ears with pink
+ * bowls, short tapered legs on dark trotters and a curly tail with a tuft. 64×64 on the map cell's top-left
+ * (anchor [0, 0]): the ground is the bottom row, the piglet stands in the middle of the cell, facing right.
+ *
+ * Depth (back to front): far legs, far ear, tail, body, near legs, head, snout disc, face, near ear.
+ */
 
-/** One leg: hip, foot (hoof bottom centre) and which way the middle joint bends (+1 forward, -1 back). */
-type Leg = readonly [foot: Pt, bend: 1 | -1]
+/** The spine line and the tail tuft: the boar boss's bristle colours. */
+const PIG_DARK = ramp('#684a32', '#503828', '#402c22', '#402c22', '#3a1a22')
+/** Trotters: near-black brown. */
+const TROTTER = ramp('#684a32', '#402c22', '#2e1e1c', '#2e1e1c', '#3a1a22')
+const TROTTER_FAR = farRamp(TROTTER)
+/** The snout disc (the boar boss's snout colours). */
+const SNOUT = ramp('#ffd6dc', '#f4a6b4', '#cc7488', '#8a4456', '#3a1a22')
+/** The pale stripes, cheek and muzzle: the cream ramp one step down, so the stripes read on brown. */
+const STRIPE = R.cream[2]
+const PIG = R.boarBrown
+const PIG_FAR = farRamp(R.boarBrown)
 
-interface BoarPose {
-  /** Body centre and radii. */
-  body: readonly [number, number, number, number]
-  /** Back arch in pixels: positive hunches the back and tucks the belly, negative sags. */
-  arch?: number
-  /** Head centre. */
+type PigEyes = 'open' | 'wide' | 'angry' | 'squeeze' | 'shut'
+
+/** Foot offset from its rest place: forward (+), lift (+), turn in degrees. */
+type Trot = readonly [number, number, number]
+
+export interface PigPose {
+  /** The whole figure forward (+) / up (+). */
+  x: number
+  y: number
+  /** Body tilt in degrees (front down +) and stretch (+ longer and flatter, − shorter and taller). */
+  lean: number
+  squash: number
+  /** Flank breathing 0..1. */
+  breath: number
+  /** Head offset from its seat (forward, down) and nod in degrees (snout down +). */
   head: readonly [number, number]
-  /** Near front, far front, near hind, far hind; null when the legs are tucked away (sleeping). */
-  legs: readonly [Leg, Leg, Leg, Leg] | null
-  face: Face
-  /** How far the ear tips stream back (negative: pricked forward). */
-  earBack: number
-  /** Ear tip offset in y (twitch). */
-  twitch?: number
-  /** Tail curl height above the rump and how far it streams back. */
-  tail: number
-  tailBack?: number
-  /** Snout drop in pixels (head carried low). */
-  snoutDy?: number
+  nod: number
+  eyes: PigEyes
+  /** A squeal: the mouth open under the snout. */
+  squeal: boolean
+  /** Ears turned back in degrees (− pricked forward). */
+  earN: number
+  earF: number
+  /** Feet; null = legs folded under the body (asleep). */
+  fN: Trot | null
+  fF: Trot | null
+  hN: Trot | null
+  hF: Trot | null
+  /** Tail: direction in degrees (0 = straight back, + up), curl in degrees along its length. */
+  tail: readonly [number, number]
 }
 
-const HOOF = C.inkWarm
-const FAR_HOOF = BOAR[3]
-const SEG = 7.5
+export const pigPose = (p: Partial<PigPose> = {}): PigPose => ({
+  x: 0,
+  y: 0,
+  lean: 0,
+  squash: 0,
+  breath: 0,
+  head: [0, 0],
+  nod: 0,
+  eyes: 'open',
+  squeal: false,
+  earN: 0,
+  earF: 0,
+  fN: [0, 0, 0],
+  fF: [0, 0, 0],
+  hN: [0, 0, 0],
+  hF: [0, 0, 0],
+  tail: [50, 260],
+  ...p
+})
 
-/** Two-segment leg: knee found from the hip and foot by inverse kinematics. */
-function legKnee(hip: Pt, foot: Pt, bend: 1 | -1): Pt {
-  const dx = foot[0] - hip[0]
-  const dy = foot[1] - hip[1]
-  const d = Math.min(Math.hypot(dx, dy), SEG * 2 - 0.5)
-  const a = Math.atan2(dy, dx)
-  const h = Math.sqrt(Math.max(0, SEG * SEG - (d / 2) ** 2))
-  // perpendicular, flipped so `bend` +1 always points to the right (forward) on screen
-  let px = -Math.sin(a)
-  let py = Math.cos(a)
-  if (px * bend < 0) {
-    px = -px
-    py = -py
-  }
-  return [hip[0] + Math.cos(a) * (d / 2) + px * h, hip[1] + Math.sin(a) * (d / 2) + py * h]
-}
+/** Rest places of the trotters, x relative to the ground frame. */
+const TROT_REST = { fN: 9, fF: 6, hN: -9, hF: -6 } as const
 
-function boarLeg(l: Raster, hip: Pt, leg: Leg, far: boolean) {
-  const [foot, bend] = leg
-  const ramp = far ? BOAR_FAR : BOAR
-  const knee = legKnee(hip, foot, bend)
-  const part = new Raster(64, 64)
-  bar(part, hip, knee, 6, ramp[1])
-  bar(part, knee, [foot[0], foot[1] - 2], 5, ramp[1])
-  part.ellipse(knee[0], knee[1], 2.5, 2.5, ramp[1])
-  shadeEdges(part, ramp, 1, !far)
-  l.blit(part)
-  const fx = Math.round(foot[0])
-  const fy = Math.round(foot[1])
-  l.rect(fx - 2, fy - 1, 5, 2, far ? FAR_HOOF : HOOF)
-  l.rect(fx - 2, fy - 2, 4, 1, ramp[2])
-}
-
-function boarFace(l: Raster, hx: number, hy: number, face: Face) {
-  const x = hx + 3
-  const y = hy - 3
-  if (face === 'closed') {
-    l.rect(x - 1, y + 3, 5, 1, C.black)
-    l.set(x - 2, y + 2, C.black)
-    l.set(x + 4, y + 2, C.black)
-    return
-  }
-  // tall dark oval, one white highlight; wide-open eyes get a ring of white
-  const wide = face === 'wide'
-  if (wide) {
-    l.rect(x - 1, y - 1, 5, 7, C.white)
-    l.rect(x, y - 2, 3, 9, C.white)
-  }
-  l.rect(x, y, 3, 5, C.black)
-  l.rect(x - (wide ? 0 : 1), y + 1, wide ? 3 : 5, 3, C.black)
-  l.set(x, y + 1, C.white)
-  l.set(x + 1, y + 1, C.white)
-  if (face === 'angry') {
-    // brow cuts down toward the snout
-    l.rect(x - 3, y - 3, 3, 1, C.black)
-    l.rect(x - 1, y - 2, 3, 1, C.black)
-    l.rect(x + 1, y - 1, 3, 1, C.black)
-    l.rect(x + 3, y, 2, 1, C.black)
-  }
-}
-
-/** Bean-shaped body with three cream stripes running along the back and flank. */
-function boarBody(l: Raster, bx: number, by: number, rx: number, ry: number, arch: number) {
-  const BANDS: [number, number][] = [
-    [-0.92, -0.7],
-    [-0.52, -0.3],
-    [-0.12, 0.1]
+const PIG_FACE = { K: C.black, w: C.white, s: SNOUT[0], i: C.inkWarm, m: C.mouth }
+/** Near eye 4 wide, far eye 3 wide (open, wide, angry, squeeze, shut). */
+const PIG_EYES: Record<PigEyes, readonly [readonly string[], readonly string[]]> = {
+  open: [
+    ['.KK.', 'KwKK', 'KKKK', 'KKsK', '.KK.'],
+    ['K.', 'KK', 'KK', 'K.']
+  ],
+  wide: [
+    ['.iii.', 'iwwwi', 'iwKKi', 'iwKKi', '.iii.'],
+    ['ii', 'wK', 'wK', 'ii']
+  ],
+  angry: [
+    ['ii...', '.iiii', '.KwKK', '.KKKK', '..KK.'],
+    ['i.', 'KK', 'K.']
+  ],
+  squeeze: [
+    ['ii...', '.iiii', '..iii', '.....', '.....'],
+    ['i.', 'ii', '..']
+  ],
+  shut: [
+    ['....', '....', 'i..i', '.ii.', '....'],
+    ['..', '..', '.i', 'i.']
   ]
-  for (let y = Math.floor(by - ry - arch - 1); y <= Math.ceil(by + ry + 1); y++)
-    for (let x = Math.floor(bx - rx); x <= Math.ceil(bx + rx); x++) {
-      const nx = (x + 0.5 - bx) / rx
-      if (Math.abs(nx) > 1) continue
-      const cy = by - arch * (1 - nx * nx)
-      const ny = (y + 0.5 - cy) / ry
-      const q = nx * nx + ny * ny
-      if (q > 1.0001) continue
-      const nz = Math.sqrt(Math.max(0, 1 - q))
-      const step = shadeIndex(nx, ny, nz, false)
-      let c: number = BOAR[step]
-      const t = ny / Math.sqrt(Math.max(0.0001, 1 - nx * nx))
-      if (nx > -0.88 && nx < 0.62 && BANDS.some(([a, b]) => t >= a && t <= b)) c = R.cream[Math.min(3, step + 1)]
-      l.set(x, y, c)
-    }
 }
 
-function drawBoar(p: BoarPose): Raster {
-  const g = new Painter(64, 64)
-  const [bx, by, rx, ry] = p.body
-  const [hx, hy] = p.head
-  const arch = p.arch ?? 0
-  const sy = hy + 3 + (p.snoutDy ?? 0)
-  const tw = p.twitch ?? 0
-  const hips: Pt[] = [
-    [bx + rx * 0.5, by + ry * 0.4 - arch * 0.4],
-    [bx + rx * 0.3, by + ry * 0.4 - arch * 0.4],
-    [bx - rx * 0.55, by + ry * 0.4 - arch * 0.4],
-    [bx - rx * 0.35, by + ry * 0.4 - arch * 0.4]
-  ]
-  // curly tail on the rump
-  g.add(-3, (l) => {
-    const tx = bx - rx + 2 - (p.tailBack ?? 0)
-    const ty = by - ry * 0.5 - p.tail - arch
-    bar(l, [bx - rx + 3, by - ry * 0.4 - arch * 0.5], [tx, ty + 1], 2, BOAR[2])
-    l.ring(tx - 1.5, ty - 1.5, 0.8, 2.7, BOAR[1], -0.4, 4.9)
-    l.set(tx - 1, ty - 1, 0)
-  })
-  if (p.legs) {
-    g.add(-2, (l) => boarLeg(l, hips[1], p.legs![1], true))
-    g.add(-2, (l) => boarLeg(l, hips[3], p.legs![3], true))
-  }
-  // far ear
-  g.add(-1, (l) => {
-    l.poly([hx - 7, hy - 7, hx - 6 - p.earBack * 0.7, hy - 14 + tw, hx - 1, hy - 8], BOAR_FAR[1])
-  })
-  g.add(0, (l) => boarBody(l, bx, by, rx, ry, arch))
-  // big head, round snout disc with nostrils, tusk nubs
-  g.add(1, (l) => {
-    ball(l, hx, hy, 10, 9, BOAR)
-    ball(l, hx + 9, sy, 4.4, 5, R.hamPink)
-    l.rect(hx + 11, sy - 2, 2, 2, R.hamEar[3])
-    l.rect(hx + 11, sy + 1, 2, 2, R.hamEar[3])
-    l.set(hx + 8, sy - 3, R.hamPink[0])
-    l.rect(hx + 5, sy + 4, 2, 2, R.cream[0])
-    l.set(hx + 5, sy + 5, R.cream[2])
-    // pale cheek patch under the eye
-    l.rect(hx - 1, hy + 2, 5, 2, R.cream[1])
-    l.rect(hx, hy + 4, 3, 1, R.cream[2])
-  })
-  g.add(2, (l) => boarFace(l, hx, hy, p.face), false)
-  // near ear in front of the head: small, pointed, streaming back
-  g.add(3, (l) => {
-    const e = p.earBack
-    l.poly([hx - 5, hy - 6, hx - 3 - e, hy - 14 + tw, hx + 3, hy - 7], BOAR[1])
-    l.poly([hx - 3, hy - 7, hx - 3 - e * 0.8, hy - 12 + tw, hx + 1, hy - 7], R.hamEar[1])
-  })
-  if (p.legs) {
-    g.add(4, (l) => boarLeg(l, hips[0], p.legs![0], false))
-    g.add(4, (l) => boarLeg(l, hips[2], p.legs![2], false))
-  }
-  return g.render()
-}
+const ID0 = Frame.at(0, 0)
 
-const F = (x: number, y: number, bend: 1 | -1): Leg => [[x, y], bend]
+/** A cloven trotter on its own frame (origin under its sole, toes to +u): 5 px long, 3 tall. */
+const TROT_SHAPE: Shape = polygon([
+  [-2.2, -2.8],
+  [1.2, -2.8],
+  [3, 0.2],
+  [-2.4, 0.2]
+])
 
-/** Curled on its belly: the snout rests on the ground, eyes shut, a back leg tucked, breathing. */
-function drawSleep(breath: number, twitch: number): Raster {
-  const g = new Painter(64, 64)
-  const by = 50 - breath * 0.5
-  const ry = 11 + breath * 0.9
-  const r = drawBoar({
-    body: [27, by, 20, ry],
-    arch: -0.4,
-    head: [46, 53],
-    legs: null,
-    face: 'closed',
-    earBack: -1,
-    twitch,
-    tail: 1,
-    tailBack: 0,
-    snoutDy: 2
-  })
-  g.add(0, (l) => l.blit(r), false)
-  g.add(5, (l) => {
-    // folded fore-paws under the chin and the hind leg tucked along the belly
-    const fore = new Raster(64, 64)
-    fore.ellipse(40.5, 60, 5.5, 2.5, BOAR[1])
-    shadeEdges(fore, BOAR, 1, true)
-    l.blit(fore)
-    l.rect(37, 60, 3, 2, HOOF)
-    const hind = new Raster(64, 64)
-    hind.ellipse(17, 58.5, 7, 3.5, BOAR[1])
-    shadeEdges(hind, BOAR, 1, true)
-    l.blit(hind)
-    l.rect(11, 60, 3, 2, HOOF)
-  })
-  return g.render()
-}
-
-const wakePoses: BoarPose[] = [
-  // eyes snap open and it springs into the air, legs tucked, ears pricked
-  {
-    body: [26, 30, 17, 13],
-    arch: 2,
-    head: [45, 24],
-    legs: [F(38, 51, -1), F(33, 49, -1), F(14, 50, 1), F(19, 52, 1)],
-    face: 'wide',
-    earBack: -2,
-    tail: 5,
-    tailBack: 0
-  },
-  // lands on its feet with a thump: squashed
-  {
-    body: [27, 44, 19, 11],
-    arch: -0.5,
-    head: [47, 42],
-    legs: [F(41, 61, -1), F(35, 61, -1), F(14, 61, 1), F(20, 61, 1)],
-    face: 'angry',
-    earBack: 2,
-    tail: 3
-  },
-  // head down, one front hoof scraping back across the ground
-  {
-    body: [27, 41, 18, 12],
-    arch: 0.5,
-    head: [47, 44],
-    legs: [F(33, 54, -1), F(36, 61, -1), F(14, 61, 1), F(20, 61, 1)],
-    face: 'angry',
-    earBack: 4,
-    tail: 5,
-    snoutDy: 2
-  }
-]
+/** 0..1 sawtooth: the teeth on the stripes' edges. */
+const saw = (v: number) => v - Math.floor(v)
 
 /**
- * A gallop: gather, push-off, flight (extended, long and low), reach, landing, bunch up again. The legs always have
- * two segments; the front pair reaches, the hind pair kicks back.
+ * One cream stripe in torso units: a band that follows the back's curve (a ring of the body's ellipse at
+ * `level`, 0 = the centre line … 1 = the top edge), `w` thick, tapering out toward both ends, its edges toothed.
  */
-const runPoses: BoarPose[] = [
-  // gather: legs bunched under the body, back arched, down on the ground
-  {
-    body: [25, 42, 15, 13],
-    arch: 3,
-    head: [42, 43],
-    legs: [F(33, 61, -1), F(28, 61, -1), F(20, 61, 1), F(15, 61, 1)],
-    face: 'angry',
-    earBack: 4,
-    tail: 4,
-    tailBack: 1,
-    snoutDy: 1
-  },
-  // push-off: the hind legs drive, the front lift and swing forward
-  {
-    body: [24, 40, 18, 12],
-    arch: 1,
-    head: [43, 38],
-    legs: [F(44, 53, 1), F(39, 55, 1), F(7, 59, 1), F(2, 57, 1)],
-    face: 'angry',
-    earBack: 6,
-    tail: 3,
-    tailBack: 3
-  },
-  // full extension: airborne, long and low, front reaching, hind stretched back
-  {
-    body: [25, 38, 20, 10],
-    arch: -1,
-    head: [46, 36],
-    legs: [F(53, 47, 1), F(49, 51, 1), F(0, 49, 1), F(6, 53, 1)],
-    face: 'angry',
-    earBack: 6,
-    tail: 1,
-    tailBack: 5
-  },
-  // descending: the front legs reach for the ground, hind still trailing
-  {
-    body: [25, 41, 19, 11],
-    arch: 0,
-    head: [46, 41],
-    legs: [F(51, 59, 1), F(46, 61, 1), F(5, 52, 1), F(10, 55, 1)],
-    face: 'angry',
-    earBack: 7,
-    tail: 2,
-    tailBack: 4
-  },
-  // landing on the front legs, the hind legs swinging forward under the body
-  {
-    body: [25, 44, 17, 12],
-    arch: 2,
-    head: [44, 44],
-    legs: [F(42, 61, -1), F(37, 61, -1), F(17, 55, 1), F(12, 57, 1)],
-    face: 'angry',
-    earBack: 6,
-    tail: 3,
-    tailBack: 2,
-    snoutDy: 1
-  },
-  // bunching: hind feet come under, the back arches up, about to touch down
-  {
-    body: [25, 40, 15, 13],
-    arch: 4,
-    head: [42, 41],
-    legs: [F(34, 58, -1), F(29, 57, -1), F(22, 59, 1), F(17, 57, 1)],
-    face: 'angry',
-    earBack: 5,
-    tail: 5,
-    tailBack: 1
+function stripe(cv: number, droop: number, w: number, u0: number, u1: number): Shape {
+  const mid = (u0 + u1) / 2
+  const span = (u1 - u0) / 2
+  return {
+    box: [u0, cv - w - 1, u1, cv + droop + w + 1],
+    has(u, v) {
+      const s = (u - mid) / span
+      const taper = 1 - s ** 4
+      if (taper <= 0) return false
+      // the band sags toward both ends, following the back; its upper edge is toothed like fur
+      const c = cv + droop * s * s
+      const d = v - c
+      const tooth = d < 0 ? saw(u / 2.5) * 0.8 : 0
+      return Math.abs(d) + tooth < (w / 2) * Math.sqrt(taper)
+    }
   }
-]
+}
+
+/** A curly tail: a short ribbon from `base` heading back at `deg` (+ up), curling by `curl` degrees. */
+function tailPath(base: Pt, deg: number, curl: number, len: number): Pt[] {
+  const pts: Pt[] = [base]
+  let [x, y] = base
+  const n = 6
+  for (let i = 1; i <= n; i++) {
+    const a = ((deg + (curl * i) / n) * Math.PI) / 180
+    x -= Math.cos(a) * (len / n)
+    y -= Math.sin(a) * (len / n)
+    pts.push([x, y])
+  }
+  return spline(pts)
+}
+
+export function drawPiglet(p: PigPose): Raster {
+  const g = new Painter(64, 64, { soft: true })
+  const k = 1 + p.squash * 0.05
+  const asleep = !p.fN
+  const ground = Frame.at(29 + p.x, 62.5)
+  const root = ground.child(0, -p.y)
+  const torso = root.child(0, asleep ? -9 : -16, p.lean, k, 1 / k)
+  const head = torso.child(12 + p.head[0], -3 + p.head[1], p.nod - p.lean * 0.5)
+  const br = p.breath
+
+  // ---- body silhouette in torso units: the loaf, the chest under the head, the haunch
+  const bodyShape = union(egg(-1, 0 - br * 0.5, 13.5, 10.5 + br * 0.8, 8.5), oval(6.5, 1.5, 8, 8), oval(-8, 2, 7, 7.5))
+  const origin = torso.pt(0, -6)
+
+  // ---- legs: hip → knee → ankle, a trotter at the end
+  const legGeo = (front: boolean, t: Trot, rest: number, near: boolean) => {
+    const f = ground.child(rest + t[0], -t[1], t[2])
+    const s = torso.pt(front ? (near ? 7 : 5) : near ? -8.5 : -6.5, 4)
+    const end = f.pt(-0.4, -2.4)
+    const { mid } = joint(s, end, front ? 5 : 5.5, 5, front ? 1 : -1)
+    return { f, s, mid, end }
+  }
+  type LegGeo = ReturnType<typeof legGeo>
+  /** The leg's fur: thigh to ankle, tapering. */
+  const legFur = (l: Raster, leg: LegGeo, c: number) => {
+    fill(l, ID0, capsule(leg.s, leg.mid, 3.2, 2.4), c)
+    fill(l, ID0, capsule(leg.mid, leg.end, 2.4, 1.9), c)
+  }
+  /** The trotter with its cleft. */
+  const trotter = (l: Raster, leg: LegGeo, trot: Ramp) => {
+    fill(l, leg.f, TROT_SHAPE, trot[1])
+    cel(l, { shade: 1, rim: 1 })
+    if (Math.abs(leg.f.angle) < 50) stampAt(l, leg.f, ['k'], 0.9, -1, { k: trot[3] })
+  }
+  const paintLeg = (l: Raster, leg: LegGeo, fur: Ramp, trot: Ramp) => {
+    legFur(l, leg, fur[1])
+    smooth(l)
+    cel(l, { shade: 1.6, rim: 1 })
+    trotter(l, leg, trot)
+  }
+  const legs = asleep
+    ? null
+    : {
+        fN: legGeo(true, p.fN!, TROT_REST.fN, true),
+        fF: legGeo(true, p.fF!, TROT_REST.fF, false),
+        hN: legGeo(false, p.hN!, TROT_REST.hN, true),
+        hF: legGeo(false, p.hF!, TROT_REST.hF, false)
+      }
+  if (legs) {
+    g.add(-4, (l) => paintLeg(l, legs.hF, PIG_FAR, TROTTER_FAR))
+    g.add(-4, (l) => paintLeg(l, legs.fF, PIG_FAR, TROTTER_FAR))
+  }
+
+  // ---- far ear, behind the skull
+  const earF = head.child(2.5, -6, 10 - p.earF)
+  g.add(-3, (l) => {
+    fill(
+      l,
+      earF,
+      polygon([
+        [-2.6, 0.5],
+        [0.4, -6.2],
+        [2.8, 0.5]
+      ]),
+      PIG_FAR[1]
+    )
+    cel(l, { shade: 1.2 })
+  })
+
+  // ---- tail: a short curl with a dark tuft
+  g.add(-2, (l) => {
+    const path = tailPath(torso.pt(-13.5, -2.5), p.tail[0] + p.lean, p.tail[1], 9)
+    ribbon(l, path, (t) => 2.6 - t * 0.9, PIG[1])
+    const end = path[path.length - 1]
+    fill(l, Frame.at(end[0], end[1]), oval(0, 0, 1.6, 1.6), PIG_DARK[1])
+    smooth(l)
+    cel(l, { shade: 1, rim: 1 })
+  })
+
+  // ---- the body, shaded once; the stripes are part of the coat
+  g.add(0, (l) => {
+    fill(l, torso, bodyShape, PIG[1])
+    // the near legs belong to the body: one silhouette, one light
+    if (legs) for (const leg of [legs.hN, legs.fN]) legFur(l, leg, PIG[1])
+    tint(
+      l,
+      torso,
+      union(stripe(-7.2, 2.6, 2.2, -12.5, 8), stripe(-3, 2.2, 2.2, -13, 9), stripe(1.2, 1.8, 2, -11.5, 7)),
+      STRIPE
+    )
+    smooth(l)
+    mantle(l, PIG[1], PIG_DARK[1], { depth: 1.6, tooth: 1.5, pitch: 3, origin })
+    cel(l, { shade: 3.2, deep: 1, rim: 1, tooth: 1.5, pitch: 3, origin })
+    // the head's shadow on the chest
+    shadow(l, head.moved(-0.5, 1.5), oval(-1, 2, 7.5, 6.5))
+  })
+
+  // ---- near legs (or, asleep, the folded fore-leg under the chin and the hind trotter)
+  if (legs) {
+    g.add(1, (l) => trotter(l, legs.hN, TROTTER))
+    g.add(1, (l) => trotter(l, legs.fN, TROTTER))
+  } else {
+    // the fore-leg folded under the chin, its trotter peeking out in front of the cheek
+    g.add(2.5, (l) => {
+      fill(l, torso.child(15, 9, 0), TROT_SHAPE, TROTTER[1])
+      cel(l, { shade: 1, rim: 1 })
+    })
+    g.add(1, (l) => {
+      fill(l, torso.child(-12.5, 8.6, 0), TROT_SHAPE, TROTTER[1])
+      cel(l, { shade: 1 })
+    })
+  }
+
+  // ---- head: skull, cheek and the short snout as one silhouette
+  const headShape = union(oval(0, -0.5, 9, 8), oval(-0.5, 3, 8.5, 5.5), capsule([4.5, 1.5], [10.5, 2.2], 4.8, 3.8))
+  const headAt = head.pt(0, -3)
+  g.add(2, (l) => {
+    fill(l, head, headShape, PIG[1])
+    // a pale cheek and muzzle, and one short stripe over the brow
+    tint(l, head, union(oval(1.5, 6, 6.5, 2.8), capsule([5, 5], [11, 4.8], 1.6, 1.6)), STRIPE)
+    smooth(l)
+    mantle(l, PIG[1], PIG_DARK[1], { depth: 1.2, tooth: 1, pitch: 3, origin: headAt })
+    cel(l, { shade: 2.6, deep: 0.8, rim: 1, tooth: 1, pitch: 3, origin: headAt })
+  })
+
+  // ---- the snout disc with two nostrils
+  g.add(2.2, (l) => {
+    fill(l, head, oval(12, 2.2, 2.2, 3.8), SNOUT[1])
+    cel(l, { shade: 1.4 })
+    within(l, (m) => stampAt(m, head, ['k', '.', 'k'], 12.5, 2.4, { k: SNOUT[3] }), true)
+  })
+
+  // ---- face
+  g.add(
+    2.4,
+    (l) => {
+      const [near, far] = PIG_EYES[p.eyes]
+      stampAt(l, head, near, 3.5, -1, PIG_FACE)
+      stampAt(l, head, far, 7.5, -2.2, PIG_FACE)
+      if (p.squeal) stampAt(l, head, ['iiii', 'immi', '.ii.'], 9.5, 6.6, PIG_FACE)
+    },
+    false
+  )
+
+  // ---- near ear: small and pointed, a pink bowl inside
+  const earN = head.child(-3, -5.5, -8 - p.earN)
+  g.add(3, (l) => {
+    const ear = polygon([
+      [-3, 0.5],
+      [0, -7.2],
+      [3.2, 0.5]
+    ])
+    fill(l, earN, ear, PIG[1])
+    tint(
+      l,
+      earN,
+      polygon([
+        [-1.2, 0],
+        [0.2, -4.8],
+        [1.6, 0]
+      ]),
+      R.hamEar[2]
+    )
+    cel(l, { shade: 1.2, rim: 1 })
+  })
+
+  return g.render()
+}
+
+// ------------------------------------------------------------------------------------------------- clips
+
+const PP = pigPose
+
+/** sleep: curled on the ground, chin on the earth; the flank breathes, an ear twitches once, the tail tip curls. */
+const pigSleep = memo(() => {
+  const breath = [0, 0.55, 1, 0.45]
+  return breath.map((b, i) =>
+    PP({
+      squash: 1,
+      breath: b,
+      head: [-0.5, 5],
+      nod: 10,
+      eyes: 'shut',
+      earN: i === 2 ? -18 : 24,
+      earF: 20,
+      fN: null,
+      fF: null,
+      hN: null,
+      hF: null,
+      tail: [45, i === 3 ? 330 : 260]
+    })
+  )
+})
+
+/** wake: bitten, it jolts into the air stiff-legged and wide-eyed, lands head down scowling, scrapes a trotter. */
+const pigWake = memo(() => [
+  PP({
+    y: 9,
+    squash: -1.5,
+    lean: -6,
+    head: [0, -2],
+    nod: -10,
+    eyes: 'wide',
+    squeal: true,
+    earN: -20,
+    earF: -20,
+    fN: [5, 7, -25],
+    fF: [3, 8, -20],
+    hN: [-5, 7, 25],
+    hF: [-3, 8, 20],
+    tail: [90, 120]
+  }),
+  PP({
+    y: -1,
+    squash: 1.8,
+    lean: 6,
+    head: [1, 2],
+    nod: 12,
+    eyes: 'angry',
+    earN: 30,
+    earF: 25,
+    fN: [1, 0, 0],
+    fF: [0, 0, 0],
+    hN: [-1, 0, 0],
+    hF: [0, 0, 0],
+    tail: [60, 250]
+  }),
+  PP({
+    y: 0,
+    squash: 0.6,
+    lean: 9,
+    head: [1.5, 2.5],
+    nod: 16,
+    eyes: 'angry',
+    earN: 40,
+    earF: 35,
+    fN: [-7, 3.5, 35],
+    fF: [0, 0, 0],
+    hN: [0, 0, 0],
+    hF: [1, 0, 0],
+    tail: [40, 270]
+  })
+])
+
+/**
+ * run: a piglet's bounding gallop — gather (feet under the body, back arched), push-off, full extension with all
+ * four trotters off the ground, the front pair lands, the hind pair swings under, gather again. Ears pressed back,
+ * tail streaming, eyes squeezed into a scowl.
+ */
+const pigRun = memo(() => {
+  // fN, fF, hN, hF, y, lean, squash
+  const keys: [Trot, Trot, Trot, Trot, number, number, number][] = [
+    [[-3, 0, 0], [-1, 1.5, 10], [4, 0, 0], [2, 1.5, -10], 0, 2, -2],
+    [[3, 4, -30], [5, 3, -25], [-4, 0, 30], [-2, 0, 20], 2, -7, 0],
+    [[7, 5, -50], [9, 4, -45], [-8, 6, 50], [-6, 5, 45], 6, -2, 2.4],
+    [[5, 0, 0], [7, 1.5, -15], [-7, 5, 40], [-5, 5, 35], 3, 6, 1.4],
+    [[-1, 0, 0], [1, 0, 0], [-2, 5, 10], [0, 5, 0], 1, 7, -0.6],
+    [[-4, 3, 30], [-2, 2, 20], [3, 0, 0], [5, 1.5, -10], 2, 3, -1.8]
+  ]
+  const bob = keys.map((k) => k[4])
+  const earLag = lag(bob, { stiffness: 0.4, damping: 0.5, loop: true })
+  return keys.map(([fN, fF, hN, hF, y, lean, squash], i) =>
+    PP({
+      y,
+      lean,
+      squash,
+      fN,
+      fF,
+      hN,
+      hF,
+      head: [0.5, 0.5 - earLag[i] * 0.3],
+      nod: 4,
+      eyes: 'angry',
+      earN: 60 + earLag[i] * 6,
+      earF: 55 + earLag[i] * 6,
+      tail: [10 - earLag[i] * 8, 140 + i * 0]
+    })
+  )
+})
 
 const animalClips = () => ({
-  sleep: () => [drawSleep(0, 0), drawSleep(0.5, 0), drawSleep(1, -2), drawSleep(0.5, -1)],
-  wake: () => wakePoses.map(drawBoar),
-  run: () => runPoses.map(drawBoar)
+  sleep: () => pigSleep().map(drawPiglet),
+  wake: () => pigWake().map(drawPiglet),
+  run: () => pigRun().map(drawPiglet)
 })
 
 // ------------------------------------------------------------------------------------------------------ rock

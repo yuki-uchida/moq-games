@@ -264,19 +264,32 @@ export class Raster {
 
   /** Bounding box of painted pixels, or undefined when empty. */
   bounds(): { x: number; y: number; w: number; h: number } | undefined {
-    let x0 = this.w
-    let y0 = this.h
+    const { data, w } = this
+    // The first and the last painted pixel in reading order give the rows; inside those rows only the pixels
+    // left of the leftmost and right of the rightmost found so far can still move a side.
+    let first = 0
+    while (first < data.length && !data[first]) first++
+    if (first === data.length) return undefined
+    let last = data.length - 1
+    while (!data[last]) last--
+    const y0 = Math.floor(first / w)
+    const y1 = Math.floor(last / w)
+    let x0 = w
     let x1 = -1
-    let y1 = -1
-    for (let y = 0; y < this.h; y++)
-      for (let x = 0; x < this.w; x++)
-        if (this.data[y * this.w + x]) {
-          if (x < x0) x0 = x
-          if (x > x1) x1 = x
-          if (y < y0) y0 = y
-          if (y > y1) y1 = y
+    for (let y = y0; y <= y1; y++) {
+      const row = y * w
+      for (let x = 0; x < x0; x++)
+        if (data[row + x]) {
+          x0 = x
+          break
         }
-    return x1 < 0 ? undefined : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 }
+      for (let x = w - 1; x > x1; x--)
+        if (data[row + x]) {
+          x1 = x
+          break
+        }
+    }
+    return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 }
   }
 
   /** RGBA bytes via the master palette. */
@@ -412,24 +425,37 @@ export function outline(r: Raster) {
 
 /** A uniform one-colour outline (for effects, icons and text that must read on any ground). */
 export function outlineWith(r: Raster, c: number, diagonal = false) {
-  const src = r.clone()
-  const around = diagonal
-    ? [
-        [-1, 0],
-        [1, 0],
-        [0, -1],
-        [0, 1],
-        [-1, -1],
-        [1, -1],
-        [-1, 1],
-        [1, 1]
-      ]
-    : neighbours
-  for (let y = 0; y < r.h; y++)
-    for (let x = 0; x < r.w; x++) {
-      if (src.get(x, y)) continue
-      if (around.some(([dx, dy]) => src.get(x + dx, y + dy))) r.set(x, y, c)
+  const b = r.bounds()
+  if (!b) return r
+  const { w, h, data } = r
+  const src = data.slice()
+  // Only the pixels next to the painted box can touch the sprite.
+  const x0 = Math.max(0, b.x - 1)
+  const y0 = Math.max(0, b.y - 1)
+  const x1 = Math.min(w - 1, b.x + b.w)
+  const y1 = Math.min(h - 1, b.y + b.h)
+  for (let y = y0; y <= y1; y++) {
+    const up = y > 0
+    const down = y < h - 1
+    for (let x = x0; x <= x1; x++) {
+      const i = y * w + x
+      if (src[i]) continue
+      const left = x > 0
+      const right = x < w - 1
+      if (
+        (left && src[i - 1]) ||
+        (right && src[i + 1]) ||
+        (up && src[i - w]) ||
+        (down && src[i + w]) ||
+        (diagonal &&
+          ((left && up && src[i - w - 1]) ||
+            (right && up && src[i - w + 1]) ||
+            (left && down && src[i + w - 1]) ||
+            (right && down && src[i + w + 1])))
+      )
+        data[i] = c
     }
+  }
   return r
 }
 
@@ -555,9 +581,14 @@ export const farRamp = (r: Ramp): Ramp => [r[1], r[2], r[3], r[3], r[4]]
  */
 export class Painter {
   private list: { depth: number; seq: number; draw: (l: Raster) => void; line: boolean }[] = []
+  /**
+   * `soft`: contours that end up inside the figure (an arm across the belly, a muzzle on the face) are drawn in
+   * the deep colour of their own material instead of the ink line, so only the silhouette carries the dark line.
+   */
   constructor(
     readonly w = 64,
-    readonly h = 64
+    readonly h = 64,
+    private options: { soft?: boolean } = {}
   ) {}
 
   /** `line: false` composites the part without its own outline (details painted onto a lower part). */
@@ -569,6 +600,9 @@ export class Painter {
   render(): Raster {
     const out = new Raster(this.w, this.h)
     const layer = new Raster(this.w, this.h)
+    const soft = this.options.soft === true
+    /** Per output pixel: 0 = no contour, else the colour an inner contour takes there. */
+    const inner = soft ? new Uint16Array(this.w * this.h) : undefined
     this.list.sort((a, b) => a.depth - b.depth || a.seq - b.seq)
     for (const it of this.list) {
       layer.data.fill(0)
@@ -577,9 +611,31 @@ export class Painter {
       if (!b) continue
       // Outline only inside the part's bounding box (much cheaper than whole-frame passes).
       const crop = layer.crop(b.x - 2, b.y - 2, b.w + 4, b.h + 4)
+      const bare = inner && it.line ? crop.clone() : undefined
       if (it.line) outline(crop)
       out.blit(crop, b.x - 2, b.y - 2)
+      if (!inner) continue
+      for (let y = 0; y < crop.h; y++)
+        for (let x = 0; x < crop.w; x++) {
+          if (!crop.get(x, y)) continue
+          const ox = b.x - 2 + x
+          const oy = b.y - 2 + y
+          if (ox < 0 || oy < 0 || ox >= this.w || oy >= this.h) continue
+          let tone = 0
+          if (bare && !bare.get(x, y)) {
+            const from = bare.get(x - 1, y) || bare.get(x, y - 1) || bare.get(x + 1, y) || bare.get(x, y + 1)
+            tone = from ? OUTLINE_OF[from].deep : 0
+          }
+          inner[oy * this.w + ox] = tone
+        }
     }
+    if (inner)
+      for (let y = 0; y < this.h; y++)
+        for (let x = 0; x < this.w; x++) {
+          const tone = inner[y * this.w + x]
+          if (!tone) continue
+          if (out.get(x - 1, y) && out.get(x + 1, y) && out.get(x, y - 1) && out.get(x, y + 1)) out.set(x, y, tone)
+        }
     return out
   }
 }

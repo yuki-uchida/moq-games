@@ -41,6 +41,12 @@ export interface AnimSpec {
   anchor?: readonly [number, number]
   /** Frame index of the contact/release moment. */
   hit?: number
+  /**
+   * A clip that does not loop normally holds its last frame. With `sustain` it keeps cycling its last `sustain`
+   * frames instead, for as long as the view shows it: the tension of a held wind-up, the flutter of a long fall,
+   * the stars over a knocked-out boss.
+   */
+  sustain?: number
 }
 
 type Specs = Record<string, AnimSpec>
@@ -67,55 +73,62 @@ const small = (size: number, frames: number, fps: number, loop: boolean) => clip
 // ---------------------------------------------------------------------------------------------------- cast
 
 export const HERO_SPEC: Specs = {
-  idle: cell(4, 6, true), // breathing
-  blink: cell(2, 14, false), // half-closed, closed (played over idle every few seconds)
-  wait: cell(6, 6, false), // fidget after standing still: looks around, grooms a cheek
+  idle: cell(8, 8, true), // one breath: the chest rises, the head follows, ears and tuft settle a beat later
+  // The same eight poses as `idle` with the eyes shut: the view swaps in the frame of the same index for the
+  // length of a blink, so a blink never interrupts the breath.
+  blink: cell(8, 8, true),
+  wait: cell(12, 8, false), // fidget after standing still: looks around, grooms a cheek with both paws, settles
   run: cell(8, 14, true), // contact frames 0 and 4
-  skid: cell(2, 12, false), // braking when reversing at speed
-  jump: cell(2, 12, false), // launch stretch, rising (last frame held)
-  fall: cell(2, 10, true), // arms up, fur and scarf fluttering
-  land: cell(3, 18, false), // squash, rebound, settle
-  bite: cell(5, 24, false, { hit: 2 }), // anticipation, lunge, CHOMP with front teeth, follow-through, recover
-  hurt: cell(2, 10, false),
-  die: cell(6, 10, false), // hit, tumble ×3, flat on the back, eyes swirling
-  cheer: cell(6, 10, true), // victory hop with both arms up
-  swim: cell(4, 8, true) // paddling, cheeks puffed
+  turn: cell(2, 20, false), // facing the camera for a moment when he turns around on the spot
+  skid: cell(3, 14, false, { sustain: 2 }), // braking when reversing at speed: heels dug in, scarf thrown forward
+  jump: cell(3, 14, false, { sustain: 2 }), // launch stretch, then rising with ears and scarf pulled down
+  apex: cell(2, 10, false), // the top of the arc: frame 0 still rising (tucked), frame 1 tipping over (opening)
+  fall: cell(3, 12, true), // arms up, fur and scarf fluttering
+  land: cell(4, 18, false), // squash, rebound, overshoot, settle
+  bite: cell(6, 24, false, { hit: 2 }), // anticipation, lunge, CHOMP with the front teeth, recoil, chew, settle
+  hurt: cell(3, 12, false),
+  die: cell(8, 10, false, { sustain: 2 }), // hit, tumble ×3, bounce, flat on the back, then stars circling (sustain)
+  cheer: cell(8, 12, true), // victory hop with both arms up
+  swim: cell(6, 10, true) // paddling, cheeks puffed
 }
 
 export const PRINCESS_SPEC: Specs = {
-  idle: cell(4, 6, true),
-  sad: cell(4, 5, true), // caged: trembling, a tear
-  cheer: cell(6, 10, true),
-  wave: cell(4, 8, true)
+  idle: cell(8, 8, true),
+  sad: cell(6, 6, true), // caged: trembling, a tear
+  cheer: cell(8, 12, true),
+  wave: cell(6, 8, true)
 }
 
 export const MOM_SPEC: Specs = {
-  idle: mid(4, 6, true), // hands on hips, foot tapping
-  yell: mid(4, 10, false), // stage 1 intro: 「こらーっ！」
+  idle: mid(8, 8, true), // hands on hips, foot tapping
+  yell: mid(6, 10, false, { sustain: 2 }), // stage 1 intro: 「こらーっ！」
   move: mid(8, 14, true), // furious run, ladle raised
-  stunned: mid(4, 8, true), // dizzy after smashing through a tree or rock
-  tired: mid(4, 5, true), // out of breath, rubbing her back
-  hurt: mid(2, 10, false)
+  stunned: mid(6, 8, true), // dizzy after smashing through a tree or rock
+  tired: mid(6, 6, true), // out of breath, rubbing her back
+  hurt: mid(3, 12, false)
 }
 
 export const ENEMY_KINDS = ['walker', 'flyer', 'jumper', 'spitter', 'tough'] as const
 export type EnemyArt = (typeof ENEMY_KINDS)[number]
 
-const DEFEAT = cell(5, 12, false) // knocked back, spin, poof
+const DEFEAT = cell(6, 12, false) // the blow, flung back head over heels (drawn, never a turned picture), limp
 const HURT = cell(2, 12, false)
 
 export const ENEMY_SPEC: Record<EnemyArt, Specs> = {
-  walker: { idle: cell(2, 4, true), move: cell(6, 10, true), hurt: HURT, defeat: DEFEAT },
-  flyer: { move: cell(6, 14, true), hurt: HURT, defeat: DEFEAT }, // always flapping
+  walker: { idle: cell(6, 8, true), move: cell(8, 12, true), hurt: HURT, defeat: DEFEAT },
+  flyer: { move: cell(8, 16, true), hurt: HURT, defeat: DEFEAT }, // always flapping
   jumper: {
-    idle: cell(2, 4, true),
-    air: cell(2, 8, false), // frame 0 rising (stretched), frame 1 falling (the view picks by vertical speed)
-    land: cell(2, 14, false),
+    idle: cell(6, 8, true), // the throat pumps
+    // The frog never rests: the moment it lands it is off again, so this clip is nearly all the player sees of
+    // it. The view picks the frame by vertical speed: 0 the launch (fully stretched), 1 rising, 2 the top of the
+    // hop (tucked), 3 falling, 4 bracing for the ground (legs reaching down, body starting to squash).
+    air: cell(5, 8, false),
+    land: cell(3, 14, false),
     hurt: HURT,
     defeat: DEFEAT
   },
-  spitter: { idle: cell(4, 6, true), shoot: cell(4, 12, false, { hit: 2 }), hurt: HURT, defeat: DEFEAT },
-  tough: { idle: cell(2, 4, true), move: cell(6, 8, true), hurt: HURT, defeat: DEFEAT }
+  spitter: { idle: cell(6, 8, true), shoot: cell(6, 12, false, { hit: 3 }), hurt: HURT, defeat: DEFEAT },
+  tough: { idle: cell(6, 8, true), move: cell(8, 10, true), hurt: HURT, defeat: DEFEAT }
 }
 
 /** How each boss fights; decides which clips its sheet needs. */
@@ -134,45 +147,55 @@ export type BossArt = keyof typeof BOSS_KIND
 export const BOSS_ARTS = Object.keys(BOSS_KIND) as BossArt[]
 
 const BOSS_COMMON: Specs = {
-  idle: big(4, 6, true),
-  intro: big(4, 8, false), // the roar or pose shown when the fight begins
-  hurt: big(2, 12, false),
-  defeat: big(6, 8, false)
+  idle: big(6, 8, true),
+  intro: big(8, 10, false, { sustain: 2 }), // the roar or pose shown when the fight begins, then held alive
+  hurt: big(3, 12, false),
+  defeat: big(8, 10, false, { sustain: 2 }) // the last blow, the fall, the bounce, then out cold (stars circling)
 }
 
 const BOSS_BY_KIND: Record<(typeof BOSS_KIND)[BossArt], Specs> = {
   // idle → windup → charge along the ground → (wall: stunned) → recover
   brute: {
-    windup: big(3, 10, false),
-    attack: big(4, 14, true),
-    stunned: big(4, 8, true),
-    recover: big(2, 6, true)
+    windup: big(4, 10, false, { sustain: 2 }), // the whole body commits; the last two frames tremble with tension
+    attack: big(6, 16, true),
+    stunned: big(6, 8, true),
+    recover: big(4, 6, true)
   },
   // hovering idle → windup → dive → recover
-  flyer: { windup: big(3, 10, false), attack: big(2, 12, true), recover: big(2, 8, true) },
-  // walk → windup (crouch) → leap (air: 0 rising, 1 falling) → land (slam) → recover
+  flyer: {
+    windup: big(4, 10, false, { sustain: 2 }),
+    attack: big(3, 14, true),
+    recover: big(4, 8, true)
+  },
+  // walk → windup (crouch) → leap (air: 0 rising, 1 the top, 2 falling) → land (slam) → recover
   tank: {
-    move: big(6, 8, true),
-    windup: big(3, 10, false),
-    air: big(2, 8, false),
-    land: big(3, 14, false),
-    recover: big(2, 6, true)
+    move: big(8, 10, true),
+    windup: big(4, 10, false, { sustain: 2 }),
+    air: big(3, 8, false),
+    land: big(4, 14, false),
+    recover: big(4, 6, true)
   },
   // walk → windup → dash → recover
-  swarm: { move: big(6, 12, true), windup: big(3, 12, false), attack: big(4, 16, true), recover: big(2, 8, true) },
+  swarm: {
+    move: big(8, 12, true),
+    windup: big(4, 12, false, { sustain: 2 }),
+    attack: big(6, 16, true),
+    recover: big(4, 8, true)
+  },
   // walk → windup → charge | leap and slam | cast → recover; `rage` is the phase 2 transformation
   final: {
-    move: big(6, 10, true),
-    windup: big(3, 12, false),
-    attack: big(4, 14, true),
-    air: big(2, 8, false),
-    land: big(3, 14, false),
-    shoot: big(4, 12, false, { hit: 2 }),
-    recover: big(2, 6, true),
-    rage: big(6, 10, false)
+    move: big(8, 10, true),
+    windup: big(4, 12, false, { sustain: 2 }),
+    attack: big(6, 16, true),
+    air: big(3, 8, false),
+    land: big(4, 14, false),
+    shoot: big(6, 12, false, { hit: 3 }),
+    recover: big(4, 6, true),
+    rage: big(10, 10, false, { sustain: 2 })
   }
 }
 
+/** The animation specs of a boss sheet: the clips every boss has plus those of its kind. */
 export const bossSpec = (art: BossArt): Specs => ({ ...BOSS_COMMON, ...BOSS_BY_KIND[BOSS_KIND[art]] })
 
 // --------------------------------------------------------------------------------------------------- props

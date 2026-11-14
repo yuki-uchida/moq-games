@@ -37,6 +37,8 @@ export interface ClipData {
   loop: boolean
   hold?: number[]
   anchor?: readonly [number, number]
+  /** How many of the last frames a clip that does not loop keeps cycling (see `Anim.sustain`). */
+  sustain?: number
   /** Hit-flash silhouettes: `flash[i]` belongs to `rasters[i]`. */
   flash?: RasterData[]
 }
@@ -94,6 +96,7 @@ function packClip(anim: Anim, flash: Anim | undefined, transfer: ArrayBuffer[]):
   }
   if (anim.hold) clip.hold = [...anim.hold]
   if (anim.anchor) clip.anchor = [anim.anchor[0], anim.anchor[1]]
+  if (anim.sustain !== undefined) clip.sustain = anim.sustain
   if (flash) {
     const white = flash.frames
     clip.flash = first.map((i) => pack(white[i], transfer))
@@ -134,7 +137,7 @@ export function adopt(request: ArtRequest, reply: ArtReply) {
   if (request.kind === 'clip' && reply.kind === 'clip') {
     const { clip } = reply
     const rasters = clip.rasters.map(unpack)
-    const timing = { fps: clip.fps, loop: clip.loop, hold: clip.hold, anchor: clip.anchor }
+    const timing = { fps: clip.fps, loop: clip.loop, hold: clip.hold, anchor: clip.anchor, sustain: clip.sustain }
     adoptClip(request.sheet, request.clip, { frames: clip.order.map((i) => rasters[i]), ...timing })
     if (clip.flash) {
       const white = clip.flash.map(unpack)
