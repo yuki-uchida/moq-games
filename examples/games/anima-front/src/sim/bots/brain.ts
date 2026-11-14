@@ -4,7 +4,7 @@
  */
 import { canPerceive, targetCenter, type Target } from '../actors'
 import type { Rng } from '../rng'
-import { FOE_SIDE, type Player, type Sim, type TargetRef } from '../state'
+import { FOE_SIDE, type Foe, type Player, type Sim, type TargetRef } from '../state'
 import { hdist, vdist, type Vec } from '../vec'
 
 export interface PawCtl {
@@ -33,11 +33,17 @@ export interface Brain {
   paws: [PawCtl, PawCtl]
   /** Retreating to regenerate until anima recovers. */
   retreat: boolean
+  /** Foes are attacking the squad's objective (perception summary). */
+  objThreat: boolean
+  /** The current target can be shot from the shoulder and the right paw (perception summary). */
+  clearShot: boolean
   wander: Vec | null
   wanderAt: number
   stuckAt: number
   stuckP: Vec
   dodged: Set<string>
+  /** Foe blasts already judged (noticed or not) by evadeBlasts. */
+  evade: Map<string, boolean>
   gadgetAt: Record<string, number>
   gadget: { hand: 0 | 1; idx: number; pressed: boolean; until: number; pitch?: number } | null
   taken: number[]
@@ -54,6 +60,8 @@ export interface Brain {
 
 export const reactionTime = (skill: number) => 0.6 - 0.45 * skill
 export const aimErrorDeg = (skill: number) => 6 - 5 * skill
+/** Chance to react to a telegraphed attack (wind-up dodge; blast zones add 0.1): 0.5 → 30 %, 0.8 → 78 %. */
+export const dodgeChance = (skill: number) => Math.max(0.05, Math.min(0.95, 1.6 * skill - 0.5))
 
 /** Stable small hash of an id (staggers heavy work across bots deterministically). */
 function idHash(id: string): number {
@@ -84,11 +92,14 @@ export function makeBrain(sim: Sim, p: Player): Brain {
       { holding: false, holdStart: 0 }
     ],
     retreat: false,
+    objThreat: false,
+    clearShot: true,
     wander: null,
     wanderAt: 0,
     stuckAt: sim.time,
     stuckP: [p.p[0], p.p[1], p.p[2]],
     dodged: new Set(),
+    evade: new Map(),
     gadgetAt: {},
     gadget: null,
     taken: [],
@@ -136,7 +147,10 @@ export function perceive(sim: Sim, p: Player, range = 60): { t: Target; ref: Tar
     if (d > range) continue
     if (inEnemyBase(sim, p, q.p, 0)) continue
     if (!canPerceive(sim, eye, q) && sim.time >= q.revealedUntil) continue
-    out.push({ t: { k: 'p', p: q }, ref: { k: 'p', id: q.id }, score: d - (q.anima / q.maxAnima < 0.3 ? 6 : 0), d })
+    let score = d - (q.anima / q.maxAnima < 0.3 ? 6 : 0)
+    // クロヅメ avatars spread their fire: each other avatar already on this animal makes it less attractive.
+    if (p.foe) score += 8 * avatarsOn(sim, p, q.id)
+    out.push({ t: { k: 'p', p: q }, ref: { k: 'p', id: q.id }, score, d })
   }
   if (p.side !== FOE_SIDE) {
     // Nearest foes first; LOS is only checked for the closest few (budget).
@@ -154,6 +168,9 @@ export function perceive(sim: Sim, p: Player, range = 60): { t: Target; ref: Tar
       }
     }
     cands.sort((a, b) => a.d - b.d || a.f.id - b.f.id)
+    // Our objective (灯台 / 荷車): foes attacking it are urgent.
+    let objective = -1
+    for (const r of sim.props) if (!r.gone && (r.kind === 'lighthouse' || r.kind === 'cart')) objective = r.id
     let checked = 0
     for (const c of cands) {
       const f = c.f
@@ -165,9 +182,11 @@ export function perceive(sim: Sim, p: Player, range = 60): { t: Target; ref: Tar
         if (!f.def.boss && !sim.phys.clear(eye, tc, -1)) continue
       }
       let score = c.d
-      if (f.def.boss) score -= 12
+      // Bosses: all-in while the weak spot is exposed, otherwise clear the adds first (the armour wastes anima).
+      if (f.def.boss) score += bossOpen(f) ? -14 : f.kind === 'goutetsu' ? -4 : 4
       if (f.state === 'windup') score -= 4
       if (f.target && f.target.k === 'p' && f.target.id === p.id) score -= 5
+      if (objective >= 0 && f.target && f.target.k === 'r' && f.target.id === objective) score -= 8
       out.push({ t: { k: 'f', f }, ref: { k: 'f', id: f.id }, score, d: c.d })
     }
     // Foe-side objectives (巣核 nodes) are targets too, a little less urgent than foes.
@@ -192,6 +211,22 @@ export function perceive(sim: Sim, p: Player, range = 60): { t: Target; ref: Tar
   }
   out.sort((a, b) => a.score - b.score)
   return out
+}
+
+/** True while a boss shows its weak spot (クイツクシ's open core, ゴウテツ kneeling). */
+export const bossOpen = (f: Foe) =>
+  (f.kind === 'kuitsukushi' && f.parts?.[0] === 1) || (f.kind === 'goutetsu' && f.state === 'stagger')
+
+/** Number of other クロヅメ avatars currently targeting player `id`. */
+function avatarsOn(sim: Sim, self: Player, id: string): number {
+  let n = 0
+  for (const f of sim.foes) {
+    const av = f.avatar
+    if (!av || av === self || f.dead) continue
+    const t = (av.brain as Brain | null)?.target
+    if (t && t.k === 'p' && t.id === id) n++
+  }
+  return n
 }
 
 /** Points to roam between in PvP (plaza and the lanes between it and each base). */

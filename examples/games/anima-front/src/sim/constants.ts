@@ -108,9 +108,25 @@ export const FLOW_CELL = 2
 export const FLOW_REFRESH = 0.5
 export const FOE_AGGRO = 16
 /** Damage factor of クロヅメ avatars' antiques (× the difficulty damage multiplier). */
-export const AVATAR_DAMAGE = 0.6
+export const AVATAR_DAMAGE = 0.45
+/** Bot skill of クロヅメ avatars per difficulty (veterans on 決死). */
+export const AVATAR_SKILL: Record<string, number> = { easy: 0.35, normal: 0.5, hard: 0.68 }
 /** クイツクシ body hits while its core is closed. */
-export const MAW_CLOSED = 0.6
+export const MAW_CLOSED = 0.25
+/** Seconds クイツクシ takes no damage after each phase change (its maw shut); the core reopens 2 s later. */
+export const MAW_PHASE_GUARD = 4
+/** Share of クイツクシ's health one core opening can lose before the maw flinches shut. */
+export const MAW_WINDOW_CAP = 0.1
+/** ゴウテツ body hits outside the legs and the exposed core. */
+export const GOUTETSU_ARMOR = 0.35
+/** ゴウテツ attack cooldown multiplier after it rises enraged at half health. */
+export const GOUTETSU_ENRAGED_CD = 0.75
+/** ゴウテツ leg health (× difficulty hp × the boss's squad scaling); broken legs regrow fully when it rises. */
+export const GOUTETSU_LEG_HP = 800
+/** Seconds ゴウテツ kneels (core exposed) after two legs break. */
+export const GOUTETSU_KNEEL = 8
+/** Share of ゴウテツ's health its exposed core can lose in one kneel before it rises. */
+export const GOUTETSU_KNEEL_CAP = 0.35
 /** Damage share the lighthouse and the cart take from クロヅメ antiques. */
 export const OBJECTIVE_ARMOR = 0.35
 export const ACID_PUDDLE_DPS = 4
@@ -119,6 +135,13 @@ export const ACID_PUDDLE_TIME = 4
 // --- modes (DESIGN §12) -------------------------------------------------------------------------------------------
 export const WAVE_GAP = 8
 export const WAVE_MAX = 70
+/** Share of a difficulty's peak offset (peak / 90 − 1) applied to wave spawn counts. */
+export const WAVE_COUNT_SCALE = 0.5
+/** 巣核: every living node sends this many ツブテ (× the wave count scale) every NODE_SPAWN_GAP seconds. */
+export const NODE_SPAWN_COUNT = 4
+export const NODE_SPAWN_GAP = 18
+/** Share of a difficulty's hp offset (hp − 1) applied to bosses (決死 ×1.025, 訓練 ×0.925). */
+export const BOSS_DIFFICULTY_SCALE = 0.25
 export const OBJECTIVE_HURT_GAP = 20
 export const RESULT_HOLD = 4
 export const PVP_LAST_SPURT = 60

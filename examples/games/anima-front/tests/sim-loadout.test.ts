@@ -112,31 +112,43 @@ describe('handLists', () => {
 
 describe('sustainEstimate', () => {
   it('follows the documented fight model', () => {
-    const l = makeLoadout(['bee'], [], [])
+    const l = makeLoadout(['bee', 'wood'], ['frog'], [])
     const s = sustainEstimate('shiba', l)
-    const rate = (0.15 / 0.18) * 0.5
+    // Mean cost rate of the paw's weapons × 0.15 duty; gadgets: cost / max(cooldown, 15 s); 0.6/s incoming.
+    const bee = 0.15 / 0.18
+    const wood = 0.35 * 9
+    const rate = ((bee + wood) / 2) * 0.15
     expect(s.byCategory.ranged).toBeCloseTo(rate, 2)
-    expect(s.byCategory.damage).toBe(9)
+    expect(s.byCategory.gadget).toBeCloseTo(3 / 15, 2)
+    expect(s.byCategory.damage).toBeCloseTo(0.6, 5)
     expect(s.regen).toBe(1.5)
-    expect(s.burn).toBeCloseTo(rate + 9, 2)
-    expect(s.sustain).toBeCloseTo(100 / (rate + 9 - 1.5), 1)
+    expect(s.burn).toBeCloseTo(rate + 0.2 + 0.6, 2)
+    // A third (0.33) of the natural regeneration happens during a fight.
+    expect(s.sustain).toBeCloseTo(100 / (rate + 0.2 + 0.6 - 1.5 * 0.33), 0)
     expect(s.maxAnima).toBe(100)
     expect(s.cheapest).toEqual({ item: 'bee', cost: 0.15 })
   })
 
   it('reports long sustains for frugal builds and warns about expensive ones', () => {
-    // With the data numbers the best armour/regeneration stack still nets a small loss (3.96 vs 3.9 anima/s),
-    // so the estimate is long but finite.
+    // The best armour/regeneration stack (almost) pays for itself: a very long or endless estimate.
     const tank = makeLoadout(
       ['bee'],
       [],
       ['turtle', 'rhino', 'rhino', 'rhino', 'jelly', 'koala', 'koala', 'koala', 'sloth', 'sloth', 'sloth']
     )
     expect(sustainEstimate('bear', tank).sustain).toBeGreaterThan(300)
+    // 火力全開 runs dry within about a minute of fighting (the bot drill measures ~55–65 s on shiba / bear).
     const allout = PRESETS.find((p) => p.id === 'allout')!.loadout
     const s = sustainEstimate('hamster', allout)
-    expect(s.sustain).toBeLessThan(20)
+    expect(s.sustain).toBeLessThan(60)
     expect(s.warnings).toContain('消費が非常に激しい構成です')
+    expect(sustainEstimate('shiba', allout).sustain).toBeGreaterThan(45)
+    expect(sustainEstimate('shiba', allout).sustain).toBeLessThan(90)
+    // The everyday builds last much longer.
+    for (const id of ['attacker', 'support']) {
+      const p = PRESETS.find((x) => x.id === id)!.loadout
+      expect(sustainEstimate('shiba', p).sustain).toBeGreaterThan(2 * sustainEstimate('shiba', allout).sustain - 20)
+    }
     expect(sustainEstimate('shiba', makeLoadout([], ['frog'], [])).warnings).toContain('武器がありません')
   })
 

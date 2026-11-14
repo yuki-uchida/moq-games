@@ -15,7 +15,15 @@
  */
 import { FOES, type FoeKind } from '../../data/enemies'
 import { MISSIONS, type MissionDef, type RadioLine } from '../../data/missions'
-import { DOWN_TIME, DT, OBJECTIVE_HURT_GAP, PVE_PROTECT, AWAY_TIME } from '../constants'
+import {
+  AWAY_TIME,
+  DOWN_TIME,
+  DT,
+  NODE_SPAWN_COUNT,
+  NODE_SPAWN_GAP,
+  OBJECTIVE_HURT_GAP,
+  PVE_PROTECT
+} from '../constants'
 import { liveFoes, spawnFoe } from '../foes/index'
 import { addProp } from '../props'
 import { respawn, setDown, settle, spawnPoints, warpAway } from '../player'
@@ -161,10 +169,10 @@ export function createPve(cfg: MatchConfig): ModeCtl {
     } else if (obj.kind === 'destroy') {
       // Living nodes keep spawning ツブテ.
       if (sim.time >= nodeSpawnAt) {
-        nodeSpawnAt = sim.time + 20
+        nodeSpawnAt = sim.time + NODE_SPAWN_GAP
         nodes.forEach((n, i) => {
           if (n.gone) return
-          waves.extra(sim, 'tsubute', 3, `node${i + 1}`)
+          waves.extra(sim, 'tsubute', NODE_SPAWN_COUNT, `node${i + 1}`)
         })
       }
     }
@@ -256,7 +264,7 @@ export function createPve(cfg: MatchConfig): ModeCtl {
           spawnBoss(sim, obj.foe, anchor(sim, obj.anchor))
         }
         waves.start(sim, 0)
-        nodeSpawnAt = sim.time + 20
+        nodeSpawnAt = sim.time + NODE_SPAWN_GAP
       }
       // Downs, warps and respawns.
       for (const p of sim.players) {
