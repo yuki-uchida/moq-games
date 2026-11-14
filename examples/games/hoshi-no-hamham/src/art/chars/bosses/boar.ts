@@ -1,802 +1,1025 @@
 /**
- * いのしし番長 (`boarBoss`): a burly wild boar who styles himself a gang leader. Warm brown bristly hide, a big dark
- * pompadour, long cream tusks, a leaf stalk in the corner of his mouth, a scar on the snout and the gang's red
- * bandana round his neck. Drawn at 128×128, facing right, feet on the anchor row.
+ * いのしし番長 (`boarBoss`): the bouncer of the gang's hideout, a school-gang tough of a wild boar built on the rig
+ * toolkit. The heaviest of the four-legged bosses: a huge wedge of shoulder and neck under a coarse bristle ridge, a
+ * massive head carried low, a small rump, short thick legs with cloven hooves. His pride is the glossy black
+ * pompadour rolled forward over the brow (it bounces a beat late in every move); long cream tusks curve up beside the
+ * pink snout disc, a leaf stalk sits in the corner of his mouth, and the gang's red neckerchief is knotted at his
+ * throat. 128×128, facing right, feet on (64, 120).
  *
- * One pose-parametric draw function (`drawBoar`); every clip is a list of poses (see `bossSpec('boarBoss')`).
- * Volumes are shaded with the same top-left light as the rest of the cast through `capsule` / `blob`, which
- * accept any tilt, so rearing, sitting and a head-down charge all share one shading model.
+ * Rendering (CHARACTERS.md "Big furry bodies"): rump, ribs, shoulder wedge, neck and the near upper legs are ONE
+ * silhouette shaded once, with a dark bristle ridge (`mantle` with long teeth), a pale belly and jowl, fur teeth on
+ * the shadow and bristle-lock stamps; the legs below the knee are dark.
+ *
+ * Depth (back to front): dust, far legs, tail, body, near lower legs, far tusk, kerchief tails, kerchief band and
+ * knot, far ear, mouth, lower jaw, head, snout disc, face, leaf stalk, near tusk, near ear, pompadour, steam, stars.
  */
 import type { SheetModule } from '../../module'
-import { C, R, ramp } from '../../palette'
-import { Painter, Raster, farRamp, shadeIndex, type Ramp } from '../../raster'
+import { TAU, lag } from '../../motion'
+import { C, R, color, ramp } from '../../palette'
+import { Painter, Raster, farRamp, type Pt, type Ramp } from '../../raster'
+import {
+  Frame,
+  capsule,
+  carve,
+  egg,
+  cel,
+  fill,
+  half,
+  joint,
+  mantle,
+  minus,
+  oval,
+  overlap,
+  polygon,
+  ribbon,
+  shadow,
+  smooth,
+  spline,
+  stampAt,
+  tint,
+  union,
+  within,
+  type Shape
+} from '../../rig'
 import { lazyAnim, memo } from '../../sheet'
 
-const BROWN = R.boarBrown
-const FAR = farRamp(BROWN)
-const HAIR = R.darkFur
-const TUSK = R.cream
+const FUR = R.boarBrown
+const FAR = farRamp(FUR)
+/*
+ * Colours are tight (28 a frame at most): the boar's own ramps borrow the coat's steps wherever they can, so one
+ * new colour buys a whole material.
+ */
+const INK = '#3a1a22'
+/** The bristle ridge along the spine, the lower legs and the tail tuft: lit by the coat's shade, shaded by its deep. */
+const BRISTLE = ramp('#684a32', '#503828', '#402c22', '#402c22', INK)
+const BRISTLE_FAR = farRamp(BRISTLE)
+/** Tusks: ivory shaded into the pale ramp. */
+const TUSK = ramp('#fffcee', '#f4e4c2', '#d8b68c', '#c8a078', INK)
+/** The pale belly, jowl and lower jaw: lit with the tusk's ivory, shaded into the coat's highlight. */
+const PALE = ramp('#f4e4c2', '#d8b68c', '#c8a078', '#402c22', INK)
+/** Steam and dust, shaded with the pale ramp. */
+const DUST = ramp('#fff8ec', '#e6dac8', '#d8b68c', '#c8a078', INK)
+/** The stars over a knocked-out head. */
+const STARS = ramp('#fff3b2', '#ffd25c', '#d8a040', '#402c22', INK)
+/** The pompadour, the brows and the hooves: glossy black with a warm line. */
+const HAIR = ramp('#5e5878', '#38344e', '#252232', INK, INK)
+/** The blue-white sheen stripe on the pompadour. */
+const SHEEN = color('#8a9ad6')
+const SNOUT = ramp('#f0bca8', '#d8968c', '#aa6670', '#402c22', INK)
 const BAND = R.bandana
-const LEAF = R.leaf
-const SNOUT = ramp('#f2c4ae', '#d6948a', '#a8646e', '#6e3a52', '#3a1a22')
+const LEAF = ramp('#a6dc7c', '#5cae52', '#3a8048', '#402c22', INK)
+const HS = 1.16
 
-type V = readonly [number, number]
-type Foot = V
-type Eyes = 'glare' | 'wide' | 'squint' | 'closed' | 'swirl' | 'hurt' | 'tired'
+/** The boar's own materials, for tests. */
+export const BOAR_TONES = { hair: HAIR, sheen: SHEEN, tusk: TUSK, coat: FUR } as const
 
-/** Rest geometry (px). The hip is the centre of the haunch, the shoulder the centre of the chest. */
-const HIP: V = [44, 85]
-const REST_ANG = 0.11
-const TORSO = 27
-const R_HIP = 17
-const R_SHOULDER = 23
-const R_HEAD = 13
+type Hoof = readonly [number, number, number]
+type Eyes = 'glare' | 'narrow' | 'wide' | 'shut' | 'hurt' | 'dizzy' | 'tired'
+type Mouth = 'shut' | 'grit' | 'open'
 
-/** A hoof resting on the ground at x, lifted by `lift` px. */
-const foot = (x: number, lift = 0): Foot => [x, 116.5 - lift]
-
-interface Pose {
-  /** Hip offset from rest (px), extra torso pitch (rad, + = nose up) and extra torso length (px). */
-  hip: V
-  ang: number
-  len: number
-  /** Head offset from its rest place (px) and its pitch (rad, + = snout down). */
-  head: V
-  headAng: number
+export interface BoarPose {
+  /** Whole figure forward (+) / up (+). */
+  x: number
+  y: number
+  /** Body tilt in degrees (front down +) and stretch (+ longer and flatter). */
+  lean: number
+  squash: number
+  /** Sides breathing 0..1. */
+  breath: number
+  /** Head offset from its seat and nod in degrees (snout down +). */
+  head: readonly [number, number]
+  nod: number
   /** Lower jaw opening 0..1. */
   jaw: number
-  /** Pompadour: -1 swept back .. 1 thrust forward, extra lift (px) and flatness 0..1. */
-  quiff: number
-  quiffLift: number
-  flat: number
-  nearF: Foot
-  farF: Foot
-  nearH: Foot
-  farH: Foot
-  /** Tail swing -1..1. */
-  tail: number
-  eyes: Eyes
-  /** Nostril steam 0..3 (puffs shown), sweat drops, orbiting stars (phase, -1 = none), ground dust 0..2. */
-  steam: number
-  sweat: boolean
-  stars: number
-  dust: number
+  mouth: Mouth
   tongue: boolean
-  /** Bandana tail flutter -1..1 and leaf stalk bob (px). */
-  flutter: number
-  stem: number
+  eyes: Eyes
+  /** Ears turned back, in degrees. */
+  earN: number
+  earF: number
+  /** Hooves relative to their rest place: forward, lift, turn in degrees. */
+  fN: Hoof
+  fF: Hoof
+  hN: Hoof
+  hF: Hoof
+  /** Tail: direction (0 = back, + down), curl, sway phase. */
+  tail: readonly [number, number, number]
+  /** Pompadour: turn in degrees (+ forward / − swept back), droop over the eye 0..1, flattened 0..1. */
+  quiff: readonly [number, number, number]
+  /** Neckerchief tails: direction (0 = straight back, + down), ripple, phase. */
+  kerchief: readonly [number, number, number]
+  /** Leaf stalk: swing −1 (back corner) .. 1 (front corner); flying off 0 (in the mouth) .. 1; lying at x (or −1). */
+  stalk: readonly [number, number, number]
+  /** Steam puffing from the snout 0..1 (0 = none). */
+  steam: number
+  /** Dust from a scraping or stomping hoof 0..1. */
+  dust: number
+  /** Lying on the side 0..1. */
+  roll: number
+  /** Stars circling over the head: phase 0..1, −1 = none. */
+  stars: number
 }
 
-const NF = 80
-const FF = 70
-const NH = 38
-const FH = 50
-
-const pose = (p: Partial<Pose> = {}): Pose => ({
-  hip: [0, 0],
-  ang: 0,
-  len: 0,
+export const boarPose = (p: Partial<BoarPose> = {}): BoarPose => ({
+  x: 0,
+  y: 0,
+  lean: 0,
+  squash: 0,
+  breath: 0,
   head: [0, 0],
-  headAng: 0,
+  nod: 0,
   jaw: 0,
-  quiff: 0,
-  quiffLift: 0,
-  flat: 0,
-  nearF: foot(NF),
-  farF: foot(FF),
-  nearH: foot(NH),
-  farH: foot(FH),
-  tail: 0,
-  eyes: 'glare',
-  steam: 0,
-  sweat: false,
-  stars: -1,
-  dust: 0,
+  mouth: 'shut',
   tongue: false,
-  flutter: 0,
-  stem: 0,
+  eyes: 'glare',
+  earN: 0,
+  earF: 0,
+  fN: [0, 0, 0],
+  fF: [0, 0, 0],
+  hN: [0, 0, 0],
+  hF: [0, 0, 0],
+  tail: [40, -260, 0],
+  quiff: [0, 0, 0],
+  kerchief: [60, 1, 0],
+  stalk: [0, 0, -1],
+  steam: 0,
+  dust: 0,
+  roll: 0,
+  stars: -1,
   ...p
 })
 
-// ------------------------------------------------------------------------------------------------ shading
+/** Rest places of the hooves (x relative to the anchor). */
+const REST = { fN: 16, fF: 9, hN: -22, hF: -16 } as const
 
-const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
+// ------------------------------------------------------------------------------------------------ stamps
 
-/** A tapered capsule shaded like a lit sphere swept along the segment: limbs, torso, snouts. */
-function capsule(l: Raster, a: V, ra: number, b: V, rb: number, ramp: Ramp, spec = false) {
-  const r = Math.max(ra, rb)
-  const x0 = Math.floor(Math.min(a[0], b[0]) - r)
-  const x1 = Math.ceil(Math.max(a[0], b[0]) + r)
-  const y0 = Math.floor(Math.min(a[1], b[1]) - r)
-  const y1 = Math.ceil(Math.max(a[1], b[1]) + r)
-  const abx = b[0] - a[0]
-  const aby = b[1] - a[1]
-  const len2 = abx * abx + aby * aby
-  for (let y = y0; y <= y1; y++)
-    for (let x = x0; x <= x1; x++) {
-      const px = x + 0.5
-      const py = y + 0.5
-      const t = len2 ? clamp(((px - a[0]) * abx + (py - a[1]) * aby) / len2, 0, 1) : 0
-      const rr = ra + (rb - ra) * t
-      const dx = px - (a[0] + abx * t)
-      const dy = py - (a[1] + aby * t)
-      const q = (dx * dx + dy * dy) / (rr * rr)
-      if (q > 1.0001) continue
-      l.set(x, y, ramp[shadeIndex(dx / rr, dy / rr, Math.sqrt(Math.max(0, 1 - q)), spec)])
-    }
-}
-
-/** A union of shaded ellipses [cx, cy, rx, ry]: each pixel takes the shading of the ellipse it is deepest in. */
-function blob(l: Raster, parts: readonly (readonly [number, number, number, number])[], ramp: Ramp, spec = true) {
-  let x0 = 1e9
-  let x1 = -1e9
-  let y0 = 1e9
-  let y1 = -1e9
-  for (const [cx, cy, rx, ry] of parts) {
-    x0 = Math.min(x0, cx - rx)
-    x1 = Math.max(x1, cx + rx)
-    y0 = Math.min(y0, cy - ry)
-    y1 = Math.max(y1, cy + ry)
-  }
-  for (let y = Math.floor(y0); y <= Math.ceil(y1); y++)
-    for (let x = Math.floor(x0); x <= Math.ceil(x1); x++) {
-      let best = 9
-      let bx = 0
-      let by = 0
-      for (const [cx, cy, rx, ry] of parts) {
-        const nx = (x + 0.5 - cx) / rx
-        const ny = (y + 0.5 - cy) / ry
-        const q = nx * nx + ny * ny
-        if (q < best) [best, bx, by] = [q, nx, ny]
-      }
-      if (best > 1.0001) continue
-      l.set(x, y, ramp[shadeIndex(bx, by, Math.sqrt(Math.max(0, 1 - best)), spec)])
-    }
-}
-
-/** Two-bone leg: returns the joint and the (reach-clamped) foot. `bend` -1 knee forward, +1 hock backward. */
-function leg(root: V, target: V, a1: number, a2: number, bend: 1 | -1): { mid: V; end: V } {
-  const dx = target[0] - root[0]
-  const dy = target[1] - root[1]
-  // a leg whose foot is close to its root folds short instead of buckling far out
-  const k = Math.min(1, Math.hypot(dx, dy) / (0.62 * (a1 + a2)))
-  const l1 = a1 * k
-  const l2 = a2 * k
-  const d = clamp(Math.hypot(dx, dy), Math.abs(l1 - l2) + 0.5, l1 + l2 - 0.5)
-  const base = Math.atan2(dy, dx)
-  const a = Math.acos(clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1))
-  const t = base + bend * a
-  return {
-    mid: [root[0] + Math.cos(t) * l1, root[1] + Math.sin(t) * l1],
-    end: [root[0] + Math.cos(base) * d, root[1] + Math.sin(base) * d]
-  }
-}
-
-// ------------------------------------------------------------------------------------------------ face
-
-const EYE_KEY = { K: C.black, w: C.white, B: HAIR[2], b: HAIR[3], s: SNOUT[0] }
-
+const EYE_KEY = { K: HAIR[3], w: C.white, p: C.black, B: HAIR[1], i: HAIR[3] }
+/** A small angry eye under a heavy black brow; the brow does the acting. */
 const EYES: Record<Eyes, readonly string[]> = {
-  glare: ['BBB...', '.BBBB.', '.KKKK.', '.KwKK.', '.KKKK.', '..KK..'],
-  wide: ['.BBBB.', '......', 'wwwwww', 'wKKKKw', 'wKKwKw', 'wKKKKw', '.wwww.'],
-  squint: ['BBB...', '.BBBB.', '.KKKK.', '......'],
-  closed: ['......', '..BBB.', '.BBBBB', '......'],
-  hurt: ['K...K.', '.K.K..', '..K...', '.K.K..', 'K...K.'],
-  tired: ['.BBBB.', '.BBBBB', '.KKKK.', '.KwKK.', '..KK..'],
-  swirl: ['.wwwww.', 'wwKKKww', 'wKwwwKw', 'wKwKwKw', 'wKwKKKw', 'wwKwwww', '.wwwww.']
+  glare: ['BB.......', '.BBBB....', '..BBBBBB.', '...KKKBBB', '..KwwppK.', '..KwwppK.', '...KKKK..'],
+  narrow: ['BB.......', '.BBBB....', '..BBBBBB.', '..BBBBBBB', '..KKKKKK.', '..KwwppK.', '...KKKK..'],
+  wide: ['..BBB....', '.B...BB..', '.........', '..KKKKK..', '.KwwwwwK.', '.KwwwppK.', '.KwwwppK.', '..KKKKK..'],
+  shut: ['BB.......', '.BBBB....', '..BBBBBB.', '.........', '..iiiiii.', '...i..i..'],
+  hurt: ['.B.....B.', '..B...B..', '.........', '.ii......', '...iii...', '.....iii.', '...iii...', '.ii......'],
+  dizzy: ['.........', '..iiiii..', '.i.....i.', '.i.iii.i.', '.i.i.i.i.', '.i...i.i.', '..iii..i.'],
+  tired: ['.........', 'BBBBBBB..', '.BBBBBBBB', '..iiiiii.', '..KwwppK.', '...KKKK..']
 }
-
-function eye(l: Raster, at: V, kind: Eyes) {
-  const rows = EYES[kind]
-  l.stamp(rows, at[0] - Math.floor(rows[0].length / 2), at[1] - Math.floor(rows.length / 2), EYE_KEY)
-}
-
-/** The orbiting stars of a dazed boar. */
+const NOSTRILS = ['KK', 'KK', '..', '..', 'KK', 'KK']
+/** The sheen stripe along the pompadour's roll. */
+const SHINE = ['.........ssss', '.....ggsss...', '..sssss......', 'sss..........']
+/** The spiral on the end of the roll. */
+const CURL = ['.ss.', 's..c', 's.c.', 's...', '.cc.']
 const STAR = ['..y..', '.yYy.', 'yyYyy', '.yYy.', '..y..']
-const STAR_KEY = { y: R.gold[1], Y: R.gold[0] }
+const STAR_SMALL = ['.y.', 'yYy', '.y.']
+/** Coarse bristle locks that break the silhouette along the ridge. */
+const BRISTLE_UP = ['..f..', '.ff..', '.fff.', 'ffff.', 'fffff']
+const BRISTLE_BACK = ['ff...', 'fff..', '.ffff', '..fff']
+const TUFT_DOWN = ['fffff', 'fffff', '.fff.', '.ff..', '..f..']
 
-/** The pompadour as shaded ellipses in head space [u, v, rx, ry]. */
-function quiffParts(q: number, lift: number, flat: number): [number, number, number, number][] {
-  const tipU = q < 0 ? 9 + q * 24 : 10 + q * 4
-  const tipV = q < 0 ? -17 - lift - q * 6 : -19 - lift - q * 3
-  const raw: [number, number, number, number][] = [
-    [-8, -9 - lift * 0.3, 8, 8],
-    [-1 + q * 3, -14 - lift * 0.7, 9, 9.5],
-    [tipU, tipV, 7, 5.5]
-  ]
-  return raw.map(([u, v, rx, ry]) => [
-    u,
-    -9 + (v + 9) * (1 - 0.65 * flat),
-    rx * (1 + 0.25 * flat),
-    ry * (1 - 0.45 * flat)
-  ])
+// ------------------------------------------------------------------------------------------------ helpers
+
+const ID = Frame.at(0, 0)
+
+/** A cloven hoof on its own frame (origin under its sole): two toes with a cleft, a dewclaw behind. */
+const hoofShape = (grounded: boolean): Shape => {
+  const s = union(
+    polygon([
+      [-3.6, -6],
+      [2.6, -6],
+      [6.4, 0.4],
+      [-4.2, 0.4]
+    ]),
+    oval(-3.8, -5.2, 1.8, 1.8)
+  )
+  return grounded ? overlap(s, half([0, -0.4], 0, -1)) : s
 }
 
-/** One frame of いのしし番長. */
-export function drawBoar(p: Pose): Raster {
-  const g = new Painter(128, 128)
-  const H: V = [HIP[0] + p.hip[0], HIP[1] + p.hip[1]]
-  const a = REST_ANG + p.ang
-  const ex: V = [Math.cos(a), -Math.sin(a)]
-  const ey: V = [Math.sin(a), Math.cos(a)]
-  const on = (o: V, u: number, v: number): V => [o[0] + ex[0] * u + ey[0] * v, o[1] + ex[1] * u + ey[1] * v]
-  const S = on(H, TORSO + p.len, 0)
-  const K0 = on(S, 15, -3)
-  const K: V = [K0[0] + p.head[0], K0[1] + p.head[1]]
-  const ha = p.headAng - p.ang * 0.7
-  const hb: V = [Math.cos(ha), Math.sin(ha)]
-  const hn: V = [-Math.sin(ha), Math.cos(ha)]
-  const h = (u: number, v: number): V => [K[0] + hb[0] * u + hn[0] * v, K[1] + hb[1] * u + hn[1] * v]
-  const ja = p.jaw * 0.6
-  const jaw = (u: number, v: number): V => {
-    const du = u
-    const dv = v - 8
-    return h(du * Math.cos(ja) - dv * Math.sin(ja), 8 + du * Math.sin(ja) + dv * Math.cos(ja))
+/** A path from `from` heading in direction `deg` (0 = back, + down), bending by `curl` degrees along its length. */
+function bentPath(from: Pt, deg: number, curl: number, len: number, wobble: (s: number) => number, n = 5): Pt[] {
+  const pts: Pt[] = [from]
+  let [x, y] = from
+  for (let i = 1; i <= n; i++) {
+    const s = i / n
+    const a = ((deg + curl * s) * Math.PI) / 180
+    const w = wobble(s)
+    x += -Math.cos(a) * (len / n)
+    y += Math.sin(a) * (len / n)
+    pts.push([x - Math.sin(a) * w, y - Math.cos(a) * w])
+  }
+  return spline(pts)
+}
+
+/** Direction of a path near its point i, in degrees on screen. */
+const heading = (path: readonly Pt[], i: number) => {
+  const a = path[Math.max(0, i - 2)]
+  const b = path[Math.min(path.length - 1, i + 2)]
+  return (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI
+}
+
+/**
+ * The highlight of a ramp on the very edge of a part takes the base colour instead: the lit-side selout next to it is
+ * two steps darker, and two steps below ivory is still light (as the wolf's `dimEdge`; candidate for the toolkit).
+ */
+function dimEdge(l: Raster, tone: Ramp) {
+  const b = l.bounds()
+  if (!b) return
+  const src = l.clone()
+  for (let y = b.y; y < b.y + b.h; y++)
+    for (let x = b.x; x < b.x + b.w; x++)
+      if (
+        src.get(x, y) === tone[0] &&
+        !(src.get(x - 1, y) && src.get(x + 1, y) && src.get(x, y - 1) && src.get(x, y + 1))
+      )
+        l.set(x, y, tone[1])
+}
+
+/** A muscle crease just inside one edge of an upper limb (as on the wolf). */
+function crease(a: Pt, b: Pt, ra: number, rb: number, side: 1 | -1): Shape {
+  const d = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1
+  const n: Pt = [(-(b[1] - a[1]) / d) * side, ((b[0] - a[0]) / d) * side]
+  const pa: Pt = [a[0] + n[0] * (ra - 3), a[1] + n[1] * (ra - 3)]
+  const pb: Pt = [b[0] + n[0] * (rb - 2.4), b[1] + n[1] * (rb - 2.4)]
+  return overlap(capsule(pa, pb, 3, 2.3), half(pa, n[0], n[1]))
+}
+
+/** A leaf stalk: a stem from `root` in screen direction `deg` (0 = right, 90 = down) ending in a small leaf. */
+function stalkAt(l: Raster, root: Pt, deg: number) {
+  const a = (deg * Math.PI) / 180
+  const tip: Pt = [root[0] + Math.cos(a) * 8, root[1] + Math.sin(a) * 8]
+  ribbon(l, [root, tip], () => 1.6, LEAF[2])
+  const leaf = Frame.at(tip[0], tip[1], deg + 25)
+  fill(l, leaf, union(oval(3, 0, 3.6, 2), oval(0.5, 0, 1.5, 1.5)), LEAF[1])
+}
+
+// ------------------------------------------------------------------------------------------------ drawing
+
+export function drawBoar(p: BoarPose): Raster {
+  const g = new Painter(128, 128, { soft: true })
+  const k = 1 + p.squash * 0.04
+  const ground = Frame.at(56 + p.x, 120)
+  const root = ground.child(0, -p.y)
+  const torso = root.child(0, -36, p.lean, k, 1 / k)
+  const head = torso.child(26 + p.head[0], -5 + p.head[1], 3 + p.nod - p.lean * 0.6, HS)
+  const br = p.breath
+  const humpAt = torso.pt(6, -6)
+
+  // ---- leg geometry (two-bone legs: short and thick)
+  const legGeo = (front: boolean, hoof: Hoof, rest: number, near: boolean) => {
+    const f = ground.child(rest + hoof[0], -hoof[1], hoof[2])
+    const grounded = hoof[1] < 0.6 && Math.abs(hoof[2]) < 10
+    if (front) {
+      const s = torso.pt(near ? 13 : 7, 7)
+      const end = f.pt(-0.6, -6)
+      return { f, grounded, s, end, mid: joint(s, end, 13, 11, 1).mid }
+    }
+    const s = torso.pt(near ? -19 : -14, 1)
+    const end = f.pt(-1.4, -6.5)
+    return { f, grounded, s, end, mid: joint(s, end, 16, 12, -1).mid }
+  }
+  type Leg = ReturnType<typeof legGeo>
+  const legFN = legGeo(true, p.fN, REST.fN, true)
+  const legFF = legGeo(true, p.fF, REST.fF, false)
+  const legHN = legGeo(false, p.hN, REST.hN, true)
+  const legHF = legGeo(false, p.hF, REST.hF, false)
+
+  /** The body silhouette in torso units: rump, ribs, the shoulder wedge and the thick neck. */
+  const neckEnd = torso.local(...head.pt(-4, 3))
+  const bodyShape = union(
+    egg(6, -2 - br * 0.6, 25 + br * 0.4, 23 + br * 0.8, 22),
+    capsule([2, 2], [-20, 3], 20 + br * 0.6, 15),
+    oval(-22, 3, 14, 15),
+    capsule([14, -5], neckEnd, 18, 14)
+  )
+
+  /** Shank, pastern and hoof: what hangs free below the body, dark below the knee. */
+  const lowerLeg = (l: Raster, leg: Leg, tone: Ramp, hoof: Ramp, r: number) => {
+    fill(l, ID, capsule(leg.mid, leg.end, r, r * 0.72), tone[1])
+    fill(l, ID, capsule(leg.end, leg.f.pt(0.4, -3.6), r * 0.7, r * 0.78), tone[1])
+    fill(l, leg.f, hoofShape(leg.grounded), hoof[1])
+  }
+  const cleft = (l: Raster, leg: Leg, hoof: Hoof, tone: Ramp) => {
+    if (Math.abs(hoof[2]) < 45) stampAt(l, leg.f, ['k', 'k'], 2.6, -2.4, { k: tone[3] })
   }
 
-  // tail: a short curl ending in a dark tuft
-  g.add(-5, (l) => {
-    const r = on(H, -R_HIP + 3, -7)
-    const m: V = [r[0] - 6, r[1] - 4 - p.tail * 2]
-    const t: V = [r[0] - 8 + p.tail * 3, r[1] - 12 - p.tail * 5]
-    capsule(l, r, 2.6, m, 2.2, BROWN)
-    capsule(l, m, 2.2, t, 1.8, BROWN)
-    blob(l, [[t[0] - 1, t[1] - 1, 3.2, 3.6]], HAIR, false)
+  // ---- far legs (a ramp step darker), whole, behind everything
+  const farLeg = (leg: Leg, front: boolean, hoof: Hoof) => (l: Raster) => {
+    fill(l, ID, capsule(leg.s, leg.mid, front ? 9 : 10, 6.2), FAR[1])
+    lowerLeg(l, leg, BRISTLE_FAR, farRamp(HAIR), front ? 5.2 : 5.4)
+    smooth(l)
+    cel(l, { shade: 2.4, rim: 1 })
+    shadow(l, torso.moved(0, 2), bodyShape)
+    cleft(l, leg, hoof, HAIR)
+  }
+  g.add(-4, farLeg(legHF, false, p.hF))
+  g.add(-4, farLeg(legFF, true, p.fF))
+
+  // ---- tail: a short curl with a dark tuft
+  g.add(-3, (l) => {
+    const base = torso.pt(-31.5, -3)
+    const sway = (s: number) => Math.sin(p.tail[2] - s * 2.4) * s * 1.2
+    const path = bentPath(base, p.tail[0], p.tail[1], 16, sway, 8)
+    ribbon(l, path, (t) => 3 - t * 0.8, FUR[1])
+    const end = path[path.length - 1]
+    fill(l, Frame.at(end[0], end[1], heading(path, path.length - 1)), oval(1, 0, 3.2, 2.4), BRISTLE[1])
+    smooth(l)
+    cel(l, { shade: 1.4, rim: 1 })
   })
 
-  // bristle mane along the back
-  g.add(-2, (l) => {
-    for (const [t, size] of [
-      [0.02, 5],
-      [0.2, 7],
-      [0.38, 8],
-      [0.56, 9],
-      [0.74, 9],
-      [0.92, 7]
-    ] as const) {
-      const r = R_HIP + (R_SHOULDER - R_HIP) * t
-      const c = on(H, (TORSO + p.len) * t, 0)
-      const up = (d: number, back: number): V => on(c, -back, -d)
-      l.poly([...up(r - 3, 4), ...up(r + size, 3.5), ...up(r - 3, -3.5)], BROWN[3])
-      l.poly([...up(r - 3, 3), ...up(r + size - 2, 2.5), ...up(r - 3, -1.5)], BROWN[2])
-    }
-  })
-
-  // legs: two-bone, knee forward on the front pair, hock back on the hind pair
-  const drawLeg = (
-    depth: number,
-    root: V,
-    target: V,
-    radii: readonly [number, number, number],
-    ramp: Ramp,
-    lengths: readonly [number, number],
-    bend: 1 | -1
-  ) =>
-    g.add(depth, (l) => {
-      // a hind foot planted ahead of its root folds the leg the other way (knee up, as when sitting)
-      const { mid, end } = leg(root, target, lengths[0], lengths[1], bend === 1 && target[0] - root[0] > 4 ? -1 : bend)
-      capsule(l, root, radii[0], mid, radii[1], ramp)
-      capsule(l, mid, radii[1], [end[0], end[1] - 2], radii[2], ramp)
-      blob(l, [[end[0] + 1, end[1], 5.6, 3.2]], HAIR, false)
-      l.set(end[0] + 3, end[1] - 2, HAIR[0])
-    })
-  drawLeg(-4, on(S, 9, 12), p.farF, [6, 5, 4.6], FAR, [12, 12], -1)
-  drawLeg(-4, on(H, 7, 8), p.farH, [9, 5.5, 4.6], FAR, [13, 12], 1)
-
-  // torso with the haunch and chest
+  // ---- the body: rump, ribs, shoulder wedge, neck and the near upper legs as ONE silhouette, shaded once
   g.add(0, (l) => {
-    capsule(l, H, R_HIP, S, R_SHOULDER, BROWN)
-  })
-  drawLeg(0.2, on(H, -2, 8), p.nearH, [11, 6.4, 5], BROWN, [13, 12], 1)
-  drawLeg(0.3, on(S, 2, 13), p.nearF, [7.5, 5.8, 5.2], BROWN, [12, 12], -1)
-
-  // bandana round the neck: band, hanging triangle and a knotted pair of tails
-  g.add(0.45, (l) => {
-    capsule(l, h(-11, 10), 4.4, h(3, 18), 4, BAND)
-    // the ends of the knot, streaming back
-    const k = h(-12, 10)
-    const f = p.flutter
-    capsule(l, k, 3, [k[0] - 9, k[1] - 2 - f * 4], 2.2, BAND)
-    capsule(l, k, 3, [k[0] - 8, k[1] + 5 - f * 3], 2.2, BAND)
-  })
-
-  // far ear
-  g.add(0.4, (l) => {
-    l.poly([...h(-7, -8), ...h(-17, -24 + p.flat * 10), ...h(0, -15)], BROWN[1])
-    l.poly([...h(-8, -11), ...h(-14, -21 + p.flat * 8), ...h(-4, -14)], SNOUT[2])
-  })
-
-  // mouth, lower jaw and the far tusk
-  g.add(0.41, (l) => {
-    if (p.jaw > 0.05) {
-      l.poly([...h(2, 7), ...h(19, 8), ...jaw(19, 9), ...jaw(2, 8)], C.mouth)
-      if (p.tongue) capsule(l, jaw(4, 8), 3, jaw(16, 10), 2.4, [C.tongue, C.tongue, C.mouth, C.mouth, C.mouth])
+    fill(l, torso, bodyShape, FUR[1])
+    fill(l, ID, capsule(legFN.s, legFN.mid, 11.5, 7), FUR[1])
+    fill(l, ID, capsule(legHN.s, legHN.mid, 12.5, 7.2), FUR[1])
+    // pale belly and the underside of the neck
+    tint(l, torso, union(capsule([18, 17 - br * 0.4], [-14, 16], 5, 4), oval(22, 9, 7, 8)), PALE[1])
+    // coarse bristle locks along the ridge, the rump and the belly
+    stampAt(l, torso, BRISTLE_UP, 10.5, -24.5 - br, { f: FUR[1] })
+    stampAt(l, torso, BRISTLE_UP, 3.5, -24 - br, { f: FUR[1] })
+    stampAt(l, torso, BRISTLE_UP, -3.5, -21.5, { f: FUR[1] })
+    stampAt(l, torso, BRISTLE_UP, 17, -21.5 - br, { f: FUR[1] })
+    stampAt(l, torso, BRISTLE_BACK, -32.5, -6, { f: FUR[1] })
+    stampAt(l, torso, TUFT_DOWN, 4.5, 17.5 + br * 0.4, { f: FUR[1] })
+    smooth(l)
+    mantle(l, FUR[1], BRISTLE[1], { depth: 6, tooth: 4.5, pitch: 5, origin: humpAt })
+    cel(l, { shade: 12, deep: 4, rim: 2.4, tooth: 3.5, pitch: 5, origin: humpAt })
+    if (p.roll > 0) {
+      const belly = oval(-3, 8, 22 * p.roll, 7 * p.roll)
+      tint(l, torso, belly, PALE[1])
+      shadow(l, torso, overlap(belly, half([0, 12], 0, 1)))
     }
-  })
-  g.add(0.42, (l) => {
-    capsule(l, jaw(2, 10), 4.6, jaw(18, 11), 3.8, BROWN)
-    // far tusk, a step darker and smaller
-    const pts = [jaw(12, 11), jaw(21, 14), jaw(26, 7), jaw(26.5, -1)]
-    const fr = farRamp(TUSK)
-    for (let i = 1; i < pts.length; i++) capsule(l, pts[i - 1], 2.8 - i * 0.55, pts[i], 2.8 - (i + 1) * 0.55, fr)
+    shadow(l, ID, crease(legFN.s, legFN.mid, 10, 6.4, legFN.mid[1] >= legFN.s[1] ? 1 : -1))
+    shadow(l, ID, crease(legHN.s, legHN.mid, 11, 6.6, legHN.mid[1] >= legHN.s[1] ? -1 : 1))
   })
 
-  // head: skull, jowls, snout and the pink nose pad
-  g.add(0.5, (l) => {
-    capsule(l, h(-1, 0), R_HEAD, h(-1, 0), R_HEAD, BROWN)
-    capsule(l, h(-3, 6), 10, h(5, 7), 9.5, BROWN)
-    capsule(l, h(5, 3), 10.5, h(18, 6), 8.8, BROWN)
-    capsule(l, h(21, 1), 4.4, h(21, 9.5), 5.2, SNOUT)
+  // ---- near legs below the body
+  for (const leg of [legHN, legFN])
+    g.add(1, (l) => {
+      lowerLeg(l, leg, BRISTLE, HAIR, leg === legHN ? 6 : 5.8)
+      smooth(l)
+      cel(l, { shade: 2.4, rim: 1 })
+      cleft(l, leg, leg === legHN ? p.hN : p.fN, HAIR)
+    })
+
+  // ---- the head's shapes (head units: skull centre at the origin, the jaw hinge near (8, 8))
+  const skull = oval(0, -1, 12.5, 11.5)
+  const jowl = oval(-2, 6, 10.5, 7)
+  const snout = capsule([6, 1], [21, 3], 9, 6.6)
+  const headShape = union(skull, jowl, snout)
+  const jawDeg = p.mouth === 'open' ? p.jaw * 30 : p.mouth === 'grit' ? 2 : 0
+  const jaw = head.child(8, 8, jawDeg)
+  const open = p.mouth === 'open' && p.jaw > 0.08
+
+  // ---- tusks: thick at the root, curving up beside the snout disc
+  const tuskPath = (du: number, dv: number) =>
+    spline([
+      jaw.pt(8 + du, -0.5 + dv),
+      jaw.pt(14 + du, 1.5 + dv),
+      jaw.pt(19.5 + du, -0.5 + dv),
+      jaw.pt(22.5 + du, -6 + dv),
+      jaw.pt(22 + du, -12 + dv)
+    ])
+  const tusk = (l: Raster, path: Pt[], tone: Ramp, w: number) => {
+    ribbon(l, path, (t) => w * (1 - t * 0.6), tone[1])
+    smooth(l)
+    cel(l, { shade: 1.4, rim: 1.2 })
+    dimEdge(l, tone)
+  }
+  g.add(2, (l) => tusk(l, tuskPath(-3.5, -1), farRamp(TUSK), 4))
+
+  // ---- neckerchief: two short tails from the knot at the throat, the band round the neck
+  const knot = head.pt(-7, 13.5)
+  const wave = (s: number) => Math.sin(p.kerchief[2] - s * 4) * p.kerchief[1] * s * 1.5
+  g.add(2.4, (l) => {
+    for (const [d, len] of [
+      [-12, 11],
+      [14, 9]
+    ] as const) {
+      const path = bentPath(knot, p.kerchief[0] + d, 10, len, wave)
+      ribbon(l, path, (t) => 3.6 + t * 2.4, BAND[1])
+      const n = path.length - 1
+      carve(
+        l,
+        Frame.at(path[n][0], path[n][1], heading(path, n)),
+        polygon([
+          [3, -3.4],
+          [-1.6, 0],
+          [3, 3.4]
+        ])
+      )
+    }
+    cel(l, { shade: 1.6, rim: 1 })
   })
+  g.add(2.5, (l) => {
+    ribbon(l, spline([head.pt(-13, -5), head.pt(-14, 5), knot]), (t) => 6.5 - t * 1.5, BAND[1])
+    fill(l, Frame.at(knot[0], knot[1]), oval(0, 0, 3.4, 3), BAND[1])
+    cel(l, { shade: 1.8, rim: 1.2 })
+    shadow(l, head.moved(0, 1.5), jowl)
+  })
+
+  // ---- far ear (behind the skull)
+  const earF = head.child(-5, -9, -24 - p.earF)
+  g.add(3, (l) => {
+    fill(
+      l,
+      earF,
+      polygon([
+        [-4, 1],
+        [-2.5, -9],
+        [4, 0]
+      ]),
+      FAR[1]
+    )
+    cel(l, { shade: 1.5 })
+  })
+
+  // ---- mouth and lower jaw
+  if (open)
+    g.add(
+      3.6,
+      (l) => {
+        fill(l, ID, polygon([head.pt(7, 6), head.pt(21, 7.5), jaw.pt(13, 0), jaw.pt(0, -1)]), C.mouth)
+      },
+      false
+    )
+  g.add(3.8, (l) => {
+    fill(l, jaw, capsule([0, 0], [12, 0.5], 4, 3), PALE[1])
+    cel(l, { shade: 1.6 })
+  })
+  if (p.tongue)
+    g.add(3.85, (l) => {
+      fill(l, jaw, union(capsule([6, -1], [9.5, 4], 2.2, 2.2), oval(9.8, 5.6, 2.4, 2.4)), C.tongue)
+      tint(l, jaw, capsule([7.6, 0.6], [9.8, 5.6], 0.5, 0.5), C.mouth)
+    })
+
+  // ---- head: skull, jowl and long snout as one silhouette
+  const headAt = head.pt(0, -1)
+  g.add(4, (l) => {
+    fill(l, head, headShape, FUR[1])
+    tint(l, head, union(oval(-3, 9, 9, 4.6), capsule([6, 8.5], [19, 8], 2.6, 2)), PALE[1])
+    stampAt(l, head, BRISTLE_BACK, -12.5, 3, { f: FUR[1] })
+    stampAt(l, head, TUFT_DOWN, -6, 13.5, { f: PALE[1] })
+    smooth(l)
+    mantle(l, FUR[1], BRISTLE[1], { depth: 3, tooth: 2, pitch: 4, origin: headAt })
+    cel(l, { shade: 5, deep: 1.8, rim: 1.8, tooth: 1.5, pitch: 4, origin: headAt })
+  })
+
+  // ---- the snout disc
+  g.add(4.1, (l) => {
+    fill(l, head, oval(23.5, 2.5, 3.4, 6.8), SNOUT[1])
+    cel(l, { shade: 1.6 })
+  })
+
+  // ---- face
   g.add(
-    0.55,
+    4.2,
     (l) => {
-      eye(l, h(7, -2), p.eyes)
-      // nostrils and the scar across the snout
-      const n = h(23, 3)
-      l.rect(n[0] - 1, n[1], 2, 2, SNOUT[3])
-      const s0 = h(10, -6)
-      const s1 = h(17, 3)
-      l.line(s0[0], s0[1], s1[0], s1[1], BROWN[0])
-      for (const t of [0.35, 0.7]) {
-        const x = s0[0] + (s1[0] - s0[0]) * t
-        const y = s0[1] + (s1[1] - s0[1]) * t
-        l.line(x - 2, y + 1, x + 1, y - 2, BROWN[0])
-      }
-      // lip line
-      if (p.jaw <= 0.05) {
-        const m0 = h(6, 10)
-        const m1 = h(19, 10.5)
-        l.line(m0[0], m0[1], m1[0], m1[1], HAIR[3])
-        if (p.tongue) {
-          const t = h(15, 11)
-          l.rect(t[0], t[1], 3, 5, C.tongue)
-        }
-      }
+      stampAt(l, head, EYES[p.eyes], 5.5, -3, EYE_KEY)
+      stampAt(l, head, NOSTRILS, 24.5, 2.5, { K: SNOUT[3] })
+      if (!open) stampAt(l, head, ['KK..........', '.KKKKKKKKKKK'], 13.5, 7.5, { K: C.inkWarm })
     },
     false
   )
 
-  // the pompadour: a big shiny quiff swept to the front, with a few sharp locks
-  g.add(0.6, (l) => {
-    const parts = quiffParts(p.quiff, p.quiffLift, p.flat).map(([u, v, rx, ry]) => {
-      const c = h(u, v)
-      return [c[0], c[1], rx, ry] as [number, number, number, number]
+  // ---- leaf stalk: in the corner of the mouth, flying off, or lying on the ground
+  if (p.stalk[1] < 1 || p.stalk[2] >= 0)
+    g.add(4.4, (l) => {
+      if (p.stalk[2] >= 0) {
+        stalkAt(l, [p.stalk[2], 117.5], 180 + 8)
+        return
+      }
+      const s = p.stalk[0]
+      const t = p.stalk[1]
+      const root = head.pt(10 + s * 2.5, 8)
+      if (t <= 0) stalkAt(l, root, 105 - s * 45 + head.angle * 0.3)
+      else stalkAt(l, [root[0] - t * 26, root[1] - t * 30 + t * t * 18], 125 + t * 400)
     })
-    blob(l, parts.slice(0, 2), HAIR)
-    const tipC: V = [parts[2][0], parts[2][1]]
-    capsule(l, [parts[1][0], parts[1][1]], 7.5, tipC, 2.2, HAIR, true)
+
+  // ---- near tusk
+  g.add(4.6, (l) => {
+    tusk(l, tuskPath(0, 0), TUSK, 4.6)
+    within(l, (m) => stampAt(m, jaw, ['w', 'w'], 13.5, -0.5, { w: TUSK[0] }), true)
   })
 
-  // the long near tusk  })
+  // ---- near ear: small, with a pink bowl
+  const earN = head.child(-10, -6, -30 - p.earN)
+  g.add(4.8, (l) => {
+    fill(
+      l,
+      earN,
+      polygon([
+        [-4.5, 1.5],
+        [-3, -10],
+        [5, 0]
+      ]),
+      FUR[1]
+    )
+    tint(
+      l,
+      earN,
+      polygon([
+        [-2, 0],
+        [-1.8, -6],
+        [2.4, -0.5]
+      ]),
+      SNOUT[2]
+    )
+    cel(l, { shade: 1.6, rim: 1 })
+  })
 
-  // the long near tusk and the leaf stalk
-  g.add(0.62, (l) => {
-    const pts = [jaw(10, 12), jaw(20, 16), jaw(28, 11), jaw(31, 1), jaw(29, -6)]
-    for (let i = 1; i < pts.length; i++)
-      capsule(l, pts[i - 1], 3.5 - i * 0.62, pts[i], 3.5 - (i + 1) * 0.62, TUSK, true)
-  })
-  g.add(0.63, (l) => {
-    const root = jaw(8, 11)
-    const mid = jaw(0, 15)
-    const tip: V = [mid[0] - 5, mid[1] + 5 + p.stem]
-    l.thick(root[0], root[1], mid[0], mid[1], 2, LEAF[2])
-    l.thick(mid[0], mid[1], tip[0], tip[1], 2, LEAF[2])
-    l.ellipse(tip[0] - 2, tip[1] + 1, 4, 2.2, LEAF[1])
+  // ---- the pompadour: a glossy black quiff rolled forward over the brow
+  const [qa, droop, flat] = p.quiff
+  const quiff = head.child(-3 + flat * 2, -9 + flat * 2.5, qa + droop * 38, 1 + flat * 0.22, 1 - flat * 0.5)
+  g.add(5, (l) => {
+    // slicked back over the crown, then a long roll jutting forward over the brow; its end shows as a disc
+    const tip: Pt = [15, -10 + droop * 6]
+    const tube = union(
+      capsule([-11, 3], [-3, -4], 3.5, 6.5),
+      capsule([-2, -6], tip, 7, 7.6),
+      egg(5, -10 + droop * 2, 8.5, 8, 4)
+    )
+    const end = oval(tip[0] + 1.5, tip[1], 3.8, 7.2)
+    fill(l, quiff, union(tube, end), HAIR[1])
+    smooth(l)
+    cel(l, { shade: 3.6, deep: 1.2, rim: 1.4 })
+    within(l, (m) => stampAt(m, quiff, CURL, tip[0] + 2.5, tip[1], { c: HAIR[3], s: SHEEN }), true)
+    // the sheen stripe along the roll and its hard glint
+    within(l, (m) => stampAt(m, quiff, SHINE, 6, -13.5, { s: SHEEN, g: C.white }), true)
   })
 
-  // ears, steam, sweat, dazed stars and dust
-  g.add(0.58, (l) => {
-    l.poly([...h(-9, -6), ...h(-19, -20 + p.flat * 10), ...h(-2, -13)], BROWN[1])
-    l.poly([...h(-9, -8), ...h(-16, -18 + p.flat * 8), ...h(-4, -13)], SNOUT[2])
-  })
+  // ---- steam from the snout
   if (p.steam > 0)
-    g.add(1, (l) => {
-      const n = h(25, 1)
-      const puffs: [number, number, number][] = [
-        [2, -4, 2],
-        [5, -9, 3],
-        [8, -15, 4]
-      ]
-      for (const [dx, dy, r] of puffs.slice(0, p.steam)) blob(l, [[n[0] + dx, n[1] + dy, r, r]], R.dust, false)
+    g.add(6, (l) => {
+      const [x, y] = head.pt(25, -4)
+      const s = p.steam
+      fill(l, Frame.at(x + 1 + s * 2, y - 3 - s * 2), oval(0, 0, 2.2 + s * 1.2, 1.8 + s), DUST[1])
+      fill(l, Frame.at(x + 2 + s * 4, y - 7 - s * 6), oval(0, 0, 1.6 + s * 1.4, 1.4 + s * 1.1), DUST[1])
+      cel(l, { shade: 1.2 })
     })
-  if (p.sweat)
-    g.add(1, (l) => {
-      for (const [u, v] of [
-        [-12, -16],
-        [-17, -6]
-      ]) {
-        const c = h(u, v)
-        l.ellipse(c[0], c[1], 1.8, 2.6, R.water[1])
-      }
-    })
+
+  // ---- stars over a knocked-out head, outlined
   if (p.stars >= 0)
-    g.add(1, (l) => {
-      const o = h(0, -26)
-      for (let k = 0; k < 3; k++) {
-        const t = (p.stars + k / 3) * Math.PI * 2
-        l.stamp(STAR, o[0] + Math.cos(t) * 17 - 2, o[1] + Math.sin(t) * 5 - 2, STAR_KEY)
+    g.add(7, (l) => {
+      const [cx, cy] = head.pt(0, -22)
+      for (let i = 0; i < 3; i++) {
+        const a = (p.stars + i / 3) * TAU
+        l.stamp(
+          Math.sin(a) > 0 ? STAR : STAR_SMALL,
+          Math.round(cx + Math.cos(a) * 13) - 2,
+          Math.round(cy + Math.sin(a) * 3.5) - 2,
+          { y: STARS[1], Y: STARS[0] }
+        )
       }
     })
+
+  // ---- dust from a scraping or stomping hoof
   if (p.dust > 0)
-    g.add(-6, (l) => {
-      const puffs: [number, number, number][] = [
-        [p.nearH[0] - 10, 114, 4],
-        [p.nearH[0] - 17, 110, 3],
-        [p.farH[0] - 4, 116, 3]
-      ]
-      if (p.dust > 1) puffs.push([p.nearF[0] + 12, 113, 4.4], [p.nearF[0] + 19, 117, 3], [p.nearF[0] + 17, 108, 2.5])
-      for (const [x, y, r] of puffs) blob(l, [[x, y, r * 1.2, r]], R.dust, false)
+    g.add(-7, (l) => {
+      const [x, y] = ground.pt(REST.fN + p.fN[0] - 10, -3.6)
+      fill(l, Frame.at(x, y), oval(0, 0, 3.8 + p.dust * 1.4, 2.2 + p.dust * 0.5), DUST[1])
+      fill(l, Frame.at(x - 7 - p.dust * 3, y - 2 - p.dust), oval(0, 0, 2.4 + p.dust, 2 + p.dust), DUST[1])
+      cel(l, { shade: 1.2 })
     })
+
+  void minus
   return g.render()
 }
 
 // ------------------------------------------------------------------------------------------------ clips
 
-const idle = memo(() =>
-  [0, 1, 2, 3].map((i) =>
-    pose({
-      hip: [0, [0, 0, 1, 0][i]],
-      head: [0, [0, 1, 2, 1][i]],
-      len: [0, 0, 1, 0][i],
-      quiffLift: [0, 1, 2, 1][i],
-      nearF: [foot(NF), foot(NF - 3, 4), foot(NF - 9, 1), foot(NF - 4, 0)][i],
-      steam: [0, 0, 1, 2][i],
-      eyes: i === 3 ? 'squint' : 'glare',
-      tail: [0, 1, 0, -1][i],
-      flutter: [0, 0.4, 0, -0.4][i],
-      stem: [0, 1, 0, -1][i]
+const P = boarPose
+const phase = (i: number, n: number) => (i / n) * TAU
+
+/** idle: standing square, chewing the stalk from corner to corner, a slow breath, an ear flick, a hoof scrape. */
+const idle = memo(() => {
+  const N = 6
+  const breath = Array.from({ length: N }, (_, i) => 0.5 - 0.5 * Math.cos(phase(i, N)))
+  const bob = breath.map((b) => b * 1.2)
+  const qLag = lag(bob, { stiffness: 0.35, damping: 0.45, loop: true })
+  return Array.from({ length: N }, (_, i) =>
+    P({
+      y: -breath[i] * 0.6,
+      breath: breath[i],
+      head: [0, bob[i]],
+      nod: breath[i] * 2,
+      eyes: i === 4 ? 'narrow' : 'glare',
+      mouth: i % 2 ? 'grit' : 'shut',
+      earN: i === 2 ? 30 : i === 3 ? 12 : 0,
+      fN: i === 3 ? [-3, 2.5, 18] : i === 4 ? [-5, 0, 0] : [0, 0, 0],
+      dust: i === 4 ? 0.6 : 0,
+      tail: [40 + Math.sin(phase(i, N)) * 6, -260, phase(i, N)],
+      quiff: [qLag[i] * 6, 0, 0],
+      kerchief: [60 + Math.sin(phase(i, N) + 1) * 6, 1, phase(i, N)],
+      stalk: [Math.sin(phase(i, N)), 0, -1]
     })
   )
-)
+})
 
-const intro = memo(() => [
-  pose({
-    hip: [-1, 3],
-    ang: 0.16,
-    len: -2,
-    head: [0, 1],
-    jaw: 0.3,
-    quiff: 0.5,
-    nearF: foot(NF + 2, 3),
-    farF: foot(FF + 2, 2),
-    eyes: 'glare'
-  }),
-  pose({
-    hip: [-5, 2],
-    ang: 0.58,
-    head: [-1, -3],
-    headAng: -0.1,
-    jaw: 1,
-    quiff: 1,
-    quiffLift: 3,
-    nearF: [80, 84],
-    farF: [70, 90],
-    nearH: foot(NH - 3),
-    farH: foot(FH - 3),
-    eyes: 'wide',
-    tail: 1,
-    flutter: 1,
-    stem: 2
-  }),
-  pose({
-    hip: [-1, 3],
-    ang: -0.12,
-    len: -2,
-    head: [4, 6],
-    headAng: 0.25,
-    jaw: 0.6,
-    quiff: 1,
-    quiffLift: 2,
-    nearF: foot(NF + 6),
-    farF: foot(FF + 6),
-    dust: 2,
-    eyes: 'squint',
-    tail: -1,
-    flutter: -1
-  }),
-  pose({
-    ang: 0.02,
-    head: [2, 3],
-    headAng: 0.14,
-    quiff: 0.8,
-    steam: 3,
-    eyes: 'glare',
-    nearF: foot(NF + 4),
-    farF: foot(FF + 4),
-    flutter: 0.3,
-    stem: -1
-  })
-])
-
-const windup = memo(() => [
-  pose({
-    hip: [-2, 2],
-    ang: -0.05,
-    len: -1,
-    head: [3, 4],
-    headAng: 0.2,
-    quiff: 0.7,
-    nearH: foot(NH - 3),
-    flutter: 0.3
-  }),
-  pose({
-    hip: [-3, 4],
-    ang: -0.1,
-    len: -3,
-    head: [4, 8],
-    headAng: 0.35,
-    quiff: 1,
-    nearH: foot(NH - 8, 4),
-    farH: foot(FH - 3),
-    dust: 1,
-    steam: 1,
-    flutter: -0.4,
-    tail: 1
-  }),
-  pose({
-    hip: [-5, 6],
-    ang: -0.16,
-    len: -5,
-    head: [5, 7],
-    headAng: 0.5,
-    quiff: 1,
-    quiffLift: 2,
-    nearF: foot(NF + 4),
-    farF: foot(FF + 3),
-    nearH: foot(NH - 12, 1),
-    farH: foot(FH - 6),
-    dust: 1,
-    steam: 3,
-    flutter: 0.9,
-    tail: -1
-  })
-])
-
-const attack = memo(() => [
-  pose({
-    hip: [2, -2],
-    ang: -0.02,
-    len: 7,
-    head: [0, 8],
-    headAng: 0.45,
-    quiff: -1,
-    nearF: foot(NF + 16, 7),
-    farF: foot(FF + 14, 9),
-    nearH: foot(NH - 14, 6),
-    farH: foot(FH - 16, 8),
-    flutter: 1,
-    tail: 1
-  }),
-  pose({
-    hip: [4, 2],
-    ang: -0.12,
-    len: 2,
-    head: [5, 9],
-    headAng: 0.55,
-    quiff: -1,
-    nearF: foot(NF + 14),
-    farF: foot(FF + 10, 1),
-    nearH: foot(NH - 12, 4),
-    farH: foot(FH - 10, 6),
-    dust: 1,
-    flutter: 0.4,
-    tail: 0
-  }),
-  pose({
-    hip: [2, -6],
-    ang: 0.05,
-    len: -6,
-    head: [4, 7],
-    headAng: 0.4,
-    quiff: -1,
-    nearF: foot(NF - 6, 6),
-    farF: foot(FF - 10, 5),
-    nearH: foot(NH + 10, 5),
-    farH: foot(FH + 12, 6),
-    flutter: -0.5,
-    tail: -1
-  }),
-  pose({
-    hip: [0, 2],
-    ang: -0.06,
-    len: 1,
-    head: [4, 9],
-    headAng: 0.5,
-    quiff: -1,
-    nearF: foot(NF + 4, 4),
-    farF: foot(FF + 1, 2),
-    nearH: foot(NH + 4),
-    farH: foot(FH + 6),
-    dust: 1,
-    flutter: 0.2,
-    tail: 0
-  })
-])
-
-const stunned = memo(() =>
-  [0, 1, 2, 3].map((i) =>
-    pose({
-      hip: [4, 17],
-      ang: 0.84,
-      head: [[-2, 0, 2, 0][i], [0, 1, 0, 1][i]],
-      headAng: [-0.1, 0.1, 0.2, 0.05][i],
-      jaw: 0.2,
-      tongue: true,
-      quiff: -1,
-      flat: 1,
-      eyes: 'swirl',
-      nearF: [foot(74), foot(75), foot(76), foot(75)][i].map((v, k) =>
-        k ? v - 14 + [0, 2, 3, 1][i] : v
-      ) as unknown as V,
-      farF: [foot(68), foot(69), foot(68), foot(67)][i].map((v, k) =>
-        k ? v - 12 + [0, 1, 2, 1][i] : v
-      ) as unknown as V,
-      nearH: foot(64),
-      farH: foot(54),
-      stars: i * 0.1,
-      tail: [0, 1, 0, -1][i],
-      flutter: [0, 0.5, 0, -0.5][i]
+/**
+ * intro: head lowered, the ground pawed twice, then he rears up on his hind legs and comes down in a stomp that
+ * shakes him (held), steam jetting, the quiff bouncing a beat late; ends glaring.
+ */
+const intro = memo(() => {
+  const stance: Partial<BoarPose> = { x: -4, mouth: 'grit', eyes: 'glare' }
+  return [
+    P({ y: -1, lean: 4, head: [2, 5], nod: 14, eyes: 'narrow', fN: [5, 5, -25], quiff: [6, 0, 0] }),
+    P({ y: -1, lean: 5, head: [2, 6], nod: 16, eyes: 'narrow', fN: [-7, 0, 0], dust: 1, steam: 0.4, quiff: [-4, 0, 0] }),
+    P({
+      x: -3,
+      y: 5,
+      lean: -24,
+      head: [-1, -4],
+      nod: -22,
+      jaw: 1,
+      mouth: 'open',
+      eyes: 'shut',
+      earN: 30,
+      earF: 30,
+      fN: [8, 13, -60],
+      fF: [5, 15, -50],
+      hN: [3, 0, 0],
+      hF: [3, 0, 0],
+      quiff: [14, 0, 0],
+      kerchief: [85, 1.5, 1],
+      tail: [20, -260, 1],
+      stalk: [1, 0, -1]
+    }),
+    P({
+      x: -4,
+      y: 7,
+      lean: -30,
+      head: [-2, -6],
+      nod: -30,
+      jaw: 1,
+      mouth: 'open',
+      eyes: 'shut',
+      earN: 40,
+      earF: 40,
+      breath: 1,
+      fN: [10, 17, -70],
+      fF: [7, 19, -60],
+      hN: [4, 0, 0],
+      hF: [4, 0, 0],
+      quiff: [4, 0, 0],
+      kerchief: [95, 1.5, 2],
+      tail: [10, -260, 2],
+      stalk: [1, 0, -1]
+    }),
+    P({
+      ...stance,
+      y: -4,
+      lean: 7,
+      squash: 3,
+      head: [3, 6],
+      nod: 14,
+      fN: [3, 0, 0],
+      fF: [2, 0, 0],
+      dust: 1.4,
+      steam: 0.6,
+      earN: 20,
+      quiff: [-20, 0, 0],
+      kerchief: [30, 2, 3],
+      tail: [50, -260, 3]
+    }),
+    P({
+      ...stance,
+      y: -3,
+      lean: 5,
+      squash: 2,
+      head: [3, 4],
+      nod: 10,
+      fN: [3, 0, 0],
+      fF: [2, 0, 0],
+      dust: 0.8,
+      steam: 1,
+      earN: 8,
+      quiff: [12, 0, 0],
+      kerchief: [70, 1.6, 4],
+      tail: [45, -260, 4]
+    }),
+    P({
+      ...stance,
+      y: -1,
+      lean: 2,
+      squash: 0.5,
+      head: [1, 1],
+      nod: 4,
+      fN: [3, 0, 0],
+      fF: [2, 0, 0],
+      steam: 0.5,
+      quiff: [-5, 0, 0],
+      kerchief: [55, 1.2, 5],
+      tail: [40, -260, 5]
+    }),
+    P({
+      ...stance,
+      lean: 1,
+      breath: 0.6,
+      head: [1, 2],
+      nod: 3,
+      fN: [3, 0, 0],
+      fF: [2, 0, 0],
+      steam: 0.2,
+      quiff: [2, 0, 0],
+      kerchief: [62, 1, 6],
+      tail: [42, -260, 6]
     })
-  )
-)
+  ]
+})
 
-const recover = memo(() =>
-  [0, 1].map((i) =>
-    pose({
-      hip: [0, i],
-      len: -i,
-      head: [-2, 7 + i],
-      headAng: 0.6,
-      jaw: [0.5, 0.9][i],
-      tongue: true,
-      quiff: -0.6,
-      flat: 0.6,
-      eyes: 'tired',
-      sweat: true,
-      tail: [0, -1][i],
-      flutter: [0, 0.3][i],
-      steam: 0
-    })
-  )
-)
-
+/** hurt: a squeal with the head thrown up and the stalk flying, a recoil, a snort. */
 const hurt = memo(() => [
-  pose({
-    hip: [-4, 0],
-    ang: 0.12,
-    head: [-3, -2],
-    headAng: -0.2,
-    jaw: 0.8,
-    quiff: 1,
-    quiffLift: 3,
-    eyes: 'hurt',
-    nearF: foot(NF - 4),
-    tail: 1,
-    flutter: 1
-  }),
-  pose({
-    hip: [-6, 1],
-    ang: 0.05,
-    head: [-1, 2],
-    headAng: -0.05,
-    jaw: 0.5,
-    quiff: 0.3,
-    eyes: 'hurt',
-    nearF: foot(NF - 6, 2),
-    farF: foot(FF - 5),
-    tail: -1,
-    flutter: -0.6
-  })
-])
-
-const defeat = memo(() => [
-  pose({
-    hip: [-3, 1],
-    ang: 0.1,
-    head: [-4, -1],
-    headAng: -0.25,
+  P({
+    x: -3,
+    y: 2,
+    lean: -10,
+    head: [-2, -5],
+    nod: -28,
     jaw: 0.9,
-    quiff: 1,
-    quiffLift: 3,
-    eyes: 'swirl',
-    stars: 0,
-    nearF: foot(NF - 5, 1),
-    flutter: 1
+    mouth: 'open',
+    eyes: 'hurt',
+    earN: 45,
+    earF: 45,
+    fN: [-2, 4, 20],
+    quiff: [16, 0, 0],
+    kerchief: [20, 2, 1],
+    tail: [0, -200, 1],
+    stalk: [0, 0.4, -1]
   }),
-  pose({
-    hip: [-7, 3],
-    ang: 0.45,
-    head: [-3, 0],
-    headAng: -0.3,
-    jaw: 0.7,
-    quiff: 0.6,
-    eyes: 'swirl',
-    stars: 0.1,
-    tongue: true,
-    nearF: [82, 90],
-    farF: [74, 94],
-    nearH: foot(NH - 4),
-    farH: foot(FH - 4),
-    flutter: -1
-  }),
-  pose({
-    hip: [-2, 17],
-    ang: 0.8,
+  P({
+    x: -6,
+    y: -1,
+    lean: 5,
     head: [0, 4],
-    headAng: 0.1,
-    jaw: 0.5,
-    tongue: true,
-    quiff: -0.6,
-    flat: 0.5,
-    eyes: 'swirl',
-    stars: 0.2,
-    nearF: [78, 98],
-    farF: [70, 100],
-    nearH: foot(62),
-    farH: foot(52)
-  }),
-  pose({
-    hip: [4, 17],
-    ang: 0.84,
-    head: [4, 10],
-    headAng: 0.5,
+    nod: 12,
     jaw: 0.3,
-    tongue: true,
-    quiff: -1,
-    flat: 1,
-    eyes: 'swirl',
-    stars: 0.3,
-    nearF: [76, 98],
-    farF: [68, 100],
-    nearH: foot(64),
-    farH: foot(54)
+    mouth: 'open',
+    eyes: 'shut',
+    earN: 50,
+    earF: 40,
+    fN: [-5, 0, 0],
+    hN: [-2, 0, 0],
+    quiff: [-14, 0, 0],
+    kerchief: [80, 1.6, 2.5],
+    tail: [50, -260, 2],
+    stalk: [0, 0.85, -1]
   }),
-  pose({
-    hip: [3, 16],
-    ang: 0.1,
-    head: [6, 8],
-    headAng: 0.3,
-    jaw: 0.2,
-    tongue: true,
-    quiff: -1,
-    flat: 1,
-    eyes: 'closed',
-    stars: 0.4,
-    nearF: foot(NF + 14),
-    farF: foot(FF + 10),
-    nearH: foot(NH + 2, 3),
-    farH: foot(FH + 4, 2)
-  }),
-  pose({
-    hip: [3, 17],
-    ang: 0.11,
-    head: [0, 10],
-    headAng: 0.2,
-    jaw: 0.2,
-    tongue: true,
-    quiff: -1,
-    flat: 1,
-    eyes: 'closed',
-    stars: 0.5,
-    nearF: foot(NF + 20),
-    farF: foot(FF + 16),
-    nearH: foot(NH - 14),
-    farH: foot(FH - 10)
+  P({
+    x: -3,
+    y: -1,
+    lean: 3,
+    head: [1, 2],
+    nod: 6,
+    mouth: 'grit',
+    eyes: 'narrow',
+    earN: 15,
+    earF: 12,
+    fN: [-2, 0, 0],
+    steam: 0.8,
+    quiff: [5, 0, 0],
+    kerchief: [60, 1.2, 4],
+    tail: [40, -260, 3],
+    stalk: [0, 1, -1]
   })
 ])
 
-const draw = (poses: Pose[]) => poses.map(drawBoar)
+/** windup: head down to the ground, rump up, a front hoof scraping back with dust, steam; trembles. */
+const windup = memo(() => {
+  const set: Partial<BoarPose> = {
+    y: -2,
+    lean: 12,
+    head: [5, 4],
+    nod: 34,
+    eyes: 'glare',
+    mouth: 'grit',
+    earN: 50,
+    earF: 50,
+    fF: [4, 0, 0],
+    hN: [2, 0, 0],
+    hF: [2, 0, 0],
+    tail: [-10, -260, 0],
+    kerchief: [70, 1, 0]
+  }
+  return [
+    P({
+      x: -1,
+      y: -2,
+      lean: 8,
+      head: [3, 7],
+      nod: 24,
+      eyes: 'narrow',
+      mouth: 'grit',
+      earN: 30,
+      earF: 30,
+      fN: [3, 4, 30],
+      hN: [1, 0, 0],
+      hF: [1, 0, 0],
+      quiff: [12, 0, 0],
+      tail: [20, -260, 0],
+      kerchief: [80, 1.2, 1]
+    }),
+    P({ ...set, x: -2, fN: [-8, 0, 0], dust: 1, steam: 0.5, quiff: [-6, 0, 0], kerchief: [60, 1.2, 2] }),
+    P({ ...set, x: -1, head: [5, 3.4], fN: [-4, 2, 20], dust: 0.6, steam: 1, quiff: [2, 0, 0], tail: [-10, -260, 2] }),
+    P({ ...set, x: -3, head: [5.6, 4.6], fN: [-9, 0, 0], dust: 1.3, steam: 0.3, quiff: [-2, 0, 0], tail: [-6, -260, 4] })
+  ]
+})
+
+/**
+ * attack: the charge, a heavy rocking gallop — the fronts reach and land together, the hinds gather under and
+ * drive; the head low and level like a ram, quiff and neckerchief blown back, dust at the hooves.
+ */
+const attack = memo(() => {
+  const N = 6
+  const legs: [Hoof, Hoof, Hoof, Hoof, number, number, number, number][] = [
+    // fN, fF, hN, hF, y, lean, squash, dust
+    [[17, 8, -40], [13, 9, -35], [-14, 8, 50], [-11, 9, 45], 5, -4, 1.8, 0],
+    [[12, 0, 0], [8, 0, 0], [-13, 10, 70], [-10, 11, 60], 1, 6, 1, 1],
+    [[-2, 0, 0], [-5, 2, 10], [2, 10, -20], [5, 11, -15], 0, 8, -1.6, 0],
+    [[-12, 7, 60], [-9, 6, 50], [10, 0, 0], [13, 0, 0], 1, -2, -1, 0.8],
+    [[0, 11, 30], [3, 10, 20], [-2, 0, 0], [1, 0, 0], 3, -7, 0, 0.4],
+    [[10, 10, -15], [7, 9, -10], [-10, 3, 40], [-7, 4, 30], 5, -6, 1.6, 0]
+  ]
+  const bob = legs.map((l) => l[4])
+  const headLag = lag(bob, { stiffness: 0.5, damping: 0.6, loop: true })
+  const qLag = lag(bob, { stiffness: 0.35, damping: 0.5, loop: true })
+  return legs.map(([fN, fF, hN, hF, y, lean, squash, dust], i) =>
+    P({
+      x: 2,
+      y,
+      lean: lean + 4,
+      squash,
+      fN,
+      fF,
+      hN,
+      hF,
+      dust,
+      head: [4, 6 - headLag[i] * 0.8],
+      nod: 28 + headLag[i] * 2,
+      mouth: 'grit',
+      eyes: 'glare',
+      earN: 70,
+      earF: 70,
+      steam: i === 1 ? 0.6 : i === 2 ? 0.9 : 0,
+      quiff: [-16 - qLag[i] * 4, 0, 0],
+      tail: [-30 + Math.sin(phase(i, N)) * 8, -200, phase(i, N) * 2],
+      kerchief: [-8 + Math.sin(phase(i, N) + 1) * 6, 2.4, phase(i, N) * 2],
+      stalk: [-0.5, 0, -1]
+    })
+  )
+})
+
+/** stunned: sat back on his haunches, front legs splayed, head wobbling in a circle, quiff flopped over an eye. */
+const stunned = memo(() => {
+  const N = 6
+  return Array.from({ length: N }, (_, i) => {
+    const a = phase(i, N)
+    return P({
+      x: 2,
+      y: -9,
+      lean: -24,
+      head: [1 + Math.cos(a) * 2.2, 9 + Math.sin(a) * 1.6],
+      nod: 18 + Math.sin(a) * 10,
+      jaw: 0.35,
+      mouth: 'open',
+      tongue: true,
+      eyes: 'dizzy',
+      earN: 40 + Math.sin(a) * 12,
+      earF: 10 + Math.cos(a) * 10,
+      fN: [8, 0, -10],
+      fF: [-6, 0, 10],
+      hN: [12, 4, -78],
+      hF: [16, 4, -78],
+      tail: [80, -120, a],
+      quiff: [Math.sin(a - 1) * 8, 1, 0],
+      kerchief: [90, 0.6, a],
+      stalk: [Math.sin(a) * 0.5, 0, -1]
+    })
+  })
+})
+
+/** recover: standing with the head hanging, sides heaving, tongue out, the quiff limp. */
+const recover = memo(() =>
+  [0, 1, 0.3, 0.85].map((pant, i) =>
+    P({
+      y: -1 - pant,
+      lean: 4,
+      breath: pant,
+      head: [2, 10 + pant],
+      nod: 24 - pant * 4,
+      jaw: 0.4 + pant * 0.3,
+      mouth: 'open',
+      tongue: true,
+      eyes: 'tired',
+      earN: 40,
+      earF: 35 + pant * 4,
+      tail: [70, -150, i * 1.5],
+      quiff: [10 + pant * 4, 0.5, 0],
+      kerchief: [85 + pant * 4, 0.6, i * 1.6],
+      stalk: [-0.5, 0, -1]
+    })
+  )
+)
+
+/** defeat: the jolt, a stagger, the legs give way, he crashes onto his side with a bounce and lies out cold. */
+const defeat = memo(() => {
+  const lying: Partial<BoarPose> = {
+    x: -6,
+    y: -12,
+    lean: 0,
+    squash: 1.5,
+    roll: 1,
+    head: [3, 5],
+    nod: 12,
+    jaw: 0.3,
+    mouth: 'open',
+    tongue: true,
+    eyes: 'dizzy',
+    earN: 60,
+    earF: 40,
+    fN: [16, 6.5, -90],
+    fF: [12, 9, -90],
+    hN: [30, 5.5, -90],
+    hF: [26, 8, -90],
+    tail: [0, -120, 0],
+    quiff: [10, 0, 1],
+    kerchief: [100, 0.4, 0],
+    stalk: [0, 1, 98]
+  }
+  return [
+    P({
+      x: -2,
+      y: 3,
+      lean: -10,
+      head: [-2, -4],
+      nod: -20,
+      eyes: 'wide',
+      jaw: 0.7,
+      mouth: 'open',
+      earN: -10,
+      earF: -8,
+      fN: [-2, 3, 20],
+      quiff: [18, 0, 0],
+      kerchief: [10, 2, 0],
+      stalk: [0, 0.4, -1]
+    }),
+    P({
+      x: -5,
+      y: -1,
+      lean: 6,
+      head: [0, 5],
+      nod: 20,
+      eyes: 'dizzy',
+      jaw: 0.4,
+      mouth: 'open',
+      tongue: true,
+      earN: 40,
+      earF: 30,
+      fN: [-6, 0, 0],
+      fF: [4, 0, 0],
+      hN: [3, 0, 0],
+      quiff: [-16, 0.2, 0],
+      kerchief: [70, 1.6, 1.2],
+      stalk: [0, 0.8, -1]
+    }),
+    P({
+      x: -5,
+      y: -8,
+      lean: 10,
+      head: [3, 1],
+      nod: 22,
+      eyes: 'dizzy',
+      jaw: 0.4,
+      mouth: 'open',
+      tongue: true,
+      earN: 50,
+      earF: 40,
+      fN: [8, 0, -40],
+      fF: [4, 0, -30],
+      hN: [6, 1, -60],
+      hF: [8, 1, -60],
+      quiff: [12, 0.4, 0.2],
+      kerchief: [20, 1.8, 2.4],
+      stalk: [0, 1, 98]
+    }),
+    P({ ...lying, y: -13, squash: 2.6, eyes: 'shut', quiff: [16, 0, 0.8], kerchief: [-10, 1.8, 3.4] }),
+    P({ ...lying, y: -9, squash: -0.5, head: [5, 3], nod: 10, fN: [14, 10, -75], hN: [28, 9, -75], eyes: 'shut', quiff: [-8, 0, 0.6], kerchief: [40, 1.6, 4.4] }),
+    P({ ...lying, y: -12.5, squash: 2, quiff: [14, 0, 1], kerchief: [110, 1, 5.4] }),
+    P({ ...lying, stars: 0, kerchief: [96, 0.6, 6.2] }),
+    P({ ...lying, stars: 1 / 6, breath: 0.6, quiff: [12, 0, 1], kerchief: [102, 0.6, 7.4] })
+  ]
+})
+
+const draw = (poses: BoarPose[]) => poses.map(drawBoar)
 
 export const sheets: SheetModule = {
   boarBoss: () => ({
-    idle: lazyAnim(() => draw(idle()), 6, true),
-    intro: lazyAnim(() => draw(intro()), 8, false),
-    windup: lazyAnim(() => draw(windup()), 10, false),
-    attack: lazyAnim(() => draw(attack()), 14, true),
-    stunned: lazyAnim(() => draw(stunned()), 8, true),
-    recover: lazyAnim(() => draw(recover()), 6, true),
+    idle: lazyAnim(() => draw(idle()), 8, true),
+    intro: lazyAnim(() => draw(intro()), 10, false, { sustain: 2 }),
     hurt: lazyAnim(() => draw(hurt()), 12, false),
-    defeat: lazyAnim(() => draw(defeat()), 8, false)
+    defeat: lazyAnim(() => draw(defeat()), 10, false, { sustain: 2 }),
+    windup: lazyAnim(() => draw(windup()), 10, false, { sustain: 2 }),
+    attack: lazyAnim(() => draw(attack()), 16, true),
+    stunned: lazyAnim(() => draw(stunned()), 8, true),
+    recover: lazyAnim(() => draw(recover()), 6, true)
   })
 }

@@ -1,775 +1,1004 @@
 /**
- * カラス助 (`crowBoss`): the gang's swaggering crow captain, a big navy crow with a lighter chest, a hooked yellow
- * beak, an eye patch, a red bandana knotted at the neck and a fan of tail feathers. He never lands: he hovers,
- * then dives. Pose-parametric like the hero: one draw function, every clip is a list of poses.
+ * カラス助 (`crowBoss`): the ばくろ団's swaggering head crow, a pirate captain of the air, built on the rig toolkit.
+ * A barrel chest, a big head with an oversized hooked beak that opens on a red-pink mouth, a ruffled crest at the
+ * back of the head, a black patch over the far eye and a glaring amber near eye under a heavy feathered brow, the
+ * gang's red worn as a pirate head scarf with a knot and two long tails, a fanned tail, strong yellow feet with
+ * dark talons, and the wings: about 100 px tip to tip, each an arm of two bones carrying three rows of feathers
+ * (coverts, secondaries, long finger-like primaries with gaps at the tips). 128×128, facing right, hovering inside
+ * the 63×63 box above the anchor (64, 120) with the body's centre near y = 90.
  *
- * Geometry: the body is a tapered capsule whose axis can tilt (dive, rear back, spin); head, tail, legs and
- * bandana hang off that axis. Wings are an arm plus a fan of overlapping feathers pointing in absolute screen
- * directions (degrees counter-clockwise from +x), so the same code makes a flap, a spread and a swept-back dive.
+ * Rendering (CHARACTERS.md "Big furry bodies", feathers as fur): body, thighs and neck are ONE silhouette shaded
+ * once, with a darker mantle on the back, a pale chest with toothed edges and feather-toothed `cel`; the head is a
+ * second silhouette with the scarf and the pale face tinted inside it; every flight feather is a layer of its own
+ * so the soft painter draws the feather structure.
+ *
+ * Depth (back to front): far wing, far scarf tail, tail fan, far leg, body, near leg, near wing, near scarf tail,
+ * head, face, mouth, lower beak, upper beak, knot, loose feathers, stars.
  */
 import type { SheetModule } from '../../module'
+import { TAU, ease, lag, track, type Key } from '../../motion'
 import { C, R, ramp } from '../../palette'
-import { Painter, Raster, shadeIndex, type Ramp } from '../../raster'
+import { Painter, Raster, farRamp, type Pt, type Ramp } from '../../raster'
+import {
+  Frame,
+  capsule,
+  carve,
+  cel,
+  egg,
+  fill,
+  half,
+  mantle,
+  oval,
+  overlap,
+  polygon,
+  ribbon,
+  shadow,
+  smooth,
+  spline,
+  squircle,
+  stampAt,
+  tint,
+  union,
+  within,
+  type Shape
+} from '../../rig'
 import { lazyAnim, memo } from '../../sheet'
 
-const NAVY = R.crowBlue
-const FAR = [NAVY[1], NAVY[2], NAVY[3], NAVY[3], NAVY[4]] as const
+/** Navy feathers, a step lighter than `R.crowBlue` (the same navy as the crow chicks of his gang). */
+const NAVY = ramp('#8f9bd8', '#525c9a', '#383f75', '#252955', '#0f0e24')
+/** The darker mantle on the back, the crown and the upper side of the flight feathers. */
+const MANTLE = ramp('#6d78b9', '#3f4783', '#2c3164', '#1d2049', '#0f0e24')
+/** The pale grey-blue chest, face and wing undersides. */
+const CHEST = ramp('#d2d8f4', '#a3acd9', '#7480b6', '#4b5389', '#0f0e24')
 const BEAK = R.beak
-const RED = R.bandana
-const GOLD = R.gold
-/** The lighter chest and belly. */
-const CHEST = ramp('#dfe4f8', '#aab4dc', '#7d88b8', '#555f90', '#0e0f1e')
-
-// ----------------------------------------------------------------------------------------------- helpers
-
-type Pt = readonly [number, number]
+const BAND = R.bandana
 const RAD = Math.PI / 180
 
-/** A tapered capsule shaded like a lit tube (ra at a, rb at b). */
-function capsule(l: Raster, a: Pt, b: Pt, ra: number, rb: number, ramp: Ramp, spec = true) {
-  const dx = b[0] - a[0]
-  const dy = b[1] - a[1]
-  const len2 = Math.max(1e-6, dx * dx + dy * dy)
-  const rmax = Math.max(ra, rb)
-  const x0 = Math.floor(Math.min(a[0], b[0]) - rmax)
-  const x1 = Math.ceil(Math.max(a[0], b[0]) + rmax)
-  const y0 = Math.floor(Math.min(a[1], b[1]) - rmax)
-  const y1 = Math.ceil(Math.max(a[1], b[1]) + rmax)
-  for (let y = y0; y <= y1; y++)
-    for (let x = x0; x <= x1; x++) {
-      const px = x + 0.5
-      const py = y + 0.5
-      const t = Math.max(0, Math.min(1, ((px - a[0]) * dx + (py - a[1]) * dy) / len2))
-      const cx = a[0] + dx * t
-      const cy = a[1] + dy * t
-      const r = ra + (rb - ra) * t
-      const nx = (px - cx) / r
-      const ny = (py - cy) / r
-      const q = nx * nx + ny * ny
-      if (q > 1.0001) continue
-      l.set(x, y, ramp[shadeIndex(nx, ny, Math.sqrt(Math.max(0, 1 - q)), spec)])
-    }
-}
+type Eyes = 'glare' | 'narrow' | 'wide' | 'shut' | 'hurt' | 'dizzy' | 'tired'
 
-/** A shaded ball (ellipse) via the capsule shader. */
-const blob = (l: Raster, c: Pt, rx: number, ry: number, ramp: Ramp, spec = true) => {
-  // capsule is round, so squash through a short axis capsule only when radii differ a lot
-  if (Math.abs(rx - ry) < 0.6) return capsule(l, c, c, rx, rx, ramp, spec)
-  for (let y = Math.floor(c[1] - ry); y <= Math.ceil(c[1] + ry); y++)
-    for (let x = Math.floor(c[0] - rx); x <= Math.ceil(c[0] + rx); x++) {
-      const nx = (x + 0.5 - c[0]) / rx
-      const ny = (y + 0.5 - c[1]) / ry
-      const q = nx * nx + ny * ny
-      if (q > 1.0001) continue
-      l.set(x, y, ramp[shadeIndex(nx, ny, Math.sqrt(Math.max(0, 1 - q)), spec)])
-    }
-}
+/**
+ * A wing: the arm's direction on screen in degrees (clockwise from +x: the near wing spreads to the left, about
+ * 180, the far one to the right, about 0; −90 is straight up), how far it is opened (0 folded in a W … 1 straight),
+ * how far the primaries fan (0 closed … 1 spread with gaps), and the side we see (0 upper, 1 the pale underside).
+ */
+export type Wing = readonly [number, number, number, number]
 
-const rotAbout = (p: Pt, c: Pt, deg: number): Pt => {
-  const co = Math.cos(deg * RAD)
-  const si = Math.sin(deg * RAD)
-  const dx = p[0] - c[0]
-  const dy = p[1] - c[1]
-  return [c[0] + dx * co - dy * si, c[1] + dx * si + dy * co]
-}
-
-/** Unit vector for a math angle (degrees CCW from +x, y up on screen). */
-const dir = (deg: number): Pt => [Math.cos(deg * RAD), -Math.sin(deg * RAD)]
-const mix = (a: number, b: number, t: number) => a + (b - a) * t
-
-/** Paints only where the layer has pixels. */
-function recolor(l: Raster, inside: (x: number, y: number) => boolean, from: Ramp, to: Ramp) {
-  for (let y = 0; y < l.h; y++)
-    for (let x = 0; x < l.w; x++) {
-      const c = l.get(x, y)
-      if (!c || !inside(x + 0.5, y + 0.5)) continue
-      const i = from.indexOf(c)
-      if (i >= 0) l.set(x, y, to[i])
-    }
-}
-
-// ------------------------------------------------------------------------------------------------- pose
-
-export type CrowEye = 'open' | 'wide' | 'glint' | 'hurt' | 'swirl' | 'tired'
-
-interface WingPose {
-  /** Direction the wing points (degrees CCW from +x). */
-  a: number
-  /** Arm length (px). */
-  len: number
-  /** 0 spread feather fan, 1 feathers laid along the arm (folded). */
-  fold: number
-}
-
-export interface CrowPose {
-  /** Body centre. */
+export interface CrowBossPose {
+  /** Whole bird forward (+) / up (+), in pixels. */
   x: number
   y: number
-  /** Body axis rotation, degrees clockwise (positive = beak down). */
-  tilt: number
-  /** Extra head pitch, degrees clockwise. */
-  head: number
-  nw: WingPose
-  fw: WingPose
-  /** Lower jaw drop (degrees). */
-  beak: number
-  tongue: number
-  eye: CrowEye
-  /** Legs: direction relative to the body axis (math degrees, 270 = along the body) and length. */
-  legAng: number
-  legLen: number
-  /** Tail fan spread (degrees) and droop. */
-  tail: number
-  /** Bandana tails: vertical flutter (px). */
-  scarf: number
-  /** Ruffled crest tufts, 0..1. */
-  puff: number
-  sweat: number
-  /** Loose feathers: x, y, direction. */
-  flies: readonly (readonly [number, number, number])[]
+  /** Body tilt in degrees (beak down +) and squash (+ wider and shorter). */
+  lean: number
+  squash: number
+  /** The whole rig turned clockwise around the body's centre (tumbles). */
+  spin: number
+  /** Head offset from its seat (forward +, down +) and nod (beak down +). */
+  head: readonly [number, number]
+  nod: number
+  /** Lower beak opening 0..1 (1 = screech). */
+  jaw: number
+  tongue: boolean
+  eyes: Eyes
+  wingN: Wing
+  wingF: Wing
+  /** Tail: direction in degrees from straight down (+ toward the back), fan 0..1. */
+  tail: readonly [number, number]
+  /** Feet: swing in degrees (+ forward), talons 0 curled … 1 wide open. */
+  feet: readonly [number, number]
+  /** Legs thrown forward out of the belly feathers, in pixels (the dive's grab). */
+  reach: number
+  /** Scarf tails: direction (0 straight back, + down), length, ripple, phase. */
+  scarf: readonly [number, number, number, number]
+  /** Crest and nape feathers ruffled up 0..1. */
+  crest: number
+  /** Loose feathers flying off, as screen offsets from the body's centre. */
+  loose: readonly (readonly [number, number])[]
+  /** Stars circling over the head: phase 0..1, −1 = none. */
+  stars: number
 }
 
-const wing = (a: number, len = 23, fold = 0): WingPose => ({ a, len, fold })
-
-export const crowPose = (p: Partial<CrowPose> = {}): CrowPose => ({
-  x: 60,
-  y: 82,
-  tilt: 0,
-  head: 0,
-  nw: wing(180),
-  fw: wing(0),
-  beak: 0,
-  tongue: 0,
-  eye: 'open',
-  legAng: 268,
-  legLen: 8,
-  tail: 0,
-  scarf: 0,
-  puff: 0,
-  sweat: 0,
-  flies: [],
+export const crowBossPose = (p: Partial<CrowBossPose> = {}): CrowBossPose => ({
+  x: 0,
+  y: 0,
+  lean: 0,
+  squash: 0,
+  spin: 0,
+  head: [0, 0],
+  nod: 0,
+  jaw: 0,
+  tongue: false,
+  eyes: 'glare',
+  wingN: [-160, 1, 1, 0],
+  wingF: [-20, 1, 1, 0],
+  tail: [40, 0.6],
+  feet: [0, 0.2],
+  reach: 0,
+  scarf: [10, 32, 1.5, 0],
+  crest: 0,
+  loose: [],
+  stars: -1,
   ...p
 })
 
-// ------------------------------------------------------------------------------------------------- parts
+// ------------------------------------------------------------------------------------------------ stamps
 
-/** One wing: feathers fan from the arm's trailing side; the arm and coverts sit on top. */
-function drawWing(g: Painter, depth: number, s: Pt, w: WingPose, ramp: Ramp, near: boolean) {
-  const d = dir(w.a)
-  const p1: Pt = [-d[1], d[0]]
-  const p2: Pt = [d[1], -d[0]]
-  let n = p1[1] > p2[1] ? p1 : p2
-  if (Math.abs(p1[1] - p2[1]) < 0.25) n = (near ? p1[0] < p2[0] : p1[0] > p2[0]) ? p1 : p2
-  const tip: Pt = [s[0] + d[0] * w.len, s[1] + d[1] * w.len]
-  // the leading edge bows away from the feathers: a curved wing, not a rod
-  const bow = 4.2 * (1 - w.fold * 0.4)
-  const mid: Pt = [s[0] + d[0] * w.len * 0.5 - n[0] * bow, s[1] + d[1] * w.len * 0.5 - n[1] * bow]
-  const along = (t: number): Pt => {
-    // point on the bowed arm (quadratic through s, mid, tip)
-    const u = 1 - t
-    return [
-      u * u * s[0] + 2 * u * t * (2 * mid[0] - (s[0] + tip[0]) / 2) + t * t * tip[0],
-      u * u * s[1] + 2 * u * t * (2 * mid[1] - (s[1] + tip[1]) / 2) + t * t * tip[1]
-    ]
+const EYE_KEY = { K: C.black, w: C.white, a: BEAK[1], A: BEAK[2], B: MANTLE[3], i: C.inkCool }
+/** The near eye (9×10): a heavy feathered brow, a white, an amber iris and a pupil with its highlight. */
+const EYES: Record<Eyes, readonly string[]> = {
+  glare: [
+    'BB.......',
+    'BBBBB....',
+    '.BBBBBBB.',
+    '..BBBBBBB',
+    '.KKKKKKK.',
+    '.KwwaaaK.',
+    '.KwawKaK.',
+    '.KwaKKaK.',
+    '..KwaaK..',
+    '...KKK...'
+  ],
+  narrow: [
+    'BB.......',
+    'BBBBB....',
+    '.BBBBBBB.',
+    '..BBBBBBB',
+    '...BBBBBB',
+    '.KKKKKKK.',
+    '.KwawKaK.',
+    '..KaKKK..',
+    '...KKK...',
+    '.........'
+  ],
+  wide: [
+    '.BBBB....',
+    'B....BB..',
+    '...KKKK..',
+    '..KwwwwK.',
+    '.KwwaaawK',
+    '.KwawKaaK',
+    '.KwaKKaaK',
+    '.KwaaaaAK',
+    '..KwAAAK.',
+    '...KKKK..'
+  ],
+  shut: [
+    'BB.......',
+    'BBBBB....',
+    '.BBBBBBB.',
+    '..BBBBBBB',
+    '.........',
+    '.iiiiiii.',
+    '..iiiii..',
+    '.........',
+    '.........',
+    '.........'
+  ],
+  hurt: [
+    'B......B.',
+    '.B....B..',
+    '..B..B...',
+    '.........',
+    'ii.......',
+    '..iii....',
+    '....iiii.',
+    '..iii....',
+    'ii.......',
+    '.........'
+  ],
+  dizzy: [
+    '.........',
+    '.........',
+    '..iiiii..',
+    '.i.....i.',
+    'i..iii..i',
+    'i.i...i.i',
+    'i.i.i.i.i',
+    'i..i..i.i',
+    '.i...i..i',
+    '..iii..i.'
+  ],
+  tired: [
+    '.........',
+    'BB.......',
+    'BBBBBBB..',
+    '.BBBBBBBB',
+    '.iiiiiiii',
+    '.KwaaaaK.',
+    '.KwawKaK.',
+    '..KaKKK..',
+    '...KKK...',
+    '.........'
+  ]
+}
+/** The black patch over the far eye, with a dull sheen. */
+const PATCH = ['..KKKK.', '.KKsKKK', 'KKsKKKK', 'KsKKKKK', 'KKKKKKK', '.KKKKK.', '..KKK..']
+const NOSTRIL = ['KK.', '.KK']
+/** Chest feather scallops (inside the pale chest). */
+const SCALLOP = ['s...s', '.sss.']
+/** Feathers flying off. */
+const LOOSE = ['...ff', '..fff', '.fff.', 'fff..', 'f....']
+const STAR = ['..y..', '.yYy.', 'yyYyy', '.yYy.', '..y..']
+const STAR_SMALL = ['.y.', 'yYy', '.y.']
+
+// ------------------------------------------------------------------------------------------------ helpers
+
+const ID = Frame.at(0, 0)
+const pol = (len: number, deg: number): Pt => [len * Math.cos(deg * RAD), len * Math.sin(deg * RAD)]
+const add = (a: Pt, b: Pt): Pt => [a[0] + b[0], a[1] + b[1]]
+const mixPt = (a: Pt, b: Pt, t: number): Pt => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]
+
+/** A path from `from` heading in direction `deg` (0 = back, + down), rippling sideways toward its end. */
+function clothPath(from: Pt, deg: number, len: number, ripple: number, phase: number): Pt[] {
+  const pts: Pt[] = [from]
+  let [x, y] = from
+  const n = 5
+  for (let i = 1; i <= n; i++) {
+    const s = i / n
+    const a = (deg + Math.sin(phase - s * 3.2) * ripple * 6 * s) * RAD
+    x += -Math.cos(a) * (len / n)
+    y += Math.sin(a) * (len / n)
+    const w = Math.sin(phase - s * 4) * ripple * s
+    pts.push([x - Math.sin(a) * w, y - Math.cos(a) * w])
   }
-  // flight feathers: long primaries fanning from the wrist, shorter secondaries towards the body
-  const N = 8
-  for (let k = N - 1; k >= 0; k--) {
-    const u = k / (N - 1)
-    const t = 0.3 + 0.7 * u
-    const phi = mix(mix(8, 66, u), 90, w.fold) * RAD
-    const fx = n[0] * Math.cos(phi) + d[0] * Math.sin(phi)
-    const fy = n[1] * Math.cos(phi) + d[1] * Math.sin(phi)
-    const hyp = Math.hypot(fx, fy)
-    const L = mix(18 + u * 6, 17 + w.len * 0.4 + u * 4, w.fold)
-    const b = along(t)
-    const e: Pt = [b[0] + (fx / hyp) * L, b[1] + (fy / hyp) * L]
-    g.add(depth - 0.01 * (N - k), (l) => capsule(l, b, e, 4.6, 1.9, ramp))
-  }
-  // broad root, narrowing to the wrist
-  g.add(depth + 0.05, (l) => {
-    capsule(l, s, mid, 7.6, 4.4, ramp)
-    capsule(l, mid, tip, 4.4, 2.3, ramp)
-  })
-  // two rows of short coverts over the root of the flight feathers
-  for (let k = 0; k < 5; k++) {
-    const t = 0.1 + k * 0.17
-    const b = along(t)
-    const sh = mix(12, 8, k / 4) * (1 - w.fold * 0.3)
-    const e: Pt = [b[0] + n[0] * sh + d[0] * 3, b[1] + n[1] * sh + d[1] * 3]
-    g.add(depth + 0.06, (l) => capsule(l, b, e, 4.4, 2.2, ramp))
-  }
-  for (let k = 0; k < 4; k++) {
-    const t = 0.06 + k * 0.2
-    const b = along(t)
-    const e: Pt = [b[0] + n[0] * 5 + d[0] * 2, b[1] + n[1] * 5 + d[1] * 2]
-    g.add(depth + 0.07, (l) => capsule(l, b, e, 3.6, 2, ramp))
-  }
+  return spline(pts)
 }
 
-const EYE_KEY = { K: C.black, w: C.white, y: GOLD[1], Y: GOLD[2], h: GOLD[0] }
-
-/** The good eye: a yellow iris with a dark pupil and one highlight; it must read against the navy head. */
-function goodEye(l: Raster, c: Pt, kind: CrowEye, ang: number) {
-  const x = Math.round(c[0])
-  const y = Math.round(c[1])
-  switch (kind) {
-    case 'open':
-    case 'glint':
-    case 'wide': {
-      const wide = kind === 'wide'
-      l.stamp(
-        wide
-          ? ['.hyyh.', 'hyyyyy', 'yywwwy', 'yyKKwy', 'yyKKyy', 'yyKKyy', 'yYKKYy', '.YyyY.']
-          : ['.hyy.', 'hyyyy', 'yyKwy', 'yyKKy', 'yyKKy', 'yYKKY', '.YYY.'],
-        x - (wide ? 3 : 2),
-        y - (wide ? 4 : 3),
-        EYE_KEY
-      )
-      if (kind === 'glint') {
-        // a hard four-point star glint in front of the eye
-        const gx = x - 3
-        const gy = y - 4
-        l.rect(gx - 1, gy, 3, 1, C.white)
-        l.rect(gx, gy - 1, 1, 3, C.white)
-        l.set(gx - 2, gy, GOLD[0])
-        l.set(gx + 2, gy, GOLD[0])
-        l.set(gx, gy - 2, GOLD[0])
-        l.set(gx, gy + 2, GOLD[0])
-      }
-      break
-    }
-    case 'tired':
-      // heavy lid over a half-hidden iris
-      l.stamp(['NNNNN', 'NNNNN', 'yKwyy', 'yKKyy', '.YYY.'], x - 2, y - 2, { ...EYE_KEY, N: NAVY[2] })
-      l.rect(x - 2, y - 1, 5, 1, C.black)
-      break
-    case 'hurt':
-      // pained > chevron
-      l.stamp(['ww...', '.ww..', '..ww.', '.ww..', 'ww...'], x - 2, y - 2, EYE_KEY)
-      break
-    case 'swirl':
-      l.ring(x + 0.5, y + 0.5, 0.8, 3.4, GOLD[1])
-      l.ring(x + 0.5, y + 0.5, 1.6, 2.4, C.black)
-      l.set(x, y, C.black)
-      l.set(x + 1, y - 2, GOLD[0])
-      break
-  }
-  void ang
+/** Direction of a path near its point i, in degrees on screen. */
+const heading = (path: readonly Pt[], i: number) => {
+  const a = path[Math.max(0, i - 2)]
+  const b = path[Math.min(path.length - 1, i + 2)]
+  return (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI
 }
 
-/** One loose feather. */
-function looseFeather(l: Raster, x: number, y: number, a: number) {
-  const d = dir(a)
-  capsule(l, [x - d[0] * 4, y - d[1] * 4], [x + d[0] * 4, y + d[1] * 4], 1.8, 1.1, NAVY)
+/** Darkens a cloth layer's edge that lies over feathers into a hem (red pixel with a non-red pixel below). */
+const SCARF_TONES = new Set<number>(BAND.slice(0, 4))
+function hem(l: Raster) {
+  const src = l.clone()
+  for (let y = 0; y < l.h - 1; y++)
+    for (let x = 0; x < l.w; x++) {
+      const c = src.get(x, y)
+      const below = src.get(x, y + 1)
+      if (SCARF_TONES.has(c) && below && !SCARF_TONES.has(below)) l.set(x, y, BAND[3])
+    }
 }
 
-/** One frame of カラス助. */
-export function drawCrow(pose: CrowPose): Raster {
-  const g = new Painter(128, 128)
-  const { x, y, tilt } = pose
-  const co = Math.cos(tilt * RAD)
-  const si = Math.sin(tilt * RAD)
-  /** Body-local (u right, v down) to frame coordinates. */
-  const P = (u: number, v: number): Pt => [x + u * co - v * si, y + u * si + v * co]
-  /** Frame coordinates back to body-local. */
-  const inv = (px: number, py: number): Pt => [(px - x) * co + (py - y) * si, -(px - x) * si + (py - y) * co]
-  const neck = P(2, -8)
-  const H = rotAbout(P(10, -19), neck, pose.head)
-  const hang = tilt + pose.head
-  const HP = (u: number, v: number): Pt => {
-    const c = Math.cos(hang * RAD)
-    const s = Math.sin(hang * RAD)
-    return [H[0] + u * c - v * s, H[1] + u * s + v * c]
-  }
-  const shoulderN = P(-6, -10)
-  const shoulderF = P(5, -11)
+/**
+ * The wing's geometry in its own frame (u along the arm outward, v toward the trailing edge): shoulder, elbow,
+ * wrist, and the direction of the hand. Folding bends the arm into a W: the elbow forward, the hand swept back.
+ */
+function wingBones(open: number) {
+  const fold = 1 - open
+  const h = -fold * 22
+  const f = h + fold * 40
+  const p = f + fold * 70
+  const S: Pt = [0, 0]
+  const E = pol(12, h)
+  const W = add(E, pol(13.5, f))
+  return { S, E, W, h, f, p }
+}
 
-  // far wing, tail, far leg behind the body
-  drawWing(g, -6, shoulderF, pose.fw, FAR, false)
-  const tailBase = P(-4, 15)
-  for (const [k, spread] of [
-    [0, 0],
-    [1, 24],
-    [2, -22]
-  ] as const) {
-    const a = 252 - tilt + spread * (1 + pose.tail * 0.02) + pose.tail
-    const dd = dir(a)
-    const len = k === 0 ? 20 : 17
-    const b: Pt = [tailBase[0] + dd[0] * 3, tailBase[1] + dd[1] * 3]
-    const e: Pt = [tailBase[0] + dd[0] * len, tailBase[1] + dd[1] * len]
-    g.add(-5 + k * 0.01, (l) => capsule(l, b, e, 5.2, 2.6, k === 0 ? NAVY : FAR))
-  }
-  const legTop = (u: number): Pt => P(u, 16)
-  const legDir = dir(pose.legAng - tilt)
-  const leg = (l: Raster, u: number, far: boolean) => {
-    const a = legTop(u)
-    const bpt: Pt = [a[0] + legDir[0] * pose.legLen, a[1] + legDir[1] * pose.legLen]
-    capsule(l, a, bpt, 2.6, 2.1, far ? [BEAK[2], BEAK[2], BEAK[3], BEAK[3], BEAK[4]] : BEAK, false)
-    // talons: three curled toes
-    const base = pose.legAng - tilt
-    for (const off of [-48, 0, 48]) {
-      const td = dir(base + off + (far ? 6 : 0))
-      const m: Pt = [bpt[0] + td[0] * 3.4, bpt[1] + td[1] * 3.4]
-      const e: Pt = [bpt[0] + td[0] * 6, bpt[1] + td[1] * 6]
-      capsule(l, bpt, m, 1.5, 1.2, far ? [BEAK[2], BEAK[2], BEAK[3], BEAK[3], BEAK[4]] : BEAK, false)
-      l.line(m[0], m[1], e[0], e[1], BEAK[2])
+/** The wing's frame: origin on the shoulder, u along the arm's direction, v toward the lower side of the screen. */
+function wingFrame(shoulder: Pt, ang: number, near: boolean, reach = 1) {
+  const s = Math.sin(ang * RAD)
+  const c = Math.cos(ang * RAD)
+  // with sy = 1 the v axis is (−sin, cos) on screen; prefer it pointing down, and back for a wing held upright
+  const score = c + 0.35 * (near ? 1 : -1) * s
+  return Frame.at(shoulder[0], shoulder[1], ang, reach, score >= 0 ? 1 : -1)
+}
+
+// ------------------------------------------------------------------------------------------------ drawing
+
+const HEAD_SHAPE = union(squircle(0, -1, 15, 13.5, 2.3), oval(4, 5.5, 10.5, 8), oval(-7, 4.5, 9, 8.5))
+/** The head scarf: over the crown, its hem low across the brow, the knot's line at the back. */
+const SCARF = polygon([
+  [-18, -1],
+  [-11, -6.5],
+  [-3, -9.5],
+  [5, -10],
+  [11, -8.5],
+  [17, -8],
+  [17, -22],
+  [-17, -22]
+])
+
+/** The five primaries of a wing in its own frame: root and tip of each, the outermost first. */
+function primaries(open: number, fan: number): [Pt, Pt][] {
+  const b = wingBones(open)
+  const lens = [23.5, 25, 23, 20, 16.5]
+  return lens.map((len, i) => {
+    const base = add(add(b.W, pol(-1.8 * i, b.f)), pol(0.9 * i, b.f + 90))
+    const dir = b.p - 10 + i * (5 + fan * 11)
+    return [base, add(base, pol(len * (0.86 + 0.14 * open), dir))]
+  })
+}
+
+/** The rig's frames for a pose (shared by the drawing and the tests). */
+export function crowBossRig(p: CrowBossPose) {
+  const k = 1 + p.squash * 0.04
+  const ground = Frame.at(Math.round(64 + p.x), 120)
+  const root = ground.child(-2, -Math.round(30 + p.y), p.spin)
+  const body = root.child(0, 0, p.lean, k, 1 / k)
+  const head = body.child(5 + p.head[0], -23 + p.head[1], p.nod - p.lean * 0.5)
+  const wing = (near: boolean) =>
+    wingFrame(body.pt(near ? -6 : 3, near ? -9 : -12), (near ? p.wingN : p.wingF)[0] + p.spin, near, near ? 1 : 0.9)
+  return { root, body, head, wingN: wing(true), wingF: wing(false) }
+}
+
+/** Screen x of the wing tips (the outermost point of any primary of the near and the far wing). */
+export function crowBossWingTips(p: CrowBossPose) {
+  const { wingN, wingF } = crowBossRig(p)
+  const xs = (f: Frame, w: Wing) => primaries(w[1], w[2]).map(([, tip]) => f.pt(...tip)[0])
+  return { near: Math.min(...xs(wingN, p.wingN)), far: Math.max(...xs(wingF, p.wingF)) }
+}
+
+export function drawCrowBoss(p: CrowBossPose): Raster {
+  const g = new Painter(128, 128, { soft: true })
+  const { root, body, head, wingN, wingF } = crowBossRig(p)
+  const centre = root.pt(0, 0)
+  const bodyAt = body.pt(4, -4)
+
+  // ---- wings
+  const drawWing = (depth: number, near: boolean, w: Wing) => {
+    const [, open, fan, under] = w
+    const f = near ? wingN : wingF
+    const b = wingBones(open)
+    const feather = under > 0.5 ? farRamp(CHEST) : MANTLE
+    const covert = under > 0.5 ? CHEST : NAVY
+    const tone = (r: Ramp) => (near ? r : farRamp(r))
+    // primaries: five long fingers from the hand, the outermost first (underneath)
+    for (const [i, [base, tip]] of primaries(open, fan).entries()) {
+      g.add(depth + i * 0.01, (l) => {
+        fill(l, f, capsule(base, tip, 3, 1.5), tone(feather)[1])
+        cel(l, { shade: 1.5, rim: near ? 1 : 0 })
+      })
     }
-  }
-  g.add(-4, (l) => leg(l, -4, true))
-
-  // body: a tapered egg, with the light chest recoloured onto its front
-  g.add(0, (l) => {
-    capsule(l, P(1, -7), P(-1, 9), 16.5, 13, NAVY)
-    recolor(
-      l,
-      (px, py) => {
-        const [u, v] = inv(px, py)
-        return ((u - 8) / 13) ** 2 + ((v + 1) / 18) ** 2 <= 1 && u > -1
-      },
-      NAVY,
-      CHEST
-    )
-    // feather scallops on the chest
-    for (const [u, v] of [
-      [9, -3],
-      [6, 4],
-      [11, 8],
-      [4, 11]
-    ] as const) {
-      const a = P(u - 2, v)
-      const b = P(u - 1, v + 1)
-      const c = P(u + 1, v + 1)
-      const d = P(u + 2, v)
-      for (const q of [a, b, c, d]) l.paint(q[0], q[1], CHEST[2])
+    // secondaries: five rounded feathers hanging from the forearm and the upper arm
+    for (let j = 0; j < 5; j++) {
+      const at = j < 3 ? mixPt(b.W, b.E, j / 2.4) : mixPt(b.E, b.S, (j - 2) / 3.2)
+      const dir = (j < 3 ? b.f : b.h) + 72 + j * 4
+      const tip = add(at, pol(13.5 - j * 0.6, dir))
+      g.add(depth + 0.1 + j * 0.01, (l) => {
+        fill(l, f, capsule(at, tip, 3.4, 2.8), tone(feather)[1])
+        cel(l, { shade: 1.6, rim: near ? 1 : 0 })
+      })
     }
-  })
-  g.add(0.5, (l) => leg(l, 4, false))
-
-  // bandana: band under the head, knot at the back, two tails streaming behind
-  g.add(1, (l) => {
-    capsule(l, P(-9, -9), P(15, -7), 3.4, 3.2, RED)
-  })
-  g.add(0.9, (l) => {
-    const k = P(-10, -9)
-    capsule(l, k, [k[0] - 11 * co + pose.scarf * 0.2, k[1] - 11 * si + 2 - pose.scarf], 3.4, 1.9, RED)
-    capsule(l, k, [k[0] - 9 * co, k[1] - 9 * si + 8 + pose.scarf * 0.5], 3.2, 1.8, [
-      RED[1],
-      RED[2],
-      RED[3],
-      RED[3],
-      RED[4]
-    ])
-  })
-  g.add(1.1, (l) => capsule(l, P(-9, -9), P(-9, -9), 3.6, 3.6, RED))
-
-  // near wing sits in front of the body, behind the head
-  drawWing(g, 2, shoulderN, pose.nw, NAVY, true)
-
-  // head
-  g.add(3, (l) => {
-    capsule(l, H, H, 12.4, 12.4, NAVY)
-    if (pose.puff > 0) {
-      for (const [u, v, e] of [
-        [-6, -10, -9],
-        [-1, -12, -12],
-        [4, -11, -10],
-        [-10, -6, -7]
-      ] as const) {
-        const a = HP(u, v)
-        const b = HP(u + (e < -9 ? -2 : 1) * pose.puff, v - Math.abs(e) * 0.6 * pose.puff)
-        capsule(l, a, b, 2.4, 1.1, NAVY)
+    // greater coverts: a scalloped row over the roots of the flight feathers
+    g.add(depth + 0.2, (l) => {
+      const row: Shape[] = []
+      for (let j = 0; j < 4; j++) {
+        const at = j < 2 ? mixPt(b.W, b.E, j / 1.6) : mixPt(b.E, b.S, (j - 1.5) / 2.6)
+        row.push(oval(...add(at, pol(4.6, (j < 2 ? b.f : b.h) + 85)), 3.6, 3.2))
       }
-    }
-  })
-  // eye patch with its strap, and the good eye
-  g.add(
-    3.1,
-    (l) => {
-      const pc = HP(-2, -3)
-      l.thick(pc[0], pc[1], HP(-13, -9)[0], HP(-13, -9)[1], 2, C.black)
-      l.thick(pc[0], pc[1], HP(8, -11)[0], HP(8, -11)[1], 1.6, C.black)
-      l.ellipse(pc[0], pc[1], 4.7, 4.9, C.black)
-      l.set(pc[0] - 2, pc[1] - 2, NAVY[1])
-      l.set(pc[0] - 1, pc[1] - 3, NAVY[1])
-      l.set(pc[0] - 3, pc[1] - 1, NAVY[2])
-      goodEye(l, HP(5, -7), pose.eye, hang)
-      // heavy brow over the good eye
-      if (pose.eye !== 'hurt' && pose.eye !== 'swirl') {
-        const b0 = HP(0, -13)
-        const b1 = HP(9, pose.eye === 'tired' ? -10 : -9)
-        l.thick(b0[0], b0[1], b1[0], b1[1], 2, NAVY[4])
-      }
-    },
-    false
-  )
-  // beak: lower jaw hinges open, the mouth shows between
-  const hinge = HP(5, 3)
-  const open = pose.beak
-  const jaw = (lu: number, lv: number): Pt => {
-    const a = rotAbout([hinge[0] + lu, hinge[1] + lv], hinge, hang)
-    return rotAbout(a, hinge, open)
-  }
-  if (open > 2) {
-    g.add(
-      3.3,
-      (l) => {
-        l.poly([...HP(5, 3), ...HP(23, 3.5), ...jaw(19, 1), ...jaw(0, 2)], C.mouth)
-      },
-      false
-    )
-  }
-  g.add(3.4, (l) => {
-    const lower = [jaw(-1, 0), jaw(18, 0), jaw(18.5, 2.5), jaw(13, 6.5), jaw(3, 8), jaw(-2, 6)]
-    l.poly(
-      lower.flatMap((p) => [p[0], p[1]]),
-      BEAK[2]
-    )
-    const inner = [jaw(0, 2.5), jaw(17, 2.5), jaw(12, 6), jaw(3, 7)]
-    l.poly(
-      inner.flatMap((p) => [p[0], p[1]]),
-      BEAK[1]
-    )
-    const top = [jaw(1, 1), jaw(17, 1), jaw(17, 2)]
-    l.poly(
-      top.flatMap((p) => [p[0], p[1]]),
-      BEAK[2]
-    )
-  })
-  if (pose.tongue > 0)
-    g.add(3.5, (l) => {
-      const a = jaw(2, 3)
-      const b = jaw(16 + pose.tongue * 4, 5 + pose.tongue * 2)
-      capsule(l, a, b, 2.4, 2, [C.tongue, C.tongue, C.mouth, C.mouth, C.mouth], false)
+      fill(l, f, union(...row), tone(covert)[1])
+      cel(l, { shade: 1.6, rim: near ? 1 : 0 })
     })
-  g.add(3.6, (l) => {
-    const upper = [HP(4, -2), HP(15, -4), HP(24, -2), HP(28.5, 3), HP(27.5, 8), HP(23, 5), HP(16, 3), HP(4, 3)]
-    const poly = upper.flatMap((p) => [p[0], p[1]])
-    l.poly(poly, BEAK[1])
-    // form shading: shade along the underside and tip, highlight along the ridge
-    const src = l.clone()
-    for (let yy = 0; yy < l.h; yy++)
-      for (let xx = 0; xx < l.w; xx++) {
-        if (src.get(xx, yy) !== BEAK[1]) continue
-        const below = src.get(xx, yy + 1) !== BEAK[1] || src.get(xx, yy + 2) !== BEAK[1]
-        const right = src.get(xx + 1, yy) !== BEAK[1]
-        const above = src.get(xx, yy - 1) !== BEAK[1]
-        if (below || right) l.set(xx, yy, BEAK[2])
-        else if (above || src.get(xx - 1, yy) !== BEAK[1]) l.set(xx, yy, BEAK[0])
-      }
-    // nostril
-    const n = HP(11, -2)
-    l.set(n[0], n[1], BEAK[3])
-    l.set(n[0] + 1, n[1], BEAK[3])
-  })
+    // the arm with the lesser coverts: the lit leading edge of the wing
+    g.add(depth + 0.3, (l) => {
+      fill(l, f, union(capsule(b.S, b.E, 5.6, 4.4), capsule(b.E, b.W, 4.4, 3.2), oval(...b.W, 3.4, 3.2)), tone(covert)[1])
+      smooth(l)
+      if (under < 0.5) mantle(l, tone(covert)[1], tone(MANTLE)[1], { depth: 2 })
+      cel(l, { shade: 2, rim: near ? 1.4 : 0 })
+    })
+  }
+  drawWing(-6, false, p.wingF)
 
-  // sweat and loose feathers
-  if (pose.sweat > 0)
-    g.add(
-      4,
-      (l) => {
+  // ---- scarf tails from the knot at the back of the head
+  const knot = head.pt(-14, -5)
+  const scarfTail = (l: Raster, far: boolean) => {
+    const [ang, len, ripple, phase] = p.scarf
+    const path = clothPath(knot, ang + (far ? 16 : 0), far ? len * 0.8 : len, ripple, phase + (far ? 1.4 : 0))
+    const tone = far ? farRamp(BAND) : BAND
+    ribbon(l, path, (t) => 3.6 + t * 3, tone[1])
+    const n = path.length - 1
+    carve(
+      l,
+      Frame.at(path[n][0], path[n][1], heading(path, n)),
+      polygon([
+        [4, -4],
+        [-2.2, 0],
+        [4, 4]
+      ])
+    )
+    cel(l, { shade: 1.6, rim: far ? 0 : 1 })
+    if (!far)
+      for (let i = Math.round(n * 0.4); i <= Math.round(n * 0.62); i++) {
+        const a = (heading(path, i) * Math.PI) / 180
+        const s = Math.cos(a) < 0 ? 1 : -1
+        l.paint(path[i][0] - Math.sin(a) * s * 0.8, path[i][1] + Math.cos(a) * s * 0.8, BAND[2])
+      }
+  }
+  g.add(-5, (l) => scarfTail(l, true))
+
+  // ---- tail fan: five broad feathers from the rump, the middle one on top
+  const tailBase = body.pt(-8, 12)
+  for (const i of [-2, 2, -1, 1, 0]) {
+    const dir = 90 + p.tail[0] + i * (5 + p.tail[1] * 10) + p.lean + p.spin
+    const len = 22 - Math.abs(i) * 2.4
+    g.add(-4 + (2 - Math.abs(i)) * 0.01, (l) => {
+      const end = add(tailBase, pol(len, dir))
+      fill(l, ID, union(capsule(add(tailBase, pol(3, dir)), end, 2.6, 3.4), oval(...add(end, pol(-1, dir)), 3.8, 3.8)), (i < 0 ? farRamp(MANTLE) : MANTLE)[1])
+      cel(l, { shade: 1.6, rim: 1 })
+    })
+  }
+
+  // ---- legs: feathered thighs belong to the body; the yellow shank, toes and dark talons hang free
+  const leg = (l: Raster, near: boolean) => {
+    const tone = near ? BEAK : farRamp(BEAK)
+    const hip = body.pt((near ? 1 : 8) + p.reach, 14 - p.reach * 0.6)
+    const dir = 90 - p.feet[0] * (near ? 1 : 0.85) + p.lean + p.spin
+    const ankle = add(hip, pol(6.5 + p.feet[1] * 2.5 + p.reach * 0.6, dir))
+    const foot = Frame.at(ankle[0], ankle[1], dir - 90)
+    fill(l, ID, capsule(hip, ankle, 3, 2.3), tone[1])
+    const o = p.feet[1]
+    const toes: Pt[] = [
+      [2 + o * 3.5, 3.5 - o * 1.5],
+      [3.4 + o * 3.4, 1.2 - o * 0.8],
+      [0.5 + o * 2.5, 4.5 - o * 0.5],
+      [-3.2 - o, 2.5 - o]
+    ]
+    for (const t of toes) fill(l, foot, capsule([0, 0.5], t, 1.6, 1.2), tone[1])
+    smooth(l)
+    cel(l, { shade: 1.4, rim: near ? 1 : 0 })
+    for (const t of toes) {
+      const d = Math.hypot(t[0], t[1] - 0.5) || 1
+      const u: Pt = [t[0] / d, (t[1] - 0.5) / d]
+      // the talon curls down at the toe's end
+      fill(l, foot, capsule(t, [t[0] + u[0] * 2.4 + u[1] * 0.6, t[1] + u[1] * 2.4 + 1.2], 1, 0.6), NAVY[3])
+    }
+  }
+  g.add(-3, (l) => leg(l, false))
+
+  // ---- body: barrel chest, belly, rump, thighs and neck as ONE silhouette, shaded once
+  const neckEnd = body.local(...head.pt(-2, 6))
+  g.add(0, (l) => {
+    fill(
+      l,
+      body,
+      union(
+        egg(2, 0, 15, 14, 15),
+        oval(7, -3, 11.5, 12.5),
+        oval(-7, 8, 9, 8.5),
+        oval(1, 12, 7, 5.5),
+        capsule([3, -9], neckEnd, 11, 10)
+      ),
+      NAVY[1]
+    )
+    tint(l, body, union(oval(10, 1, 9, 12.5), oval(6, 9, 7, 6)), CHEST[1])
+    smooth(l)
+    mantle(l, NAVY[1], MANTLE[1], { depth: 6, tooth: 3, pitch: 5, origin: bodyAt })
+    cel(l, { shade: 7, deep: 2.5, rim: 2, tooth: 3, pitch: 5, origin: bodyAt })
+    within(
+      l,
+      (m) => {
         for (const [u, v] of [
-          [-4, -17],
-          [14, -14]
-        ] as const) {
-          const p = HP(u, v - pose.sweat)
-          l.stamp(['.b.', 'bwb', 'bbb', '.b.'], p[0] - 1, p[1] - 2, { b: R.water[1], w: R.water[0] })
-          l.set(p[0] + 1, p[1] + 1, R.water[2])
-        }
+          [11, -3],
+          [7, 3],
+          [13, 4],
+          [9, 9]
+        ] as const)
+          stampAt(m, body, SCALLOP, u, v, { s: CHEST[2] })
       },
       true
     )
-  for (const [fx, fy, fa] of pose.flies) g.add(5, (l) => looseFeather(l, fx, fy, fa))
+    shadow(l, head.moved(0, 2.5), HEAD_SHAPE)
+  })
+  g.add(0.5, (l) => leg(l, true))
+
+  // ---- near wing in front of the body
+  drawWing(1, true, p.wingN)
+  g.add(2.5, (l) => scarfTail(l, false))
+
+  // ---- crest: three ruffled locks at the back of the head, sticking out under the scarf's knot
+  g.add(2.9, (l) => {
+    const c = p.crest
+    fill(
+      l,
+      head,
+      union(
+        capsule([-12, -8], [-21 - c * 2, -15 - c * 3], 3.4, 1.4),
+        capsule([-13, -3], [-25 - c * 2, -6 - c * 3], 3.4, 1.4),
+        capsule([-12, 3], [-22 - c * 2, 5 - c * 2], 3, 1.3)
+      ),
+      MANTLE[1]
+    )
+    smooth(l)
+    cel(l, { shade: 1.8, rim: 1 })
+  })
+
+  // ---- head: skull, jowl and nape as one silhouette; the scarf and the pale face tinted inside it
+  const headAt = head.pt(0, -4)
+  g.add(3, (l) => {
+    fill(l, head, HEAD_SHAPE, NAVY[1])
+    tint(l, head, union(oval(4.5, 0, 8.5, 8), oval(6, 6, 7.5, 4.5)), CHEST[1])
+    tint(l, head, SCARF, BAND[1])
+    smooth(l)
+    cel(l, { shade: 4.5, deep: 1.5, rim: 1.6, tooth: 1.5, pitch: 4, origin: headAt })
+    hem(l)
+    within(l, (m) => {
+      stampAt(m, head, EYES[p.eyes], 3.5, -3, EYE_KEY)
+    })
+  })
+
+  // ---- beak: a big hooked upper mandible, the lower one hinged to open on the mouth
+  const bill = head.child(12, 3)
+  const jaw = bill.child(0, 2, p.jaw * 42)
+  const open = p.jaw > 0.06
+  if (open)
+    g.add(
+      3.3,
+      (l) => {
+        const [jx, jy] = jaw.pt(14, 0.5)
+        fill(l, bill, polygon([[-1, 0], [17, 1.5], bill.local(jx, jy), [-1, 4.5]]), C.mouth)
+        if (p.tongue || p.jaw > 0.5) {
+          const tip = p.tongue ? jaw.pt(17, 3) : jaw.pt(8, -0.5)
+          fill(l, ID, capsule(jaw.pt(2, -0.6), tip, 2.2, p.tongue ? 2.2 : 1.6), C.tongue)
+        }
+      },
+      !p.tongue
+    )
+  g.add(3.4, (l) => {
+    fill(l, jaw, overlap(overlap(oval(1, 0, 15, 3.6), half([0, 0], 0, 1)), half([-3, 0], 1, 0)), BEAK[1])
+    smooth(l)
+    cel(l, { shade: 1.4 })
+  })
+  g.add(3.5, (l) => {
+    fill(
+      l,
+      bill,
+      union(
+        overlap(overlap(oval(2, 2, 17.5, 7.5), half([0, 2], 0, -1)), half([-3, 0], 1, 0)),
+        capsule([15.5, 1], [19.5, 5.5], 2.4, 1.3)
+      ),
+      BEAK[1]
+    )
+    smooth(l)
+    cel(l, { shade: 1.8, rim: 1.2 })
+    within(l, (m) => {
+      stampAt(m, bill, NOSTRIL, 6, -2, { K: BEAK[3] })
+      if (!open) fill(m, bill, capsule([1, 1.6], [15, 1.6], 0.5, 0.5), BEAK[3])
+    })
+  })
+  // the eye patch over the far eye, strapped on over the root of the beak
+  g.add(3.7, (l) => {
+    stampAt(l, head, PATCH, 12.5, -3.5, { K: C.black, s: MANTLE[2] })
+  })
+  g.add(3.8, (l) => {
+    fill(l, Frame.at(knot[0], knot[1]), oval(0, 0, 3.6, 3.2), BAND[1])
+    cel(l, { shade: 1.4, rim: 1 })
+  })
+
+  // ---- loose feathers
+  if (p.loose.length)
+    g.add(5, (l) => {
+      for (const [dx, dy] of p.loose)
+        l.stamp(LOOSE, Math.round(centre[0] + dx - 2), Math.round(centre[1] + dy - 2), { f: NAVY[1] })
+      cel(l, { shade: 1 })
+    })
+
+  // ---- stars over a knocked-out head, outlined
+  if (p.stars >= 0)
+    g.add(6, (l) => {
+      const [hx, hy] = head.pt(0, 0)
+      const cx = hx + 4
+      const cy = hy - 29
+      for (let i = 0; i < 3; i++) {
+        const a = (p.stars + i / 3) * TAU
+        l.stamp(
+          Math.sin(a) > 0 ? STAR : STAR_SMALL,
+          Math.round(cx + Math.cos(a) * 13) - 2,
+          Math.round(cy + Math.sin(a) * 3.5) - 2,
+          { y: BEAK[1], Y: BEAK[0] }
+        )
+      }
+    })
 
   return g.render()
 }
 
-// ------------------------------------------------------------------------------------------------- clips
+// ------------------------------------------------------------------------------------------------ clips
 
-/** wing angle helpers: near wing points left, far wing right. */
-const NW = (up: number, len?: number, fold?: number) => wing(180 - up, len, fold)
-const FW = (up: number, len?: number, fold?: number) => wing(up, len, fold)
+const P = crowBossPose
+const draw = (poses: CrowBossPose[]) => poses.map(drawCrowBoss)
 
-const idle = memo(() =>
-  [
-    { up: 62, dy: 3, scarf: 2, tail: 6 },
-    { up: 4, dy: 1, scarf: 0, tail: 2 },
-    { up: -46, dy: -3, scarf: -2, tail: -6 },
-    { up: 8, dy: -1, scarf: 0, tail: -2 }
-  ].map((f) =>
-    drawCrow(
-      crowPose({
-        y: 82 + f.dy,
-        nw: NW(f.up),
-        fw: FW(f.up * 0.95),
-        scarf: f.scarf,
-        tail: f.tail,
-        head: -f.dy * 0.8,
-        legAng: 270 + f.dy * 3
-      })
-    )
+type Beat = { wn: Wing; wf: Wing; y: number }
+
+/** idle: hovering on a deep, slow wing beat (down on two frames, up on four). */
+const idle = memo(() => {
+  const N = 6
+  const beat: Beat[] = [
+    { wn: [-112, 0.95, 0.9, 0], wf: [-68, 0.95, 0.9, 0], y: 0 },
+    { wn: [-178, 1, 1, 0], wf: [-2, 1, 1, 0], y: 2 },
+    { wn: [146, 0.85, 0.7, 0], wf: [34, 0.85, 0.7, 0], y: 3 },
+    { wn: [142, 0.35, 0.1, 0], wf: [38, 0.35, 0.1, 0], y: 2 },
+    { wn: [-158, 0.3, 0.15, 1], wf: [-22, 0.3, 0.15, 1], y: 1 },
+    { wn: [-126, 0.6, 0.5, 0], wf: [-54, 0.6, 0.5, 0], y: 0 }
+  ]
+  const ys = beat.map((b) => b.y)
+  const late = lag(ys, { stiffness: 0.35, damping: 0.45, loop: true })
+  return beat.map((b, i) =>
+    P({
+      y: b.y,
+      wingN: b.wn,
+      wingF: b.wf,
+      lean: -late[i] * 1.5,
+      head: [i === 3 || i === 4 ? 1 : 0, 0],
+      nod: [0, -1, -2, 2, 5, 3][i],
+      eyes: i === 4 ? 'narrow' : 'glare',
+      tail: [40 - late[i] * 6, [0.4, 0.8, 1, 0.7, 0.5, 0.4][i]],
+      feet: [late[i] * 5, 0.2],
+      scarf: [8 + late[i] * 6, 32, 0.8, (i / N) * TAU]
+    })
+  )
+})
+
+/** intro: rears back with the wings cupped, throws them wide and screeches (held), then settles into the hover. */
+const intro = memo(() => [
+  P({ wingN: [-150, 0.8, 0.6, 0], wingF: [-30, 0.8, 0.6, 0], scarf: [10, 32, 1.4, 0] }),
+  P({
+    x: -2,
+    y: 3,
+    lean: -14,
+    head: [-2, 1],
+    nod: 8,
+    eyes: 'narrow',
+    wingN: [150, 0.45, 0.2, 1],
+    wingF: [32, 0.45, 0.2, 1],
+    tail: [62, 0.3],
+    feet: [16, 0.1],
+    crest: 0.3,
+    scarf: [20, 30, 1, 1]
+  }),
+  P({
+    x: -1,
+    y: 2,
+    lean: -8,
+    head: [0, -1],
+    nod: -10,
+    jaw: 0.7,
+    eyes: 'wide',
+    wingN: [-168, 1, 1, 0],
+    wingF: [-12, 1, 1, 0],
+    tail: [36, 1],
+    feet: [-6, 0.6],
+    crest: 0.8,
+    scarf: [-6, 34, 2, 2.4]
+  }),
+  P({
+    y: 3,
+    lean: -6,
+    head: [0, -2],
+    nod: -22,
+    jaw: 1,
+    eyes: 'shut',
+    wingN: [-174, 1, 1, 0],
+    wingF: [-6, 1, 1, 0],
+    tail: [40, 1],
+    feet: [-10, 1],
+    crest: 1,
+    scarf: [-12, 34, 2.4, 3.6]
+  }),
+  P({
+    y: 3,
+    lean: -6,
+    head: [0, -2],
+    nod: -20,
+    jaw: 0.95,
+    eyes: 'shut',
+    wingN: [-172, 1, 0.9, 0],
+    wingF: [-8, 1, 0.9, 0],
+    tail: [42, 0.9],
+    feet: [-8, 1],
+    crest: 0.8,
+    scarf: [-8, 34, 2.4, 5]
+  }),
+  P({
+    y: 2,
+    lean: 4,
+    head: [1, 1],
+    nod: 6,
+    jaw: 0.15,
+    eyes: 'glare',
+    wingN: [150, 0.8, 0.6, 0],
+    wingF: [32, 0.8, 0.6, 0],
+    tail: [44, 0.7],
+    feet: [6, 0.4],
+    crest: 0.4,
+    scarf: [14, 32, 1.6, 6.2]
+  }),
+  P({
+    y: 1,
+    lean: 2,
+    nod: 3,
+    eyes: 'glare',
+    wingN: [-148, 0.75, 0.6, 0],
+    wingF: [-34, 0.75, 0.6, 0],
+    tail: [40, 0.5],
+    feet: [4, 0.2],
+    crest: 0.2,
+    scarf: [8, 32, 1.4, 7.2]
+  }),
+  P({
+    y: 2,
+    lean: 1,
+    nod: 4,
+    eyes: 'glare',
+    wingN: [-176, 1, 1, 0],
+    wingF: [-4, 1, 1, 0],
+    tail: [38, 0.8],
+    feet: [0, 0.2],
+    crest: 0.1,
+    scarf: [12, 32, 1.4, 8.4]
+  })
+])
+
+/** hurt: a squawk with the wings thrown up and feathers flying off, the recoil, a furious recovery. */
+const hurt = memo(() => [
+  P({
+    x: -3,
+    y: 1,
+    lean: -12,
+    squash: -1.5,
+    head: [-2, -1],
+    nod: -14,
+    jaw: 0.9,
+    eyes: 'hurt',
+    wingN: [-112, 0.9, 1, 1],
+    wingF: [-68, 0.9, 1, 1],
+    tail: [22, 1],
+    feet: [-14, 1],
+    crest: 1,
+    scarf: [-14, 32, 2, 0],
+    loose: [
+      [-30, -22],
+      [24, -30],
+      [-12, -38]
+    ]
+  }),
+  P({
+    x: -6,
+    y: -2,
+    lean: 10,
+    squash: 1,
+    head: [-1, 2],
+    nod: 12,
+    jaw: 0.4,
+    eyes: 'shut',
+    wingN: [158, 0.7, 0.5, 0],
+    wingF: [26, 0.7, 0.5, 0],
+    tail: [50, 0.6],
+    feet: [20, 0.3],
+    crest: 0.7,
+    scarf: [24, 32, 1.6, 1.6],
+    loose: [
+      [-36, -30],
+      [30, -38],
+      [-16, -46]
+    ]
+  }),
+  P({
+    x: -3,
+    lean: 4,
+    head: [1, 1],
+    nod: 6,
+    jaw: 0.25,
+    eyes: 'narrow',
+    wingN: [-150, 0.8, 0.7, 0],
+    wingF: [-30, 0.8, 0.7, 0],
+    tail: [40, 0.7],
+    feet: [6, 0.5],
+    crest: 0.5,
+    scarf: [10, 32, 1.4, 3]
+  })
+])
+
+/** windup: climbs, folds the wings half back in a W, the beak aimed down at the hero, talons forward; trembles. */
+const windup = memo(() => {
+  const set: Partial<CrowBossPose> = {
+    y: 6,
+    lean: 26,
+    head: [2, 2],
+    nod: 26,
+    eyes: 'glare',
+    jaw: 0.1,
+    wingN: [-118, 0.3, 0.3, 0],
+    wingF: [-62, 0.3, 0.3, 0],
+    tail: [10, 0.3],
+    feet: [40, 0.8],
+    crest: 0.8
+  }
+  return [
+    P({
+      y: 3,
+      lean: 8,
+      head: [1, 0],
+      nod: 10,
+      eyes: 'narrow',
+      wingN: [-132, 0.7, 0.7, 0],
+      wingF: [-50, 0.7, 0.7, 0],
+      tail: [30, 0.6],
+      feet: [10, 0.4],
+      crest: 0.4,
+      scarf: [0, 32, 1.4, 0]
+    }),
+    P({ ...set, y: 5, scarf: [-10, 34, 1.8, 1.4] }),
+    P({ ...set, x: 1, scarf: [-14, 34, 1.8, 2.8], wingN: [-117, 0.28, 0.35, 0] }),
+    P({ ...set, x: -1, y: 7, scarf: [-12, 34, 1.8, 4.2], wingF: [-63, 0.28, 0.25, 0], crest: 1 })
+  ]
+})
+
+/** attack: the dive — wings swept hard back, the body a spear behind the beak, talons out, the scarf streaming. */
+const attack = memo(() =>
+  [0, 1, 2].map((i) =>
+    P({
+      x: 0,
+      y: 12,
+      lean: 108,
+      squash: -2.5,
+      head: [1, 0],
+      nod: -20,
+      jaw: 0.35,
+      eyes: 'glare',
+      wingN: [-152 + [0, 2, -1][i], 0.88, [0, 0.25, 0.1][i], 0],
+      wingF: [-140 + [1, -1, 2][i], 0.88, [0.15, 0, 0.25][i], 0],
+      tail: [-8, [0.2, 0.4, 0.3][i]],
+      feet: [150, 1],
+      reach: 13,
+      crest: 0,
+      scarf: [-36, 36, 1.2, (i / 3) * TAU]
+    })
   )
 )
 
-const frames = (list: Partial<CrowPose>[]) => list.map((p) => drawCrow(crowPose(p)))
+/** recover: out of breath — heavy, uneven flaps, the beak open on the tongue, the head hanging. */
+const recover = memo(() => {
+  const near: Wing[] = [
+    [-142, 0.7, 0.5, 0],
+    [158, 0.75, 0.5, 0],
+    [170, 0.5, 0.2, 1],
+    [-170, 0.55, 0.3, 1]
+  ]
+  const far: Wing[] = [
+    [-20, 0.6, 0.4, 1],
+    [-44, 0.7, 0.5, 0],
+    [24, 0.75, 0.5, 0],
+    [10, 0.5, 0.2, 1]
+  ]
+  const ys = [0, 1, -1, -2]
+  return ys.map((y, i) =>
+    P({
+      y: y - 3,
+      lean: 8,
+      head: [2, 3 + (i % 2)],
+      nod: 18 + (i % 2) * 4,
+      jaw: 0.55 + (i % 2) * 0.2,
+      tongue: true,
+      eyes: 'tired',
+      wingN: near[i],
+      wingF: far[i],
+      tail: [56, 0.4],
+      feet: [-4 + i * 3, 0],
+      crest: 0.2,
+      scarf: [30, 30, 0.8, (i / 4) * TAU]
+    })
+  )
+})
 
-const intro = memo(() =>
-  frames([
-    { x: 54, y: 78, tilt: 26, nw: NW(40, 24, 0.7), fw: FW(30, 24, 0.7), scarf: 3, tail: 8 },
-    { y: 82, tilt: -8, nw: NW(78), fw: FW(78), beak: 16, scarf: -2, eye: 'open', legAng: 276 },
-    { y: 85, tilt: -8, head: -14, nw: NW(10), fw: FW(10), beak: 32, eye: 'wide', scarf: 2, tail: -5, puff: 0.4 },
-    { y: 84, tilt: -10, head: -18, nw: NW(34), fw: FW(34), beak: 36, eye: 'wide', scarf: -3, tail: 4, puff: 0.7 }
-  ])
-)
+/** defeat: the hit, a spin with feathers bursting off, the wings folding, onto his back, a bounce, out cold. */
+const defeat = memo(() => {
+  const lying: Partial<CrowBossPose> = {
+    x: 2,
+    y: -4,
+    spin: -90,
+    lean: 0,
+    squash: 1,
+    head: [0, 0],
+    nod: -55,
+    jaw: 0.5,
+    tongue: true,
+    eyes: 'dizzy',
+    wingN: [-100, 1, 1, 0],
+    wingF: [100, 1, 1, 1],
+    tail: [30, 1],
+    feet: [90, 0.2],
+    crest: 0.6,
+    scarf: [12, 22, 0.6, 0]
+  }
+  return [
+    P({
+      x: -3,
+      y: 2,
+      lean: -14,
+      squash: -2,
+      head: [-2, -1],
+      nod: -16,
+      jaw: 1,
+      eyes: 'hurt',
+      wingN: [-108, 0.9, 1, 1],
+      wingF: [-72, 0.9, 1, 1],
+      tail: [20, 1],
+      feet: [-16, 1],
+      crest: 1,
+      scarf: [-16, 32, 2, 0],
+      loose: [
+        [-32, -20],
+        [26, -32]
+      ]
+    }),
+    P({
+      x: -2,
+      y: -2,
+      spin: -90,
+      jaw: 0.8,
+      eyes: 'hurt',
+      wingN: [-120, 0.8, 1, 1],
+      wingF: [60, 0.8, 1, 0],
+      tail: [30, 1],
+      feet: [10, 1],
+      crest: 1,
+      scarf: [-30, 30, 2, 1.2],
+      loose: [
+        [-38, -28],
+        [32, -40],
+        [-6, -44]
+      ]
+    }),
+    P({
+      y: -7,
+      spin: -180,
+      jaw: 0.6,
+      eyes: 'dizzy',
+      wingN: [60, 0.5, 0.4, 0],
+      wingF: [120, 0.5, 0.4, 1],
+      tail: [30, 0.6],
+      feet: [30, 0.5],
+      crest: 0.8,
+      scarf: [20, 30, 1.6, 2.4],
+      loose: [
+        [-42, -36],
+        [36, -46]
+      ]
+    }),
+    P({
+      x: 1,
+      y: -13,
+      spin: -270,
+      jaw: 0.6,
+      eyes: 'dizzy',
+      wingN: [-40, 0.45, 0.3, 1],
+      wingF: [-120, 0.45, 0.3, 0],
+      tail: [30, 0.5],
+      feet: [40, 0.3],
+      crest: 0.8,
+      scarf: [60, 26, 1.6, 3.6],
+      loose: [[40, -50]]
+    }),
+    P({ ...lying, y: -6, squash: 2.5, eyes: 'shut', jaw: 0.8, feet: [80, 0.6], scarf: [30, 22, 1, 4.8] }),
+    P({
+      ...lying,
+      y: -1,
+      squash: -1,
+      nod: -45,
+      wingN: [-108, 0.9, 0.8, 0],
+      wingF: [108, 0.9, 0.8, 1],
+      feet: [100, 0.4],
+      scarf: [-10, 22, 1.2, 6]
+    }),
+    P({ ...lying, stars: 0, scarf: [8, 22, 0.6, 7] }),
+    P({ ...lying, stars: 1 / 6, feet: [94, 0.25], scarf: [10, 22, 0.6, 8.6] })
+  ]
+})
 
-const windup = memo(() =>
-  frames([
-    { y: 80, tilt: -10, nw: NW(62), fw: FW(62), beak: 3, scarf: 3, tail: 6, legAng: 280 },
-    { y: 83, tilt: -20, head: -4, nw: NW(78), fw: FW(76), beak: 6, scarf: -3, tail: 10, legAng: 290, puff: 0.3 },
-    {
-      y: 85,
-      tilt: -27,
-      head: -6,
-      nw: NW(86),
-      fw: FW(84),
-      beak: 4,
-      eye: 'glint',
-      scarf: 4,
-      tail: 14,
-      legAng: 296,
-      puff: 0.5
-    }
-  ])
-)
-
-const attack = memo(() =>
-  frames([
-    {
-      x: 58,
-      y: 80,
-      tilt: 50,
-      nw: wing(138, 24, 0.9),
-      fw: wing(150, 22, 0.9),
-      beak: 10,
-      scarf: 5,
-      tail: -4,
-      legAng: 250
-    },
-    {
-      x: 58,
-      y: 80,
-      tilt: 46,
-      nw: wing(150, 26, 0.85),
-      fw: wing(160, 24, 0.85),
-      beak: 4,
-      scarf: -3,
-      tail: 6,
-      legAng: 256
-    }
-  ])
-)
-
-const recover = memo(() =>
-  frames([
-    {
-      y: 84,
-      tilt: 6,
-      nw: NW(54),
-      fw: FW(50),
-      beak: 14,
-      tongue: 1,
-      eye: 'tired',
-      puff: 1,
-      sweat: 0,
-      scarf: 3,
-      tail: 8,
-      legAng: 276,
-      head: 6
-    },
-    {
-      y: 88,
-      tilt: 4,
-      nw: NW(-34),
-      fw: FW(-30),
-      beak: 18,
-      tongue: 1,
-      eye: 'tired',
-      puff: 0.6,
-      sweat: 2,
-      scarf: -3,
-      tail: -6,
-      legAng: 262,
-      head: 8
-    }
-  ])
-)
-
-const hurt = memo(() =>
-  frames([
-    {
-      y: 82,
-      tilt: -16,
-      head: -8,
-      nw: NW(40),
-      fw: FW(72),
-      beak: 24,
-      eye: 'hurt',
-      puff: 1,
-      scarf: 4,
-      legAng: 290,
-      flies: [
-        [24, 60, 160],
-        [100, 50, 20]
-      ]
-    },
-    {
-      y: 84,
-      tilt: -24,
-      head: -10,
-      nw: NW(70),
-      fw: FW(30),
-      beak: 30,
-      eye: 'hurt',
-      puff: 1,
-      scarf: -4,
-      legAng: 296,
-      flies: [
-        [18, 52, 200],
-        [108, 66, -30],
-        [40, 36, 120]
-      ]
-    }
-  ])
-)
-
-/** Nudges a frame so it keeps two empty pixels to every edge. */
-function keepIn(r: Raster) {
-  const b = r.bounds()!
-  const dx = Math.max(2 - b.x, Math.min(0, 125 - (b.x + b.w - 1)))
-  const dy = Math.max(2 - b.y, Math.min(0, 125 - (b.y + b.h - 1)))
-  return dx || dy ? r.shifted(dx, dy) : r
-}
-
-const defeat = memo(() =>
-  frames([
-    {
-      y: 84,
-      tilt: -22,
-      head: -8,
-      nw: NW(50),
-      fw: FW(60),
-      beak: 28,
-      eye: 'hurt',
-      puff: 1,
-      scarf: 4,
-      legAng: 292,
-      flies: [
-        [22, 52, 150],
-        [104, 56, 30]
-      ]
-    },
-    {
-      x: 60,
-      y: 76,
-      tilt: 60,
-      head: 4,
-      nw: NW(70),
-      fw: FW(-20),
-      beak: 24,
-      eye: 'swirl',
-      puff: 1,
-      scarf: 5,
-      legAng: 300,
-      flies: [
-        [24, 40, 120],
-        [100, 38, 40],
-        [92, 96, -30]
-      ]
-    },
-    {
-      x: 62,
-      y: 80,
-      tilt: 135,
-      head: 6,
-      nw: NW(-40),
-      fw: FW(40),
-      beak: 24,
-      eye: 'swirl',
-      puff: 1,
-      scarf: -5,
-      legAng: 320,
-      tail: 12,
-      flies: [
-        [20, 64, 180],
-        [108, 74, 10],
-        [30, 100, 240]
-      ]
-    },
-    {
-      x: 60,
-      y: 77,
-      tilt: 205,
-      head: 4,
-      nw: NW(30),
-      fw: FW(-50),
-      beak: 20,
-      eye: 'swirl',
-      puff: 1,
-      scarf: 5,
-      legAng: 330,
-      flies: [
-        [16, 84, 200],
-        [106, 90, -20]
-      ]
-    },
-    {
-      x: 62,
-      y: 86,
-      tilt: 252,
-      head: -50,
-      nw: NW(-6),
-      fw: FW(-4),
-      beak: 14,
-      eye: 'swirl',
-      puff: 1,
-      scarf: 3,
-      legAng: 350,
-      tail: 8,
-      flies: [
-        [14, 90, 210],
-        [112, 96, 0]
-      ]
-    },
-    {
-      x: 62,
-      y: 86,
-      tilt: 270,
-      head: -92,
-      nw: NW(-12),
-      fw: FW(-10),
-      beak: 5,
-      tongue: 1,
-      eye: 'swirl',
-      puff: 0.7,
-      scarf: 2,
-      legAng: 358,
-      tail: 6,
-      flies: [
-        [18, 102, 180],
-        [108, 104, 10]
-      ]
-    }
-  ]).map(keepIn)
-)
+/** The clips as poses (for the tests). */
+export const crowBossPoses = { idle, intro, hurt, windup, attack, recover, defeat }
 
 export const sheets: SheetModule = {
   crowBoss: () => ({
-    idle: lazyAnim(idle, 6, true),
-    intro: lazyAnim(intro, 8, false),
-    windup: lazyAnim(windup, 10, false),
-    attack: lazyAnim(attack, 12, true),
-    recover: lazyAnim(recover, 8, true),
-    hurt: lazyAnim(hurt, 12, false),
-    defeat: lazyAnim(defeat, 8, false)
+    idle: lazyAnim(() => draw(idle()), 8, true),
+    intro: lazyAnim(() => draw(intro()), 10, false, { sustain: 2 }),
+    hurt: lazyAnim(() => draw(hurt()), 12, false),
+    defeat: lazyAnim(() => draw(defeat()), 10, false, { sustain: 2 }),
+    windup: lazyAnim(() => draw(windup()), 10, false, { sustain: 2 }),
+    attack: lazyAnim(() => draw(attack()), 14, true),
+    recover: lazyAnim(() => draw(recover()), 8, true)
   })
 }

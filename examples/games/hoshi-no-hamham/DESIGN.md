@@ -229,6 +229,10 @@ are a list scrolled by hand with a button that closes it.
   screens fit, the title and the game-over card fill their screen, story pictures are not cropped, the credits take
   the frame and no line is cut, the deck holds the controls and the speech, the staged pieces do not overlap.
 - `npm run art:hoshi-no-hamham` writes review sheets to `.build/hoshi-no-hamham-art/`.
+  `--gif` (a GIF per clip with its real timing), `--onion` (previous frame as a ghost), `--motion` (numbers per frame
+  and per clip), `--lineup` (the cast on one ground line), `--game` (every clip at 2x, the size the game draws, on four flat grounds) and `--stage <theme>` (clips over a world's backdrop) are for
+  judging character animation; `src/art/quality.ts` holds the measurements and `tests/art-rig-quality.test.ts` the
+  gates for the redrawn characters.
 - `node scripts/hoshi-no-hamham-review.mjs` writes the review kit to `.build/hoshi-no-hamham-review/`: every screen
   at four viewports with its tallest empty band, wrapped headings, text under a focus frame and cut lines, the
   staged moments frame by frame

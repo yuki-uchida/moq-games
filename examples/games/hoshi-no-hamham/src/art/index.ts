@@ -51,6 +51,12 @@ function drawn(id: string): Sheet {
   return real
 }
 
+/**
+ * Whatever the modules draw for the sheet right now, complete or not (for the review exporter's `--draft`, so a
+ * sheet can be looked at while its clips are still being drawn). The game uses `sheet()`.
+ */
+export const draftSheet = (id: string): Sheet => drawn(id)
+
 /** Contract animations of a sheet that no module draws. A report: it never throws. */
 export function missingAnims(id: string): string[] {
   const real = drawn(id)

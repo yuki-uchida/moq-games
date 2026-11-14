@@ -1,1171 +1,884 @@
 /**
- * ハム彦 (`hero`): a round pink hamster kid in three-quarter view, facing right, with a navy scarf and a gold star
- * clasp. One pose-parametric draw function; every clip is a list of poses (see HERO_SPEC in contract.ts).
+ * ハム彦 (`hero`): a two-heads-tall pink hamster kid in three-quarter view, facing right. Big mochi head with a cream
+ * mask, round ears, a three-spike tuft; a small pear body; short arms with peach paws; stub legs with peach feet; a
+ * navy neckerchief knotted at the back of the neck with a swallowtail end, and a gold star clasp at the front.
  *
- * This file is also the style reference for the whole cast: ball-shaded body, flat cream patches painted onto
- * it, big dark eyes with one highlight, parts assembled back to front with the Painter so overlaps get inner
- * contours.
+ * Drawn on the hamster family build (`hamster.ts`): this file is his look (ramps, the family's 1× stamps), his
+ * accessories (the scarf and the star clasp) and his clips, every clip a few key poses on a `track()` with ears,
+ * tuft, tail and scarf driven by `lag()` / `follow()`.
+ *
+ * Depth (back to front): far ear, tail, short scarf end, long scarf end, far leg, far foot, near leg, body, far
+ * arm, near foot, scarf band, knot, clasp, near ear, head + face, near arm (the far arm comes to the front when the
+ * pose says so: facing the camera). Raised arms (`up`) sit between the near ear and the head; the face wash puts
+ * the forearms under the scarf band and both paws over the face. Speed streaks of a smear frame go behind everything.
  */
 import type { SheetModule } from '../module'
-import { C, R } from '../palette'
-import { Painter, Raster, ball, bar, farRamp, shadeEdges, shadeIndex } from '../raster'
+import { clamp, ease, lag, type Key } from '../motion'
+import { R, ramp } from '../palette'
+import { Raster, farRamp, type Pt } from '../raster'
+import { Frame, carve, cel, fill, oval, polygon, ribbon, shadow, smooth, spline } from '../rig'
 import { lazyAnim, memo } from '../sheet'
+import {
+  LONG,
+  cyc,
+  drawHamster,
+  hamLook,
+  hamPose,
+  sample,
+  shift,
+  stampOn,
+  type Foot,
+  type HamAccessory,
+  type HamPose,
+  type Hand
+} from './hamster'
+
+export { hamPose, type Brow, type Eyes, type Foot, type HamPose, type Hand, type Mouth, type Tuft } from './hamster'
 
 const PINK = R.hamPink
-const FAR = farRamp(PINK)
+const PINK_HEX = ['#ffe3ee', '#ffb3cf', '#f07fa8', '#b84f80'] as const
 const CREAM = R.hamCream
-const EAR = R.hamEar
 const SCARF = R.scarf
 const SCARF_FAR = farRamp(SCARF)
 const GOLD = R.gold
+// peach paws and feet: their shadows borrow the pink fur's shade and deep (fewer colours per frame)
+const PAW = ramp('#ffe6dc', '#ffc8b4', PINK_HEX[2], PINK_HEX[3], '#3a1a22')
 
-export type Eyes = 'open' | 'half' | 'closed' | 'happy' | 'wide' | 'hurt' | 'squint' | 'swirl'
-export type Mouth = 'smile' | 'grin' | 'open' | 'wide' | 'o' | 'flat' | 'grit' | 'bite' | 'chomp' | 'tongue' | 'gape'
-export type Brow = 'none' | 'angry' | 'worry' | 'up' | 'hard'
+// ------------------------------------------------------------------------------------------------ accessories
 
-/** An arm: shoulder and hand, both relative to the body centre (px; the body is about 19 wide and 18 tall). */
-export type Arm = readonly [shoulderX: number, shoulderY: number, handX: number, handY: number]
-
-export interface HeroPose {
-  /** Body lifted off its rest height (px, positive = up). Feet stay on the ground unless lifted themselves. */
-  bob: number
-  /** Positive squashes (wider, shorter), negative stretches. About -3..3.5; the volume is kept. */
-  squash: number
-  /** Whole body (everything but the feet) shifted forward (+) or back (-). */
-  dx: number
-  /** Face and ears slide forward (+) or back (-) over the body: a lean without turning the ball. */
-  lean: number
-  /** Scarf tails: direction in degrees (0 streams straight back, 90 hangs down, negative lifts them), length, ripple. */
-  scarfAngle: number
-  scarfLen: number
-  scarfWave: number
-  scarfPhase: number
-  /** Ears tilt back (positive) with speed or forward (negative); `earLift` raises them (air) or flattens them. */
-  earTilt: number
-  earLift: number
-  /** Near and far foot: forward offset (px) and lift off the ground (px). */
-  nearFoot: readonly [number, number]
-  farFoot: readonly [number, number]
-  /** Stubby legs from the belly down to the feet (a run lifts the body so both feet and their stride show). */
-  legs: boolean
-  /** Foot tilt in degrees, toe down (0 = flat); a foot tilted past 35° turns its sole to the back. */
-  nearTilt: number
-  farTilt: number
-  /** Near arm (in front of the body) and far arm (behind it, only its hand shows when it reaches out). */
-  arm: Arm
-  farArm: Arm | null
-  eyes: Eyes
-  mouth: Mouth
-  brow: Brow
-  /** Cheek puff 0..1.5 (swimming, chewing). */
-  puff: number
+/** The neckerchief: two ends knotted at the back of the neck (the long one with a swallowtail), the band, the knot. */
+const scarf: HamAccessory = ({ g, pose: p, torso, head, knot: knotFrame, headShape, side }) => {
+  const knot = knotFrame.pt(0, 0)
+  const endPath = (angle: number, len: number, phase: number): Pt[] => {
+    const a = ((angle + p.turn + p.lean * 0.3) * Math.PI) / 180
+    const dir = [-Math.cos(a), Math.sin(a)]
+    const perp = [-dir[1], dir[0]]
+    const pts: Pt[] = []
+    for (let i = 0; i <= 5; i++) {
+      const s = i / 5
+      const w = p.scarf[2] * Math.sin(phase - s * 3.6) * s * 1.9
+      pts.push([knot[0] + dir[0] * len * s + perp[0] * w, knot[1] + dir[1] * len * s + perp[1] * w])
+    }
+    return spline(pts)
+  }
+  g.add(-4.2, (l) => {
+    const path = endPath(p.scarf[0] + 30, p.scarf[1] * 0.5, p.scarf[3] + 1.9)
+    ribbon(l, path, (t) => 2.8 + t * 0.4, SCARF_FAR[1])
+    cel(l, { shade: 1.2 })
+  })
+  g.add(-4, (l) => {
+    const path = endPath(p.scarf[0], p.scarf[1], p.scarf[3])
+    ribbon(l, path, (t) => 2.8 + t * 1.8, SCARF[1])
+    // the swallowtail: a notch cut into the end
+    const end = path[path.length - 1]
+    const before = path[Math.max(0, path.length - 5)]
+    const d = Math.hypot(end[0] - before[0], end[1] - before[1]) || 1
+    const ux = (end[0] - before[0]) / d
+    const uy = (end[1] - before[1]) / d
+    carve(
+      l,
+      Frame.at(0, 0),
+      polygon([
+        [end[0] + ux * 3 - uy * 1.7, end[1] + uy * 3 + ux * 1.7],
+        [end[0] - ux * 1.9, end[1] - uy * 1.9],
+        [end[0] + ux * 3 + uy * 1.7, end[1] + uy * 3 - ux * 1.7]
+      ])
+    )
+    smooth(l)
+    cel(l, { shade: 1.3, rim: 1 })
+  })
+  g.add(1, (l) => {
+    const band = spline([torso.pt(-9.5, -15.6), torso.pt(-3, -13.4), torso.pt(5, -13.2), torso.pt(11, -15.4)])
+    ribbon(l, band, () => 3.8, SCARF[1])
+    cel(l, { shade: 1.4, rim: 1 })
+    shadow(l, head.moved(0.5, 1.6), headShape)
+  })
+  if (side > 0.4)
+    g.add(1.1, (l) => {
+      fill(l, Frame.at(knot[0], knot[1]), oval(0, 0, 2.5, 2.4), SCARF[1])
+      cel(l, { shade: 1.2, rim: 1 })
+    })
 }
 
-export const heroPose = (p: Partial<HeroPose> = {}): HeroPose => ({
-  bob: 0,
-  squash: 0,
-  dx: 0,
-  lean: 0,
-  scarfAngle: 30,
-  scarfLen: 10,
-  scarfWave: 0.8,
-  scarfPhase: 0,
-  earTilt: 0,
-  earLift: 0,
-  nearFoot: [0, 0],
-  farFoot: [0, 0],
-  legs: false,
-  nearTilt: 0,
-  farTilt: 0,
-  arm: [0, 11, 4, 15],
-  farArm: null,
-  eyes: 'open',
-  mouth: 'smile',
-  brow: 'none',
-  puff: 0,
-  ...p
+/** The gold star clasp at the front of the band. */
+const clasp: HamAccessory = ({ g, torso, f }) =>
+  g.add(1.2, (l) => {
+    stampOn(l, torso, ['..h..', '.hyy.', 'yyyyy', '.yYy.', '.Y.Y.'], 0.5 + 7.7 * f, -12.4, {
+      h: GOLD[0],
+      y: GOLD[1],
+      Y: GOLD[2]
+    })
+  })
+
+/** ハム彦's look: the family build at scale 1 in pink, cream and peach, with the scarf and the clasp. */
+export const HERO_LOOK = hamLook({
+  fur: PINK,
+  furFar: farRamp(PINK),
+  mask: CREAM,
+  earBowl: R.hamEar,
+  paw: PAW,
+  pawFar: farRamp(PAW),
+  streak: SCARF[1],
+  accessories: [scarf, clasp]
 })
 
-const EYE_KEY = { K: C.black, w: C.white, s: EAR[0], i: C.ink }
-
-const NEAR_OPEN = ['.KKKK.', 'KwwKKK', 'KwwKKK', 'KKKKKK', 'KKKKKK', 'KKKKKK', 'KKKsKK', 'KKKKKK', '.KKKK.']
-const FAR_OPEN = ['.KKK.', 'KwKKK', 'KwKKK', 'KKKKK', 'KKKKK', 'KKKKK', 'KKsKK', 'KKKKK', '.KKK.']
-
-/** Hand-placed eye shapes: [near eye, far eye]. The far eye is a pixel narrower (three-quarter view). */
-const EYE_SHAPES: Record<Eyes, readonly [readonly string[], readonly string[]]> = {
-  open: [NEAR_OPEN, FAR_OPEN],
-  wide: [
-    ['.KKKK.', 'KwwKKK', 'KwwKKK', 'KwwKKK', 'KKKKKK', 'KKKKKK', 'KKKsKK', 'KKKKKK', '.KKKK.'],
-    ['.KKK.', 'KwKKK', 'KwKKK', 'KwKKK', 'KKKKK', 'KKKKK', 'KKsKK', 'KKKKK', '.KKK.']
-  ],
-  half: [
-    ['......', '......', '......', '......', 'iiiiii', 'KwKKKK', 'KKKsKK', 'KKKKKK', '.KKKK.'],
-    ['.....', '.....', '.....', '.....', 'iiiii', 'KwKKK', 'KKsKK', 'KKKKK', '.KKK.']
-  ],
-  closed: [
-    ['......', '......', '......', '......', 'i....i', '.iiii.', '......', '......', '......'],
-    ['.....', '.....', '.....', '.....', 'i...i', '.iii.', '.....', '.....', '.....']
-  ],
-  happy: [
-    ['......', '......', '......', '..ii..', '.i..i.', 'i....i', '......', '......', '......'],
-    ['.....', '.....', '.....', '.ii..', 'i..i.', '.....', '.....', '.....', '.....']
-  ],
-  hurt: [
-    ['......', '......', 'KK....', '.KKK..', '...KKK', '.KKK..', 'KK....', '......', '......'],
-    ['.....', '.....', '...KK', '.KKK.', 'KKK..', '.KKK.', '...KK', '.....', '.....']
-  ],
-  squint: [
-    ['......', '......', '......', 'KK....', '.KKKKK', 'KK....', '......', '......', '......'],
-    ['.....', '.....', '.....', '...KK', 'KKKK.', '...KK', '.....', '.....', '.....']
-  ],
-  swirl: [
-    ['......', '.KKKK.', 'KwwwwK', 'KwKKwK', 'KwKwwK', 'KwwwwK', '.KKKK.', '......', '......'],
-    ['.....', '.KKK.', 'KwwwK', 'KKKwK', 'KwKwK', 'KwwwK', '.KKK.', '.....', '.....']
-  ]
-}
-
-/** Eyes, as stamped: top-left of the near eye at (x, y); the far eye sits 10 px further right and 1 px lower. */
-function eyes(l: Raster, x: number, y: number, kind: Eyes) {
-  const [near, far] = EYE_SHAPES[kind]
-  l.stamp(near, x, y, EYE_KEY)
-  l.stamp(far, x + 10, y + 1, EYE_KEY)
-}
-
-function brows(l: Raster, x: number, y: number, kind: Brow) {
-  const px = (ox: number, oy: number) => l.set(x + ox, y + oy, C.ink)
-  const fx = 10
-  switch (kind) {
-    case 'none':
-      return
-    case 'angry':
-    case 'hard':
-      for (const [ox, oy] of [
-        [0, -3],
-        [1, -3],
-        [2, -2],
-        [3, -2],
-        [4, -1],
-        [fx, -1],
-        [fx + 1, -2],
-        [fx + 2, -2],
-        [fx + 3, -3]
-      ] as const)
-        px(ox, oy)
-      if (kind === 'hard')
-        for (const [ox, oy] of [
-          [1, -2],
-          [2, -1],
-          [3, -1],
-          [fx + 1, -1],
-          [fx + 2, -1]
-        ] as const)
-          px(ox, oy)
-      return
-    case 'worry':
-      for (const [ox, oy] of [
-        [0, -1],
-        [1, -2],
-        [2, -2],
-        [3, -3],
-        [4, -3],
-        [fx, -3],
-        [fx + 1, -3],
-        [fx + 2, -2],
-        [fx + 3, -1]
-      ] as const)
-        px(ox, oy)
-      return
-    case 'up':
-      for (const [ox, oy] of [
-        [1, -3],
-        [2, -4],
-        [3, -4],
-        [4, -3],
-        [fx, -3],
-        [fx + 1, -4],
-        [fx + 2, -4],
-        [fx + 3, -3]
-      ] as const)
-        px(ox, oy)
-  }
-}
-
-const MOUTH_KEY = { K: C.ink, m: C.mouth, t: C.tongue, w: C.white, c: CREAM[2] }
-const MOUTHS: Record<Mouth, readonly string[]> = {
-  smile: ['K.K.K', '.K.K.'],
-  grin: ['K.....K', '.KKKKK.'],
-  flat: ['.KKKK.'],
-  o: ['.KK.', 'KmmK', 'KmmK', '.KK.'],
-  grit: ['KKKKKKK', 'KwKwKwK', 'KKKKKKK'],
-  open: ['KKKKKKK', 'KmwcwmK', 'KmmmmmK', '.KtttK.', '..KKK..'],
-  wide: ['KKKKKKKKK', 'KmwwcwwmK', 'KmmmmmmmK', '.KmtttmK.', '..KtttK..', '...KKK...'],
-  // the lunge: jaws as wide as the face allows, two big front teeth hanging from the upper lip
-  bite: [
-    '.KKKKKKKKKKKKK.',
-    'KmmmwwwcwwwmmmK',
-    'KmmmwwwcwwwmmmK',
-    'KmmmwwwcwwwmmmK',
-    'KmmmKKKKKKKmmmK',
-    'KmmmmmmmmmmmmmK',
-    'KmmmmtttttmmmmK',
-    '.KmmtttttttmmK.',
-    '..KKKtttttKKK..',
-    '....KKKKKKK....'
-  ],
-  // CHOMP: jaws shut, the two big teeth biting over the lower lip
-  chomp: [
-    'KK...........KK',
-    '.KKKKKKKKKKKKK.',
-    '..KwwwwcwwwwK..',
-    '..KwwwwcwwwwK..',
-    '..KwwwwcwwwwK..',
-    '..KwwwwcwwwwK..',
-    '..KKKKKKKKKKK..'
-  ],
-  // the anticipation: the mouth already opening, two tooth tips showing
-  gape: ['.KKKKKKKKK.', 'KmmwwcwwmmK', 'KmmwwcwwmmK', 'KmmmmmmmmmK', 'KmmmtttmmmK', '.KmtttttmK.', '..KKKKKKK..'],
-  // open mouth, the tongue lolling out
-  tongue: ['KKKKKKKKK', 'KmmmmmmmK', '.KtttttK.', '.KtttttK.', '.KtttttK.', '..KtttK..', '...KKK...']
-}
-
-function mouth(l: Raster, cx: number, y: number, kind: Mouth) {
-  const rows = MOUTHS[kind]
-  l.stamp(rows, cx - Math.floor(rows[0].length / 2), y, MOUTH_KEY)
-}
-
-/** Paints an ellipse only where the layer already has pixels, so patches never leave the silhouette. */
-function patch(l: Raster, cx: number, cy: number, rx: number, ry: number, c: number) {
-  for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++)
-    for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
-      const nx = (x + 0.5 - cx) / rx
-      const ny = (y + 0.5 - cy) / ry
-      if (nx * nx + ny * ny <= 1.0001) l.paint(x, y, c)
-    }
-}
-
-/** A round ear: flat rim, darker bowl. `back` draws the far ear a step darker. */
-function ear(l: Raster, x: number, y: number, r: number, back: boolean) {
-  const rim = back ? FAR : PINK
-  l.ellipse(x, y, r, r, rim[1])
-  l.ellipse(x - 1, y - 1, r - 1.5, r - 1.5, rim[back ? 1 : 0])
-  l.ellipse(x, y, r - 2, r - 2, rim[1])
-  l.ellipse(x, y - 0.5, r - 3, r - 3, EAR[back ? 2 : 1])
-  l.ellipse(x + 0.5, y + 0.5, r - 4.5, r - 4.5, EAR[back ? 3 : 2])
-}
-
-/** A scarf tail: a tapering ribbon along a rippling path, shaded from the top-left. */
-function scarfTail(
-  l: Raster,
-  kx: number,
-  ky: number,
-  angle: number,
-  len: number,
-  wave: number,
-  phase: number,
-  ramp: typeof SCARF
-) {
-  const a = (angle * Math.PI) / 180
-  const dir = [-Math.cos(a), Math.sin(a)]
-  const perp = [-dir[1], dir[0]]
-  const n = 7
-  const pt = (i: number): [number, number] => {
-    const s = i / n
-    const w = wave * Math.sin(phase - s * 3.2) * s * 1.6
-    return [kx + dir[0] * len * s + perp[0] * w, ky + dir[1] * len * s + perp[1] * w]
-  }
-  for (let i = 0; i < n; i++) bar(l, pt(i), pt(i + 1), i < n - 3 ? 4 : 3, ramp[1])
-  shadeEdges(l, ramp, 1, true)
-}
-
-/** A short chubby limb ending in a round paw. */
-function limb(l: Raster, a: readonly [number, number], b: readonly [number, number], ramp: typeof PINK) {
-  if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 3) {
-    bar(l, [a[0], a[1]], [b[0], b[1]], 4, ramp[1])
-    shadeEdges(l, ramp, 1, true)
-  }
-  ball(l, b[0], b[1], 2.9, 3, ramp, false)
-}
-
-type Pt = readonly [number, number]
-
-/**
- * A paw: flat (an ellipse) or tilted toe-down by `tilt` degrees. A paw tilted past 35° shows its sole (a cream pad)
- * on the side that faces backwards, as a foot kicked up behind a runner does.
- */
-function paw(l: Raster, x: number, y: number, tilt: number, ramp: typeof PINK, toeDot: boolean) {
-  if (!tilt) {
-    l.ellipse(x, y, ramp === PINK ? 5.5 : 5, 3, ramp[1])
-    shadeEdges(l, ramp, 1, true)
-    if (toeDot) l.set(x + 4, y, ramp[2])
-    return
-  }
-  const a = (tilt * Math.PI) / 180
-  const ux = Math.cos(a)
-  const uy = Math.sin(a)
-  bar(l, [x - ux * 2.6, y - uy * 2.6], [x + ux * 2.6, y + uy * 2.6], 5, ramp[1])
-  shadeEdges(l, ramp, 1, true)
-  if (tilt > 35) {
-    const tall = Math.abs(uy) > Math.abs(ux)
-    patch(l, x - uy * 1.4, y + ux * 1.4, tall ? 1.5 : 2.5, tall ? 2.6 : 1.5, ramp === PINK ? CREAM[1] : CREAM[2])
-  }
-}
-
-/** A stubby leg from the hip to the paw's centre. */
-function leg(l: Raster, hip: Pt, foot: Pt, ramp: typeof PINK) {
-  bar(l, [hip[0], hip[1]], [foot[0], foot[1]], 4, ramp[1])
-  shadeEdges(l, ramp, 1, true)
-}
-
 /** One frame of ハム彦. */
-export function drawHero(pose: HeroPose): Raster {
-  const g = new Painter(64, 64)
-  const rx = 19 + pose.squash * 1.05
-  const ry = 18 - pose.squash
-  // The body keeps its bottom near the ground: squash lowers the centre, bob raises it.
-  const cx = 31 + pose.dx
-  const cy = 57 - ry - pose.bob
-  const kx = rx / 19
-  const ky = ry / 18
-  /** Body-relative point, scaled with the squash so the face stays on the ball. */
-  const X = (u: number) => Math.round(cx + u * kx)
-  const Y = (v: number) => Math.round(cy + v * ky)
-  const lean = pose.lean
+export const drawHam = (p: HamPose): Raster => drawHamster(HERO_LOOK, p)
 
-  // ears sit behind the head so the skull covers their roots
-  const earX = -pose.earTilt + lean * 0.6
-  const earY = -pose.earLift
-  g.add(-3, (l) => ear(l, cx + 11 * kx + earX, cy - ry + 4 + earY, 6.5, true))
-  g.add(-3, (l) => ear(l, cx - 12 * kx + earX, cy - ry + 5 + earY, 7.5, false))
-  // far arm: behind the body, so only a hand that reaches out shows
-  if (pose.farArm) {
-    const [sx, sy, hx, hy] = pose.farArm
-    g.add(-1, (l) => limb(l, [cx + sx, cy + sy], [cx + hx, cy + hy], FAR))
-  }
-  // far foot
-  g.add(-3, (l) => {
-    const [fx, lift] = pose.farFoot
-    if (pose.legs) leg(l, [cx + 7 * kx, cy + ry - 3], [39 + fx, 58 - lift], FAR)
-    paw(l, 39 + fx, 58 - lift, pose.farTilt, FAR, false)
-  })
-  if (pose.legs)
-    g.add(-0.7, (l) => leg(l, [cx - 5 * kx, cy + ry - 3], [27 + pose.nearFoot[0], 58 - pose.nearFoot[1]], PINK))
-  // scarf tails, tied at the back of the neck
-  const kx0 = cx - rx + 3
-  const ky0 = cy + 10 * ky
-  const front = pose.scarfAngle < -85
-  g.add(front ? 0.3 : -2.5, (l) =>
-    scarfTail(
-      l,
-      kx0,
-      ky0 + 1,
-      pose.scarfAngle + 24,
-      pose.scarfLen - 2,
-      pose.scarfWave,
-      pose.scarfPhase + 1.7,
-      SCARF_FAR
+// ----------------------------------------------------------------------------------------------------- clips
+
+const N = 8
+const draw = (poses: HamPose[]) => poses.map(drawHam)
+
+const idlePoses = memo(() => {
+  const breath = Array.from({ length: N }, (_, i) => 0.5 - 0.5 * Math.cos(cyc(i)))
+  const late = lag(breath, { stiffness: 0.35, damping: 0.5, loop: true })
+  return breath.map((b, i) =>
+    hamPose({
+      squash: 0.5 - b * 1.2,
+      head: [0, b > 0.6 ? 1 : 0],
+      earN: 2 + late[i] * 9,
+      earF: 1 + late[i] * 7,
+      tuftY: late[i] > 0.12 ? 1 : 0,
+      armN: [7, 2.5 - Math.round(b)],
+      armF: [2, 2.5 - Math.round(b)],
+      scarf: [40 + Math.sin(cyc(i)) * 4, 12, 0.9, 0.6 + cyc(i)],
+      tail: -late[i] * 1.5
+    })
+  )
+})
+
+const idle = () => draw(idlePoses())
+const blink = () => draw(idlePoses().map((p) => ({ ...p, eyes: 'closed' as const })))
+
+const run = () => {
+  // contact (0, 4), down (1, 5), passing (2, 6), up (3, 7)
+  const FOOT_CYCLE: Foot[] = [
+    [11, 0, -10], // contact: heel first, well ahead
+    [5.5, 0, 0], // down: the body sinks over the planted foot
+    [0, 0, 0], // passing
+    [-5.5, 0.5, 26], // push-off from the toe
+    [-10, 4.5, 68], // kicked up behind, sole showing
+    [-6, 7.5, 45], // swinging through
+    [2, 6, 8], // crossing under the body
+    [9, 2.5, -16] // reaching for the next contact
+  ]
+  const BOB = [1, 0, 1, 2]
+  const SQUASH = [0.5, 1.4, 0, -1.2]
+  const bob = Array.from({ length: N }, (_, i) => BOB[i % 4])
+  const late = lag(bob, { stiffness: 0.3, damping: 0.4, loop: true })
+  return draw(
+    Array.from({ length: N }, (_, i) => {
+      const swing = Math.cos(cyc(i - 3.5)) // near arm forward while the near foot pushes off
+      return hamPose({
+        x: 2,
+        y: 3 + bob[i],
+        lean: 12,
+        squash: SQUASH[i % 4],
+        head: [1, Math.round(-bob[i] * 0.4)],
+        nod: 2 + late[i] * 2,
+        earN: 24 + late[i] * 8,
+        earF: 20 + late[i] * 7,
+        tuft: 'back',
+        tuftY: late[i] > 0.4 ? -1 : 0,
+        // in the run both feet travel under the hips (the near one sits further back when standing)
+        footN: shift(FOOT_CYCLE[i], 3.5),
+        footF: shift(FOOT_CYCLE[(i + 4) % N], -2),
+        armN: [1 + swing * 6, 4.5 - Math.abs(swing) * 1.5],
+        armF: [-1 - swing * 5, 4 - Math.abs(swing) * 1.5],
+        scarf: [-4 + Math.sin(cyc(i) + 1) * 6, 14, 2.4, cyc(i) * 2],
+        tail: -late[i],
+        mouth: 'open'
+      })
+    })
+  )
+}
+
+/** Looks back over his shoulder, grooms the near cheek with both paws (two strokes), settles. */
+const wait = () => {
+  const keys: Key<HamPose>[] = [
+    { at: 0, pose: {} },
+    { at: 1, pose: { face: 0.35, nod: -3, lean: -2, earN: 6, earF: -2, tail: -1 } },
+    { at: 2, pose: { face: -0.7, nod: -6, lean: -4, head: [-1, 0], earN: 12, earF: -6, eyes: 'open', brow: 'raised' } },
+    {
+      at: 3,
+      pose: {
+        face: 1,
+        nod: 6,
+        lean: 2,
+        head: [0, -1],
+        armN: [6, -2],
+        armF: [4, -2],
+        earN: 0,
+        earF: 2,
+        eyes: 'happy',
+        brow: 'none'
+      },
+      ease: ease.out
+    },
+    // the face wash: head bowed, both paws on the muzzle, two strokes down (cheeks squashed under the paws)
+    { at: 4, pose: { head: [1, -3], nod: 13, lean: 4, groom: 1, rub: 0, squish: 0.3, earN: -6, earF: -4 } },
+    { at: 5, pose: { head: [1, -4], nod: 15, rub: 1, squish: 1, earN: -2, earF: -1 } },
+    { at: 6, pose: { head: [1, -3], nod: 13, rub: 0, squish: 0.3, earN: -6, earF: -4 } },
+    { at: 7, pose: { head: [1, -4], nod: 15, rub: 1, squish: 1, earN: -2, earF: -1 } },
+    {
+      at: 8,
+      pose: {
+        head: [0, -1],
+        nod: 4,
+        lean: 1,
+        groom: 0,
+        rub: 0,
+        armN: [6, 0.5],
+        armF: [3, 1],
+        squish: 0,
+        earN: 7,
+        earF: 5
+      }
+    },
+    { at: 9, pose: { nod: 0, armN: [7, 2.5], armF: [2, 2.5], eyes: 'open', earN: 3, earF: 2 }, ease: ease.out },
+    { at: 11, pose: { earN: 2, earF: 1 } }
+  ]
+  const poses = sample(idlePoses()[0], keys, 12)
+  // the head swing drives the ears and the scarf a beat late
+  const late = lag(
+    poses.map((p) => p.face * 10 + p.nod),
+    { stiffness: 0.35, damping: 0.45 }
+  )
+  return draw(
+    poses.map((p, i) =>
+      hamPose({
+        ...p,
+        earN: p.earN + late[i] * 0.6,
+        earF: p.earF + late[i] * 0.5,
+        tuftY: Math.abs(late[i]) > 3 ? -1 : 0,
+        scarf: [40 - late[i] * 1.5, 12, 1, 0.6 + i * 0.7],
+        tail: p.tail + (i === 10 ? -1 : 0)
+      })
     )
   )
-  g.add(front ? 0.35 : -2, (l) =>
-    scarfTail(l, kx0, ky0, pose.scarfAngle, pose.scarfLen, pose.scarfWave, pose.scarfPhase, SCARF)
-  )
-  // body with a short blunt muzzle; the cream belly and muzzle are painted onto it
-  g.add(0, (l) => {
-    ball(l, cx, cy, rx, ry, PINK)
-    patch(l, X(6), Y(14.5), 10 * kx, 4 * ky, CREAM[1])
-    patch(l, X(8), Y(16.5), 8 * kx, 1.5 * ky, CREAM[2])
-    // scarf band following the curve of the body
-    for (let x = Math.floor(cx - rx); x <= cx + rx + 1; x++) {
-      const t = (x - (cx - rx)) / (rx * 2)
-      const y = Math.round(cy + 8 * ky + Math.sin(t * Math.PI) * 3)
-      l.paint(x, y, SCARF[0])
-      l.paint(x, y + 1, SCARF[1])
-      l.paint(x, y + 2, SCARF[1])
-      l.paint(x, y + 3, SCARF[2])
-    }
-    // the cream lower face of a hamster: both cheeks and the chin, with only a soft bulge at the near cheek
-    patch(l, X(10.5) + lean, Y(4.5), 9.5 * kx, 6 * ky, CREAM[1])
-    patch(l, X(9) + lean, Y(1.5), 6 * kx, 2.5 * ky, CREAM[0])
-    patch(l, X(12) + lean, Y(8.5), 7 * kx, 2 * ky, CREAM[2])
-    ball(l, X(15.5) + lean, Y(5), 4.6, 4.4, CREAM, false)
-  })
-  // knot of the scarf on the back of the neck
-  g.add(0.2, (l) => ball(l, cx - rx + 3, cy + 11 * ky, 2.7, 2.7, SCARF, false))
-  // puffed cheek
-  if (pose.puff > 0)
-    g.add(0.5, (l) => ball(l, X(5.5) + lean, Y(7.5), 4.2 + pose.puff * 1.6, 3.6 + pose.puff * 1.2, PINK, true))
-  // star clasp on the scarf
-  g.add(1, (l) => {
-    l.stamp(['..h..', '.yyy.', 'yyyyy', '.yYy.', '.Y.Y.'], X(10) - 2, Y(12) - 2, { h: GOLD[0], y: GOLD[1], Y: GOLD[2] })
-  })
-  // a gaping mouth drops the lower jaw: a cream chin under the open mouth
-  if (pose.mouth === 'bite') g.add(0.9, (l) => ball(l, X(13) + lean, Y(11.5), 7.5 * kx, 4.5 * ky, CREAM, false))
-  // face
-  const ex = X(2.5) + lean
-  const ey = Y(-8)
-  g.add(
-    1,
-    (l) => {
-      eyes(l, ex, ey, pose.eyes)
-      brows(l, ex, ey, pose.brow)
-      // a tiny nose between the eyes, the mouth right under it
-      l.rect(X(11) + lean, Y(1.5), 3, 2, EAR[1])
-      l.set(X(11) + lean, Y(1.5), EAR[0])
-      mouth(l, X(12.5) + lean, pose.mouth === 'chomp' ? Y(3.5) : pose.mouth === 'bite' ? Y(4) : Y(4.5), pose.mouth)
-      // whiskers
-      l.line(X(20) + lean, Y(3), X(23) + lean, Y(2), CREAM[3])
-      l.line(X(20) + lean, Y(6), X(23) + lean, Y(7), CREAM[3])
-      // cheek blush
-      if (!pose.puff) l.ellipse(ex - 0.5, Y(5.5), 3, 1.8, C.blush)
-      else l.ellipse(X(5.5) + lean - 1, Y(6.2), 2, 1.3, C.blush)
-    },
-    false
-  )
-  // near foot
-  g.add(2, (l) => {
-    const [fx, lift] = pose.nearFoot
-    paw(l, 27 + fx, 58 - lift, pose.nearTilt, PINK, true)
-  })
-  // near arm
-  g.add(3, (l) => {
-    const [sx, sy, hx, hy] = pose.arm
-    limb(l, [cx + sx, cy + sy], [cx + hx, cy + hy], PINK)
-  })
-  return g.render()
 }
 
-// ------------------------------------------------------------------------------------------------ clip helpers
-
-const TAU = Math.PI * 2
-const frames = (n: number, f: (i: number, t: number) => HeroPose) =>
-  Array.from({ length: n }, (_, i) => drawHero(f(i, i / n)))
-
-/** Arms thrown out in a V: near arm to the back, far arm to the front. `h` = how high the hands go. */
-const armV = (h: number, spread = 0): Arm => [-16, 5, -23 - spread, 5 - h * 1.2]
-const farArmV = (h: number, spread = 0): Arm => [14, 3, 22 + spread, 3 - h * 1.2]
-
-/** Run foot track for phase p (0..1): stance sliding back, then a lifted swing forward. */
-function stride(p: number): [number, number] {
-  p = ((p % 1) + 1) % 1
-  if (p < 0.5) return [7 - 14 * (p / 0.5), 0]
-  const s = (p - 0.5) / 0.5
-  return [-7 + 14 * s, 5 * Math.sin(Math.PI * s)]
-}
-
-// ------------------------------------------------------------------------------------------------ clips
-
-const idle = memo(() =>
-  frames(4, (i) => {
-    const b = [0, 0.55, 1, 0.55][i]
-    return heroPose({
-      squash: 0.5 - b * 1.4,
-      earLift: [0, 0, 0.6, 1][i],
-      scarfAngle: 34 + [0, 4, 0, -4][i],
-      scarfPhase: i * 1.4,
-      arm: [0, 11, 4, 15 - [0, 0.5, 1, 0.5][i] * 0.6]
+/** Turning on the spot: facing the camera, then three-quarters of the way to the new facing. */
+const turn = () =>
+  draw([
+    hamPose({
+      face: 0,
+      armN: [-3, 6],
+      armF: [3, 6],
+      footN: [1.5, 0, 0],
+      footF: [-1.5, 0, 0],
+      scarf: [95, 11, 1.4, 1.5],
+      earLift: 0.5,
+      tuftY: -1,
+      squash: -0.3
+    }),
+    hamPose({
+      face: 0.7,
+      look: -0.5,
+      armN: [5, 3],
+      armF: [2, 3.5],
+      scarf: [62, 12, 1.4, 3],
+      earN: 6,
+      earF: 4
     })
-  })
-)
+  ])
 
-const blink = memo(() =>
-  [heroPose({ eyes: 'half', squash: 0.5 }), heroPose({ eyes: 'closed', squash: 0.5 })].map(drawHero)
-)
-
-/** Fidget: a paw rubs the cheek, eyes closed with pleasure. */
-const wait = memo(() =>
-  [
-    heroPose({ squash: 0.3, lean: -1, arm: [-5, 10, -2, 8], earLift: 0.5 }),
-    heroPose({ squash: 0.2, lean: -1, arm: [-5, 10, -1, 5.5], eyes: 'happy', mouth: 'grin', earTilt: 1 }),
-    heroPose({ squash: 0, lean: -1, arm: [-5, 10, 3, 6.5], eyes: 'happy', mouth: 'grin', earTilt: 1.5 }),
-    heroPose({ squash: 0.2, lean: -1, arm: [-5, 10, -1.5, 5.5], eyes: 'happy', mouth: 'grin', earTilt: 1 }),
-    heroPose({ squash: 0.6, arm: [-4, 10, 0, 11], eyes: 'half' }),
-    heroPose({ squash: -0.6, earLift: 1, scarfAngle: 38, scarfPhase: 1 })
-  ].map(drawHero)
-)
-
-/**
- * Run cycle, 8 frames: 0 contact (near foot planted ahead, far foot kicked up behind), 1 down, 2 passing (feet
- * cross, body highest), 3 push-off; 4–7 the same with the feet swapped. Feet are [x relative to the body, lift, tilt].
- */
-const RUN_TRACK: readonly (readonly [number, number, number])[] = [
-  [11, 0, 0], // contact: foot flat, reaching well ahead
-  [6, 0, 0], // the body rides over the planted foot
-  [1, 0, 0], // passing: the foot is under the belly
-  [-5, 0.5, 28], // push-off: heel rises, toe still pushing
-  [-14, 6, 75], // kicked up behind, sole showing
-  [-11, 8, 62], // trailing knee swings through
-  [-1, 6.5, 24], // swing leg crossing the stance foot
-  [7, 3, -6] // reaching forward for the next contact
-]
-const RUN_BOB = [4.5, 5, 7.5, 6.5]
-const RUN_SQUASH = [0.5, 0.2, -1, -0.4]
-/** Arm swing -1 (back) … 1 (front); the near arm moves against the near leg. */
-const RUN_SWING = [-1, -0.7, -0.15, 0.45, 1, 0.85, 0.1, -0.55]
-const run = memo(() =>
-  frames(8, (i, t) => {
-    const near = RUN_TRACK[i]
-    const far = RUN_TRACK[(i + 4) % 8]
-    const k = i % 4
-    const sn = RUN_SWING[i]
-    const sf = RUN_SWING[(i + 4) % 8]
-    return heroPose({
-      bob: RUN_BOB[k],
-      squash: RUN_SQUASH[k],
-      dx: 3,
-      lean: 3,
-      earTilt: 5,
-      earLift: [-0.5, 0, -1, -0.5][k],
-      legs: true,
-      nearFoot: [near[0] + 6, near[1]],
-      nearTilt: near[2],
-      farFoot: [far[0] - 6, far[1]],
-      farTilt: far[2],
-      scarfAngle: -6 + Math.sin(t * TAU + 0.8) * 8,
-      scarfLen: 14,
-      scarfWave: 3,
-      scarfPhase: t * TAU,
-      arm: [-3, 9, -3 + sn * 10, 11 - Math.max(0, sn) * 5 - Math.max(0, -sn) * 1],
-      farArm: [12, 9, 14 + sf * 8, 11 - Math.max(0, sf) * 6],
-      mouth: 'open',
-      eyes: 'open'
-    })
-  })
-)
-
-const skid = memo(() =>
-  [
-    heroPose({
-      dx: -2,
-      lean: -3,
-      squash: 0.8,
-      earTilt: -2,
-      earLift: 1,
-      nearFoot: [8, 0],
-      farFoot: [4, 0],
-      scarfAngle: -100,
-      scarfLen: 12,
-      scarfWave: 1.5,
-      arm: [-3, 9, 9, 8],
-      farArm: [12, 8, 21, 3],
+/** Braking: leaning back, heels dug in, arms flailing forward, scarf and ears thrown forward. */
+const skid = () =>
+  draw([
+    hamPose({
+      x: 2,
+      lean: -12,
+      squash: 1,
+      head: [-1, 0],
+      nod: -5,
+      footN: [7, 0, -24],
+      footF: [3, 0, -20],
+      armN: [-9, -3],
+      armF: [9, -1],
+      earN: -22,
+      earF: -18,
+      tuft: 'up',
+      scarf: [-60, 13, 1.5, 0],
       eyes: 'wide',
-      brow: 'up',
+      brow: 'raised',
       mouth: 'o'
     }),
-    heroPose({
-      dx: -3,
-      lean: -3,
+    hamPose({
+      x: 1,
+      lean: -19,
       squash: 1.6,
-      bob: 0,
-      earTilt: -3,
-      earLift: 0,
-      nearFoot: [10, 0],
-      farFoot: [6, 1],
-      scarfAngle: -150,
-      scarfLen: 11,
-      scarfWave: 2,
-      scarfPhase: 1.5,
-      arm: [-10, 8, -16, 1],
-      farArm: [12, 8, 22, 5],
+      head: [-1, 0],
+      nod: -7,
+      footN: [8, 0, -32],
+      footF: [4, 0, -26],
+      armN: [-9, -5],
+      armF: [9, -3],
+      earN: -30,
+      earF: -26,
+      tuft: 'up',
+      scarf: [-76, 13, 2.2, 1.6],
       eyes: 'wide',
-      brow: 'worry',
+      brow: 'raised',
+      mouth: 'o'
+    }),
+    hamPose({
+      x: 2,
+      y: 0.6,
+      lean: -17,
+      squash: 1.3,
+      head: [-1, 1],
+      nod: -6,
+      footN: [8, 0, -29],
+      footF: [4, 0, -23],
+      armN: [-8, -6],
+      armF: [9, -0.5],
+      earN: -26,
+      earF: -22,
+      tuft: 'up',
+      tuftY: -1,
+      scarf: [-72, 13, 2.2, 3.6],
+      eyes: 'wide',
+      brow: 'raised',
       mouth: 'o'
     })
-  ].map(drawHero)
-)
+  ])
 
-const jump = memo(() =>
-  [
-    heroPose({
-      bob: 1,
-      squash: -3.2,
-      lean: 1,
-      earTilt: 1,
-      earLift: -1,
-      nearFoot: [-4, 0],
-      farFoot: [-1, 1],
-      scarfAngle: 75,
-      scarfLen: 11,
-      scarfWave: 1,
-      arm: armV(10),
-      farArm: farArmV(10),
-      eyes: 'open',
-      brow: 'up',
-      mouth: 'open'
-    }),
-    heroPose({
-      bob: 4,
-      squash: -1.6,
-      lean: 1,
-      earTilt: 0,
+/** Launch: stretched tall and arched back, arms thrown up; then rising, ears and scarf pulled down (flutter). */
+const jump = () =>
+  draw([
+    hamPose({
+      ...LONG,
+      up: true,
+      air: 2,
+      x: -1,
+      lean: -9,
+      squash: -3.6,
+      headSquash: -1,
+      head: [-1, 1],
+      nod: -7,
+      armN: [-17, -9],
+      armF: [15, -12],
+      footN: [-4, 1, 46],
+      footF: [-1, 0.5, 34],
+      earN: 30,
+      earF: 26,
       earLift: -0.5,
-      nearFoot: [-5, 4],
-      farFoot: [0, 6],
-      scarfAngle: 58,
-      scarfLen: 12,
-      scarfWave: 2,
-      scarfPhase: 2,
-      arm: armV(8, 1),
-      farArm: farArmV(7, 1),
-      eyes: 'open',
+      tuft: 'back',
+      scarf: [86, 17, 1.4, 0],
+      eyes: 'wide',
+      brow: 'raised',
+      mouth: 'open'
+    }),
+    hamPose({
+      ...LONG,
+      up: true,
+      air: 4,
+      lean: -5,
+      squash: -2.2,
+      headSquash: -0.5,
+      nod: -5,
+      armN: [-17, -7],
+      armF: [16, -10],
+      footN: [-4, 3, 38],
+      footF: [-1, 2, 26],
+      earN: 38,
+      earF: 33,
+      earLift: -1,
+      tuft: 'back',
+      scarf: [80, 18, 2.6, 1.2],
+      mouth: 'open'
+    }),
+    hamPose({
+      ...LONG,
+      up: true,
+      air: 4,
+      y: 0.6,
+      lean: -6,
+      squash: -1.9,
+      headSquash: -0.5,
+      nod: -6,
+      armN: [-17, -6],
+      armF: [16, -9],
+      footN: [-3, 3.5, 42],
+      footF: [0, 2.4, 22],
+      earN: 34,
+      earF: 30,
+      earLift: -0.7,
+      tuft: 'back',
+      tuftY: 1,
+      scarf: [88, 18, 2.6, 3.2],
       mouth: 'open'
     })
-  ].map(drawHero)
-)
+  ])
 
-const fall = memo(() =>
-  frames(2, (i) =>
-    heroPose({
-      bob: 6,
-      squash: i ? -1.2 : -0.5,
-      lean: 0,
-      earLift: i ? 1.5 : 3,
-      earTilt: i ? 0 : 1,
-      nearFoot: i ? [-2, 3] : [-1, 4],
-      farFoot: i ? [3, 4] : [2, 3],
-      scarfAngle: i ? -34 : -52,
-      scarfLen: 13,
-      scarfWave: 2.5,
-      scarfPhase: i * 2.6,
-      arm: armV(i ? 9 : 11, 1),
-      farArm: farArmV(i ? 9 : 11, 1),
-      eyes: 'wide',
-      brow: 'worry',
-      mouth: 'o'
-    })
-  ).map((f) => f)
-)
-
-const land = memo(() =>
-  [
-    heroPose({
-      squash: 3.6,
-      lean: 1,
-      earLift: -1,
-      nearFoot: [-6, 0],
-      farFoot: [6, 0],
-      scarfAngle: 80,
-      scarfLen: 10,
-      arm: [-11, 9, -19, 13],
-      farArm: [13, 9, 22, 13],
+/** The top of the arc: tucked into a ball while still rising, then opening out into a float. */
+const apex = () =>
+  draw([
+    hamPose({
+      air: 6,
+      lean: 8,
+      squash: 1.8,
+      headSquash: 0.5,
+      head: [1, -1],
+      nod: 10,
+      footN: [4, 7, 16],
+      footF: [6, 6, 8],
+      armN: [7, 2],
+      armF: [4, 1],
+      earN: 16,
+      earF: 13,
+      scarf: [58, 15, 1.8, 0.5],
       eyes: 'squint',
-      mouth: 'flat'
+      mouth: 'o'
     }),
-    heroPose({
-      bob: 1,
+    hamPose({
+      ...LONG,
+      air: 5,
+      lean: -6,
+      squash: -1.4,
+      head: [-1, 1],
+      nod: -12,
+      footN: [-5, 2, 28],
+      footF: [7, 3, -14],
+      armN: [-14, -6],
+      armF: [14, -4],
+      open: true,
+      earN: -16,
+      earF: -13,
+      earLift: 2,
+      tuft: 'up',
+      tuftY: -1,
+      scarf: [12, 17, 2.4, 2],
+      eyes: 'wide',
+      mouth: 'open'
+    })
+  ])
+
+/** Falling: arms up and out with the paws open, feet dangling, ears, tuft and scarf streaming upward. */
+const fall = () => {
+  const n = 3
+  const flutter = Array.from({ length: n }, (_, i) => Math.sin(cyc(i, n)))
+  return draw(
+    flutter.map((w, i) =>
+      hamPose({
+        ...LONG,
+        up: true,
+        open: true,
+        air: 4,
+        lean: -4,
+        squash: -1.8,
+        headSquash: -0.4,
+        nod: 11,
+        armN: [-14 + w, -12 - w],
+        armF: [17 - w, -5 + w],
+        footN: [-1, 1 + w * 0.6, 34],
+        footF: [2, 0.5 - w * 0.6, 26],
+        earN: -22 - w * 6,
+        earF: -18 + w * 5,
+        earLift: 2.4,
+        tuft: 'up',
+        tuftY: i === 1 ? -1 : 0,
+        scarf: [-84 + w * 10, 18, 2.8, cyc(i, n)],
+        eyes: 'wide',
+        brow: 'raised',
+        mouth: 'o'
+      })
+    )
+  )
+}
+
+/** Landing: squash, rebound with the ears flying up, a small overshoot, settle. */
+const land = () =>
+  draw([
+    hamPose({
+      squash: 3.6,
+      headSquash: 1.4,
+      head: [0, -1],
+      y: -1,
+      footN: [-3, 0, 0],
+      footF: [3, 0, 0],
+      armN: [9, 5],
+      armF: [5, 6],
+      earN: -14,
+      earF: -12,
+      earLift: -1,
+      tuft: 'up',
+      scarf: [92, 10, 1, 0],
+      eyes: 'squint',
+      mouth: 'grit'
+    }),
+    hamPose({
       squash: -1.6,
-      earLift: 1.5,
-      nearFoot: [-2, 0.5],
-      farFoot: [2, 0.5],
-      scarfAngle: 8,
-      scarfLen: 12,
-      scarfPhase: 1,
-      arm: [-6, 8, -9, 10],
+      headSquash: -0.5,
+      y: 1,
+      head: [0, 1],
+      footN: [-1, 0, 0],
+      footF: [1, 0, 0],
+      armN: [6, 1],
+      armF: [2, 1],
+      earN: 10,
+      earF: 8,
+      earLift: 2,
+      tuft: 'up',
+      tuftY: -1,
+      scarf: [60, 11, 1.5, 1],
       eyes: 'open',
+      mouth: 'open'
+    }),
+    hamPose({
+      squash: 1,
+      headSquash: 0.3,
+      armN: [7, 3],
+      armF: [2, 3],
+      earN: -5,
+      earF: -4,
+      scarf: [48, 12, 1.2, 2],
       mouth: 'smile'
     }),
-    heroPose({ squash: 0.9, earLift: 0.4, scarfAngle: 40, scarfPhase: 2, arm: [0, 11, 4, 15.5] })
-  ].map(drawHero)
-)
+    hamPose({ squash: 0.3, earN: 3, earF: 2, scarf: [40, 12, 1, 3] })
+  ])
 
-const bite = memo(() =>
-  [
-    // 0 anticipation: the whole body pulled back and up, mouth already opening, eyes fierce
-    heroPose({
-      dx: -6,
-      bob: 3,
-      lean: -3,
-      squash: -2,
-      earTilt: -2,
-      earLift: 1.5,
-      nearFoot: [-2, 0],
-      farFoot: [-3, 0],
-      scarfAngle: 64,
-      scarfLen: 9,
-      arm: [-4, 9, -12, 7],
-      farArm: [12, 9, 15, 12],
+/** The bite: anticipation, lunge, CHOMP, recoil, chew, settle. */
+const bite = () =>
+  draw([
+    hamPose({
+      x: -2,
+      lean: -10,
+      squash: -1,
+      nod: -8,
+      armN: [-2, 4],
+      armF: [-4, 4],
+      footN: [-2, 0, 0],
+      footF: [2, 0, 0],
+      earN: 20,
+      earF: 16,
+      tuft: 'back',
+      scarf: [34, 12, 1, 0],
+      jaw: 0.6,
       eyes: 'open',
       brow: 'hard',
       mouth: 'gape'
     }),
-    // 1 lunge: thrown forward and stretched, mouth wide open, the feet left behind
-    heroPose({
-      dx: 2,
-      bob: 1,
-      lean: 1,
-      squash: 2.8,
-      earTilt: 6,
-      earLift: -0.5,
-      nearFoot: [-9, 3],
-      farFoot: [-4, 1.5],
-      nearTilt: 30,
-      scarfAngle: -4,
-      scarfLen: 10,
-      scarfWave: 2.4,
-      arm: [-3, 9, -13, 5],
-      farArm: [13, 9, 22, 6],
-      eyes: 'wide',
-      brow: 'angry',
+    // the lunge: a smear frame, the body drawn out along its path, feet left behind, speed streaks trailing
+    hamPose({
+      x: 3,
+      y: 1,
+      lean: 26,
+      squash: 0.4,
+      smear: 4,
+      nod: 4,
+      armN: [9, -3],
+      armF: [9, -4],
+      footN: [-12, 1.5, 58],
+      footF: [-8, 0.5, 38],
+      earN: 48,
+      earF: 42,
+      tuft: 'back',
+      scarf: [-4, 18, 2.4, 1],
+      jaw: 1.2,
+      eyes: 'open',
+      brow: 'hard',
       mouth: 'bite'
     }),
-    // 2 CHOMP: furthest reach, squashed by the impact, jaws snapped shut on the teeth, ears flung forward
-    heroPose({
-      dx: 5,
-      lean: 1,
-      squash: -1.2,
-      earTilt: -5,
-      earLift: 2,
-      nearFoot: [-6, 0.5],
-      farFoot: [0, 0],
-      scarfAngle: -28,
-      scarfLen: 12,
-      scarfWave: 2,
-      scarfPhase: 1,
-      arm: [-3, 9, 5, 8],
-      farArm: [12, 9, 23, 10],
+    hamPose({
+      x: 3,
+      y: -0.5,
+      lean: 16,
+      squash: 2.2,
+      headSquash: 0.6,
+      nod: 6,
+      armN: [8, 0],
+      armF: [8, -1],
+      footN: [-6, 0, 10],
+      footF: [-1, 0, 0],
+      earN: -20,
+      earF: -10,
+      tuft: 'up',
+      scarf: [-48, 14, 2, 2.6],
+      jaw: 0.5,
       eyes: 'squint',
       brow: 'hard',
       mouth: 'chomp'
     }),
-    // 3 follow-through: recoiling, chewing, the scarf and ears catch up
-    heroPose({
-      dx: 2,
-      lean: -1,
-      squash: 0.9,
-      earTilt: 3,
-      earLift: 2,
-      nearFoot: [-3, 0],
-      farFoot: [3, 0],
-      scarfAngle: -22,
-      scarfLen: 10,
-      scarfWave: 2.6,
-      scarfPhase: 2.4,
-      arm: [-3, 11, 0, 16],
-      eyes: 'happy',
-      mouth: 'grin',
-      puff: 0.6
-    }),
-    // 4 settling back to the idle() pose
-    heroPose({
-      dx: 2,
-      squash: 0.3,
-      earTilt: 0,
-      earLift: 0.8,
-      scarfAngle: 38,
-      scarfPhase: 3,
-      arm: [0, 11, 4, 15],
-      eyes: 'open',
-      mouth: 'smile'
-    })
-  ].map(drawHero)
-)
-
-const hurt = memo(() =>
-  [
-    heroPose({
-      bob: 2,
-      dx: -3,
-      lean: -3,
+    // the recoil overshoots backward
+    hamPose({
+      x: 0,
+      lean: -9,
       squash: -1.2,
-      earTilt: -2,
-      earLift: 2,
-      nearFoot: [-6, 2],
-      farFoot: [7, 3],
-      scarfAngle: -110,
-      scarfLen: 12,
-      scarfWave: 2,
-      arm: armV(5),
-      farArm: farArmV(6),
-      eyes: 'hurt',
-      mouth: 'open'
+      nod: -7,
+      armN: [6, 3],
+      armF: [3, 3],
+      footN: [-2, 0, 0],
+      footF: [2, 0, -6],
+      earN: 22,
+      earF: 18,
+      scarf: [8, 13, 1.6, 3.6],
+      jaw: 0.2,
+      eyes: 'half',
+      mouth: 'grit'
     }),
-    heroPose({
-      bob: 1,
-      dx: -4,
-      lean: -3,
-      squash: 1,
-      earTilt: -1,
-      earLift: 0.5,
-      nearFoot: [5, 0.5],
-      farFoot: [8, 1.5],
-      scarfAngle: -70,
-      scarfLen: 12,
-      scarfWave: 1.5,
-      scarfPhase: 2,
-      arm: [-12, 8, -19, 2],
-      farArm: [13, 8, 22, 4],
-      eyes: 'hurt',
-      mouth: 'o'
-    })
-  ].map(drawHero)
-)
-
-// ------------------------------------------------------------------------------------------------ tumble
-
-/** A pixel grid turned clockwise by `q` quarter turns (negative = counter-clockwise); lossless, so never ragged. */
-function rotGrid(rows: readonly string[], q: number): string[] {
-  let g = [...rows]
-  for (let n = ((q % 4) + 4) % 4; n > 0; n--) {
-    const h = g.length
-    const w = g[0].length
-    g = Array.from({ length: w }, (_, r) => Array.from({ length: h }, (_, c) => g[h - 1 - c][r]).join(''))
-  }
-  return g
-}
-
-/**
- * One tumble frame. The ball is turned by whole quarter turns (`q`, counter-clockwise when negative), but nothing is
- * rotated as a picture: every feature has an anchor in the body's own frame (u right, v down, as in `drawHero`),
- * the anchor is turned around the body centre, and the feature is painted at the new spot with the normal tools —
- * the ball is shaded again from the top-left, patches follow the turned ball, eyes, mouth and clasp are
- * quarter-turned stamps. Limbs and the scarf are placed in screen space so they can flail freely.
- */
-interface Tumble {
-  cx: number
-  cy: number
-  q: number
-  eyes: Eyes
-  mouth: Mouth
-  /** How far the near and far ear are thrown out from the head (px). */
-  ears: readonly [number, number]
-  /** Scarf: screen direction (0 streams left, 90 down, negative up), length, ripple, phase. */
-  scarf: readonly [number, number, number, number]
-  /** Hands and feet as screen offsets from the body centre; feet also get a tilt in degrees. */
-  nearArm: Pt
-  farArm: Pt | null
-  nearFoot: readonly [number, number, number]
-  farFoot: readonly [number, number, number]
-}
-
-function drawTumble(t: Tumble): Raster {
-  const g = new Painter(64, 64)
-  const { cx, cy } = t
-  const c = Math.round(Math.cos((t.q * Math.PI) / 2))
-  const s = Math.round(Math.sin((t.q * Math.PI) / 2))
-  const swap = s !== 0
-  /** Body-frame point to screen. */
-  const P = (u: number, v: number): Pt => [cx + c * u - s * v, cy + s * u + c * v]
-  /** Screen pixel centre to body frame. */
-  const back = (x: number, y: number): Pt => {
-    const dx = x + 0.5 - cx
-    const dy = y + 0.5 - cy
-    return [c * dx + s * dy, -s * dx + c * dy]
-  }
-  const inE = (u: number, v: number, eu: number, ev: number, ru: number, rv: number) =>
-    ((u - eu) / ru) ** 2 + ((v - ev) / rv) ** 2 <= 1.0001
-  /** Stamps a body-frame grid (centre at (u0, v0)) turned with the body. */
-  const place = (l: Raster, rows: readonly string[], u0: number, v0: number, key: Record<string, number>) => {
-    const grid = rotGrid(rows, t.q)
-    const [x, y] = P(u0, v0)
-    l.stamp(grid, Math.round(x - grid[0].length / 2), Math.round(y - grid.length / 2), key)
-  }
-  const out = (u: number, v: number, push: number): Pt => {
-    const r = Math.hypot(u, v)
-    return P(u * (1 + push / r), v * (1 + push / r))
-  }
-
-  const earFar = out(11, -14, t.ears[1])
-  const earNear = out(-12, -13, t.ears[0])
-  g.add(-3, (l) => ear(l, earFar[0], earFar[1], 6.5, true))
-  g.add(-3, (l) => ear(l, earNear[0], earNear[1], 7.5, false))
-
-  /** The end of a limb of at most `max` px from `from`, pointing at the screen offset `to` (from the body centre). */
-  const reach = (from: Pt, to: readonly number[], max: number): Pt => {
-    const dx = cx + to[0] - from[0]
-    const dy = cy + to[1] - from[1]
-    const k = Math.min(1, max / Math.hypot(dx, dy))
-    return [from[0] + dx * k, from[1] + dy * k]
-  }
-  const shoulderN = P(2, 10)
-  const shoulderF = P(12, 8)
-  if (t.farArm) {
-    const farArm = t.farArm
-    g.add(-1, (l) => limb(l, shoulderF, reach(shoulderF, farArm, 11), FAR))
-  }
-  const hipN = P(-6, 16)
-  const hipF = P(7, 16)
-  g.add(-3, (l) => {
-    const [fx, fy] = reach(hipF, t.farFoot, 8)
-    leg(l, hipF, [fx, fy], FAR)
-    paw(l, fx, fy, t.farFoot[2], FAR, false)
-  })
-  const footN = reach(hipN, t.nearFoot, 8)
-  g.add(-0.7, (l) => leg(l, hipN, footN, PINK))
-
-  const knot = P(-16, 10)
-  const [angle, len, wave, phase] = t.scarf
-  g.add(-2.5, (l) => scarfTail(l, knot[0], knot[1] + 1, angle + 24, len - 2, wave, phase + 1.7, SCARF_FAR))
-  g.add(-2, (l) => scarfTail(l, knot[0], knot[1], angle, len, wave, phase, SCARF))
-
-  // the ball, shaded again from the top-left, with the cream lower face, belly and scarf band turned with it
-  g.add(0, (l) => {
-    const rxs = swap ? 18 : 19
-    const rys = swap ? 19 : 18
-    for (let y = Math.floor(cy - rys); y <= Math.ceil(cy + rys); y++)
-      for (let x = Math.floor(cx - rxs); x <= Math.ceil(cx + rxs); x++) {
-        const nx = (x + 0.5 - cx) / rxs
-        const ny = (y + 0.5 - cy) / rys
-        const q2 = nx * nx + ny * ny
-        if (q2 > 1.0001) continue
-        const idx = shadeIndex(nx, ny, Math.sqrt(Math.max(0, 1 - q2)))
-        const [u, v] = back(x, y)
-        let col: number = PINK[idx]
-        if (inE(u, v, 6, 14.5, 10, 4) || inE(u, v, 10.5, 4.5, 9.5, 6)) col = CREAM[idx]
-        const row = Math.floor(v - (8 + Math.sin(((u + 19) / 38) * Math.PI) * 3))
-        if (row >= 0 && row < 4) col = SCARF[Math.max(0, Math.min(3, idx + [-1, 0, 0, 1][row]))]
-        l.set(x, y, col)
-      }
-    const [bx, by] = P(15.5, 5)
-    ball(l, bx, by, swap ? 4.4 : 4.6, swap ? 4.6 : 4.4, CREAM, false)
-  })
-  const knotC = P(-16, 11)
-  g.add(0.2, (l) => ball(l, knotC[0], knotC[1], 2.7, 2.7, SCARF, false))
-  g.add(1, (l) =>
-    place(l, ['..h..', '.yyy.', 'yyyyy', '.yYy.', '.Y.Y.'], 10.5, 12.5, { h: GOLD[0], y: GOLD[1], Y: GOLD[2] })
-  )
-  if (t.mouth === 'bite') g.add(0.9, (l) => ball(l, ...P(13, 11.5), 7.5, 4.5, CREAM, false))
-
-  g.add(
-    1,
-    (l) => {
-      const [near, far] = EYE_SHAPES[t.eyes]
-      place(l, near, 5.5, -3.5, EYE_KEY)
-      place(l, far, 15, -2.5, EYE_KEY)
-      place(l, ['hee', 'eee'], 12.5, 2.5, { h: EAR[0], e: EAR[1] })
-      const rows = MOUTHS[t.mouth]
-      place(l, rows, 12.5 - Math.floor(rows[0].length / 2) + rows[0].length / 2, 4.5 + rows.length / 2, MOUTH_KEY)
-      const [w1, w2] = [P(20, 3), P(23, 2)]
-      l.line(w1[0], w1[1], w2[0], w2[1], CREAM[3])
-      const [w3, w4] = [P(20, 6), P(23, 7)]
-      l.line(w3[0], w3[1], w4[0], w4[1], CREAM[3])
-      const [kx, ky] = P(2, 5.5)
-      l.ellipse(kx, ky, swap ? 1.8 : 3, swap ? 3 : 1.8, C.blush)
-    },
-    false
-  )
-  g.add(2, (l) => paw(l, footN[0], footN[1], t.nearFoot[2], PINK, true))
-  g.add(3, (l) => limb(l, shoulderN, reach(shoulderN, t.nearArm, 11), PINK))
-  return g.render()
-}
-
-const die = memo(() => [
-  // 0 the hit: knocked up and back, arms flung out
-  drawHero(
-    heroPose({
-      bob: 3,
-      dx: -2,
-      lean: -3,
-      squash: -1.5,
-      earTilt: -2,
-      earLift: 2.5,
-      nearFoot: [-6, 3],
-      farFoot: [6, 3],
-      scarfAngle: -120,
-      scarfLen: 10,
-      arm: armV(7, 1),
-      farArm: farArmV(8),
-      eyes: 'hurt',
-      mouth: 'open'
-    })
-  ),
-  // 1–3 head over heels: a ball seen at 90°, 180° and 270°, limbs flailing
-  drawTumble({
-    cx: 32,
-    cy: 28,
-    q: -1,
-    eyes: 'hurt',
-    mouth: 'open',
-    ears: [2, 2],
-    scarf: [110, 10, 1.5, 0],
-    nearArm: [24, -12],
-    farArm: [-18, -22],
-    nearFoot: [23, 13, 25],
-    farFoot: [21, -14, -35]
-  }),
-  drawTumble({
-    cx: 30,
-    cy: 31,
-    q: -2,
-    eyes: 'hurt',
-    mouth: 'o',
-    ears: [1, 3],
-    scarf: [-60, 11, 2, 1.5],
-    nearArm: [24, -14],
-    farArm: [-22, -14],
-    nearFoot: [14, -26, 70],
-    farFoot: [-8, -28, 40]
-  }),
-  drawTumble({
-    cx: 31,
-    cy: 34,
-    q: -3,
-    eyes: 'swirl',
-    mouth: 'o',
-    ears: [3, 1],
-    scarf: [20, 11, 2, 3],
-    nearArm: [-24, -14],
-    farArm: [24, 8],
-    nearFoot: [-26, -12, -30],
-    farFoot: [-26, 14, 20]
-  }),
-  // 4 flat on his back, limbs in the air, eyes swirling
-  drawTumble({
-    cx: 31,
-    cy: 39,
-    q: -1,
-    eyes: 'swirl',
-    mouth: 'o',
-    ears: [0, 0],
-    scarf: [165, 9, 1, 0.5],
-    nearArm: [20, -20],
-    farArm: [-20, -16],
-    nearFoot: [22, -10, 40],
-    farFoot: [24, -22, 15]
-  }),
-  // 5 limp, tongue out
-  drawTumble({
-    cx: 31,
-    cy: 39,
-    q: -1,
-    eyes: 'swirl',
-    mouth: 'tongue',
-    ears: [-1, -1],
-    scarf: [172, 8, 0.8, 1],
-    nearArm: [18, 8],
-    farArm: [-22, 6],
-    nearFoot: [24, -6, 70],
-    farFoot: [23, -17, 55]
-  })
-])
-
-const cheer = memo(() =>
-  [
-    // crouch
-    heroPose({
-      squash: 2.6,
-      earLift: -0.5,
-      nearFoot: [-4, 0],
-      farFoot: [4, 0],
-      scarfAngle: 45,
-      arm: [-6, 10, -9, 15],
-      farArm: [13, 10, 18, 15],
-      eyes: 'happy',
-      mouth: 'grin'
-    }),
-    // spring up
-    heroPose({
-      bob: 3,
-      squash: -3,
-      earLift: -1,
-      nearFoot: [-4, 2],
-      farFoot: [0, 3],
-      scarfAngle: 70,
-      scarfWave: 1.5,
-      arm: armV(10),
-      farArm: farArmV(10),
-      eyes: 'happy',
-      mouth: 'wide'
-    }),
-    // apex
-    heroPose({
-      bob: 7,
-      squash: -1.2,
-      earLift: 1.5,
-      nearFoot: [-3, 5],
-      farFoot: [3, 6],
-      scarfAngle: -25,
-      scarfLen: 13,
-      scarfWave: 2.2,
-      scarfPhase: 1.5,
-      arm: armV(12, 2),
-      farArm: farArmV(12, 2),
-      eyes: 'happy',
-      mouth: 'wide'
-    }),
-    // coming down
-    heroPose({
-      bob: 4,
-      squash: -1.8,
-      earLift: 2.5,
-      nearFoot: [-1, 3],
-      farFoot: [4, 2],
-      scarfAngle: -48,
-      scarfLen: 13,
-      scarfWave: 2.5,
-      scarfPhase: 3,
-      arm: armV(9, 1),
-      farArm: farArmV(9, 1),
-      eyes: 'happy',
-      mouth: 'wide'
-    }),
-    // landing squash
-    heroPose({
-      squash: 2.2,
-      earLift: 0,
-      nearFoot: [-5, 0],
-      farFoot: [5, 0],
-      scarfAngle: 60,
-      arm: armV(6, 1),
-      farArm: farArmV(6, 1),
-      eyes: 'happy',
-      mouth: 'wide'
-    }),
-    // rebound
-    heroPose({
-      bob: 1,
-      squash: -1,
-      earLift: 1.2,
-      nearFoot: [-2, 1],
-      farFoot: [2, 1],
-      scarfAngle: 5,
-      scarfWave: 1.8,
-      scarfPhase: 2,
-      arm: armV(8),
-      farArm: farArmV(8),
-      eyes: 'happy',
-      mouth: 'wide'
-    })
-  ].map(drawHero)
-)
-
-const swim = memo(() =>
-  frames(4, (i, t) => {
-    const a = t * TAU
-    return heroPose({
-      bob: 2 + Math.sin(a) * 0.9,
-      squash: Math.cos(a) * 0.6,
-      dx: 1,
+    hamPose({
+      x: 1,
       lean: 3,
-      earTilt: 2,
-      earLift: [0, 0.8, 0, -0.8][i],
-      nearFoot: [-8 + Math.cos(a) * 2.5, 2.5 + Math.sin(a) * 2.5 + 2],
-      farFoot: [-4 - Math.cos(a) * 2.5, 2.5 - Math.sin(a) * 2.5 + 2],
-      scarfAngle: 8 + Math.sin(a + 1) * 6,
-      scarfLen: 11,
-      scarfWave: 2,
-      scarfPhase: a,
-      arm: [-2, 10, 3 + Math.cos(a) * 4, 14 + Math.sin(a) * 2.5],
-      farArm: [12, 9, 17 - Math.cos(a) * 4, 13 - Math.sin(a) * 2.5],
-      eyes: 'open',
-      brow: 'none',
-      mouth: 'flat',
-      puff: 1.2
+      squash: 0.6,
+      nod: 3,
+      puff: 1,
+      earN: 3,
+      earF: 2,
+      scarf: [30, 12, 1.2, 4.6],
+      eyes: 'happy',
+      mouth: 'flat'
+    }),
+    hamPose({ puff: 0.4, earN: 1, scarf: [38, 12, 1, 5.6], eyes: 'happy', mouth: 'smile' })
+  ])
+
+/** Knocked back: limbs out, eyes > <; recoil; recover with a wince. */
+const hurt = () =>
+  draw([
+    hamPose({
+      ...LONG,
+      x: 3,
+      air: 3,
+      lean: -22,
+      squash: -1.6,
+      headSquash: -0.5,
+      head: [-1, 0],
+      nod: -14,
+      armN: [-14, -3],
+      armF: [15, -3],
+      open: true,
+      footN: [6, 3, -28],
+      footF: [9, 4, -32],
+      earN: -30,
+      earF: -26,
+      earLift: 1,
+      tuft: 'up',
+      scarf: [-66, 14, 2.4, 0],
+      eyes: 'hurt',
+      brow: 'worried',
+      mouth: 'open'
+    }),
+    hamPose({
+      x: -2,
+      lean: -8,
+      squash: 2,
+      headSquash: 0.6,
+      nod: 7,
+      armN: [-8, 1],
+      armF: [9, 2],
+      footN: [1, 0, 0],
+      footF: [4, 0, -8],
+      earN: -6,
+      earF: -5,
+      scarf: [14, 12, 1.6, 1.6],
+      eyes: 'hurt',
+      brow: 'worried',
+      mouth: 'grit'
+    }),
+    hamPose({
+      x: -1,
+      lean: -3,
+      squash: 0.3,
+      armN: [6, 3],
+      armF: [2, 3],
+      earN: 6,
+      earF: 5,
+      scarf: [32, 12, 1.2, 3],
+      eyes: 'half',
+      brow: 'worried',
+      mouth: 'grit'
     })
-  })
-)
+  ])
+
+/** Knock-out: flung back, three tumbling quarter turns, landing on his back with a bounce, flat out and dizzy. */
+const die = () => {
+  const flail = (i: number) =>
+    hamPose({
+      armN: [-6 + i * 2, -6 + i * 3],
+      armF: [8 - i * 3, -8 + i * 2],
+      footN: [5 - i * 2, 4, -30 + i * 20],
+      footF: [7, 6 - i, -40],
+      earN: -20 + i * 15,
+      earF: -16 + i * 12,
+      tuft: 'up',
+      scarf: [-40 + i * 25, 13, 2.2, i * 1.7],
+      eyes: 'hurt',
+      brow: 'worried',
+      mouth: 'open'
+    })
+  /**
+   * Flat out on his back (designed, not a turned standing pose): the rig lies with the head at the left and the
+   * belly up, the head tipped back, both feet up in the air at the right, the arms flopped down onto the ground, the
+   * scarf lying along the ground and the tuft flattened. `twitch` kicks the feet for the sustained loop.
+   */
+  const flat = (twitch: number) =>
+    hamPose({
+      lie: true,
+      face: 0,
+      turn: -90,
+      air: -7,
+      x: 4,
+      squash: 0.6,
+      nod: -40,
+      head: [-6, 7],
+      armN: [-7, -5],
+      armF: [-3, -8],
+      footN: [11 + twitch, 0.5 - twitch, -45 + twitch * 14],
+      footF: [6 - twitch, -0.5 + twitch, -40 - twitch * 10],
+      earN: 34,
+      earF: 30,
+      tuft: 'back',
+      tail: 1,
+      scarf: [92, 13, 0.4, 1],
+      eyes: 'dizzy',
+      mouth: 'tongue'
+    })
+  return draw([
+    { ...flail(0), turn: -14, air: 3, x: -2, lean: -12 },
+    { ...flail(1), turn: -90, air: 1, x: -1 },
+    { ...flail(2), turn: -180, air: 1.5, x: 0 },
+    { ...flail(1), turn: -270, air: 0, x: 1 },
+    // lands: squashed flat, feet flung up, eyes still > <
+    { ...flat(0.6), air: -6, squash: 2, headSquash: 0.6, eyes: 'hurt', mouth: 'open', earN: 16, earF: 12 },
+    // the bounce
+    { ...flat(-0.4), air: -4.5, squash: -0.8, headSquash: -0.3, eyes: 'hurt', mouth: 'o', earN: 44, earF: 38 },
+    // out cold: the feet twitch, the spirals turn
+    flat(0),
+    { ...flat(1), eyes: 'dizzy2' }
+  ])
+}
+
+/** Victory: crouch, spring up with both arms in a V, float, come down, squash, rebound. */
+const cheer = () => {
+  // the V: both arms raised behind the head, paws out beside and above the ears
+  const V_N: Hand = [-18, -13]
+  const V_F: Hand = [17, -12]
+  const keys: Key<HamPose>[] = [
+    {
+      at: 0,
+      pose: {
+        squash: 3.2,
+        headSquash: 1,
+        y: -1.5,
+        air: 0,
+        lean: 6,
+        nod: 9,
+        up: false,
+        armN: [5, 4],
+        armF: [2, 5],
+        footN: [0, 0, 0]
+      }
+    },
+    {
+      at: 1,
+      pose: {
+        squash: -3,
+        headSquash: -1,
+        y: 0,
+        air: 3,
+        lean: -6,
+        nod: -6,
+        up: true,
+        armN: [-17, -10],
+        armF: [16, -9],
+        footN: [-2, 1, 36]
+      }
+    },
+    {
+      at: 2,
+      pose: { squash: -1.4, headSquash: -0.4, air: 6.5, nod: -8, armN: V_N, armF: V_F, footN: [0, 2.5, 24] },
+      ease: ease.out
+    },
+    { at: 3, pose: { squash: 0, headSquash: 0, air: 8, lean: -4, nod: -8, footN: [1, 3, 16] } },
+    { at: 4, pose: { air: 7.5, nod: -6, armN: [-18, -12], armF: [17, -11] }, ease: ease.inOut },
+    {
+      at: 5,
+      pose: { air: 3.5, squash: -1.2, lean: 0, nod: -2, up: false, armN: [-9, -4], armF: [9, -3], footN: [0, 0.5, 10] },
+      ease: ease.in
+    },
+    {
+      at: 6,
+      pose: {
+        air: 0,
+        squash: 3,
+        headSquash: 1,
+        y: -1.5,
+        lean: 5,
+        nod: 8,
+        armN: [-5, -3],
+        armF: [7, -3],
+        footN: [0, 0, 0]
+      }
+    },
+    { at: 7, pose: { squash: -1, headSquash: -0.3, y: 0, lean: 2, nod: 2, armN: [2, -1], armF: [4, -1] } }
+  ]
+  const poses = sample(hamPose({ ...LONG, eyes: 'happy', mouth: 'wide' }), keys, N)
+  const late = lag(
+    poses.map((p) => p.air),
+    { stiffness: 0.35, damping: 0.4, loop: true }
+  )
+  return draw(
+    poses.map((p, i) => ({
+      ...p,
+      footF: [p.footN[0] + 1, p.footN[1], p.footN[2]] as Foot,
+      earN: 4 + late[i] * 4,
+      earF: 3 + late[i] * 3.5,
+      earLift: clamp(-late[i] * 0.6, -1, 2),
+      tuft: late[i] > 1 ? ('back' as const) : late[i] < -1 ? ('up' as const) : ('neutral' as const),
+      scarf: [50 + late[i] * 9, 12, 1.6, i * 0.9] as const,
+      mouth: i === 0 || i === 6 ? ('grin' as const) : ('wide' as const)
+    }))
+  )
+}
+
+/** Paddling: tilted forward, cheeks puffed, arms and feet paddling in alternation, the scarf trailing. */
+const swim = () => {
+  const n = 6
+  const bob = Array.from({ length: n }, (_, i) => Math.sin(cyc(i, n)))
+  const late = lag(bob, { stiffness: 0.3, damping: 0.4, loop: true })
+  return draw(
+    bob.map((b, i) => {
+      const a = cyc(i, n)
+      return hamPose({
+        y: 2 + Math.round(b * 0.6),
+        lean: 26,
+        nod: -10,
+        armN: [5 + Math.cos(a) * 5, 3 + Math.sin(a) * 3],
+        armF: [5 - Math.cos(a) * 4, 3 - Math.sin(a) * 2.5],
+        footN: [-7 + Math.cos(a) * 3, 4 + Math.sin(a) * 2, 50],
+        footF: [-4 - Math.cos(a) * 3, 4 - Math.sin(a) * 2, 45],
+        earN: 18 + late[i] * 6,
+        earF: 15 + late[i] * 5,
+        tuft: 'back',
+        scarf: [4 + late[i] * 6, 13, 1.4, a],
+        tail: late[i],
+        puff: 1.3,
+        eyes: 'open',
+        brow: 'hard',
+        mouth: 'flat'
+      })
+    })
+  )
+}
 
 export const sheets: SheetModule = {
   hero: () => ({
-    idle: lazyAnim(idle, 6, true),
-    blink: lazyAnim(blink, 14, false),
-    wait: lazyAnim(wait, 6, false),
+    idle: lazyAnim(idle, 8, true),
+    blink: lazyAnim(blink, 8, true),
+    wait: lazyAnim(wait, 8, false, { hold: [1, 1, 4, 1, 1, 1, 1, 1, 2, 1, 1, 1] }),
     run: lazyAnim(run, 14, true),
-    skid: lazyAnim(skid, 12, false),
-    jump: lazyAnim(jump, 12, false),
-    fall: lazyAnim(fall, 10, true),
+    turn: lazyAnim(turn, 20, false),
+    skid: lazyAnim(skid, 14, false, { sustain: 2 }),
+    jump: lazyAnim(jump, 14, false, { sustain: 2 }),
+    apex: lazyAnim(apex, 10, false),
+    fall: lazyAnim(fall, 12, true),
     land: lazyAnim(land, 18, false),
     bite: lazyAnim(bite, 24, false),
-    hurt: lazyAnim(hurt, 10, false),
-    die: lazyAnim(die, 10, false),
-    cheer: lazyAnim(cheer, 10, true),
-    swim: lazyAnim(swim, 8, true)
+    hurt: lazyAnim(hurt, 12, false),
+    die: lazyAnim(die, 10, false, { sustain: 2 }),
+    cheer: lazyAnim(cheer, 12, true),
+    swim: lazyAnim(swim, 10, true)
   })
 }

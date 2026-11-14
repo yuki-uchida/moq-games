@@ -75,7 +75,7 @@ export class StageView {
     this.backdrop = new BackdropView(world.theme, this.camera.y, this.reducedMotion)
     this.water = new WaterView(world)
     this.props = new PropsView(world, this.fx)
-    this.actors = new ActorsView(world, this.fx, options.onFootstep)
+    this.actors = new ActorsView(world, this.fx, options.onFootstep, this.reducedMotion)
     const fx = this.fx
     this.api = {
       spawn: (name, x, y, o) => fx.spawn(name, x, y, o),

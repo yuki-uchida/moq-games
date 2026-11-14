@@ -15,10 +15,14 @@ changing a sheet, a tileset or a backdrop. Read it together with `../../DESIGN.m
    node scripts/hoshi-no-hamham-art.mjs --scale 6 --anim idle,run hero   # a close look at two clips
    node scripts/hoshi-no-hamham-art.mjs --scale 3 hero                   # the whole sheet
    node scripts/hoshi-no-hamham-art.mjs terrain:meadow scene:meadow      # terrain sample and a composed scene
+   node scripts/hoshi-no-hamham-art.mjs --draft --gif --onion --motion hero   # see the animation: GIFs, onion skins, numbers
+   node scripts/hoshi-no-hamham-art.mjs --draft --game hero               # every clip at 2x (game size) on four grounds
+   node scripts/hoshi-no-hamham-art.mjs --draft --lineup                  # the cast side by side on one ground line
+   node scripts/hoshi-no-hamham-art.mjs --draft --stage cave --stage castle hero   # the clips over a world's backdrop
    ```
 
    Output goes to `.build/hoshi-no-hamham-art/`: `<id>.png` (enlarged, anchor marked in magenta), `<id>@1.png`
-   (native size on the grounds of three worlds), `<id>.txt` (row index), `pending.txt` (what is still undrawn, or `nothing pending`).
+   (native size on the grounds of three worlds), `<id>/<clip>.gif` and `<id>/all.gif` (`--gif`, real timing), `<id>.onion.png` (`--onion`), `<id>.motion.md` (`--motion`, thresholds in `quality.ts`), `<id>@2.png` (`--game`), `lineup.png` and `lineup.txt` (`--lineup`), `<id>@<theme>.png` (`--stage`), `<id>.txt` (row index), `pending.txt` (what is still undrawn, or `nothing pending`).
    Open the PNGs and judge them as a player would. Nobody ships pixel art they have not looked at: expect five to
    ten rounds of draw → export → look → fix per character.
 

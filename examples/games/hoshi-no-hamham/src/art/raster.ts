@@ -555,9 +555,14 @@ export const farRamp = (r: Ramp): Ramp => [r[1], r[2], r[3], r[3], r[4]]
  */
 export class Painter {
   private list: { depth: number; seq: number; draw: (l: Raster) => void; line: boolean }[] = []
+  /**
+   * `soft`: contours that end up inside the figure (an arm across the belly, a muzzle on the face) are drawn in
+   * the deep colour of their own material instead of the ink line, so only the silhouette carries the dark line.
+   */
   constructor(
     readonly w = 64,
-    readonly h = 64
+    readonly h = 64,
+    private options: { soft?: boolean } = {}
   ) {}
 
   /** `line: false` composites the part without its own outline (details painted onto a lower part). */
@@ -569,6 +574,9 @@ export class Painter {
   render(): Raster {
     const out = new Raster(this.w, this.h)
     const layer = new Raster(this.w, this.h)
+    const soft = this.options.soft === true
+    /** Per output pixel: 0 = no contour, else the colour an inner contour takes there. */
+    const inner = soft ? new Uint16Array(this.w * this.h) : undefined
     this.list.sort((a, b) => a.depth - b.depth || a.seq - b.seq)
     for (const it of this.list) {
       layer.data.fill(0)
@@ -577,9 +585,31 @@ export class Painter {
       if (!b) continue
       // Outline only inside the part's bounding box (much cheaper than whole-frame passes).
       const crop = layer.crop(b.x - 2, b.y - 2, b.w + 4, b.h + 4)
+      const bare = inner && it.line ? crop.clone() : undefined
       if (it.line) outline(crop)
       out.blit(crop, b.x - 2, b.y - 2)
+      if (!inner) continue
+      for (let y = 0; y < crop.h; y++)
+        for (let x = 0; x < crop.w; x++) {
+          if (!crop.get(x, y)) continue
+          const ox = b.x - 2 + x
+          const oy = b.y - 2 + y
+          if (ox < 0 || oy < 0 || ox >= this.w || oy >= this.h) continue
+          let tone = 0
+          if (bare && !bare.get(x, y)) {
+            const from = bare.get(x - 1, y) || bare.get(x, y - 1) || bare.get(x + 1, y) || bare.get(x, y + 1)
+            tone = from ? OUTLINE_OF[from].deep : 0
+          }
+          inner[oy * this.w + ox] = tone
+        }
     }
+    if (inner)
+      for (let y = 0; y < this.h; y++)
+        for (let x = 0; x < this.w; x++) {
+          const tone = inner[y * this.w + x]
+          if (!tone) continue
+          if (out.get(x - 1, y) && out.get(x + 1, y) && out.get(x, y - 1) && out.get(x, y + 1)) out.set(x, y, tone)
+        }
     return out
   }
 }
