@@ -32,6 +32,10 @@ function collectErrors(page: Page) {
 
 const theme = (page: Page) => page.evaluate(() => window.__hamham!.app.audio.theme)
 const layer = (page: Page) => page.evaluate(() => window.__hamham!.app.audio.layer)
+/**
+ * Waits for the music to be `name`. The app changes the music in the task after the one that shows a screen
+ * (app.ts, `music`), so a screen can be up a moment before its theme is the one asked for.
+ */
 const waitForTheme = (page: Page, name: string) =>
   page.waitForFunction((n) => window.__hamham?.app.audio.theme === n, name, { timeout: 10_000 })
 
@@ -79,20 +83,20 @@ test('the first click unlocks the audio and the music follows the screens', asyn
   const errors = collectErrors(page)
   await openGame(page)
   await expect(page.getByRole('heading', { name: '星のハムハム' })).toBeVisible()
-  expect(await theme(page)).toBe('title')
+  await waitForTheme(page, 'title')
 
   await page.getByRole('button', { name: 'はじめから' }).click()
   await page.waitForFunction(() => window.__hamham?.app.audio.ctx?.state === 'running')
   await expect(page.locator('#story-screen')).toBeVisible()
-  expect(await theme(page)).toBe('story')
+  await waitForTheme(page, 'story')
 
   await pageThroughStory(page)
   await expect(page.locator('#select-screen')).toBeVisible()
-  expect(await theme(page)).toBe('select')
+  await waitForTheme(page, 'select')
 
   await page.locator('.stage-card').first().click()
   await expect(page.locator('#story-screen')).toBeVisible()
-  expect(await theme(page)).toBe('story')
+  await waitForTheme(page, 'story')
   await pageThroughStory(page)
   await expect(page.locator('#hud')).toBeVisible()
   await waitForTheme(page, 'meadow')
