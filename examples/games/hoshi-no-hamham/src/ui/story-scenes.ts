@@ -5,7 +5,7 @@
  * Coordinates are scene pixels of the diorama (SCENE_W × SCENE_H). `x` is the anchor column of the sprite;
  * `lift` raises the anchor above the ground line (cell props with a top-left anchor use `lift: 64`).
  */
-import type { ThemeId } from '../art/contract'
+import type { Neighbour, ThemeId, TileQuery } from '../art/contract'
 
 export const SCENE_W = 320
 export const SCENE_H = 160
@@ -505,4 +505,55 @@ export const CREDITS_SHOT: Shot = ENDING[ENDING.length - 1]
 /** The result screen's backdrop: the stage's empty world (no one on it), a different stretch for each stage. */
 export function resultShot(theme: ThemeId, stageNo: number): Shot {
   return { theme, scroll: (stageNo * 97) % 400, figures: [] }
+}
+
+// ------------------------------------------------------------------------------------------ what a shot draws
+
+/** One clip of a sheet. */
+export interface ClipRef {
+  sheet: string
+  clip: string
+}
+
+/**
+ * Art a picture or a screen draws: clips, whole sheets, terrain tiles and world backdrops. Lists like this are what
+ * the app asks the art workers for ahead of time, so that opening a screen never paints on the page.
+ */
+export interface ArtList {
+  clips: readonly ClipRef[]
+  /** Every clip of these sheets. */
+  sheets?: readonly string[]
+  tiles: readonly TileQuery[]
+  backdrops: readonly ThemeId[]
+}
+
+/** Top of a solid tile with open sky above and ground on both sides. */
+const TOP: readonly Neighbour[] = ['empty', 'empty', 'solid', 'solid', 'solid', 'solid', 'solid', 'empty']
+
+/** The tiles of a shot's ground strip, left to right: the strip covers the whole width of any frame. */
+export function groundTiles(shot: Shot): TileQuery[] {
+  const first = Math.floor((shot.scroll ?? 0) / 64)
+  const tiles: TileQuery[] = []
+  for (let i = 0; i * 64 < SCENE_W + 64; i++)
+    tiles.push({ theme: shot.theme, kind: 'solid', around: TOP, tx: first + i, ty: 9 })
+  return tiles
+}
+
+/**
+ * Everything the diorama draws for a shot: its world's backdrop (whose drifting leaves are an `fx` clip), the
+ * ground strip's tiles, every figure's clip and every mark.
+ */
+export function shotArt(shot: Shot): ArtList {
+  const clips: ClipRef[] = []
+  const seen = new Set<string>()
+  const add = (sheet: string, clip: string) => {
+    const key = `${sheet}/${clip}`
+    if (seen.has(key)) return
+    seen.add(key)
+    clips.push({ sheet, clip })
+  }
+  for (const figure of shot.figures) add(figure.sheet, figure.clip)
+  for (const mark of shot.marks ?? []) add('fx', mark.clip)
+  add('fx', 'leaf')
+  return { clips, tiles: groundTiles(shot), backdrops: [shot.theme] }
 }
