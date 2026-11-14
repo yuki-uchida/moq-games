@@ -148,22 +148,58 @@ export function polygon(pts: readonly Pt[]): Shape {
     u1 = Math.max(u1, u)
     v1 = Math.max(v1, v)
   }
+  // Every edge runs from point i back to the point before it: its start, its far end's height and its run.
+  const count = pts.length
+  const ax = new Float64Array(count)
+  const ay = new Float64Array(count)
+  const by = new Float64Array(count)
+  const run = new Float64Array(count)
+  const rise = new Float64Array(count)
+  for (let i = 0, j = count - 1; i < count; j = i++) {
+    ax[i] = pts[i][0]
+    ay[i] = pts[i][1]
+    by[i] = pts[j][1]
+    run[i] = pts[j][0] - pts[i][0]
+    rise[i] = pts[j][1] - pts[i][1]
+  }
+  // Where the edges cross the height asked for last: a row of an upright frame asks for one height many times.
+  const crossings = new Float64Array(count)
+  let crossed = 0
+  let height = NaN
   return {
     box: [u0, v0, u1, v1],
     has(u, v) {
-      let inside = false
-      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-        const [ax, ay] = pts[i]
-        const [bx, by] = pts[j]
-        if (ay > v !== by > v && u < ((bx - ax) * (v - ay)) / (by - ay) + ax) inside = !inside
+      if (v !== height) {
+        height = v
+        crossed = 0
+        for (let i = 0; i < count; i++)
+          if (ay[i] > v !== by[i] > v) crossings[crossed++] = (run[i] * (v - ay[i])) / rise[i] + ax[i]
       }
+      let inside = false
+      for (let k = 0; k < crossed; k++) if (u < crossings[k]) inside = !inside
       return inside
     }
   }
 }
 
+/**
+ * How far past its box a shape may still answer yes: the ovals accept a hair more than their radius (the 1.0001
+ * and 1e-4 above), so a box is only used to rule a point out with this much room to spare.
+ */
+const BOX_SLACK = 0.05
+
 /** Everything inside any of the shapes: build one silhouette from several volumes before shading it. */
 export function union(...shapes: Shape[]): Shape {
+  const count = shapes.length
+  // The members' boxes, padded: a point outside a member's box is not asked of that member at all.
+  const edges = new Float64Array(count * 4)
+  for (let i = 0; i < count; i++) {
+    const b = shapes[i].box
+    edges[i * 4] = b[0] - BOX_SLACK
+    edges[i * 4 + 1] = b[1] - BOX_SLACK
+    edges[i * 4 + 2] = b[2] + BOX_SLACK
+    edges[i * 4 + 3] = b[3] + BOX_SLACK
+  }
   return {
     box: [
       Math.min(...shapes.map((s) => s.box[0])),
@@ -172,7 +208,10 @@ export function union(...shapes: Shape[]): Shape {
       Math.max(...shapes.map((s) => s.box[3]))
     ],
     has(u, v) {
-      for (let i = 0; i < shapes.length; i++) if (shapes[i].has(u, v)) return true
+      for (let i = 0, k = 0; i < count; i++, k += 4) {
+        if (u < edges[k] || v < edges[k + 1] || u > edges[k + 2] || v > edges[k + 3]) continue
+        if (shapes[i].has(u, v)) return true
+      }
       return false
     }
   }
@@ -201,19 +240,37 @@ export const half = (p: Pt, nu: number, nv: number, reach = 200): Shape => ({
   has: (u, v) => (u - p[0]) * nu + (v - p[1]) * nv >= 0
 })
 
-function scan(l: Raster, f: Frame, s: Shape, put: (x: number, y: number) => void) {
+/**
+ * Calls `put` for every pixel of the layer whose centre lies in the shape. Pixels that hold `skip` or `skip2` are
+ * passed over without asking the shape: the caller names the colours on which its `put` would change nothing (a
+ * fill over its own colour, a tint or a shadow on an empty pixel), which is most of the work of a ribbon painted
+ * as one capsule per half pixel of path.
+ */
+function scan(l: Raster, f: Frame, s: Shape, put: (x: number, y: number) => void, skip = -1, skip2 = -1) {
   const [u0, v0, u1, v1] = s.box
   if (!(u1 >= u0 && v1 >= v0)) return
-  const corners = [f.pt(u0, v0), f.pt(u1, v0), f.pt(u0, v1), f.pt(u1, v1)]
-  const x0 = Math.max(0, Math.floor(Math.min(...corners.map((p) => p[0]))) - 1)
-  const y0 = Math.max(0, Math.floor(Math.min(...corners.map((p) => p[1]))) - 1)
-  const x1 = Math.min(l.w - 1, Math.ceil(Math.max(...corners.map((p) => p[0]))) + 1)
-  const y1 = Math.min(l.h - 1, Math.ceil(Math.max(...corners.map((p) => p[1]))) + 1)
+  // The four corners of the box on screen (the arithmetic of `Frame.pt`).
+  const xa = f.a * u0 + f.c * v0 + f.e
+  const xb = f.a * u1 + f.c * v0 + f.e
+  const xc = f.a * u0 + f.c * v1 + f.e
+  const xd = f.a * u1 + f.c * v1 + f.e
+  const ya = f.b * u0 + f.d * v0 + f.f
+  const yb = f.b * u1 + f.d * v0 + f.f
+  const yc = f.b * u0 + f.d * v1 + f.f
+  const yd = f.b * u1 + f.d * v1 + f.f
+  const x0 = Math.max(0, Math.floor(Math.min(xa, xb, xc, xd)) - 1)
+  const y0 = Math.max(0, Math.floor(Math.min(ya, yb, yc, yd)) - 1)
+  const x1 = Math.min(l.w - 1, Math.ceil(Math.max(xa, xb, xc, xd)) + 1)
+  const y1 = Math.min(l.h - 1, Math.ceil(Math.max(ya, yb, yc, yd)) + 1)
   // The inverse transform, written out (the same arithmetic as `Frame.local`, without an array per pixel).
   const det = f.a * f.d - f.b * f.c
+  const data = l.data
+  const w = l.w
   for (let y = y0; y <= y1; y++) {
     const dy = y + 0.5 - f.f
     for (let x = x0; x <= x1; x++) {
+      const now = data[y * w + x]
+      if (now === skip || now === skip2) continue
       const dx = x + 0.5 - f.e
       if (s.has((f.d * dx - f.c * dy) / det, (f.a * dy - f.b * dx) / det)) put(x, y)
     }
@@ -222,21 +279,25 @@ function scan(l: Raster, f: Frame, s: Shape, put: (x: number, y: number) => void
 
 /** Paints a shape of the frame onto the layer (sampled at pixel centres). */
 export function fill(l: Raster, f: Frame, s: Shape, c: number) {
-  scan(l, f, s, (x, y) => l.set(x, y, c))
+  const data = l.data
+  const w = l.w
+  scan(l, f, s, (x, y) => void (data[y * w + x] = c), c)
   return l
 }
 
 /** Paints a shape only where the layer is already painted: patches (belly, mask, stripes) never leave the silhouette. */
 export function tint(l: Raster, f: Frame, s: Shape, c: number) {
-  scan(l, f, s, (x, y) => {
-    if (l.get(x, y)) l.set(x, y, c)
-  })
+  const data = l.data
+  const w = l.w
+  scan(l, f, s, (x, y) => void (data[y * w + x] = c), 0, c)
   return l
 }
 
 /** Erases a shape from the layer (notches, open mouths cut into a silhouette). */
 export function carve(l: Raster, f: Frame, s: Shape) {
-  scan(l, f, s, (x, y) => l.set(x, y, 0))
+  const data = l.data
+  const w = l.w
+  scan(l, f, s, (x, y) => void (data[y * w + x] = 0), 0)
   return l
 }
 
@@ -472,21 +533,23 @@ export function mantle(l: Raster, from: number, to: number, o: MantleOptions) {
  * (`steps` = 2 for two). Use it for the shadow a head throws on the chest, an arm on the belly, a hat on the brow.
  */
 export function shadow(l: Raster, f: Frame, shape: Shape, steps = 1) {
-  scan(l, f, shape, (x, y) => {
-    let c = l.get(x, y)
-    if (!c) return
-    for (let i = 0; i < steps; i++) c = DARKER[c]
-    l.set(x, y, c)
-  })
+  scan(
+    l,
+    f,
+    shape,
+    (x, y) => {
+      let c = l.get(x, y)
+      for (let i = 0; i < steps; i++) c = DARKER[c]
+      l.set(x, y, c)
+    },
+    0
+  )
   return l
 }
 
 /** A soft light patch: painted pixels inside `shape` turn one ramp step lighter (fur sheen, glossy cheeks). */
 export function sheen(l: Raster, f: Frame, shape: Shape) {
-  scan(l, f, shape, (x, y) => {
-    const c = l.get(x, y)
-    if (c) l.set(x, y, LIGHTER[c])
-  })
+  scan(l, f, shape, (x, y) => l.set(x, y, LIGHTER[l.get(x, y)]), 0)
   return l
 }
 
