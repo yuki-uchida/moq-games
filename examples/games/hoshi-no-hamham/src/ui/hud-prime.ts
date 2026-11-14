@@ -23,7 +23,14 @@ export interface PrimeTarget extends HudApi {
   hide(): void
   /** True while the stage's own HUD is on screen. */
   readonly shown: boolean
+  /** These stages may be played next: the HUD lays the characters of their texts out ahead. */
+  wantStages(stages: readonly StageDef[]): void
+  /** Lays out a few more of the characters wanted (once a frame); true while there is more. */
+  layAhead(): boolean
 }
+
+/** The most tenths of a second the walk stays on after its last state for the characters laid out ahead. */
+const AHEAD_PHASES = 60
 
 /** How long after the title's first picture the walk may start (its enter animations are over by then). */
 const START_DELAY_MS = 1200
@@ -154,6 +161,8 @@ export class HudPrimer {
           this.acting = false
         }
       }
+      /** True while characters are still to be laid out ahead. */
+      let more = true
       // Runs the HUD's frames for `ms` milliseconds (animations take their time whatever the frame rate).
       const phase = async (ms: number) => {
         const until = performance.now() + ms
@@ -168,12 +177,15 @@ export class HudPrimer {
           last = now
           world.time += dt
           act(() => hud.step(world as unknown as World, dt))
+          more = hud.layAhead()
         } while (performance.now() < until)
         if (!alive()) throw new Ended()
       }
       act(() => {
         hud.setStage(collect)
         hud.reveal()
+        // Every stage's texts: their characters are laid out during the walk and after it.
+        hud.wantStages(STAGES)
       })
       await phase(150)
       // A heart lost and low health; the bite gauge empties; hearts and counters change in turn.
@@ -221,6 +233,8 @@ export class HudPrimer {
         hud.showCall('スタート！')
       })
       await phase(300)
+      // The characters still to be laid out ahead (a few in every frame): as long as it takes, within reason.
+      for (let n = 0; more && n < AHEAD_PHASES; n++) await phase(100)
       if (alive()) this.done.add(key)
     } catch (error) {
       if (!(error instanceof Ended)) throw error

@@ -536,6 +536,42 @@
     animation: hudd-pop 0.36s steps(4) 1;
   }
 
+  /*
+   * The clock is drawn on a canvas (text-face.ts): its text changes ten times a second, and text that changes in
+   * the page is laid out and painted again every time. An unseen copy of the text keeps the box in shape, with a
+   * mark on its baseline and two digits beside it, from which the canvas learns how the page sets the line.
+   */
+  .hudd-stat .hudd-clock {
+    position: relative;
+  }
+
+  .hudd-clock-size,
+  .hudd-clock-digit {
+    visibility: hidden;
+  }
+
+  .hudd-clock-line {
+    display: inline-block;
+    width: 0;
+    height: 0;
+  }
+
+  .hudd-clock-digit {
+    position: absolute;
+    left: 0;
+    top: 0;
+    white-space: nowrap;
+  }
+
+  /* Not a sprite: it has the size of its box and is drawn at the display's own pixels. */
+  #hud.hudx .hudd .hudd-clock-face {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    image-rendering: auto;
+  }
+
   .hudd-track {
     position: relative;
     flex: none;

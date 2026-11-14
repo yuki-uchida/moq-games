@@ -288,8 +288,8 @@
 
 /*
  * The tooth is three canvases drawn ahead (dim, lit, and a flash at twice the brightness), so nothing here needs a
- * CSS filter. The lit one shows through a window that rises with the cooldown: hud.ts sets `--bite`, the rows that
- * are lit (16 when it is over), and the window and the tooth in it move by `transform`, which paints nothing.
+ * CSS filter. The lit one lies over the dim one; hud.ts draws it up to the row the cooldown has reached, so a gauge
+ * that moves changes a canvas and nothing of the page's style.
  */
 .hudx-tooth {
   position: relative;
@@ -299,21 +299,9 @@
   will-change: transform;
 }
 
-.hudx-tooth canvas,
-.hudx-lit {
+.hudx-tooth canvas {
   position: absolute;
   inset: 0;
-}
-
-.hudx-lit {
-  overflow: hidden;
-  will-change: transform;
-  transform: translateY(calc((16 - var(--bite, 16)) / 16 * 100%));
-}
-
-.hudx-tooth .is-lit {
-  will-change: transform;
-  transform: translateY(calc((var(--bite, 16) - 16) / 16 * 100%));
 }
 
 .hudx-tooth .is-flash {
@@ -988,6 +976,25 @@
 
 #hud.hudx.is-narrow .hudx-plate span {
   font-size: 12px;
+}
+
+/* ------------------------------------------------------------------ text laid out ahead */
+
+/* A box of no size that is laid out with the HUD and never painted (text-ahead.ts). */
+.hudx-ahead {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+.hudx-ahead span {
+  white-space: nowrap;
 }
 
 /* ------------------------------------------------------------------ reduced motion */

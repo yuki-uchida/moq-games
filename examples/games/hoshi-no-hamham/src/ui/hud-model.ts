@@ -270,3 +270,48 @@ export function stepHold(hold: DeckHold | null, dt: number): DeckHold | null {
   const left = hold.left - dt
   return left > 0 ? { ...hold, left } : null
 }
+
+/** What `stageText` reads of a stage. */
+export interface StageTexts {
+  name: string
+  subtitle: string
+  objective: 'reach' | 'collect' | 'boss'
+  collect?: number
+  boss: { name: string; title: string; stamina?: boolean }
+  hints: readonly string[]
+}
+
+/** Every aim line the deck can show in a stage, whatever happens in it. */
+export function aimTexts(stage: StageTexts): string[] {
+  const texts = new Set<string>()
+  const boss = (active: boolean, dead: boolean) => ({
+    name: stage.boss.name,
+    active,
+    dead,
+    stamina: Boolean(stage.boss.stamina)
+  })
+  for (const state of ['play', 'clear'] as const)
+    for (const goalOpen of [false, true])
+      for (const who of [null, boss(false, false), boss(true, false), boss(false, true)])
+        texts.add(
+          aimLine({ objective: stage.objective, collected: 0, need: stage.collect ?? 0, goalOpen, state, boss: who })
+            .text
+        )
+  return [...texts]
+}
+
+/**
+ * Every text of a stage that the HUD can show while the stage is played: its name and subtitle, its boss, its
+ * hints as they are worded for keys and for touch, and the aims. Their characters are laid out ahead.
+ */
+export function stageText(stage: StageTexts): string {
+  return [
+    stage.name,
+    stage.subtitle,
+    stage.boss.name,
+    stage.boss.title,
+    ...stage.hints.flatMap((hint) => [hintForInput(hint, false), hintForInput(hint, true)]),
+    ...aimTexts(stage),
+    '0123456789/'
+  ].join('')
+}
