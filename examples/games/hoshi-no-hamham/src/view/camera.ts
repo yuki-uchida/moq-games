@@ -59,6 +59,8 @@ export class Camera {
   private kickX = 0
   private kickY = 0
   private time = 0
+  private readonly spot = { x: 0, y: 0 }
+  private readonly shake = { x: 0, y: 0 }
   private pan: { fromX: number; fromY: number; toX: number; toY: number; t: number; seconds: number } | null = null
 
   constructor(options: CameraOptions) {
@@ -68,8 +70,10 @@ export class Camera {
   }
 
   /** Clamps a view position to the map (x in [0, w·64 − 640], y in [−40, h·64 − 360]). */
-  clamp(x: number, y: number) {
-    return { x: clamp(x, 0, this.maxX), y: clamp(y, -40, this.maxY) }
+  clamp(x: number, y: number, out: { x: number; y: number } = { x: 0, y: 0 }) {
+    out.x = clamp(x, 0, this.maxX)
+    out.y = clamp(y, -40, this.maxY)
+    return out
   }
 
   /** The view y that puts feet at `feetY` on the resting line (unclamped). */
@@ -100,7 +104,7 @@ export class Camera {
   }
 
   private goal(target: CameraTarget) {
-    return this.clamp(target.x + target.w / 2 + this.look - VIEW_W / 2, this.restingY(this.focusY))
+    return this.clamp(target.x + target.w / 2 + this.look - VIEW_W / 2, this.restingY(this.focusY), this.spot)
   }
 
   update(dt: number, target: CameraTarget) {
@@ -117,7 +121,7 @@ export class Camera {
       const pan = this.pan
       pan.t = Math.min(pan.seconds, pan.t + dt)
       const k = pan.seconds > 0 ? ease(pan.t / pan.seconds) : 1
-      const at = this.clamp(pan.fromX + (pan.toX - pan.fromX) * k, pan.fromY + (pan.toY - pan.fromY) * k)
+      const at = this.clamp(pan.fromX + (pan.toX - pan.fromX) * k, pan.fromY + (pan.toY - pan.fromY) * k, this.spot)
       this.x = at.x
       this.y = at.y
     } else {
@@ -162,19 +166,27 @@ export class Camera {
   }
 
   /** Shake plus kick offset in px. Zero under reduced motion. */
-  offset() {
-    if (this.reducedMotion) return { x: 0, y: 0 }
+  offset(out: { x: number; y: number } = { x: 0, y: 0 }) {
+    if (this.reducedMotion) {
+      out.x = 0
+      out.y = 0
+      return out
+    }
     const amp = MAX_SHAKE * this.trauma * this.trauma
     const t = this.time
     const sx = amp ? amp * (Math.sin(t * 61.3) * 0.6 + Math.sin(t * 97.1 + 1.3) * 0.4) : 0
     const sy = amp ? amp * (Math.sin(t * 71.7 + 2.1) * 0.6 + Math.sin(t * 89.9 + 0.4) * 0.4) : 0
-    return { x: sx + this.kickX, y: sy + this.kickY }
+    out.x = sx + this.kickX
+    out.y = sy + this.kickY
+    return out
   }
 
   /** The drawn view position: clamped base plus offset, snapped to steps of 1/k. */
-  view(k: number) {
-    const o = this.offset()
-    const at = this.clamp(this.x + o.x, this.y + o.y)
-    return { x: Math.round(at.x * k) / k, y: Math.round(at.y * k) / k }
+  view(k: number, out: { x: number; y: number } = { x: 0, y: 0 }) {
+    const o = this.offset(this.shake)
+    const at = this.clamp(this.x + o.x, this.y + o.y, this.spot)
+    out.x = Math.round(at.x * k) / k
+    out.y = Math.round(at.y * k) / k
+    return out
   }
 }

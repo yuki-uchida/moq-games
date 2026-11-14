@@ -3,7 +3,7 @@
  * clip. View randomness only (never the sim's Rng). Particles keep playing while the view is frozen (hit-stop).
  */
 import { FX_SPEC } from '../art/contract'
-import { blit, clip } from './bake'
+import { blit, brush, clip } from './bake'
 
 /** Every clip of the `fx` sheet (`tests/view-fx.test.ts` checks this list against the contract). */
 export const FX_NAMES = [
@@ -193,7 +193,7 @@ export class FxPool {
       if (!anim) continue
       let alpha = p.alpha
       if (p.fade) alpha *= Math.min(1, (p.life - p.age) / Math.min(0.3, p.life * 0.5))
-      blit(ctx, anim, p.age * p.rate, p.x, p.y, { flip: p.flip, alpha })
+      blit(ctx, anim, p.age * p.rate, p.x, p.y, brush(p.flip, alpha))
     }
   }
 

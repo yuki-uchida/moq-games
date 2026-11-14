@@ -80,31 +80,74 @@ export interface BlitOptions {
   angle?: number
 }
 
-/** Draws a raster with its anchor pixel on (x, y), placed on whole art pixels. */
+/** Options of a `blit` call. */
+export type BlitCall = BlitOptions & { frame?: number }
+
+const scratch: BlitCall = {}
+
+/**
+ * The options of the next `blit` or `blitRaster` call, filled into one shared object so that drawing a frame makes
+ * no garbage. Every field is reset on each call; use the result straight away as the call's last argument (the
+ * callee reads it before it returns and never keeps it).
+ */
+export function brush(
+  flip?: boolean,
+  alpha?: number,
+  frame?: number,
+  sx?: number,
+  sy?: number,
+  angle?: number,
+  pivotX?: number
+): BlitCall {
+  scratch.flip = flip
+  scratch.alpha = alpha
+  scratch.frame = frame
+  scratch.sx = sx
+  scratch.sy = sy
+  scratch.angle = angle
+  scratch.pivotX = pivotX
+  return scratch
+}
+
+const NO_OPTIONS: BlitCall = {}
+
+/**
+ * Draws a raster with its anchor pixel on (x, y), placed on whole art pixels. A flipped, scaled or rotated draw
+ * moves the context's transform by the sprite's own matrix and back by its inverse, which costs no saved state.
+ */
 export function blitRaster(
   ctx: CanvasRenderingContext2D,
   r: Raster,
   anchor: readonly [number, number],
   x: number,
   y: number,
-  o: BlitOptions = {}
+  o: BlitOptions = NO_OPTIONS
 ) {
   const image = bake(r)
-  const [ax, ay] = anchor
+  const ax = anchor[0]
+  const ay = anchor[1]
   x = Math.round(x)
   y = Math.round(y)
   const alpha = o.alpha ?? 1
   if (alpha <= 0) return
   if (alpha < 1) ctx.globalAlpha = alpha
-  if (!o.flip && !o.angle && (o.sx ?? 1) === 1 && (o.sy ?? 1) === 1) ctx.drawImage(image, x - ax, y - ay)
-  else {
+  const sx = (o.flip ? -1 : 1) * (o.sx ?? 1)
+  const sy = o.sy ?? 1
+  const angle = o.angle ?? 0
+  if (!o.flip && !angle && sx === 1 && sy === 1) ctx.drawImage(image, x - ax, y - ay)
+  else if (sx !== 0 && sy !== 0) {
     const pivot = o.flip ? (o.pivotX ?? ax) : ax
-    ctx.save()
-    ctx.translate(x - ax + pivot, y)
-    if (o.angle) ctx.rotate(o.angle)
-    ctx.scale((o.flip ? -1 : 1) * (o.sx ?? 1), o.sy ?? 1)
+    const e = x - ax + pivot
+    const cos = angle ? Math.cos(angle) : 1
+    const sin = angle ? Math.sin(angle) : 0
+    // translate(e, y) · rotate(angle) · scale(sx, sy), then its inverse.
+    ctx.transform(cos * sx, sin * sx, -sin * sy, cos * sy, e, y)
     ctx.drawImage(image, -pivot, -ay)
-    ctx.restore()
+    const ia = cos / sx
+    const ib = -sin / sy
+    const ic = sin / sx
+    const id = cos / sy
+    ctx.transform(ia, ib, ic, id, -(ia * e + ic * y), -(ib * e + id * y))
   }
   if (alpha < 1) ctx.globalAlpha = 1
 }
@@ -116,7 +159,7 @@ export function blit(
   t: number,
   x: number,
   y: number,
-  o: BlitOptions & { frame?: number } = {}
+  o: BlitCall = NO_OPTIONS
 ) {
   blitRaster(ctx, anim.frames[frameIndex(anim, t, o.frame)], anchorOf(anim), x, y, o)
 }

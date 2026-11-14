@@ -3,7 +3,7 @@
  */
 import { backdrop, type Backdrop, type BackdropLayer } from '../art'
 import { VIEW_H, VIEW_W, type Ambience, type ThemeId } from '../art/contract'
-import { bake, blit, clip } from './bake'
+import { bake, blit, brush, clip } from './bake'
 
 interface Mote {
   x: number
@@ -27,11 +27,20 @@ const AMBIENCE_COUNT: Record<Ambience, number> = {
 const NIGHT_SKIES = new Set<ThemeId>(['night', 'castle', 'star'])
 
 /** Layer offset: horizontal scroll (wrapped to the 640 px tile) and vertical position in view pixels. */
-export function layerOffset(layer: BackdropLayer, viewX: number, viewY: number, groundViewY: number, time: number) {
+export function layerOffset(
+  layer: BackdropLayer,
+  viewX: number,
+  viewY: number,
+  groundViewY: number,
+  time: number,
+  out = { x: 0, y: 0 }
+) {
   const scroll = viewX * layer.parallax + (layer.drift ?? 0) * time
   const x = -(((scroll % VIEW_W) + VIEW_W) % VIEW_W)
   const y = Math.round(layer.y - (viewY - groundViewY) * layer.parallax)
-  return { x: Math.round(x), y }
+  out.x = Math.round(x)
+  out.y = y
+  return out
 }
 
 export class BackdropView {
@@ -39,6 +48,7 @@ export class BackdropView {
   private motes: Mote[] = []
   private twinkles: { x: number; y: number; phase: number }[] = []
   private time = 0
+  private readonly offset = { x: 0, y: 0 }
 
   constructor(
     readonly theme: ThemeId,
@@ -89,7 +99,7 @@ export class BackdropView {
   private drawLayer(ctx: CanvasRenderingContext2D, layer: BackdropLayer, viewX: number, viewY: number) {
     const image = bake(layer.image)
     const drift = this.reducedMotion ? 0 : this.time
-    const { x, y } = layerOffset(layer, viewX, viewY, this.groundViewY, drift)
+    const { x, y } = layerOffset(layer, viewX, viewY, this.groundViewY, drift, this.offset)
     const h = layer.image.h
     for (let i = 0; i < 2; i++) {
       const lx = x + i * VIEW_W
@@ -130,7 +140,7 @@ export class BackdropView {
       const x = Math.round(m.x)
       const y = Math.round(m.y)
       if (leaf) {
-        blit(ctx, leaf, this.time + m.phase, x, y, { alpha: 0.75, flip: m.phase > Math.PI })
+        blit(ctx, leaf, this.time + m.phase, x, y, brush(m.phase > Math.PI, 0.75))
         continue
       }
       let color = '#fff3b8'
