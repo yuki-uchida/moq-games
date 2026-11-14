@@ -79,6 +79,8 @@ interface KeySet {
   /** Member id → wrapped key (base64) once ready. */
   wrapped: Map<string, string>
   started: Set<string>
+  /** Members that held a key of this generation as spectators (they may hold several teams' keys). */
+  watchers: Set<string>
 }
 
 /** A guest whose match inputs stopped this long ago (and whose profile left the match) is played by a bot. */
@@ -479,11 +481,11 @@ export class HostRoom {
         this.rejoining.delete(id)
         if (this.status.kind === 'closed' || this.closedByUs || this.kicked.includes(id)) return
         if (secret && this.kickedKeys.has(secret)) return
-        this.applyProfile(id, profile, ek, msg.f, secret)
+        this.applyProfile(id, profile, ek, msg.f, secret, msg.j)
       })
       return
     }
-    const m = this.applyProfile(id, profile, ek, msg.f, undefined)
+    const m = this.applyProfile(id, profile, ek, msg.f, undefined, msg.j)
     // A member that joined before it could prove itself (no host key yet): learn its secret once, for kicks.
     if (kx && !m.key && !m.keyTried && m.ek && this.ecdhPub) {
       m.keyTried = true
@@ -504,7 +506,8 @@ export class HostRoom {
     profile: Profile,
     ek: string | undefined,
     follow: unknown,
-    secret: string | undefined
+    secret: string | undefined,
+    join: unknown
   ): RoomMember {
     let m = this.members.get(id)
     let rebound = false
@@ -537,6 +540,14 @@ export class HostRoom {
       keysChanged = true
     }
     if (this.phase !== 'lobby' && !this.matchSeatOf.has(id)) this.seatLateJoiner(m)
+    // A spectator asking for a seat in this match (ProfileMsg.j) takes one that freed up, like a drop-in.
+    else if (this.phase !== 'lobby' && join === this.matchId && this.matchSeatOf.get(id) === null) {
+      const seat = this.pickSeat([m.follow ?? 0, m.profile.team])
+      if (seat) {
+        this.seatMember(m, seat)
+        keysChanged = true
+      }
+    }
     if (JSON.stringify(m.profile) !== before || keysChanged) this.changed()
     return m
   }
@@ -562,26 +573,51 @@ export class HostRoom {
    * players; in PvE the squad. Only when every seat is held by a player does it spectate.
    */
   private seatLateJoiner(m: RoomMember) {
+    const seat = this.pickSeat([m.profile.team])
+    if (seat) this.seatMember(m, seat)
+    else this.matchSeatOf.set(m.id, null)
+  }
+
+  /** The match's owner of each held seat id. */
+  private seatOwners(): Map<string, string> {
     const owner = new Map<string, string>()
     for (const [mid, sid] of this.matchSeatOf) if (sid) owner.set(sid, mid)
-    const held = (s: Seat) => {
-      const o = owner.get(s.id)
-      const om = o ? this.members.get(o) : undefined
-      return !!om && (om.host || om.present)
+    return owner
+  }
+
+  /** Seats of the running match nobody plays: a bot's, or one whose player left. */
+  private freeSeats(): Seat[] {
+    if (!this.config) return []
+    const owner = this.seatOwners()
+    return this.matchSeats.filter((s) => !this.held(s, owner))
+  }
+
+  private held(s: Seat, owner: Map<string, string>): boolean {
+    const o = owner.get(s.id)
+    const om = o ? this.members.get(o) : undefined
+    return !!om && (om.host || om.present)
+  }
+
+  /**
+   * A free seat: PvP on the first of `prefer` that has one, else on the team with the fewest players;
+   * PvE the first free squad seat. Undefined when every seat is held.
+   */
+  private pickSeat(prefer: TeamId[]): Seat | undefined {
+    const free = this.freeSeats()
+    if (!free.length) return undefined
+    if (this.selection.mode !== 'pvp') return free[0]
+    const owner = this.seatOwners()
+    const players = (t: TeamId) => this.matchSeats.filter((s) => s.team === t && this.held(s, owner)).length
+    for (const t of prefer) {
+      const seat = free.find((s) => s.team === t)
+      if (seat) return seat
     }
-    const free = this.config ? this.matchSeats.filter((s) => !held(s)) : []
-    if (!free.length) {
-      this.matchSeatOf.set(m.id, null)
-      return
-    }
-    let seat = free[0]
-    if (this.selection.mode === 'pvp') {
-      const players = (t: TeamId) => this.matchSeats.filter((s) => s.team === t && held(s)).length
-      seat =
-        free.find((s) => s.team === m.profile.team) ??
-        free.reduce((a, b) => (players(b.team) < players(a.team) ? b : a))
-    }
-    const old = owner.get(seat.id)
+    return free.reduce((a, b) => (players(b.team) < players(a.team) ? b : a))
+  }
+
+  /** `m` plays `seat` from now on (its former owner, who left, loses it). */
+  private seatMember(m: RoomMember, seat: Seat) {
+    const old = this.seatOwners().get(seat.id)
     if (old) this.matchSeatOf.delete(old)
     this.matchSeatOf.set(m.id, seat.id)
     this.takeSeat(seat, m.profile)
@@ -696,7 +732,10 @@ export class HostRoom {
       }),
       kicked: this.kicked.slice()
     }
-    if (this.config && this.phase !== 'lobby') msg.config = this.config
+    if (this.config && this.phase !== 'lobby') {
+      msg.config = this.config
+      msg.free = this.freeSeats().length
+    }
     if (this.ecdhPub) msg.hk = this.ecdhPub
     if (this.keySet) msg.keys = { g: this.keySet.gen, w: Object.fromEntries(this.keySet.wrapped) }
     return msg
@@ -726,13 +765,14 @@ export class HostRoom {
     }
     const want = this.readers()
     let ks = this.keySet
-    // A grant that went away or a seated player on another team needs new keys; a spectator switching the team
-    // it follows gets the other team's key in this generation.
+    // A grant that went away, a seated player on another team or a spectator taking a seat (it may hold every
+    // team's key of this generation) needs new keys; a spectator switching the team it follows gets the other
+    // team's key in this generation.
     const revoked =
       !!ks &&
       [...ks.grants].some(([id, team]) => {
         const r = want.get(id)
-        return !r || (r.seated && r.team !== team)
+        return !r || (r.seated && (r.team !== team || ks!.watchers.has(id)))
       })
     if (!ks || revoked) {
       const raw = [randomBytes(32), randomBytes(32), randomBytes(32)]
@@ -742,13 +782,15 @@ export class HostRoom {
         keys: raw.map((r) => teamKey(r)),
         grants: new Map(),
         wrapped: new Map(),
-        started: new Set()
+        started: new Set(),
+        watchers: new Set()
       }
       for (const k of ks.keys) k.catch(() => undefined)
       this.keySet = ks
       netLog(`host team keys generation ${ks.gen}`)
     }
-    for (const [id, { team }] of want) {
+    for (const [id, { team, seated }] of want) {
+      if (!seated) ks.watchers.add(id)
       const had = ks.grants.get(id)
       if (had === team) continue
       ks.grants.set(id, team)

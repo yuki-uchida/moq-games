@@ -426,6 +426,46 @@ test.describe('アニマフロント online (BroadcastChannel stand-in)', () => 
     expect(errors).toEqual([])
   })
 
+  test('PvE: a spectator takes the seat a leaving player frees', async ({ context }) => {
+    const errors: string[] = []
+    const [h, g1, g2, g3, w] = await players(context, 5, errors)
+    await host(h, 'pve', 'seat-7005')
+    for (const g of [g1, g2, g3]) await join(g, 'pve', 'seat-7005')
+    for (const g of [g1, g2, g3]) await g.click('.lobby-go')
+    await expect(h.locator('.seat .seat-ready')).toHaveCount(4)
+    await h.click('.lobby-go')
+    for (const p of [h, g1, g2, g3]) await expect(current(p, 'briefing')).toBeVisible({ timeout: 30_000 })
+    for (const p of [g1, g2, g3, h]) await p.click('.brief-go')
+    await expect.poll(async () => (await hook(h))?.view?.phase, { timeout: 120_000 }).toBe('play')
+    // the fifth member arrives: every seat is held, it watches
+    await toRoom(w, 'pve')
+    await w.click('[data-room="join"]')
+    await w.locator('.room-code-input').fill('seat-7005')
+    await w.click('[data-room-go="join"]')
+    await expect(current(w, 'game')).toBeVisible({ timeout: 60_000 })
+    await expect(w.locator('.spectate-bar')).toBeVisible({ timeout: 60_000 })
+    await expect(w.locator('[data-take-seat]')).toBeHidden()
+    // guest 1 closes its tab: its seat goes to a bot and the spectator is offered it
+    await expect.poll(async () => (await hook(g1))?.me, { timeout: 30_000 }).toMatch(/^h/)
+    const freed = (await hook(g1))!.me!
+    await g1.close()
+    await expect(w.locator('[data-take-seat]')).toBeVisible({ timeout: 30_000 })
+    await expect(w.locator('[data-take-seat]')).toHaveText('空いた席で参加（1）')
+    await w.screenshot({ path: test.info().outputPath('spectator-seat.png') })
+    await w.click('[data-take-seat]')
+    // the screen reopens as that player
+    await expect.poll(async () => (await hook(w))?.me, { timeout: 60_000 }).toBe(freed)
+    await expect(w.locator('.spectate-bar')).toHaveCount(0, { timeout: 30_000 })
+    await expect
+      .poll(async () => (await hook(h))?.view?.players.find((p) => p.id === freed)?.bot, { timeout: 30_000 })
+      .toBe(false)
+    await expect.poll(async () => (await hook(w))?.view?.phase, { timeout: 60_000 }).toBe('play')
+    const before = await positionOf(h, freed)
+    await walk(w, 1500)
+    await expect.poll(async () => dist(await positionOf(h, freed), before), { timeout: 10_000 }).toBeGreaterThan(3)
+    expect(errors.filter((e) => !e.startsWith('guest1'))).toEqual([])
+  })
+
   test('joining a room that does not exist says so', async ({ context }) => {
     const errors: string[] = []
     const [g] = await players(context, 1, errors)

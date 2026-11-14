@@ -43,6 +43,10 @@ import { cleanName, validateConfig, validateSeat, validateSelection, validId, ty
 
 /** How often a guest whose admission never arrived reconnects (see reconnect). */
 const MAX_RETRIES = 3
+/** Seconds a spectator's seat request waits for a seat before it gives up. */
+const SEAT_WAIT = 6
+/** Seconds a seat request that ended without a seat is reported as failed. */
+const SEAT_FAILED_NOTE = 4
 
 /** 24 characters of [a-z0-9] from the system's random source (unbiased: bytes from 252 up are drawn again). */
 function randomKey(): string {
@@ -113,6 +117,8 @@ export function validateRoom(raw: unknown): RoomMsg | undefined {
     kicked: Array.isArray(r.kicked) ? r.kicked.filter(validId).slice(0, 64) : []
   }
   if (isEcdhPub(r.hk)) msg.hk = r.hk
+  if (phase !== 'lobby' && Number.isSafeInteger(r.free) && (r.free as number) >= 0 && (r.free as number) <= 12)
+    msg.free = r.free as number
   const keys = r.keys as { g?: unknown; w?: unknown } | undefined
   if (keys && typeof keys === 'object' && Number.isSafeInteger(keys.g) && keys.w && typeof keys.w === 'object') {
     const w: Record<string, string> = {}
@@ -175,6 +181,11 @@ export class GuestRoom {
   private kx?: string
   /** The job for `hostKeyFor` finished (with or without a key: ECDH may be unavailable or fail). */
   private hostKeySettled = false
+  /** Spectating: the match id whose free seat this guest asked for (0: none), and when. */
+  private join = 0
+  private joinAt = 0
+  /** When a seat request last ended without a seat. */
+  private joinFailedAt = -Infinity
 
   constructor(private readonly opts: GuestRoomOptions) {
     this.code = opts.code
@@ -336,6 +347,60 @@ export class GuestRoom {
     return this.follow
   }
 
+  /** Briefing / match: seats nobody plays that a spectator may take (0 in the lobby). */
+  get freeSeats(): number {
+    const r = this.room
+    return r && r.phase !== 'lobby' ? (r.free ?? 0) : 0
+  }
+
+  /** A spectator's seat request: on its way, recently failed (the seat was taken), or none. */
+  get seatRequest(): 'idle' | 'joining' | 'failed' {
+    if (this.join) return 'joining'
+    return this.now() - this.joinFailedAt < SEAT_FAILED_NOTE ? 'failed' : 'idle'
+  }
+
+  /**
+   * Spectating a running match with a free seat: asks the host for one (it seats this member like a drop-in).
+   * False when there is nothing to ask for.
+   */
+  requestSeat(): boolean {
+    const r = this.room
+    if (!r || r.phase === 'lobby' || this.status.kind === 'closed' || this.mySeat || this.freeSeats <= 0) return false
+    this.join = r.matchId
+    this.joinAt = this.now()
+    this.joinFailedAt = -Infinity
+    this.profileDirty = true
+    this.flushProfile()
+    this.emit()
+    return true
+  }
+
+  /** Ends a seat request once it was answered (seated) or cannot be (no free seat, another match, too long). */
+  private checkJoin() {
+    const room = this.room
+    if (!this.join || !room) return
+    if (this.mySeat || room.phase === 'lobby' || room.matchId !== this.join) {
+      this.join = 0
+    } else if ((room.free ?? 0) <= 0 || this.now() - this.joinAt > SEAT_WAIT) {
+      this.join = 0
+      this.joinFailedAt = this.now()
+    } else return
+    this.profileDirty = true
+    this.flushProfile()
+  }
+
+  /**
+   * The spectator's game screen: once the host lists this member with a seat in the running match, the start to
+   * play it (connecting replaces the spectating session); null otherwise.
+   */
+  seatedStart(): MatchStart | null {
+    const match = this.match
+    const room = this.room
+    if (!match?.spectating || !room || room.phase !== 'match' || room.matchId !== match.matchId || !this.mySeat)
+      return null
+    return this.matchStart()
+  }
+
   /** The team whose snapshot part this guest can open now (undefined: none yet). */
   get keyTeam(): TeamId | undefined {
     const g = this.room?.keys?.g
@@ -376,9 +441,11 @@ export class GuestRoom {
       connect: () => {
         if (this.status.kind === 'closed') throw new Error(this.status.text)
         if (this.room?.matchId !== matchId || this.room.phase === 'lobby') throw new Error('この出撃は取り消されました')
-        this.match?.dispose()
+        // The new session first: a spectator taking a seat stays in the match for the host meanwhile.
+        const prev = this.match
         const map = getMap(config.map, config.variant)
         this.match = new GuestMatch(this, config, map, matchId, seated, follow)
+        prev?.dispose()
         return this.match
       }
     }
@@ -480,6 +547,7 @@ export class GuestRoom {
     if (tag && this.kx && this.hostKeyFor === tag) msg.kx = this.kx
     if (this.ek) msg.ek = this.ek
     if (this.follow) msg.f = this.follow
+    if (this.join) msg.j = this.join
     this.send(msg, () => {
       this.profileDirty = true
     })
@@ -525,6 +593,7 @@ export class GuestRoom {
       return
     }
     this.room = room
+    this.checkJoin()
     this.prepareHostKey()
     this.unwrapKey(room)
     if (this.status.kind === 'connecting') this.status = { kind: 'online', text: 'オンライン' }
@@ -584,6 +653,10 @@ export class GuestRoom {
     this.flushProfile()
     const quiet = this.now() - this.lastHeard
     if (!this.room) return
+    if (this.join) {
+      this.checkJoin()
+      if (!this.join) this.emit()
+    }
     if (quiet > HOST_GONE) {
       this.fail('host left')
       return

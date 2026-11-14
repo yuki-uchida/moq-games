@@ -3,6 +3,7 @@ import type { Lobby } from '../src/app/lobby'
 import type { Session } from '../src/app/session'
 import { neutralPlayerInput, type PlayerInput, type View } from '../src/sim/types'
 import { validatePlayerInput } from '../src/net/validate'
+import { profileOf } from '../src/net/host-room'
 import { createWorld, sanitizeLoadout } from '../src/sim/api'
 import { makeLoadout, type Loadout } from '../src/data/loadout'
 import { simOf } from '../src/sim/world'
@@ -397,6 +398,124 @@ describe('drop-in and spectators (DESIGN §18)', () => {
     expect(lastRoom!.keys!.g).toBeGreaterThan(gen)
     expect(Object.keys(lastRoom!.keys!.w)).not.toContain(me.id)
     expect(Object.keys(lastRoom!.keys!.w)).toHaveLength(11)
+    host.leave()
+    for (const g of guests) g.leave()
+  }, 120_000)
+})
+
+describe('a spectator takes a seat that frees up (DESIGN §18)', () => {
+  /** Sends a forged profile from member `id` straight to the host (as its track would carry it). */
+  const forge = (hub: FakeHub, code: string, id: string, name: string, j: number) =>
+    hub.rooms.get(code)!.host!.o.onInput(id, { v: 1, k: 'profile', p: profileOf(choice(name, 'owl'), false), j })
+
+  it('PvE: a seated guest leaves, the spectator sees the free seat, asks for it and plays its own animal', async () => {
+    const t = await table(['B', 'C', 'D'])
+    await run(1000, () => frame(t))
+    const mine = choice('E', 'owl')
+    mine.loadout = makeLoadout(['claw', 'owl'], ['turtle'], ['hawk'])
+    const watcher = await lateJoin(t.hub, 'match-1234', mine, () => frame(t))
+    const spectating = watcher.online!.takeMatch()!.start
+    expect(spectating.spectator).toBe(true)
+    const watch = spectating.connect()
+    t.guestSessions.push(watch)
+    await run(300, () => frame(t))
+    const w = watcher.online!
+    const watcherId = watcher.state().online!.members.find((m) => m.me)!.id
+    const matchId = watcher.state().online!.matchId
+    expect(w.freeSeats!()).toBe(0)
+    // nothing to ask for: the guest does not ask, and a forged request is ignored by the host
+    expect(w.requestSeat!()).toBe(false)
+    forge(t.hub, 'match-1234', watcherId, 'E', matchId)
+    await run(300, () => frame(t))
+    expect(watcher.state().online!.spectating).toBe(true)
+    // guest B leaves: a bot takes its seat, which is now free
+    const leaverSeat = t.guestSessions[0].me
+    t.guestSessions[0].dispose()
+    t.guests[0].leave()
+    t.guestSessions.shift()
+    await run(500, () => frame(t))
+    expect(w.freeSeats!()).toBe(1)
+    expect(w.seatedStart!()).toBeNull()
+    // a request for another match changes nothing
+    forge(t.hub, 'match-1234', watcherId, 'E', matchId + 5)
+    await run(300, () => frame(t))
+    expect(watcher.state().online!.spectating).toBe(true)
+    expect(w.freeSeats!()).toBe(1)
+    // the real request: the host seats it like a drop-in
+    watcher.setLocal(mine)
+    expect(w.requestSeat!()).toBe(true)
+    expect(w.seatRequest!()).toBe('joining')
+    await run(500, () => frame(t))
+    expect(w.seatRequest!()).toBe('idle')
+    expect(w.freeSeats!()).toBe(0)
+    const seated = w.seatedStart!()!
+    expect(seated.spectator).toBe(false)
+    expect(seated.me).toBe(leaverSeat)
+    const s = seated.connect()
+    expect((s as GuestMatch).spectating).toBe(false)
+    expect(w.seatedStart!()).toBeNull()
+    // the spectating session is replaced: disposing it does not take the member out of the match
+    watch.dispose()
+    t.guestSessions.pop()
+    t.guestSessions.push(s)
+    await run(1000, () => frame(t))
+    expect(t.host.state().online!.members.find((m) => m.name === 'E')).toMatchObject({ seat: s.me, inMatch: true })
+    const world = (t.hostSession as HostMatch).world
+    const body = simOf(world).players.find((p) => p.id === s.me)!
+    expect(body.species.id).toBe('owl')
+    expect(body.name).toBe('E')
+    expect(body.bot).toBeUndefined()
+    expect(itemsOf(body.loadout)).toEqual(itemsOf(sanitizeLoadout(mine.loadout)))
+    await run(4000, () => frame(t))
+    const before = [...body.p]
+    s.setInput(walk(body.yaw))
+    await run(1500, () => frame(t))
+    expect(Math.hypot(body.p[0] - before[0], body.p[2] - before[2])).toBeGreaterThan(3)
+    expect(body.bot).toBeUndefined()
+    t.host.leave()
+  }, 90_000)
+
+  it('PvP: a spectator taking a freed seat gets the team key of its seat', async () => {
+    const hub = new FakeHub()
+    const host = await provider(hub).host({ mode: 'pvp' }, choice('ホスト', 'shiba', 0), 'seat-1234')
+    const guests: Lobby[] = []
+    for (let i = 0; i < 11; i++) {
+      const p = provider(hub).join('seat-1234', choice(`G${i}`, 'cat', ((i + 1) % 3) as 0 | 1 | 2))
+      await run(100)
+      guests.push(await p)
+    }
+    for (const g of guests) g.setReady(true)
+    await run(500)
+    const hs = host.start().connect()
+    await run(200)
+    const sessions: Session[] = [hs]
+    for (const g of guests) sessions.push(g.online!.takeMatch()!.start.connect())
+    const tick = () => {
+      for (const s of sessions) s.update(1 / 60)
+    }
+    await run(500, tick)
+    const watcher = await lateJoin(hub, 'seat-1234', choice('ミル', 'owl', 0), tick)
+    const watch = watcher.online!.takeMatch()!.start.connect()
+    sessions.push(watch)
+    await run(1500, tick)
+    expect(watcher.online!.watching!()).toEqual({ want: 0, have: 0 })
+    // G1 (team 2) leaves
+    sessions.splice(2, 1)[0].dispose()
+    guests[1].leave()
+    await run(1000, tick)
+    expect(watcher.online!.freeSeats!()).toBe(1)
+    expect(watcher.online!.requestSeat!()).toBe(true)
+    await run(1500, tick)
+    const seated = watcher.online!.seatedStart!()!
+    expect(seated.config.players.find((p) => p.id === seated.me)?.team).toBe(2)
+    expect(seated.config.players.find((p) => p.id === seated.me)?.species).toBe('owl')
+    sessions.push(seated.connect())
+    sessions.splice(sessions.indexOf(watch), 1)
+    watch.dispose()
+    await run(1500, tick)
+    expect(watcher.online!.watching!().have).toBe(2)
+    const me = host.state().online!.members.find((m) => m.name === 'ミル')!
+    expect(me.seat).toBe(seated.me)
     host.leave()
     for (const g of guests) g.leave()
   }, 120_000)

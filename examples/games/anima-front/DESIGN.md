@@ -455,7 +455,9 @@ Screens (every change uses a transition, never a hard cut):
   at its team's base with spawn protection in PvP, keeping the seat's scoreboard); PvP prefers its chosen team,
   else the team with the fewest players. Only when every seat is held by a player does it spectate. A human
   leaving is replaced by a bot. A PvP spectator picks the team it watches in the game screen (team buttons, keys
-  1–3, LB / RB; 「切り替え中…」 until that team's key arrives) and steps through that team's animals. The host
+  1–3, LB / RB; 「切り替え中…」 until that team's key arrives) and steps through that team's animals. When a seat
+  frees up during the match (the host's lobby state counts them), a spectator takes it from the spectator bar
+  (「空いた席で参加」: ProfileMsg.j asks for this match; the host seats it like a drop-in). The host
   removes spectators like seated members, in the lobby and from the in-match menu's 参加者 panel. Spectating
   records nothing (no mission clear, best rank or PvP result); the results say it was 観戦.
 - **PvP information boundary.** The relay is anonymous and the host's track is one broadcast anyone can read, so

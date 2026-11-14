@@ -46,7 +46,6 @@ export class HostMatch implements Session {
   private lastUpdateAt: number
   private myInput: PlayerInput = neutralPlayerInput()
   private paused = false
-  private readonly names = new Map<string, string>()
   /** Seat id → currently played by a bot. */
   private readonly isBot = new Map<string, boolean>()
   private snapEvents: SimEvent[] = []
@@ -92,18 +91,12 @@ export class HostMatch implements Session {
     this.paused = paused
   }
 
-  /** A seat taken over by a late joiner shows the joiner's name. */
-  rename(seatId: string, name: string) {
-    this.names.set(seatId, name)
-  }
-
   /**
    * A late joiner takes a seat with its own animal, loadout and name (DESIGN §18): the world swaps the seat's
    * character; the seat is human now, and the next step hands it to the joiner (or to a bot until it arrives).
    */
   replace(cfg: PlayerConfig) {
     this.world.replace(cfg.id, cfg)
-    this.names.delete(cfg.id)
     this.isBot.set(cfg.id, false)
   }
 
@@ -116,7 +109,7 @@ export class HostMatch implements Session {
     this.lastUpdateAt = now
     this.advance(false)
     const p = this.smooth.present(Math.min(1, this.acc / STEP))
-    const v = p ? this.ownScreen(this.withNames(p)) : null
+    const v = p ? this.ownScreen(p) : null
     if (v) netDebug({ role: 'host', me: this.me, code: this.room.code, view: v, steps: this.world.tick })
     return v
   }
@@ -185,7 +178,7 @@ export class HostMatch implements Session {
       m: this.matchId,
       over: this.world.over,
       ack,
-      view: this.withNames({ ...cur, events: this.snapEvents })
+      view: { ...cur, events: this.snapEvents }
     }
     this.snapEvents = []
     this.stats.snapshots++
@@ -209,7 +202,7 @@ export class HostMatch implements Session {
   /** PvP: public part + sealed team parts. Events wait for the next snapshot while there are no keys yet. */
   private sendSecret(cur: View, ack: SnapMsg['ack']) {
     const t0 = performance.now()
-    const view = this.withNames({ ...cur, events: this.snapEvents })
+    const view = { ...cur, events: this.snapEvents }
     const sets = this.teamSets(cur, this.snapEvents)
     this.stats.rays = this.vis!.rays
     const split = splitView(view, sets, ack, this.config, this.vis!.objects)
@@ -267,11 +260,6 @@ export class HostMatch implements Session {
       shards: own.shards,
       events
     }
-  }
-
-  private withNames(v: View): View {
-    if (!this.names.size) return v
-    return { ...v, players: v.players.map((p) => (this.names.has(p.id) ? { ...p, name: this.names.get(p.id)! } : p)) }
   }
 
   dispose() {

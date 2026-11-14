@@ -576,6 +576,17 @@ describe('PvP snapshots between teams', () => {
     expect(blue.keyTeam).toBe(1)
     expect(yellow.keyTeam).toBe(2)
 
+    // the spectator takes a team-2 seat: it may hold every team's key of this generation, so the keys change
+    // even though it keeps watching team 2
+    const seat2 = host.config!.players.find((p) => p.team === 2 && p.bot !== undefined)!.id
+    host.matchSeatOf.set(watcher.myId, seat2)
+    host.changed()
+    await run(1500)
+    expect(gen()).toBeGreaterThan(before)
+    expect(watcher.keyTeam).toBe(2)
+    expect(keysOf(watcher).get(gen()!)?.team).toBe(2)
+    expect(blue.keyTeam).toBe(1)
+
     // a holder leaves: new keys that the leaver never gets
     const beforeLeave = gen()!
     yellow.close()
