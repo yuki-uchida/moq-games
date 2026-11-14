@@ -98,13 +98,17 @@ export class GuestMatch implements Session {
     if (this.disposed || !msg.view || !part || typeof part !== 'object') return
     if (!Array.isArray(part.p) || !Array.isArray(part.e) || !Array.isArray(msg.view.events)) return
     const known = part.p.filter((p) => !!p && typeof p === 'object' && typeof p.id === 'string')
+    // The team's own and visible enemy props (merged with the public map props).
+    const props = Array.isArray(part.r)
+      ? part.r.filter((r) => !!r && typeof r === 'object' && Number.isFinite(r.id))
+      : undefined
     const roster = Array.isArray(msg.r) ? (msg.r as RosterRow[]) : []
     if (!this.fog || this.fog.team !== team) this.fog = new Fog(team)
     const fog = this.fog
     const { view, hidden } = mergeView(
       msg.view,
       roster,
-      { p: known, e: part.e, a: {}, s: part.s, d: part.d },
+      { p: known, e: part.e, a: {}, s: part.s, d: part.d, r: props },
       this.config,
       (id) => fog.lastOf(id)
     )

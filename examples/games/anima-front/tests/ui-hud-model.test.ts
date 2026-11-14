@@ -35,10 +35,23 @@ describe('formatting', () => {
   })
 
   it('builds the anima gauge with the burn ghost and the critical state', () => {
-    const g = animaGauge({ anima: 50, maxAnima: 100, burn: 20 })
-    expect(g).toMatchObject({ fraction: 0.5, ghost: 0.7, critical: false, label: '50', max: '100' })
-    expect(animaGauge({ anima: 15, maxAnima: 100, burn: 0 }).critical).toBe(true)
-    expect(animaGauge({ anima: 90, maxAnima: 100, burn: 50 }).ghost).toBe(1)
+    const g = animaGauge({ anima: 50, maxAnima: 100, burn: 20, passivesOnline: true })
+    expect(g).toMatchObject({ fraction: 0.5, ghost: 0.7, critical: false, warn: false, label: '50', max: '100' })
+    expect(animaGauge({ anima: 15, maxAnima: 100, burn: 0, passivesOnline: true }).critical).toBe(true)
+    expect(animaGauge({ anima: 90, maxAnima: 100, burn: 50, passivesOnline: true }).ghost).toBe(1)
+  })
+
+  it('keeps the warning while passives are really offline, not only by ratio', () => {
+    const w = (anima: number, maxAnima: number, passivesOnline: boolean) =>
+      animaGauge({ anima, maxAnima, burn: 0, passivesOnline }).warn
+    expect(w(15.65, 100, false)).toBe(true) // max dropped after the max-anima passive went offline
+    expect(w(18, 100, false)).toBe(true) // recovering but still under the 20 % threshold
+    expect(w(18, 100, true)).toBe(false)
+    expect(w(15, 100, true)).toBe(true) // critical edge
+    expect(w(15.5, 100, true)).toBe(false)
+    expect(w(0, 100, true)).toBe(true)
+    expect(w(0, 100, false)).toBe(true)
+    expect(w(60, 100, false)).toBe(true) // defensive: offline always warns
   })
 
   it('types text and counts up', () => {

@@ -108,7 +108,10 @@ function guestLobby(room: GuestRoom): Lobby {
     else if (room.silence > 0) status = 'ホストの応答を待っています…'
     else if (!room.admittedByRoom) status = 'ホストに参加を伝えています…'
     else if (msg?.phase === 'briefing') status = 'ホストがブリーフィング中です'
-    else if (msg?.phase === 'match') status = '任務中です。合流できます'
+    else if (msg?.phase === 'match')
+      status = mySeat
+        ? `${msg.selection.mode === 'pvp' ? '演習' : '任務'}中です。空いた席に入って合流します`
+        : `${msg.selection.mode === 'pvp' ? '演習' : '任務'}中です。席がすべて埋まっているため観戦します`
     else if (!mySeat) status = '席が満員のため、観戦で参加します'
     else if (room.ready) status = '準備完了。ホストの出撃を待っています'
     else status = '準備ができたら「準備完了」を押してください'
@@ -164,13 +167,16 @@ function guestLobby(room: GuestRoom): Lobby {
       takeMatch() {
         const msg = room.room
         if (!msg || msg.phase === 'lobby' || msg.matchId === entered || room.status.kind === 'closed') return null
+        // The host has not listed this member yet: its seat (or spectating) is not decided.
+        if (!room.admittedByRoom) return null
         const start = room.matchStart()
         if (!start) return null
         entered = msg.matchId
         return { phase: msg.phase, start }
       },
       backInLobby: () => undefined,
-      followTeam: (team) => room.setFollowTeam(team)
+      followTeam: (team) => room.setFollowTeam(team),
+      watching: () => ({ want: room.followTeam, have: room.keyTeam })
     }
   }
 }

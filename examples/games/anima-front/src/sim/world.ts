@@ -9,7 +9,7 @@ import type { World } from './api'
 import { animaTick, burnOf } from './anima'
 import { botThink } from './bots/index'
 import { damageFoe } from './combat'
-import { DEFAULT_COUNTDOWN, DT, MAX_PITCH, RESULT_HOLD } from './constants'
+import { DEFAULT_COUNTDOWN, DT, MAX_PITCH, PVE_PROTECT, PVP_PROTECT, RESULT_HOLD } from './constants'
 import { foesTick } from './foes/index'
 import { stepBody } from './body'
 import { handsTick } from './items/hands'
@@ -17,7 +17,7 @@ import { getMap } from './maps'
 import { setPhase } from './modes/common'
 import { createMode } from './modes/index'
 import { Physics, SpatialHash } from './physics'
-import { createPlayer, movePlayer, readInput, reviveTick } from './player'
+import { createPlayer, dropInSpot, movePlayer, readInput, resetActions, respawn, reviveTick, warpAway } from './player'
 import { hazardsTick, shotsTick } from './projectiles'
 import { addProp, propsTick } from './props'
 import { Rng } from './rng'
@@ -238,6 +238,30 @@ class WorldImpl implements World {
     tmp.spawnYaw = at.yaw
     tmp.input.yaw = at.yaw
     if (sim.cfg.mode === 'training' && sim.cfg.training?.infiniteAnima) tmp.infinite = true
+  }
+
+  replace(playerId: string, cfg: PlayerConfig) {
+    const sim = this.sim
+    const p = sim.players.find((q) => q.id === playerId)
+    if (!p) return
+    const was = { state: p.state, timer: p.timer }
+    // A living body warps out where it stands; a downed / away one keeps its state (no free revive or ticket).
+    if (p.state === 'alive') warpAway(sim, p, 0)
+    else resetActions(sim, p)
+    const { bot: _bot, ...rest } = cfg
+    void _bot
+    const fresh = createPlayer(sim, { ...rest, id: p.id, team: p.team }, { p: p.p, yaw: p.yaw }, p.side)
+    Object.assign(p, fresh, { stats: p.stats, spawnP: p.spawnP, spawnYaw: p.spawnYaw, infinite: p.infinite })
+    for (const q of sim.players) if (q.reviving === p.id) q.reviving = undefined
+    this.sim.humans = Math.max(1, sim.players.filter((q) => q.bot === undefined).length)
+    if (was.state === 'alive') {
+      const protect = sim.cfg.mode === 'pvp' ? PVP_PROTECT : sim.cfg.mode === 'pve' ? PVE_PROTECT : 1
+      respawn(sim, p, dropInSpot(sim, p), protect)
+      p.input.yaw = p.yaw
+    } else {
+      p.state = was.state
+      p.timer = was.timer
+    }
   }
 
   removePlayer(id: string) {

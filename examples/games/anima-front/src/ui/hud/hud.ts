@@ -39,6 +39,8 @@ export interface HudFrame {
   interactHeld?: boolean
   /** Player the camera follows while spectating. */
   follow?: string
+  /** The screen watches a match it has no seat in: the followed animal's controls are not shown. */
+  spectator?: boolean
   project?: (p: V3) => { x: number; y: number; onScreen: boolean }
 }
 
@@ -243,6 +245,7 @@ export function createHud(): Hud {
       const me = view.players.find((p) => p.id === f.me)
       el.dataset.mode = view.mode
       el.dataset.device = f.device
+      setClass(el, 'is-spectator', !!f.spectator)
       if (!me) return
       const focus = (f.follow && view.players.find((p) => p.id === f.follow)) || me
       handleEvents(view, f, me)
@@ -253,8 +256,10 @@ export function createHud(): Hud {
       setStyle(gGhost, 'transform', `scaleX(${g.ghost.toFixed(4)})`)
       setText(gValue, g.label)
       setText(gMax, `/ ${g.max}`)
-      setClass(gauge, 'is-critical', g.critical && me.state === 'alive')
-      setClass(gauge, 'is-offline', !me.passivesOnline)
+      const alive = me.state === 'alive'
+      setClass(gauge, 'is-critical', g.critical && alive)
+      setClass(gauge, 'is-offline', !me.passivesOnline && alive)
+      setClass(gauge, 'is-warn', g.warn && alive)
       const pk = `${me.passives.join(',')}|${me.passivesOnline}`
       if (pk !== passiveKey) {
         passiveKey = pk
@@ -434,7 +439,8 @@ export function createHud(): Hud {
 
   function paintSquad(view: View, me: PlayerView) {
     const mates = view.players.filter((p) => p.team === me.team && p.id !== me.id)
-    const key = mates.map((p) => p.id).join(',')
+    // A seat taken over mid-match (drop-in) keeps its id but changes animal, name and bot flag.
+    const key = mates.map((p) => `${p.id}:${p.species}:${p.name}:${p.bot ? 1 : 0}`).join(',')
     if (key !== squadKey) {
       squadKey = key
       squadRows.clear()

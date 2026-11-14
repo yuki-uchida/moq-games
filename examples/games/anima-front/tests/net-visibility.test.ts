@@ -192,3 +192,98 @@ describe('sonar per side (sim)', () => {
     expect(me.revealedTo).toBeUndefined()
   })
 })
+
+describe('props and resting shards per team', () => {
+  const prop = (id: number, kind: PropView['kind'], p: V3, team: TeamId, owner: string): PropView => ({
+    id,
+    kind,
+    p,
+    yaw: 0,
+    team,
+    t: 0,
+    owner,
+    ...(kind === 'ink' ? { r: 6 } : {})
+  })
+  const hidden = () => player('e', 1, [0, 0, 9])
+  const objectsAt = (vis: TeamVisibility, players: PlayerView[], t: number, extra: Partial<View>) => {
+    vis.update(view(players, t, extra), extra.events ?? [])
+    return vis.objects
+  }
+
+  it("an enemy wall behind the map's wall stays unknown; one in sight is known, and stays known once seen", () => {
+    const vis = new TeamVisibility(MAP)
+    const behind = prop(5, 'hermit', [0, 0, 8], 1, 'e')
+    const open = prop(6, 'hermit', [14, 0, 8], 1, 'e')
+    let o = objectsAt(vis, [watcher(), hidden()], 0, { props: [behind, open] })
+    expect([...o.props.get(0)!]).toEqual([6])
+    // its own team always knows both; a third team without anyone on the field none
+    expect([...o.props.get(1)!].sort()).toEqual([5, 6])
+    expect([...o.props.get(2)!]).toEqual([])
+    // the watcher walks out of range: the static wall stays known, the hidden one still is not
+    o = objectsAt(vis, [watcher([0, 0, -190]), hidden()], 5, { props: [behind, open] })
+    expect([...o.props.get(0)!]).toEqual([6])
+  })
+
+  it('a decoy keeps the short hysteresis; props of a known owner are known; within 6 m through the wall', () => {
+    const vis = new TeamVisibility(MAP)
+    const decoy = prop(7, 'leafDecoy', [14, 0, 8], 1, 'e')
+    expect([...objectsAt(vis, [watcher(), hidden()], 0, { props: [decoy] }).props.get(0)!]).toEqual([7])
+    const far = [watcher([0, 0, -190]), hidden()]
+    expect([...objectsAt(vis, far, 0.2, { props: [decoy] }).props.get(0)!]).toEqual([7])
+    expect([...objectsAt(vis, far, 0.2 + VIS.LINGER + 0.05, { props: [decoy] }).props.get(0)!]).toEqual([])
+    // e stands next to the watcher (known): its pad behind the wall is known with it
+    const pad = prop(8, 'frog', [0, 0, 8], 1, 'e')
+    const near = player('e', 1, [0, 0, -3])
+    expect([...objectsAt(vis, [watcher(), near], 2, { props: [pad] }).props.get(0)!]).toEqual([8])
+    // honey just across the wall, within 6 m
+    const honey = prop(9, 'honey', [0, 0, 1], 1, 'e')
+    expect([
+      ...objectsAt(new TeamVisibility(MAP), [watcher([0, 0, -2]), hidden()], 3, { props: [honey] }).props.get(0)!
+    ]).toEqual([9])
+  })
+
+  it('an ink cloud in sight is known (its own cloud does not hide it)', () => {
+    const vis = new TeamVisibility(MAP)
+    const ink = prop(10, 'ink', [30, 0, 30], 1, 'e')
+    expect([...objectsAt(vis, [watcher(), hidden()], 0, { props: [ink] }).props.get(0)!]).toEqual([10])
+  })
+
+  it('a gone prop stays with the teams that knew it for one update (its break event); map props are public', () => {
+    const vis = new TeamVisibility(MAP)
+    const base: PropView = { id: 1, kind: 'base', p: [0, 0, -150], yaw: 0, team: 0, r: 8, t: 0 }
+    const open = prop(6, 'hermit', [14, 0, 8], 1, 'e')
+    const behind = prop(5, 'hermit', [0, 0, 8], 1, 'e')
+    objectsAt(vis, [watcher(), hidden()], 0, { props: [base, open, behind] })
+    let o = objectsAt(vis, [watcher(), hidden()], 1, { props: [base] })
+    expect([...o.props.get(0)!]).toEqual([6])
+    expect([...o.props.get(1)!].sort()).toEqual([5, 6])
+    expect([...o.mapProps]).toEqual([1])
+    o = objectsAt(vis, [watcher(), hidden()], 2, { props: [base] })
+    expect([...o.props.get(0)!]).toEqual([])
+    // placed and gone between two updates: its owner's team
+    const deploy: SimEvent = { id: 3, t: 2.5, type: 'deploy', who: 'e', item: 'hermit', prop: 11, at: [0, 0, 8] }
+    o = objectsAt(vis, [watcher(), hidden()], 3, { props: [base], events: [deploy] })
+    expect([...o.props.get(1)!]).toEqual([11])
+    expect([...o.props.get(0)!]).toEqual([])
+  })
+
+  it('a resting shard is known near or in sight, stays known once seen, and is forgotten once gone', () => {
+    const vis = new TeamVisibility(MAP)
+    const shards = [
+      { id: 1, p: [0, 0, 8] as V3, amount: 1 },
+      { id: 2, p: [14, 0, 8] as V3, amount: 1 },
+      { id: 3, p: [14, 0, 8] as V3, amount: 1, to: 'e' }
+    ]
+    let o = objectsAt(vis, [watcher(), hidden()], 0, { shards })
+    expect([...o.shards.get(0)!]).toEqual([2])
+    expect([...o.shards.get(1)!].sort()).toEqual([1, 2])
+    o = objectsAt(vis, [watcher([0, 0, -190]), hidden()], 1, { shards })
+    expect([...o.shards.get(0)!]).toEqual([2])
+    // within 6 m, through the wall
+    o = objectsAt(vis, [watcher([0, 0, 3]), hidden()], 2, { shards })
+    expect([...o.shards.get(0)!].sort()).toEqual([1, 2])
+    objectsAt(vis, [watcher([0, 0, -190]), hidden()], 3, { shards: [] })
+    o = objectsAt(vis, [watcher([0, 0, -190]), hidden()], 4, { shards })
+    expect([...o.shards.get(0)!]).toEqual([])
+  })
+})

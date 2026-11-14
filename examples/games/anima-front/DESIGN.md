@@ -450,12 +450,24 @@ Screens (every change uses a transition, never a hard cut):
   (quantized arrays, events since the last snapshot). Guests: interpolate others 100 ms behind, predict their own
   movement (`createPredictor`) and reconcile, send input at 30 Hz with edge counters (`presses`) so no jump or
   swap is lost or doubled.
-- Up to 4 humans in PvE and 12 in PvP; extra guests spectate. A human leaving is replaced by a bot.
+- Up to 4 humans in PvE and 12 in PvP. A member arriving after the start drops into a free seat (a bot's, or one
+  whose player left) with its own animal, loadout and name (`World.replace`: it warps in next to the squad in PvE,
+  at its team's base with spawn protection in PvP, keeping the seat's scoreboard); PvP prefers its chosen team,
+  else the team with the fewest players. Only when every seat is held by a player does it spectate. A human
+  leaving is replaced by a bot. A PvP spectator picks the team it watches in the game screen (team buttons, keys
+  1–3, LB / RB; 「切り替え中…」 until that team's key arrives) and steps through that team's animals. The host
+  removes spectators like seated members, in the lobby and from the in-match menu's 参加者 panel. Spectating
+  records nothing (no mission clear, best rank or PvP result); the results say it was 観戦.
 - **PvP information boundary.** The relay is anonymous and the host's track is one broadcast anyone can read, so
-  a PvP snapshot carries only a public part in clear (clock, scores, map props without owners, resting shards,
-  events that name no player, the kill feed, a name/bot/KO roster) plus one part per team sealed with that team's
+  a PvP snapshot carries only a public part in clear (clock, scores, map props, events that are neither about a
+  player nor positional, the kill feed, a name/bot/KO roster) plus one part per team sealed with that team's
   AES-GCM key (`src/net/split.ts`, `seal.ts`). A team part holds its members, the enemies it may know about, their
-  events, shots and shards, and its input acks. The host recomputes the sets for every snapshot
+  events, shots and shards, and its input acks. Player-placed props, resting shards and positional effects are
+  scoped per team too: its own team's props always, an enemy prop or a resting shard when within 6 m or in line of
+  sight of a living member (the same blockers) or — a prop — while its owner is known (decoys with the 0.4 s
+  hysteresis, walls, pads, honey, ink and shards known until gone; the owner only when known); impacts and blasts
+  of known players, others' only within 45 m (+ the blast radius) of a living member and without the actor; prop
+  damage on player props only to the teams that know the prop. The host recomputes the sets for every snapshot
   (`src/net/visibility.ts`): an enemy is known within 6 m of a living member, in line of sight (boxes, ヤドカリ
   walls, ink; eye, aim pivot or camera to head or chest; ≤ 150 m; camouflage ≥ 0.5 only within 5 m; 0.4 s
   hysteresis), when that team's sonar reveals it, when it fired or used an antique in the last 1.5 s within 45 m,
@@ -468,7 +480,9 @@ Screens (every change uses a transition, never a hard cut):
   key from the same ECDH secret (another HKDF purpose): PvP inputs, and the reconnection secret in every mode
   (bound to the member id, so a replay from another id gets no seat). A guest's ECDH key is fixed once the host
   knows it. Guests draw unknown enemies as off the field and fade enemies out of / into sight (`fog.ts`); the
-  host's own screen keeps to the same boundary. PvE snapshots and inputs stay whole and unsealed.
+  host's own screen keeps to the same boundary. Enemy name tags and HP bars need a clear line from the camera past
+  the map's boxes and the placed ヤドカリ walls (`src/render/markers.ts`) unless sonar revealed them. PvE snapshots
+  and inputs stay whole and unsealed.
 
 ## 19. Performance budget
 

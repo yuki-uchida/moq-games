@@ -68,6 +68,8 @@ export interface OnlineControls {
   backInLobby(): void
   /** Guest spectating PvP: the team whose view to follow (it receives that team's view only; default 0). */
   followTeam?(team: TeamId): void
+  /** Guest spectating PvP: the team asked for, and the team whose key it holds now (undefined: none yet). */
+  watching?(): { want: TeamId; have: TeamId | undefined }
 }
 
 export interface LocalChoice {
@@ -81,6 +83,11 @@ export interface LocalChoice {
 export interface MatchStart {
   config: MatchConfig
   me: string
+  /**
+   * This browser has no seat and watches (an online room with every seat held by players). Spectating records
+   * nothing: no mission clear, best score or PvP result.
+   */
+  spectator?: boolean
   /** Opens the session (the game screen calls it behind its loading card; it may throw). */
   connect(): Session
 }
@@ -150,7 +157,7 @@ export function createSoloLobby(
     },
     start() {
       const config = matchConfig(selection, current.seats, seed())
-      return { config, me: LOCAL_PLAYER_ID, connect: () => factory(config, LOCAL_PLAYER_ID) }
+      return { config, me: LOCAL_PLAYER_ID, spectator: false, connect: () => factory(config, LOCAL_PLAYER_ID) }
     },
     leave() {
       listeners.clear()

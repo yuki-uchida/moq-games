@@ -16,6 +16,8 @@ export interface KeyboardMouseOptions {
   onLockLost: () => void
   /** False while the pause menu or results are open (keys then belong to the menus). */
   active: () => boolean
+  /** Whether a click on the target takes the pointer (default yes; a spectator has nothing to aim). */
+  pointerLock?: () => boolean
 }
 
 const KEY_BUTTONS: Record<string, Button> = {
@@ -96,7 +98,7 @@ export function attachKeyboardMouse(o: KeyboardMouseOptions): KeyboardMouse {
   const onMouseDown = (e: MouseEvent) => {
     if (!o.active()) return
     if (!isLocked()) {
-      requestLock()
+      if (o.pointerLock?.() ?? true) requestLock()
       return
     }
     if (e.button === 0) state.press('R', 'mouse')

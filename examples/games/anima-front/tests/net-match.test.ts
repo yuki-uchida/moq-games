@@ -3,8 +3,14 @@ import type { Lobby } from '../src/app/lobby'
 import type { Session } from '../src/app/session'
 import { neutralPlayerInput, type PlayerInput, type View } from '../src/sim/types'
 import { validatePlayerInput } from '../src/net/validate'
-import { createWorld } from '../src/sim/api'
-import { choice, FakeHub, provider, run, settle } from './net-helpers'
+import { createWorld, sanitizeLoadout } from '../src/sim/api'
+import { makeLoadout, type Loadout } from '../src/data/loadout'
+import { simOf } from '../src/sim/world'
+import type { HostMatch } from '../src/net/host-match'
+import type { GuestMatch } from '../src/net/guest-match'
+import type { RoomMsg } from '../src/net/protocol'
+import type { TransportFactory } from '../src/net/protocol'
+import { choice, FakeHub, lateJoin, provider, run, settle } from './net-helpers'
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -53,6 +59,8 @@ function frame(t: Table) {
 }
 
 const walk = (yaw = 0): PlayerInput => ({ ...neutralPlayerInput(), mz: 1, yaw })
+
+const itemsOf = (l: Loadout) => l.slots.map((s) => (s ? `${s.item}:${s.hand ?? '-'}` : null))
 
 describe('host / guest match', () => {
   it('guests receive snapshots and the host moves their players from their inputs', async () => {
@@ -165,15 +173,14 @@ describe('host / guest match', () => {
     const team = (id: string) => v.players.find((p) => p.id === id)!.team
     expect([team('h0'), team(t.guestSessions[0].me), team(t.guestSessions[1].me)]).toEqual([0, 1, 2])
     expect(v.players).toHaveLength(12)
-    // late joiner asks for team 1
-    const late = await (async () => {
-      const p = provider(t.hub).join('match-1234', choice('オソイ', 'owl', 1))
-      await run(300, () => frame(t))
-      return p
-    })()
-    await run(300, () => frame(t))
+    // late joiner asks for team 1, with its own animal and loadout
+    const mine = choice('オソイ', 'owl', 1)
+    mine.loadout = makeLoadout(['claw', 'owl'], ['turtle'], ['hawk'])
+    const late = await lateJoin(t.hub, 'match-1234', mine, () => frame(t))
     const follow = late.online!.takeMatch()
     expect(follow?.phase).toBe('match')
+    expect(follow?.start.spectator).toBe(false)
+    expect(follow?.start.config.players.find((p) => p.id === follow.start.me)?.species).toBe('owl')
     const s = follow!.start.connect()
     t.guestSessions.push(s)
     await run(600, () => frame(t))
@@ -181,6 +188,14 @@ describe('host / guest match', () => {
     expect(now.bot).toBe(false)
     expect(now.team).toBe(1)
     expect(now.name).toBe('オソイ')
+    const body = simOf((t.hostSession as HostMatch).world).players.find((p) => p.id === s.me)!
+    expect(body.species.id).toBe('owl')
+    expect(body.bot).toBeUndefined()
+    expect(itemsOf(body.loadout)).toEqual(itemsOf(sanitizeLoadout(mine.loadout)))
+    expect(itemsOf(body.loadout)).toContain('claw:R')
+    // the joiner's own view predicts that animal
+    expect((s as GuestMatch).spectating).toBe(false)
+    expect(t.views.get(s)?.players.find((p) => p.id === s.me)?.species).toBe('owl')
     t.host.leave()
   }, 60_000)
 
@@ -277,4 +292,112 @@ describe('hostile guest inputs', () => {
     expect(t.host.state().online?.members.map((m) => m.name)).toEqual(['ホスト', 'ゲスト'])
     t.host.leave()
   }, 60_000)
+})
+
+describe('drop-in and spectators (DESIGN §18)', () => {
+  it('PvE: a guest arriving after the start takes a bot seat with its own animal and loadout and plays it', async () => {
+    const t = await table([])
+    await run(2000, () => frame(t))
+    const world = (t.hostSession as HostMatch).world
+    const mine = choice('オソイ', 'owl')
+    mine.loadout = makeLoadout(['claw', 'owl'], ['turtle'], ['hawk'])
+    const late = await lateJoin(t.hub, 'match-1234', mine, () => frame(t))
+    expect(late.state().status).toMatch(/空いた席に入って合流/)
+    const follow = late.online!.takeMatch()!
+    expect(follow.phase).toBe('match')
+    expect(follow.start.spectator).toBe(false)
+    expect(follow.start.me).toMatch(/^bot/)
+    const s = follow.start.connect()
+    expect((s as GuestMatch).spectating).toBe(false)
+    t.guestSessions.push(s)
+    await run(600, () => frame(t))
+    const body = simOf(world).players.find((p) => p.id === s.me)!
+    expect(body.species.id).toBe('owl')
+    expect(body.name).toBe('オソイ')
+    expect(body.bot).toBeUndefined()
+    expect(itemsOf(body.loadout)).toEqual(itemsOf(sanitizeLoadout(mine.loadout)))
+    // the other bots still play
+    expect(simOf(world).players.filter((p) => p.bot !== undefined)).toHaveLength(2)
+    // its inputs move that character
+    await run(4000, () => frame(t))
+    expect(t.views.get(t.hostSession)!.phase).toBe('play')
+    const before = [...body.p]
+    s.setInput(walk(body.yaw))
+    await run(1500, () => frame(t))
+    expect(Math.hypot(body.p[0] - before[0], body.p[2] - before[2])).toBeGreaterThan(3)
+    expect(t.views.get(s)!.players.find((p) => p.id === s.me)!.species).toBe('owl')
+    t.host.leave()
+  }, 60_000)
+
+  it('PvE: with every seat held by a player, a late guest watches', async () => {
+    const t = await table(['B', 'C', 'D'])
+    await run(1000, () => frame(t))
+    const late = await lateJoin(t.hub, 'match-1234', choice('E', 'owl'), () => frame(t))
+    expect(late.state().online?.spectating).toBe(true)
+    expect(late.state().status).toMatch(/観戦/)
+    const follow = late.online!.takeMatch()!
+    expect(follow.start.spectator).toBe(true)
+    const s = follow.start.connect()
+    expect((s as GuestMatch).spectating).toBe(true)
+    t.host.leave()
+  }, 60_000)
+
+  it('PvP: a spectator switches the team it watches and gets that key; the host removes it mid-match', async () => {
+    const hub = new FakeHub()
+    // the newest lobby state each guest received (what anyone on the relay reads)
+    let lastRoom: RoomMsg | null = null
+    const transport: TransportFactory = (o) =>
+      hub.transport({
+        ...o,
+        onSnapshot: (raw) => {
+          if ((raw as RoomMsg).k === 'room') lastRoom = raw as RoomMsg
+          o.onSnapshot(raw)
+        }
+      })
+    const host = await provider(hub, { transport }).host({ mode: 'pvp' }, choice('ホスト', 'shiba', 0), 'full-1234')
+    const guests: Lobby[] = []
+    for (let i = 0; i < 11; i++) {
+      const p = provider(hub, { transport }).join('full-1234', choice(`G${i}`, 'cat', ((i + 1) % 3) as 0 | 1 | 2))
+      await run(100)
+      guests.push(await p)
+    }
+    for (const g of guests) g.setReady(true)
+    await run(500)
+    expect(host.state().seats.filter((s) => s.bot === undefined)).toHaveLength(12)
+    const hs = host.start().connect()
+    await run(200)
+    const sessions: Session[] = [hs]
+    for (const g of guests) sessions.push(g.online!.takeMatch()!.start.connect())
+    const tick = () => {
+      for (const s of sessions) s.update(1 / 60)
+    }
+    await run(500, tick)
+    const watcher = await lateJoin(hub, 'full-1234', choice('ミル', 'owl', 1), tick)
+    const follow = watcher.online!.takeMatch()!
+    expect(follow.start.spectator).toBe(true)
+    sessions.push(follow.start.connect())
+    await run(1500, tick)
+    expect(watcher.online!.watching!()).toEqual({ want: 0, have: 0 })
+    const gen = lastRoom!.keys!.g
+    watcher.online!.followTeam!(2)
+    expect(watcher.online!.watching!().want).toBe(2)
+    await run(1500, tick)
+    expect(watcher.online!.watching!()).toEqual({ want: 2, have: 2 })
+    expect(lastRoom!.keys!.g).toBe(gen)
+    // the host's member list shows it watching team 2; removing it rotates the keys without it
+    const me = host.state().online!.members.find((m) => m.name === 'ミル')!
+    expect(me.seat).toBeNull()
+    expect(me.team).toBe(2)
+    const watching = sessions.pop()!
+    host.online!.kick(me.id)
+    await run(1000, tick)
+    expect(() => watching.update(1 / 60)).toThrow('ホストによってルームから外されました。')
+    expect(host.state().online!.members.some((m) => m.name === 'ミル')).toBe(false)
+    expect(watcher.state().online?.connection).toBe('closed')
+    expect(lastRoom!.keys!.g).toBeGreaterThan(gen)
+    expect(Object.keys(lastRoom!.keys!.w)).not.toContain(me.id)
+    expect(Object.keys(lastRoom!.keys!.w)).toHaveLength(11)
+    host.leave()
+    for (const g of guests) g.leave()
+  }, 120_000)
 })

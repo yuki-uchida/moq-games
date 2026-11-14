@@ -7,7 +7,7 @@ import { setTimeout as realTimeout } from 'node:timers'
 import { deflateRawSync } from 'node:zlib'
 import { vi } from 'vitest'
 import { createOnlineLobbyProvider } from '../src/app/online'
-import type { LobbyProvider, LocalChoice } from '../src/app/lobby'
+import type { Lobby, LobbyProvider, LocalChoice } from '../src/app/lobby'
 import type { NetTransport, TransportFactory, TransportOptions } from '../src/net/protocol'
 import { sealingBusy, sealingIdle } from '../src/net/seal'
 import { makeLoadout } from '../src/data/loadout'
@@ -229,4 +229,13 @@ export async function settle<T>(promise: Promise<T>, limit = 20_000): Promise<T>
     await drainSealing()
   }
   return watched
+}
+
+/** A guest joining a running room: its lobby once the host lists it (`frame` keeps the match sessions going). */
+export async function lateJoin(hub: FakeHub, code: string, me: LocalChoice, frame?: () => void): Promise<Lobby> {
+  const pending = provider(hub).join(code, me)
+  await run(300, frame)
+  const lobby = await pending
+  await run(300, frame)
+  return lobby
 }

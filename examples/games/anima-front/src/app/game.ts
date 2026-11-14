@@ -7,7 +7,7 @@
 import type { ThemeName } from '../audio/api'
 import { createGameRenderer } from '../render'
 import type { GameRenderer } from '../render/api'
-import { BTN, type PlayerView, type View } from '../sim/types'
+import { BTN, type PlayerView, type TeamId, type View } from '../sim/types'
 import { ControlState, PlayerInputBuilder, type UiAction } from '../input/controls'
 import { GamePad } from '../input/gamepad'
 import { attachKeyboardMouse, type KeyboardMouse } from '../input/keyboard-mouse'
@@ -18,11 +18,13 @@ import { createGuideCard, guideSeen, markGuideSeen, type GuideDevice } from '../
 import { createHud, type Hud } from '../ui/hud/hud'
 import { CooldownRing, pawCard } from '../ui/hud/model'
 import { controlsHelp, createSettingsPanel } from '../ui/screens/settings'
+import { createSpectatorBar, watchedPlayer } from '../ui/spectator'
 import { SPECIES, eyeHeight } from '../data/species'
 import type { AppContext, RouteArgs, Screen } from './context'
 import { setMatchProbe } from './debug'
-import { musicFor, prepareRequestFor } from './match'
-import { recordMission, recordPvp, type Rank } from './saves'
+import type { OnlineMember } from './lobby'
+import { TEAMS, musicFor, prepareRequestFor } from './match'
+import { recordMatch } from './records'
 import type { Session } from './session'
 import { AIM_ASSIST_STRENGTH, rendererOptionsFrom, type Settings } from './settings'
 
@@ -49,6 +51,29 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
   let spectateIndex = 0
   let pausedByRotate = false
   let lookSeeded = false
+  /** No seat in this online match: the screen watches (DESIGN §18) and records nothing. */
+  const spectator = !!start.spectator
+  const online = args.lobby?.online
+  /** The animal the screen follows: the local player, or for a spectator one of the watched team. */
+  let viewer = start.me
+  const startTeam: TeamId = start.config.players.find((p) => p.id === start.me)?.team ?? 0
+  const pickTeam = (team: TeamId) => {
+    if (!spectator || !online?.followTeam) return
+    spectateIndex = 0
+    online.followTeam(team)
+    ctx.sfx('uiTab')
+  }
+  const spectate = spectator
+    ? createSpectatorBar({
+        pvp: start.config.mode === 'pvp' && !!online?.followTeam,
+        onTeam: pickTeam,
+        onNext: () => spectateIndex++
+      })
+    : null
+  const onSpectateKey = (e: KeyboardEvent) => {
+    if (!spectate || mode !== 'play' || !/^Digit[1-3]$/.test(e.code)) return
+    pickTeam((Number(e.code.slice(5)) - 1) as TeamId)
+  }
 
   // ---- overlays
   const loadFill = h('i')
@@ -101,7 +126,19 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
 
   const guide = createGuideCard(() => closeGuide())
 
-  const el = h('div', 'screen game', canvas, hud.el, clickToPlay, loading, guide.el, errorCard, pause, rotate)
+  const el = h(
+    'div',
+    'screen game',
+    canvas,
+    hud.el,
+    spectate?.el,
+    clickToPlay,
+    loading,
+    guide.el,
+    errorCard,
+    pause,
+    rotate
+  )
 
   // ---- input wiring
   const onUi = (a: UiAction) => {
@@ -118,6 +155,7 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
 
   // ---- pause menu
   function paintPauseMenu() {
+    stopMembers()
     pausePanel.classList.remove('is-wide')
     const btn = (label: string, fn: () => void, extra: Record<string, string> = {}) =>
       h('button', { class: 'btn pause-btn', attrs: { type: 'button', ...extra }, on: { click: fn } }, label)
@@ -136,11 +174,92 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
           btn('再開', () => resume(), { 'data-autofocus': '', 'data-pause': 'resume' }),
           btn('設定', () => showPanel('settings'), { 'data-pause': 'settings' }),
           btn('操作説明', () => showPanel('help'), { 'data-pause': 'help' }),
+          args.lobby?.kind === 'host' && online
+            ? btn('参加者', () => showMembers(), { 'data-pause': 'members' })
+            : null,
           btn('任務を中断', () => void abort(), { 'data-pause': 'abort' })
         )
       )
     )
     focusInitial(pauseBody)
+  }
+  // ---- online host: who is in the room (seat / team or spectating), with removal
+  let unsubMembers: (() => void) | null = null
+  function stopMembers() {
+    unsubMembers?.()
+    unsubMembers = null
+  }
+  function memberPlace(m: OnlineMember, pvp: boolean): string {
+    if (!m.seat) return pvp ? `観戦・${TEAMS[m.team]?.name ?? ''}` : '観戦'
+    return pvp ? (TEAMS[m.team]?.name ?? '') : '隊員'
+  }
+  function showMembers() {
+    const lobby = args.lobby
+    if (!lobby) return
+    stopMembers()
+    pausePanel.classList.add('is-wide')
+    const pvp = start.config.mode === 'pvp'
+    const list = h('ul', { class: 'pause-members', attrs: { 'aria-label': '参加者' } })
+    const paint = () => {
+      const members = lobby.state().online?.members ?? []
+      list.replaceChildren(
+        ...members.map((m) =>
+          h(
+            'li',
+            {
+              class: `pause-member ${m.seat ? '' : 'is-watcher'}`,
+              style: pvp && TEAMS[m.team] ? { '--team': TEAMS[m.team].color } : undefined,
+              attrs: { 'data-member': m.id }
+            },
+            h('b', null, m.name),
+            h('span', 'chip', memberPlace(m, pvp)),
+            m.host ? h('span', 'chip', 'ホスト') : null,
+            h('span', 'grow'),
+            m.host || m.me
+              ? null
+              : h(
+                  'button',
+                  {
+                    class: 'chip chip-danger',
+                    attrs: { type: 'button', 'data-kick': m.id, title: `${m.name}をルームから外す` },
+                    on: { click: () => void removeMember(m) }
+                  },
+                  '退出させる'
+                )
+          )
+        )
+      )
+    }
+    paint()
+    unsubMembers = lobby.subscribe(() => {
+      if (list.isConnected) paint()
+    })
+    pauseBody.replaceChildren(
+      h('div', 'pause-title', h('small', null, 'MEMBERS'), h('b', null, '参加者')),
+      h('p', 'pause-note', '退出させたメンバーはこのルームに戻れません。'),
+      h('div', 'pause-scroll', list),
+      h(
+        'button',
+        {
+          class: 'btn btn-back',
+          attrs: { type: 'button', 'data-autofocus': '', 'data-sfx': 'uiBack' },
+          on: { click: () => paintPauseMenu() }
+        },
+        'もどる'
+      )
+    )
+    focusInitial(pauseBody)
+  }
+  async function removeMember(m: OnlineMember) {
+    const r = await ctx.confirm({
+      title: `${m.name}を退出させますか？`,
+      text: m.seat ? 'このルームには戻れなくなります。席はボットが引き継ぎます。' : 'このルームには戻れなくなります。',
+      buttons: [
+        { value: 'no', label: 'やめる' },
+        { value: 'yes', label: '退出させる', primary: true }
+      ]
+    })
+    if (r === 'yes') online?.kick(m.id)
   }
   function showPanel(which: 'settings' | 'help') {
     pausePanel.classList.add('is-wide')
@@ -182,13 +301,14 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
   }
   function resume() {
     if (mode !== 'paused') return
+    stopMembers()
     mode = 'play'
     pad.rearm()
     session?.setPaused(false)
     ctx.audio.setDuck(0)
     setClass(pause, 'is-on', false)
-    touch?.setVisible(true)
-    if (!ctx.touch) km?.requestLock()
+    touch?.setVisible(!spectator)
+    if (!ctx.touch && !spectator) km?.requestLock()
     ;(document.activeElement as HTMLElement | null)?.blur?.()
   }
   async function abort() {
@@ -261,8 +381,8 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
     mode = 'play'
     pad.rearm()
     session?.setPaused(false)
-    touch?.setVisible(true)
-    if (!ctx.touch) {
+    touch?.setVisible(!spectator)
+    if (!ctx.touch && !spectator) {
       setClass(clickToPlay, 'is-on', true)
       km?.requestLock()
     }
@@ -274,25 +394,23 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
     if (isDone()) return
     mode = 'done'
     km?.releaseLock()
-    let newBest = false
-    let unlocked: string | null = null
-    const me = v.players.find((p) => p.id === start.me)
-    if (v.mode === 'pve' && v.pve) {
-      const victory = v.phase === 'victory'
-      const r = v.pve.result
-      const rec = r
-        ? { rank: r.rank as Rank, score: Math.round(r.score), difficulty: v.pve.difficulty, time: r.time }
-        : null
-      const out = recordMission(ctx.progress, v.pve.mission, victory, rec)
-      ctx.setProgress(out.progress)
-      newBest = out.newBest
-      unlocked = out.unlocked
-    } else if (v.mode === 'pvp' && v.pvp) {
-      ctx.setProgress(recordPvp(ctx.progress, v.pvp.winner === me?.team))
-    } else if (v.mode === 'training' && selection.training?.tutorial && v.phase === 'victory') {
-      ctx.setProgress({ ...ctx.progress, trainingDone: true })
-    }
-    ctx.open('results', { selection, view: v, me: start.me, lobby: args.lobby, newBest, unlocked })
+    // A spectator watched someone else's match: nothing goes to its progress.
+    const rec = recordMatch(ctx.progress, v, {
+      me: start.me,
+      spectator,
+      tutorial: !!selection.training?.tutorial
+    })
+    if (rec.recorded) ctx.setProgress(rec.progress)
+    const { newBest, unlocked } = rec
+    ctx.open('results', {
+      selection,
+      view: v,
+      me: spectator ? viewer : start.me,
+      lobby: args.lobby,
+      newBest,
+      unlocked,
+      spectator
+    })
   }
 
   /** The tutorial counts as completed the moment the sim reports it done (not when the match ends). */
@@ -392,18 +510,22 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
     if (awaitingFirstView) loadTitle.textContent = 'ホストの出撃を待っています…'
     else setClass(loading, 'is-on', false)
     setMatchProbe(probe)
-    if (session.kind !== 'demo' && !selection.training?.tutorial && !guideSeen(ctx.store)) {
+    // The first-match controls card is for players (a spectator controls nothing).
+    if (session.kind !== 'demo' && !spectator && !selection.training?.tutorial && !guideSeen(ctx.store)) {
       openGuide()
       return
     }
     mode = 'play'
-    touch?.setVisible(true)
-    if (!ctx.touch) setClass(clickToPlay, 'is-on', true)
+    // A spectator has nothing to control: no controls, no pointer lock, no "click to play".
+    touch?.setVisible(!spectator)
+    if (!ctx.touch && !spectator) setClass(clickToPlay, 'is-on', true)
   }
 
   // ---- debug hook (window.__anima, Vite dev server only): lets E2E drive and observe the real match
   const probe = {
     me: start.me,
+    spectator,
+    watching: () => viewer,
     view: () => view,
     stats: () => renderer?.stats() ?? null,
     aimAt(p: readonly number[]) {
@@ -453,7 +575,8 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
         onLockLost: () => {
           if (mode === 'play') openPause()
         },
-        active: () => mode === 'play'
+        active: () => mode === 'play',
+        pointerLock: () => !spectator
       })
       el.addEventListener('mousedown', () => {
         if (mode === 'play') setClass(clickToPlay, 'is-on', false)
@@ -471,10 +594,11 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
         el.append(touch.el)
       }
       el.addEventListener('click', (e) => {
-        // spectating: click cycles the followed ally
-        if (mode === 'play' && view?.players.find((p) => p.id === start.me)?.state === 'away' && e.target === canvas)
-          spectateIndex++
+        // watching (a spectator, or a player waiting to respawn): a click steps to the next animal
+        if (mode !== 'play' || e.target !== canvas) return
+        if (spectator || view?.players.find((p) => p.id === start.me)?.state === 'away') spectateIndex++
       })
+      if (spectate) window.addEventListener('keydown', onSpectateKey)
       window.addEventListener('resize', resize)
       void boot()
     },
@@ -482,6 +606,8 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
       mode = 'done'
       setMatchProbe(null)
       window.removeEventListener('resize', resize)
+      window.removeEventListener('keydown', onSpectateKey)
+      stopMembers()
       document.removeEventListener('pointerlockchange', onLockChange)
       km?.dispose()
       touch?.dispose()
@@ -550,14 +676,26 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
       }
       view = next
       recordTutorial(next)
-      const me = next.players.find((p) => p.id === start.me)
+      if (spectate) {
+        // PvP: the team whose view arrives now (its key); PvE: the squad.
+        const w = online?.watching?.()
+        const team = start.config.mode === 'pvp' ? (w?.have ?? startTeam) : 0
+        viewer = watchedPlayer(next, team, spectateIndex) ?? start.me
+        if (mode === 'play') spectate.pollPad()
+        spectate.update({
+          want: w?.want,
+          have: start.config.mode === 'pvp' ? w?.have : undefined,
+          watching: next.players.find((p) => p.id === viewer)?.name
+        })
+      }
+      const me = next.players.find((p) => p.id === viewer)
       const follow = followTarget(next, me)
       const active = me?.hands.find((hnd) => hnd.sel >= 0 && hnd.items[hnd.sel] === 'owl' && hnd.act === 'charge')
       try {
         renderer.frame({
           view: next,
           dt,
-          me: start.me,
+          me: viewer,
           follow,
           camera: {
             yaw: builder.yaw,
@@ -571,12 +709,13 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
       }
       hud.update({
         view: next,
-        me: start.me,
+        me: viewer,
         dt,
         yaw: builder.yaw,
         fov: ctx.settings.fov,
         device: state.lastDevice,
-        hints: ctx.settings.controlHints,
+        hints: ctx.settings.controlHints && !spectator,
+        spectator,
         interactHeld: (input.held & BTN.INTERACT) !== 0,
         follow,
         project: (p) => renderer!.project(p)

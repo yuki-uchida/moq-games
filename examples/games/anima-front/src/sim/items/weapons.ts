@@ -189,7 +189,14 @@ export function slam(sim: Sim, p: Player, h: HandSt, def: ItemDef) {
     if (sim.time - h.modeT >= wind - 1e-9) {
       const f = forwardOf(p.yaw)
       const c: Vec = [p.p[0] + f[0] * u.reach, p.p[1] + 0.6, p.p[2] + f[2] * u.reach]
-      emit(sim, { type: 'impact', at: r3v([c[0], p.p[1], c[2]]), normal: [0, 1, 0], surface: 'ground', item: def.id })
+      emit(sim, {
+        type: 'impact',
+        at: r3v([c[0], p.p[1], c[2]]),
+        normal: [0, 1, 0],
+        surface: 'ground',
+        item: def.id,
+        by: p.id
+      })
       meleeSector(sim, p, def, u.radius, 360, u.damage * meleeMul(p), { center: c, radial: true, knockUp: u.knockUp })
       h.mode = 'idle'
       h.act = 'idle'

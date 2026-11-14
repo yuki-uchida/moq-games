@@ -51,6 +51,8 @@ export interface ResultsArgs {
   lobby?: Lobby
   newBest?: boolean
   unlocked?: string | null
+  /** The local browser watched (no seat): nothing was recorded; `me` is the animal it followed last. */
+  spectator?: boolean
 }
 
 export interface RouteArgs {

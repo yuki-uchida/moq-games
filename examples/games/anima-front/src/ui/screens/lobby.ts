@@ -135,7 +135,39 @@ export function createLobbyScreen(ctx: AppContext, args: { selection: MatchSelec
   const seatsHost = h('div', `seats seats-${mode}`)
   const status = h('p', { class: 'lobby-status', attrs: { 'aria-live': 'polite' } })
   const infoHost = h('div', 'lobby-info')
-  const watchers = h('p', 'lobby-status lobby-watchers')
+  const watchers = h('div', 'lobby-status lobby-watchers')
+  /** Spectators by name; the host can remove them like seated members. */
+  const paintWatchers = (st: LobbyState) => {
+    const spectators = st.online?.members.filter((m) => !m.seat) ?? []
+    const host = st.online?.role === 'host'
+    watchers.replaceChildren(
+      ...(spectators.length
+        ? [
+            h('span', null, '観戦：'),
+            ...spectators.map((m) =>
+              h(
+                'span',
+                { class: 'lobby-watcher', attrs: { 'data-watcher': m.id } },
+                h('b', null, m.name),
+                m.me ? h('span', 'chip chip-anima', 'あなた') : null,
+                host && !m.host && !m.me
+                  ? h(
+                      'button',
+                      {
+                        class: 'chip chip-danger',
+                        style: { cursor: 'pointer' },
+                        attrs: { type: 'button', 'data-kick': m.id, title: `${m.name}をルームから外す` },
+                        on: { click: () => void kick(m) }
+                      },
+                      '退出させる'
+                    )
+                  : null
+              )
+            )
+          ]
+        : [])
+    )
+  }
   const hostTools = h('div', 'lobby-host-tools')
 
   const controls = (st: LobbyState, seat: Seat): SeatControls | undefined =>
@@ -317,8 +349,7 @@ export function createLobbyScreen(ctx: AppContext, args: { selection: MatchSelec
     } else {
       seatsHost.replaceChildren(...state.seats.map((s) => seatCard(s, sel.mode, controls(state, s))))
     }
-    const spectators = state.online?.members.filter((m) => !m.seat) ?? []
-    watchers.textContent = spectators.length ? `観戦：${spectators.map((m) => m.name).join('、')}` : ''
+    paintWatchers(state)
     paintTeams(state)
     paintGo(state)
     if (state.online?.connection === 'closed' && !closedCard.isConnected) {
@@ -355,6 +386,9 @@ export function createLobbyScreen(ctx: AppContext, args: { selection: MatchSelec
                 on: {
                   click: () => {
                     preferredTeam = t.id
+                    // A spectator of a running PvP match also watches that team.
+                    const st = lobby.state()
+                    if (st.online?.spectating && st.online.phase !== 'lobby') online?.followTeam?.(t.id)
                     lobby.setLocal({ ...localChoice(ctx), team: t.id })
                     paintTeams(lobby.state())
                   }

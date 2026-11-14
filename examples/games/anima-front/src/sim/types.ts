@@ -353,8 +353,8 @@ export type SimEvent = { id: number; t: number } & (
       negated?: boolean
       surface: HitSurface
     }
-  | { type: 'impact'; at: V3; normal: V3; surface: Surface; item: ShotKind }
-  | { type: 'blast'; at: V3; radius: number; item: ShotKind | FoeAttack; team: TeamId | 'foe' }
+  | { type: 'impact'; at: V3; normal: V3; surface: Surface; item: ShotKind; by?: ActorRef }
+  | { type: 'blast'; at: V3; radius: number; item: ShotKind | FoeAttack; team: TeamId | 'foe'; by?: ActorRef }
   | { type: 'empty'; who: string; hand: Hand }
   | { type: 'swap'; who: string; hand: Hand; item: ItemId }
   | { type: 'jump'; who: string; air: boolean }
