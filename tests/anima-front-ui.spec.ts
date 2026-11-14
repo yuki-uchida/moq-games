@@ -391,6 +391,13 @@ test.describe('a real match runs (window.__anima)', () => {
       return null
     })
     await page.keyboard.up('KeyW')
+    // holding Tab lists the squad with names and fills the table (header-only before the fix)
+    await page.keyboard.down('Tab')
+    await expect(page.locator('.hud-scoreboard.is-on')).toBeVisible()
+    await expect(page.locator('.hud-scoreboard tbody tr')).toHaveCount(4)
+    await expect(page.locator('.hud-scoreboard tbody .sb-name').first()).not.toHaveText('')
+    await page.keyboard.up('Tab')
+    await expect(page.locator('.hud-scoreboard.is-on')).toHaveCount(0)
     expect(hurt).not.toBeNull()
     expect(hurt!.damage).toBeGreaterThan(0)
     expect(errors).toEqual([])

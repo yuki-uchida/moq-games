@@ -126,4 +126,18 @@ describe('pvp', () => {
     const ko = m.events.find((e) => e.type === 'ko' && e.who === 'b')!
     expect(ko.team).toBe(0)
   })
+
+  it('a player dropping into a seat starts with fresh personal stats; the team score stays', () => {
+    const m = match()
+    m.step(1)
+    m.ko('b', 'a')
+    m.step(1)
+    expect(m.p('a').stats.kos).toBe(1)
+    m.p('a').stats.damage = 40
+    m.world.replace('a', playerCfg('a', { team: 0, loadout: makeLoadout(['bee'], [], []) }))
+    const a = m.p('a')
+    expect(a.stats).toMatchObject({ kos: 0, assists: 0, downs: 0, revives: 0, damage: 0 })
+    expect(m.world.view().players.find((x) => x.id === 'a')!.stats.kos).toBe(0)
+    expect(m.world.view().pvp!.scores).toEqual([1, 0, 0])
+  })
 })

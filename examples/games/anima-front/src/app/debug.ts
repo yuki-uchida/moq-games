@@ -11,6 +11,8 @@ import type { Backdrop } from './context'
 export interface MatchProbe {
   view(): View | null
   stats(): RendererStats | null
+  /** Yaw the camera looks along now (null before the first frame). */
+  cameraYaw(): number | null
   /** Local player id. */
   me: string
   /** Turns the camera (and aim) toward a world point, as if the player moved the mouse. */

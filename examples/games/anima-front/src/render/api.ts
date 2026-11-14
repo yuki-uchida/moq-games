@@ -82,6 +82,8 @@ export interface GameRenderer {
   /** World → CSS pixel coordinates of the canvas. */
   project(p: V3): ScreenPoint
   stats(): RendererStats
+  /** Yaw (radians, 0 = +z) the camera currently looks along (debug probe). */
+  cameraYaw(): number
   dispose(): void
 }
 

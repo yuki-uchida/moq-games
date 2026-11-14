@@ -206,9 +206,10 @@ export function createScoreboard(): Scoreboard {
       return open
     },
     setOpen(on) {
+      if (on === open) return
       open = on
       setClass(el, 'is-on', on)
-      acc = 1
+      acc = 9 // the next update paints
     },
     update(view, me) {
       if (!open) return
@@ -216,7 +217,7 @@ export function createScoreboard(): Scoreboard {
       if (acc < 10) return
       acc = 0
       const order = [...view.players].sort((a, b) => a.team - b.team || b.stats.kos - a.stats.kos)
-      const key = order.map((p) => p.id).join(',')
+      const key = order.map((p) => [p.id, p.name, p.species, p.team, p.bot ? 1 : 0].join(':')).join(',')
       if (key !== built) {
         built = key
         rows.clear()

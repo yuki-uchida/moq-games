@@ -34,7 +34,7 @@ import {
   type EcdhPair
 } from '../src/net/seal'
 import { Fog, FADE } from '../src/net/fog'
-import { hiddenPlayer, mergeView, splitView, type TeamPart } from '../src/net/split'
+import { hiddenPlayer, isPublicEvent, mergeView, splitView, type TeamPart } from '../src/net/split'
 import { TeamVisibility, type ObjectSets } from '../src/net/visibility'
 import { createWorld, type World } from '../src/sim/api'
 import {
@@ -307,6 +307,28 @@ describe('snapshot split', () => {
     expect(parts.get(2)!.p.find((p) => p.id === 'e')!.revealed).toBe(true)
     expect(parts.get(1)!.p.find((p) => p.id === 'e')!.revealed).toBe(false)
     expect(JSON.stringify(red)).not.toMatch(/"(id|owner|by|to|who|target|reviving)":"e"/)
+  })
+
+  it('an operator radio line names no player: public part, every team view and the host screen get it', () => {
+    const radio = ev({ type: 'radio', who: 'ruri', text: 'はじめ！' }, 9)
+    const withRadio: View = { ...base, events: [...base.events, radio] }
+    const sets = new Map<TeamId, Set<string>>([
+      [0, new Set(['a'])],
+      [1, new Set(['e', 'f'])],
+      [2, new Set<string>()]
+    ])
+    const { pub, roster, parts } = splitView(withRadio, sets, {}, config)
+    expect(pub.events.map((e) => e.type)).toEqual(['ko', 'radio'])
+    expect(isPublicEvent(radio, new Set())).toBe(true)
+    // the host's own screen: public events pass as they are
+    for (const team of [0, 1, 2] as TeamId[]) {
+      const m = mergeView(pub, roster, parts.get(team)!, config, () => undefined)
+      expect(m.view.events.some((e) => e.type === 'radio')).toBe(true)
+      // players keep their scoping: team 2 knows nobody, so the hit on a, the jump of f and the fire never reach it
+      if (team === 2) expect(m.view.events.map((e) => e.type)).toEqual(['ko', 'radio'])
+    }
+    // player-revealing events stay scoped as before
+    for (const e of base.events.filter((x) => x.type !== 'ko')) expect(isPublicEvent(e, new Set())).toBe(false)
   })
 
   it('player-placed props, resting shards and positional effects reach only the teams that may know them', () => {

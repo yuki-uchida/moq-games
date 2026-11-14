@@ -543,6 +543,7 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
     watching: () => viewer,
     view: () => view,
     stats: () => renderer?.stats() ?? null,
+    cameraYaw: () => renderer?.cameraYaw() ?? null,
     aimAt(p: readonly number[]) {
       const me = view?.players.find((q) => q.id === start.me)
       if (!me) return
@@ -711,7 +712,8 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
         }
       }
       const me = next.players.find((p) => p.id === viewer)
-      const follow = followTarget(next, me)
+      // A spectator's own look never moves (no pointer lock): the camera and the HUD follow the watched animal's.
+      const follow = spectator && me ? me.id : followTarget(next, me)
       const active = me?.hands.find((hnd) => hnd.sel >= 0 && hnd.items[hnd.sel] === 'owl' && hnd.act === 'charge')
       try {
         renderer.frame({
@@ -733,7 +735,7 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
         view: next,
         me: viewer,
         dt,
-        yaw: builder.yaw,
+        yaw: spectator && me ? me.yaw : builder.yaw,
         fov: ctx.settings.fov,
         device: state.lastDevice,
         hints: ctx.settings.controlHints && !spectator,
