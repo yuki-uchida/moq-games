@@ -83,7 +83,9 @@ the emotion (big eyes with one highlight, brows, mouth, blush).
 Every member of the gang (ばくろ団) wears the gang's red somewhere (neckerchief, head scarf, cap band, armband,
 sash) so they read as one gang. The four hamsters are one build drawn by one function (`chars/hamster.ts`).
 The twelve portraits (`ui/faces.ts`) are drawn from the same ramps and shapes as their sprites: the portrait is
-the character. うりぼう, the sleeping piglet, is a prop in the code and a member of the cast in the drawing.
+the character. うりぼう, the sleeping piglet, is a prop in the code and a member of the cast in the drawing. The
+king has a second sheet (`king:raged`) for the second half of his fight: the same clips with red eyes and dark fire
+around him.
 
 ### World themes
 
