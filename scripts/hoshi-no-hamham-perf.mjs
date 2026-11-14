@@ -4,7 +4,7 @@
  *
  * Usage: node scripts/hoshi-no-hamham-perf.mjs [--only boot,menus,play,boss,pacing] [--stages 1,3,5 | all]
  *                                             [--seconds 30] [--profiles landscape,portrait] [--throttle 4]
- *                                             [--dev] [--gpu] [--check] [--raw] [--out DIR]
+ *                                             [--dev] [--gpu] [--check] [--raw] [--tries 3] [--out DIR]
  *   --only      sections to run (default: all five). A section that fails is reported and the others still run.
  *   --stages    stages of the play section (default 1,3,5; `all` is 1 to 10)
  *   --seconds   seconds recorded per stage and profile in the play section (default 30)
@@ -16,6 +16,9 @@
  *   --raw       also write the per-frame log of every run to raw-<run>.json
  *   --trace     also write a Chromium trace of every recorded run to trace-<run>.json (large; what the main thread
  *               and the GPU process did in a slow frame: garbage collection, layout, paint, commits)
+ *   --tries     how often a recorded run may be made (default 1). A run in which the game's thread was kept from
+ *               running from outside (the machine was busy with something else; see `held` below) is set aside and
+ *               made again, up to this many times; the report says how many were set aside
  *   --out       output folder (default .build/hoshi-no-hamham-perf/, ignored by Git)
  *
  * Output: report.md (command, environment, the budget summary, one part per section) and report.json (the same
@@ -78,6 +81,14 @@ const gpu = flag('--gpu')
 const check = flag('--check')
 const raw = flag('--raw')
 const trace = flag('--trace')
+const tries = Number(valueOf('--tries') ?? 1)
+if (!Number.isInteger(tries) || tries < 1) usage('--tries must be a whole number, 1 or more')
+/**
+ * A slice of the game's thread counts as kept from running from outside when this many milliseconds of its clock
+ * time, and this share of it, are not explained by the thread's own running time under the throttle.
+ */
+const HELD_MS = 8
+const HELD_SHARE = 0.4
 /**
  * What every recorded run is traced with, to count garbage collections, style and layout work and shader
  * compilation: the timeline's own events, V8's, Skia's shader events and the page's marks.
@@ -601,7 +612,20 @@ function installPerf() {
         perf.lafs.push({
           t: e.startTime,
           d: e.duration,
-          forced: (e.scripts ?? []).reduce((s, x) => s + (x.forcedStyleAndLayoutDuration ?? 0), 0)
+          forced: (e.scripts ?? []).reduce((s, x) => s + (x.forcedStyleAndLayoutDuration ?? 0), 0),
+          // What the frame was made of: its rendering part, and its three longest scripts with who called them.
+          render: e.renderStart ? e.startTime + e.duration - e.renderStart : 0,
+          scripts: [...(e.scripts ?? [])]
+            .sort((a, b) => b.duration - a.duration)
+            .slice(0, 3)
+            .map((x) => ({
+              d: x.duration,
+              by: String(x.invoker ?? x.invokerType ?? '').slice(0, 60),
+              fn: String(x.sourceFunctionName ?? ''),
+              at: `${String(x.sourceURL ?? '')
+                .replace(/^.*\//, '')
+                .replace(/\?.*$/, '')}:${x.sourceCharPosition ?? ''}`
+            }))
         })
     }).observe({ type: 'long-animation-frame', buffered: true })
   } catch {
@@ -771,6 +795,10 @@ function analyze(data, { gpuRun = gpu } = {}) {
       max: Math.max(0, ...data.longtasks.map((x) => x.d)),
       sum: sum(data.longtasks.map((x) => x.d))
     },
+    lafList: [...lafs]
+      .sort((a, b) => b.d - a.d)
+      .slice(0, 5)
+      .map((x) => ({ at: (x.t - data.t0) / 1000, d: x.d, render: x.render ?? 0, scripts: x.scripts ?? [] })),
     laf: {
       supported: data.lafSupported,
       count: lafs.length,
@@ -810,6 +838,10 @@ function runMarkdown(name, m, notes = []) {
     `- loop JS ms: p50 ${f2(m.js.p50)}, p95 ${f2(m.js.p95)}, p99 ${f2(m.js.p99)}, max ${f2(m.js.max)}; frames over 8 ms ${m.js.over8}, over 16.7 ms ${m.js.over16}, over 33 ms ${m.js.over33}`,
     `- frame interval ms${m.interval.judged ? '' : ' (software rendering, not judged without --gpu)'}: median ${f1(m.interval.median)} (${f0(m.interval.rate)} Hz); over 25 ms ${m.interval.over25}, over 42 ms ${m.interval.over42}, over 58 ms ${m.interval.over58}, over 100 ms ${m.interval.over100}; over 2.5 x median ${m.interval.overMedian}`,
     `- long tasks: ${m.longtasks.count} (longest ${f0(m.longtasks.max)} ms, sum ${f0(m.longtasks.sum)} ms); long animation frames: ${m.laf.supported ? `${m.laf.count} (longest ${f0(m.laf.max)} ms, forced layout ${f1(m.laf.forced)} ms)` : 'not supported by this Chromium'}`,
+    ...m.lafList.map(
+      (x) =>
+        `- long animation frame at ${f2(x.at)} s, ${f0(x.d)} ms (rendering ${f0(x.render)} ms): ${x.scripts.length ? x.scripts.map((s) => `${f0(s.d)} ms in ${s.fn || '(anonymous)'} ${s.at}, called by ${s.by}`).join('; ') : 'no script of 5 ms or more'}`
+    ),
     `- art painted on the main thread: ${artText(m.art)}, ${f1(m.art.ms)} ms; art from a worker: ${m.remote ? 'yes' : 'no'}`,
     `- sound effects: ${m.sfx.buffered} started from buffers, ${m.sfx.live} built live; ${m.sfx.rendered} buffers rendered`,
     `- music scheduler: ${m.ticks.n} ticks, p95 ${f2(m.ticks.p95)} ms, max ${f2(m.ticks.max)} ms`,
@@ -821,7 +853,10 @@ function runMarkdown(name, m, notes = []) {
     lines.push(
       `- garbage collection: ${t.gc.major} major (${f1(t.gc.majorPer1000)} per 1000 frames, longest ${f1(t.gc.majorLongest)} ms, ${f0(t.gc.majorMs)} ms in all), ${t.gc.minor} minor (longest ${f1(t.gc.minorLongest)} ms, ${f0(t.gc.minorMs)} ms in all)`,
       `- style and layout: ${t.style.count} style recalculations (${f2(t.style.perFrame)} per frame, ${f0(t.style.ms)} ms), ${t.layout.count} layouts (in ${f1(t.layout.share * 100)} % of the frames, ${f0(t.layout.ms)} ms)`,
-      `- shaders compiled on first use${gpu ? '' : ' (software rendering, not judged without --gpu)'}: ${t.shaders.programs} programs${t.shaders.bursts.length ? `, ${t.shaders.bursts.map((b) => `${b.programs} at ${f2(b.at)} s (${f0(b.ms)} ms)`).join(', ')}` : ''}`
+      `- shaders compiled on first use${gpu ? '' : ' (software rendering, not judged without --gpu)'}: ${t.shaders.programs} programs${t.shaders.bursts.length ? `, ${t.shaders.bursts.map((b) => `${b.programs} at ${f2(b.at)} s (${f0(b.ms)} ms)`).join(', ')}` : ''}`,
+      t.held.count
+        ? `- **kept from running from outside: ${t.held.count} slices of the game's thread, ${f0(t.held.ms)} ms in all, longest ${f0(t.held.longest)} ms (${t.held.at.map((h) => `${f0(h.ms)} ms at ${f2(h.at)} s in ${h.name}`).join(', ')}${t.held.count > t.held.at.length ? ', ...' : ''}). The thread had work and did not run: this run's durations are the machine's as much as the page's**`
+        : `- kept from running from outside: no (the game's thread ran whenever it had work)`
     )
   }
   for (const p of m.painted.slice(0, 4))
@@ -1012,9 +1047,10 @@ async function waitCalm(page) {
 
 /**
  * What a trace says about the stretch between the page's marks `perf:begin` and `perf:end`: the main thread's
- * garbage collections, its style and layout work, and the shaders the GPU process compiled.
+ * garbage collections, its style and layout work, the shaders the GPU process compiled, and whether the thread was
+ * kept from running from outside. `rate` is the CPU throttle of the run.
  */
-function traceStats(buffer) {
+function traceStats(buffer, rate = throttle) {
   let events
   try {
     const parsed = JSON.parse(buffer.toString('utf8'))
@@ -1063,8 +1099,28 @@ function traceStats(buffer) {
       burst.ms += e.dur / 1000
     } else bursts.push({ at: (e.ts - from) / 1e6, end: e.ts + e.dur, programs: 1, ms: e.dur / 1000 })
   }
+  // Did the game's thread get to run? A slice has its time on the clock (`dur`) and the time its thread ran
+  // (`tdur`). The CPU throttle stops the thread for all but 1/rate of the time, so honest work runs for 1/rate of
+  // its clock time. What is missing beyond that was taken from outside the page: the machine gave the core to
+  // something else. Only outermost slices are looked at, so nothing is counted twice.
+  // A wait while the GPU process compiles this page's own shaders is the page's doing: it is not counted here
+  // (budget S1 counts it).
+  const ownShaders = (e) => compiles.some((c) => c.ts < e.ts + e.dur + 20_000 && c.ts + c.dur > e.ts - 20_000)
+  const held = { count: 0, ms: 0, longest: 0, at: [] }
+  let covered = -Infinity
+  for (const e of main.filter((x) => typeof x.tdur === 'number').sort((a, b) => a.ts - b.ts || b.dur - a.dur)) {
+    if (e.ts < covered) continue
+    covered = e.ts + e.dur
+    const lost = (e.dur - e.tdur * rate) / 1000
+    if (lost < HELD_MS || lost < (e.dur / 1000) * HELD_SHARE || ownShaders(e)) continue
+    held.count += 1
+    held.ms += lost
+    held.longest = Math.max(held.longest, lost)
+    if (held.at.length < 5) held.at.push({ at: (e.ts - from) / 1e6, ms: lost, name: e.name })
+  }
   return {
     frames,
+    held,
     gc: {
       major: major.count,
       majorMs: major.ms,
@@ -1084,8 +1140,11 @@ function traceStats(buffer) {
   }
 }
 
-/** Records `ms` of play (or less when the stage ends) and returns the raw data; `name` names the trace file. */
-async function recordFor(page, ms, options, name = 'run') {
+/**
+ * Records `ms` of play (or less when the stage ends) and returns the raw data; `name` names the trace file and
+ * `rate` is the CPU throttle the page runs under.
+ */
+async function recordFor(page, ms, options, name = 'run', rate = throttle) {
   await browser.startTracing(page, { categories: trace ? TRACE_CATEGORIES : LIGHT_CATEGORIES })
   let buffer = null
   try {
@@ -1101,7 +1160,7 @@ async function recordFor(page, ms, options, name = 'run') {
     }
     const data = await page.evaluate(() => window.__perf.end())
     buffer = await browser.stopTracing()
-    data.trace = traceStats(buffer)
+    data.trace = traceStats(buffer, rate)
     return data
   } finally {
     if (!buffer) buffer = await browser.stopTracing().catch(() => null)
@@ -1297,6 +1356,32 @@ async function sectionMenus() {
   }
 }
 
+/** The milliseconds a run's thread was kept from running from outside (0 for a run without a trace). */
+const heldMs = (m) => m.trace?.held?.ms ?? 0
+
+/**
+ * Makes a recorded run up to `--tries` times: a run whose thread was kept from running from outside says nothing
+ * sure about the page, so it is set aside and made again. Returns the last one made, with a note for the report
+ * when earlier ones were set aside. `make` returns the analysed run (or runs).
+ */
+async function undisturbed(label, make) {
+  const aside = []
+  for (let attempt = 1; ; attempt++) {
+    const made = await make()
+    const ms = [made].flat().reduce((total, m) => total + heldMs(m), 0)
+    if (ms === 0 || attempt >= tries) {
+      const note = aside.length
+        ? `attempt ${attempt} of at most ${tries}: ${aside.length} earlier one(s) were set aside because the game's thread was kept from running from outside (${aside.map((x) => `${f0(x)} ms`).join(', ')})`
+        : null
+      return { made, note }
+    }
+    aside.push(ms)
+    console.log(
+      `[${label}] the game's thread was kept from running from outside for ${f0(ms)} ms: once more (${attempt + 1} of ${tries})`
+    )
+  }
+}
+
 const stepWeight = (id, step) =>
   id === 'M1' ? step.longtasks.max : step.art.clips + step.art.tiles + step.art.backdrops
 const verdict = (ok) => (ok === null ? 'n/a' : ok ? 'PASS' : 'FAIL')
@@ -1311,27 +1396,30 @@ async function sectionPlay() {
       const name = `stage ${stageNo} ${profileName}`
       console.log(`[play] ${name}`)
       const profile = PROFILES[profileName]
-      const run = await newRun(name, profile)
-      try {
-        await toTitle(run.page)
-        environment.renderer ||= await rendererName(run.page)
-        await enterStage(run.page, stageNo)
-        await run.page.evaluate(() => window.__hamham.autopilot(true))
-        await waitCalm(run.page)
-        const data = await recordFor(run.page, seconds * 1000, HIT, `play ${name}`)
-        rawFile(`play-${name}`, data)
-        const m = analyze(data)
-        runs.push({ name, ...m })
-        const notes = [
-          `${profile.width}x${profile.height} at ratio ${profile.dpr}, ${throttleText}, ${dev ? 'dev server' : 'production build'}`
-        ]
-        if (m.ended !== 'play') notes.push(`the stage ended on \`${m.ended}\` after ${f1(m.seconds)} s`)
-        parts.push(runMarkdown(name, m, notes))
-        for (const b of BUDGETS.filter((x) => x.sections.includes('play')))
-          summary.push({ id: b.id, section: 'play', run: name, ...b.judge(m) })
-      } finally {
-        await run.close()
-      }
+      const { made: m, note } = await undisturbed(`play ${name}`, async () => {
+        const run = await newRun(name, profile)
+        try {
+          await toTitle(run.page)
+          environment.renderer ||= await rendererName(run.page)
+          await enterStage(run.page, stageNo)
+          await run.page.evaluate(() => window.__hamham.autopilot(true))
+          await waitCalm(run.page)
+          const data = await recordFor(run.page, seconds * 1000, HIT, `play ${name}`)
+          rawFile(`play-${name}`, data)
+          return analyze(data)
+        } finally {
+          await run.close()
+        }
+      })
+      runs.push({ name, ...m })
+      const notes = [
+        `${profile.width}x${profile.height} at ratio ${profile.dpr}, ${throttleText}, ${dev ? 'dev server' : 'production build'}`
+      ]
+      if (note) notes.push(note)
+      if (m.ended !== 'play') notes.push(`the stage ended on \`${m.ended}\` after ${f1(m.seconds)} s`)
+      parts.push(runMarkdown(name, m, notes))
+      for (const b of BUDGETS.filter((x) => x.sections.includes('play')))
+        summary.push({ id: b.id, section: 'play', run: name, ...b.judge(m) })
     }
   }
   const overview = table(
@@ -1363,36 +1451,43 @@ async function sectionPlay() {
 
 async function sectionBoss() {
   const profile = PROFILES.landscape
-  const run = await newRun('boss', profile)
   const summary = []
   const parts = []
-  const runs = []
-  try {
-    await toTitle(run.page)
-    environment.renderer ||= await rendererName(run.page)
-    await enterStage(run.page, 2)
-    await run.page.evaluate(() => window.__hamham.autopilot(true))
-    await waitCalm(run.page)
-    const phases = [
-      { name: 'boss fight', ms: 15_000, action: 'nearBoss' },
-      { name: 'boss defeat', ms: 5000, action: 'killBoss' }
-    ]
-    for (const phase of phases) {
-      const data = await recordFor(run.page, phase.ms, { ...HIT, action: phase.action }, phase.name)
-      rawFile(phase.name, data)
-      const m = analyze(data)
-      runs.push({ name: phase.name, ...m })
-      const notes = [
-        `stage 2, ${profile.width}x${profile.height} at ratio ${profile.dpr}, ${throttleText}, ${dev ? 'dev server' : 'production build'}`
-      ]
-      if (m.ended !== 'play') notes.push(`the stage ended on \`${m.ended}\` after ${f1(m.seconds)} s`)
-      parts.push(runMarkdown(phase.name, m, notes))
-      for (const b of BUDGETS.filter((x) => x.sections.includes('boss')))
-        summary.push({ id: b.id, section: 'boss', run: phase.name, ...b.judge(m) })
-      if (m.ended !== 'play') break
+  const phases = [
+    { name: 'boss fight', ms: 15_000, action: 'nearBoss' },
+    { name: 'boss defeat', ms: 5000, action: 'killBoss' }
+  ]
+  // The two phases are one session: when either was disturbed from outside, both are made again.
+  const { made: runs, note } = await undisturbed('boss', async () => {
+    const run = await newRun('boss', profile)
+    const made = []
+    try {
+      await toTitle(run.page)
+      environment.renderer ||= await rendererName(run.page)
+      await enterStage(run.page, 2)
+      await run.page.evaluate(() => window.__hamham.autopilot(true))
+      await waitCalm(run.page)
+      for (const phase of phases) {
+        const data = await recordFor(run.page, phase.ms, { ...HIT, action: phase.action }, phase.name)
+        rawFile(phase.name, data)
+        const m = analyze(data)
+        made.push({ name: phase.name, ...m })
+        if (m.ended !== 'play') break
+      }
+    } finally {
+      await run.close()
     }
-  } finally {
-    await run.close()
+    return made
+  })
+  for (const m of runs) {
+    const notes = [
+      `stage 2, ${profile.width}x${profile.height} at ratio ${profile.dpr}, ${throttleText}, ${dev ? 'dev server' : 'production build'}`
+    ]
+    if (note) notes.push(note)
+    if (m.ended !== 'play') notes.push(`the stage ended on \`${m.ended}\` after ${f1(m.seconds)} s`)
+    parts.push(runMarkdown(m.name, m, notes))
+    for (const b of BUDGETS.filter((x) => x.sections.includes('boss')))
+      summary.push({ id: b.id, section: 'boss', run: m.name, ...b.judge(m) })
   }
   const overview = table(
     [
@@ -1421,16 +1516,22 @@ async function sectionBoss() {
 
 async function sectionPacing() {
   // Software rendering holds the display rate at this size without throttle, so the cadence is the thing seen.
-  const run = await newRun('pacing', { width: 640, height: 360, dpr: 1, rate: 1 })
-  try {
-    await toTitle(run.page)
-    environment.renderer ||= await rendererName(run.page)
-    await enterStage(run.page, 2)
-    await run.page.evaluate(() => window.__hamham.autopilot(true))
-    await waitCalm(run.page)
-    const data = await recordFor(run.page, 20_000, { topUp: true }, 'pacing')
-    rawFile('pacing', data)
-    const m = analyze(data)
+  const { made: m, note } = await undisturbed('pacing', async () => {
+    const run = await newRun('pacing', { width: 640, height: 360, dpr: 1, rate: 1 })
+    try {
+      await toTitle(run.page)
+      environment.renderer ||= await rendererName(run.page)
+      await enterStage(run.page, 2)
+      await run.page.evaluate(() => window.__hamham.autopilot(true))
+      await waitCalm(run.page)
+      const data = await recordFor(run.page, 20_000, { topUp: true }, 'pacing', 1)
+      rawFile('pacing', data)
+      return analyze(data)
+    } finally {
+      await run.close()
+    }
+  })
+  {
     const summary = BUDGETS.filter((b) => b.sections.includes('pacing')).map((b) => ({
       id: b.id,
       section: 'pacing',
@@ -1467,12 +1568,10 @@ async function sectionPacing() {
         ]
       ),
       '',
-      runMarkdown('pacing run', m),
+      runMarkdown('pacing run', m, note ? [note] : []),
       ''
     ].join('\n')
     return { md, json: { run: m }, summary }
-  } finally {
-    await run.close()
   }
 }
 
@@ -1522,6 +1621,13 @@ async function main() {
   const failed = summary.filter((r) => r.ok === false)
   const failedSections = [...results.entries()].filter(([, r]) => r.error).map(([name]) => name)
   const command = `node scripts/hoshi-no-hamham-perf.mjs ${args.join(' ')}`.trim()
+  // The recorded runs that say nothing sure about the page: their thread was kept from running from outside.
+  const disturbed = [...results.values()]
+    .flatMap((r) =>
+      r.json ? [...(r.json.runs ?? []), ...(r.json.run ? [{ name: 'pacing', ...r.json.run }] : [])] : []
+    )
+    .filter((m) => heldMs(m) > 0)
+    .map((m) => `${m.name} (${f0(heldMs(m))} ms)`)
   const budgetTable = table(
     ['budget', 'section', 'run', 'value', 'limit', 'result'],
     summary.map((r) => {
@@ -1539,6 +1645,7 @@ async function main() {
     `- Chromium: ${environment.chromium}; renderer: ${environment.renderer || '(not read)'}; ${gpu ? 'GPU on (--gpu)' : 'headless shell, software rendering (frame intervals are not judged; use --gpu)'}`,
     `- ${throttleText} (the budgets are stated for 4); target: ${dev ? 'Vite dev server' : 'production build made by the kit'}`,
     `- result: ${failed.length} of ${summary.filter((r) => r.ok !== null).length} budget checks failed${failedSections.length ? `; sections that failed to run: ${failedSections.join(', ')}` : ''}${problems.length ? `; ${problems.length} page or request problems` : ''}`,
+    `- runs in which the game's thread was kept from running from outside: ${disturbed.length ? `${disturbed.join(', ')}: their durations are the machine's as much as the page's (make them again on a quiet machine, or with --tries)` : 'none'}`,
     '',
     '## Budgets',
     '',
@@ -1569,6 +1676,7 @@ async function main() {
         throttle,
         gpu,
         dev,
+        disturbed,
         budgets: summary.map((r) => ({ ...r, limit: BUDGETS.find((b) => b.id === r.id).limit, result: verdict(r.ok) })),
         sections: Object.fromEntries([...results].map(([name, r]) => [name, r.error ? { error: r.error } : r.json])),
         problems: [...new Set(problems)]
@@ -1580,6 +1688,7 @@ async function main() {
 
   console.log(`\n${budgetTable}\n`)
   if (problems.length) console.log(`Problems:\n${[...new Set(problems)].map((p) => `  ${p}`).join('\n')}\n`)
+  if (disturbed.length) console.log(`Kept from running from outside: ${disturbed.join(', ')}`)
   console.log(`${failed.length} budget checks failed. Report: ${reportPath} (${f0((Date.now() - started) / 1000)} s)`)
 
   if (problems.length || failedSections.length || (check && failed.length)) process.exitCode = 1
