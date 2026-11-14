@@ -65,6 +65,7 @@ import {
   egg,
   fill,
   half,
+  mantle,
   oval,
   overlap,
   shadow,
@@ -142,6 +143,19 @@ export interface HamPose {
   up: boolean
   /** Only the far arm raised behind the head (a wave): its shoulder under the jaw, as with `up`. */
   upF: boolean
+  /**
+   * Optional (absent = off; looks that never set them draw exactly as before): only the near arm raised behind the
+   * head (a fist brandished overhead), its shoulder under the jaw as with `up`.
+   */
+  upN?: boolean
+  /**
+   * Optional bent arms (absent = the straight arm): the elbow relative to the shoulder in torso units. The arm is
+   * then drawn as an upper arm and a forearm meeting at the elbow (hands on the hips, an elbow thrown out).
+   */
+  elbowN?: Hand
+  elbowF?: Hand
+  /** Optional: the far arm behind the body (a fist on the far hip, a hand on the small of the back). */
+  farBehind?: boolean
   /** Washing the face: 0 = off, else both paws on the muzzle, `rub` 0 (top of the stroke) … 1 (bottom). */
   groom: number
   rub: number
@@ -452,6 +466,32 @@ export interface HamFace {
   blushR: readonly [number, number]
 }
 
+/** A lock of fur stamped onto the silhouette before shading: rows (`f` = the material), u, v, material. */
+export type HamLock = readonly [rows: readonly string[], u: number, v: number, material: 'fur' | 'mask']
+
+/**
+ * The boss treatment of a big coat (CHARACTERS.md "Big furry bodies"), optional on a look: a darker mantle on the
+ * back and the crown of the head, a lit top edge, a deep accent in the form shadow, fur teeth on both edges and
+ * hand-placed locks that break the silhouette. Looks without it (the small cast) draw exactly as before.
+ */
+export interface HamCoat {
+  /** The mantle's ramp (its base replaces the coat's base on the lit side). */
+  mantle: Ramp
+  /** How deep the mantle reaches in from the lit edge on the body and on the head (hero px; scaled). */
+  bodyMantle: number
+  headMantle: number
+  /** The lit top edge (px, not scaled). */
+  rim: number
+  /** The deep accent inside the body's form shadow (hero px; scaled). */
+  bodyDeep: number
+  /** Fur teeth on the shadow's and the mantle's edges: depth and spacing (px, not scaled). */
+  tooth: number
+  pitch: number
+  /** Locks on the body (torso units) and on the head (head units). */
+  bodyLocks?: readonly HamLock[]
+  headLocks?: readonly HamLock[]
+}
+
 export interface HamLook {
   /** The whole figure (1 = the hero). Shapes, pose values and cel depths scale; stamps do not. */
   scale: number
@@ -486,6 +526,17 @@ export interface HamLook {
    * colour) or `ink` (every edge in the material's line colour: a white coat needs it to read on light grounds).
    */
   outline: 'selective' | 'ink'
+  /** Optional: the boss treatment of a big coat (absent = the small cast's single cel). */
+  coat?: HamCoat
+  /** Optional: the eye and brow key for a pose (a glow that pulses, eyes that turn red); absent = `stamps.eyeKey`. */
+  eyeKeyOf?: (p: HamPose) => Record<string, number>
+  /**
+   * Optional: cheated arms (`reach` > 1) measured in the look's own scale like every other pose value (absent = in
+   * screen pixels, as the small cast was drawn; a bigger look's cheated arms otherwise come out short).
+   */
+  reachScaled?: boolean
+  /** Optional: the arms' thickness factor (absent = 1; a wide `body` factor otherwise fattens the arms with it). */
+  limb?: number
 }
 
 /** Everything an accessory needs to follow the body. */
@@ -628,11 +679,12 @@ export function hamFrames(look: HamLook, p: HamPose, size: HamSize = look.size) 
   const earN = head.child(-8.5, -19, -p.earN, look.ear, look.ear * (1 + p.earLift * 0.08))
   const knot = torso.child(-9.2, -15)
   // raised arms grow from under the jaw (hidden by the head), so the hidden stretch does not count as reach
-  const lift = p.up ? 6.5 : 0
+  const upN = p.up || p.upN === true
+  const lift = upN ? 6.5 : 0
   const upF = p.up || p.upF
   const liftF = upF ? 6.5 : 0
   const shoulderF: Pt = [lerp(3, 6, side) - (upF ? 1 : 0), -12.5 - liftF]
-  const shoulderN: Pt = [-3 + (p.up ? 1 : 0), -12 - lift]
+  const shoulderN: Pt = [-3 + (upN ? 1 : 0), -12 - lift]
   /** The paw centre of an arm, in torso units: a hand out of reach is pulled in (short hamster arms). */
   const handAt = (sh: Pt, hand: Hand, raised: number): Pt => {
     const longest = ARM_REACH * clamp(p.reach, 1, 1.5) + raised
@@ -642,7 +694,13 @@ export function hamFrames(look: HamLook, p: HamPose, size: HamSize = look.size) 
     if (p.reach > 1) {
       // cheated arms keep their length when the body squashes or stretches (only the lean turns them)
       const [sx, sy] = torso.pt(sh[0], sh[1])
-      const [ex, ey] = Frame.at(sx, sy, p.turn + p.lean).pt(hand[0] * kk, hand[1] * kk)
+      const [ex, ey] = Frame.at(
+        sx,
+        sy,
+        p.turn + p.lean,
+        look.reachScaled ? s * look.body : 1,
+        look.reachScaled ? s : 1
+      ).pt(hand[0] * kk, hand[1] * kk)
       h = torso.local(ex, ey)
     }
     return h
@@ -740,8 +798,13 @@ export function drawHamster(look: HamLook, p: HamPose, size: HamSize = look.size
   g.add(0.6, (l) => foot(l, fNear, p.footN[2], PAW))
 
   // ---- arms
-  const arm = (l: Raster, sh: Pt, hand: Hand, h: Pt, tone: Ramp, paw: Ramp, r: number) => {
-    fill(l, torso, capsule(sh, h, r, r - 0.6), tone[1])
+  const arm = (l: Raster, sh: Pt, hand: Hand, h: Pt, tone: Ramp, paw: Ramp, r: number, elbow?: Hand) => {
+    const lr = r * (look.limb ?? 1)
+    if (elbow) {
+      // a bent arm: upper arm to the elbow, forearm to the paw
+      const e: Pt = [sh[0] + elbow[0], sh[1] + elbow[1]]
+      fill(l, torso, union(capsule(sh, e, lr, lr - 0.3), capsule(e, h, lr - 0.3, lr - 0.6)), tone[1])
+    } else fill(l, torso, capsule(sh, h, lr, lr - 0.6), tone[1])
     const pr = r + 0.1 + p.paw
     const parts: Shape[] = [oval(h[0] + 0.3, h[1] + 0.2, pr, pr - 0.2)]
     if (p.open) {
@@ -783,8 +846,10 @@ export function drawHamster(look: HamLook, p: HamPose, size: HamSize = look.size
       shadow(l, Frame.at(pawN[0], pawN[1], 0, s), oval(2.6, 0, 0.9, 2.2))
     })
   } else {
-    g.add(p.up || p.upF ? 1.7 : p.farFront ? 2.6 : 0.4, (l) => arm(l, shoulderF, p.armF, fr.hF, farTone, farPaw, 2.5))
-    g.add(p.up ? 1.75 : 3, (l) => arm(l, shoulderN, p.armN, fr.hN, FUR, PAW, 2.8))
+    g.add(p.up || p.upF ? 1.7 : p.farFront ? 2.6 : p.farBehind ? -0.5 : 0.4, (l) =>
+      arm(l, shoulderF, p.armF, fr.hF, farTone, farPaw, 2.5, p.elbowF)
+    )
+    g.add(p.up || p.upN ? 1.75 : 3, (l) => arm(l, shoulderN, p.armN, fr.hN, FUR, PAW, 2.8, p.elbowN))
   }
 
   // ---- body
@@ -813,7 +878,9 @@ export function drawHamster(look: HamLook, p: HamPose, size: HamSize = look.size
     fill(l, torso, union(...body), FUR[1])
     tint(l, torso, oval(lerp(0, 5, side) * Math.sign(f || 1), -6.5, lerp(8, 7, side), 7.2), MASK[1])
     smooth(l)
-    cel(l, { shade: look.bodyShade * s })
+    if (look.coat)
+      bigCoat(l, look, torso, look.coat.bodyLocks, look.coat.bodyMantle, look.bodyShade, look.coat.bodyDeep)
+    else cel(l, { shade: look.bodyShade * s })
     shadow(l, head.moved(0.5 * s, 2.5 * s), hShape)
   })
 
@@ -841,7 +908,8 @@ export function drawHamster(look: HamLook, p: HamPose, size: HamSize = look.size
     smooth(l)
     const tuft = st.tufts ? st.tufts[p.tuft] : null
     if (tuft) stampOn(l, head, tuft, fa.tuftU, fa.tuftV + p.tuftY, st.tuftShape)
-    cel(l, { shade: look.headShade * s, deep: look.headDeep * s })
+    if (look.coat) bigCoat(l, look, head, look.coat.headLocks, look.coat.headMantle, look.headShade, look.headDeep)
+    else cel(l, { shade: look.headShade * s, deep: look.headDeep * s })
     if (tuft)
       stampOn(
         l,
@@ -858,12 +926,13 @@ export function drawHamster(look: HamLook, p: HamPose, size: HamSize = look.size
     const flipEyes = hf < -0.2
     const uL = Math.max(fa.eyeMin, fc - fa.eyeGap)
     const uR = Math.min(fa.eyeMax, fc + fa.eyeGap)
-    stampIn(l, head, flipEyes ? eyeR : eyeL, uL, fa.eyeV, st.eyeKey)
-    stampIn(l, head, flipEyes || hside < 0.5 ? eyeL : eyeR, uR, fa.eyeV, st.eyeKey)
+    const eyeKey = look.eyeKeyOf ? look.eyeKeyOf(p) : st.eyeKey
+    stampIn(l, head, flipEyes ? eyeR : eyeL, uL, fa.eyeV, eyeKey)
+    stampIn(l, head, flipEyes || hside < 0.5 ? eyeL : eyeR, uR, fa.eyeV, eyeKey)
     if (p.brow !== 'none') {
       const [bl, br] = st.brows[p.brow]
-      stampIn(l, head, bl, uL + 0.5, fa.browV, st.eyeKey)
-      stampIn(l, head, br, uR, fa.browV, st.eyeKey)
+      stampIn(l, head, bl, uL + 0.5, fa.browV, eyeKey)
+      stampIn(l, head, br, uR, fa.browV, eyeKey)
     }
     if (p.blush) {
       const [rx, ry] = fa.blushR
@@ -904,6 +973,31 @@ export function drawHamster(look: HamLook, p: HamPose, size: HamSize = look.size
   const out = g.render()
   if (look.outline === 'ink') inkEdge(out)
   return out
+}
+
+/**
+ * The boss coat on one part (body or head), painted in base colours and smoothed: locks stamped onto the
+ * silhouette, the darker mantle on the lit side, then one fur-toothed cel with a lit top edge. The teeth travel with
+ * the part (their origin is the part's own point).
+ */
+function bigCoat(
+  l: Raster,
+  look: HamLook,
+  f: Frame,
+  locks: readonly HamLock[] | undefined,
+  mantleDepth: number,
+  shadeDepth: number,
+  deepDepth: number
+) {
+  const coat = look.coat!
+  const s = look.scale
+  for (const [rows, u, v, mat] of locks ?? [])
+    stampOn(l, f, rows, u, v, { f: (mat === 'mask' ? look.mask : look.fur)[1] })
+  if (locks?.length) smooth(l)
+  const origin = f.pt(0, -9)
+  const teeth = { tooth: coat.tooth, pitch: coat.pitch, origin }
+  mantle(l, look.fur[1], coat.mantle[1], { depth: mantleDepth * s, ...teeth })
+  cel(l, { shade: shadeDepth * s, deep: deepDepth * s, rim: coat.rim, ...teeth })
 }
 
 /** Every pixel on the silhouette's edge turns to its material's line colour (a full dark outline). */

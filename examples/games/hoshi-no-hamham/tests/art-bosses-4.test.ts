@@ -44,8 +44,9 @@ describe('きつね旋風 and ハチ女王', () => {
   test('the queen hovers just above the floor', () => {
     for (const f of sheet('beeBoss').idle.frames) {
       const y = lowest(f)
-      expect(y).toBeGreaterThanOrEqual(110)
-      expect(y).toBeLessThanOrEqual(120)
+      // Her feet hang 4 to 16 px above the anchor row (120).
+      expect(y).toBeGreaterThanOrEqual(104)
+      expect(y).toBeLessThanOrEqual(116)
     }
   })
 

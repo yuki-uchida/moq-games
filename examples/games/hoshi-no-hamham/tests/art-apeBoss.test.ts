@@ -86,13 +86,13 @@ describe('ごりら警部 (apeBoss) on the rig', () => {
         expect(b.x + b.w, `${name} ${i} right`).toBeLessThanOrEqual(f.w - 1)
         expect(b.y + b.h, `${name} ${i} bottom`).toBeLessThanOrEqual(f.h - 1)
         expect(f.colors().size, `${name} ${i} colours`).toBeLessThanOrEqual(28)
+        // collect first, assert once (one expect per pixel is too slow for the test timeout)
+        const isolated: string[] = []
         for (let y = 0; y < f.h; y++)
           for (let x = 0; x < f.w; x++)
-            if (f.get(x, y))
-              expect(
-                Boolean(f.get(x - 1, y) || f.get(x + 1, y) || f.get(x, y - 1) || f.get(x, y + 1)),
-                `${name} ${i} isolated pixel at ${x},${y}`
-              ).toBe(true)
+            if (f.get(x, y) && !(f.get(x - 1, y) || f.get(x + 1, y) || f.get(x, y - 1) || f.get(x, y + 1)))
+              isolated.push(`${x},${y}`)
+        expect(isolated, `${name} ${i} isolated pixels`).toEqual([])
       }
   })
 

@@ -100,8 +100,14 @@ describe('カラス助 (crowBoss) on the rig', () => {
   test('the screech opens the beak, and he ends on his back lower than he hovers', () => {
     const open = (f: Raster) => count(f, new Set([C.mouth]))
     expect(Math.max(...s.intro.frames.map(open))).toBeGreaterThan(40)
-    const idleTop = Math.max(...s.idle.frames.map((f) => box(f).y))
-    expect(box(s.defeat.frames.at(-1)!).y).toBeGreaterThan(idleTop + 10)
+    // the body's centre of mass (not the top row: his upturned feet and beak reach as high as his hovering head)
+    const hover = Math.max(...s.idle.frames.map((f) => axes(f).cy))
+    const last = s.defeat.frames.at(-1)!
+    expect(axes(last).cy).toBeGreaterThan(hover + 8)
+    // lying on the ground: the lowest painted row sits on the anchor row's band
+    const bottom = box(last).y + box(last).h - 1
+    expect(bottom).toBeGreaterThanOrEqual(118)
+    expect(bottom).toBeLessThanOrEqual(123)
   })
 
   test('every frame stays inside the cell with no isolated pixel', () => {

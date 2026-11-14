@@ -171,7 +171,10 @@ export function union(...shapes: Shape[]): Shape {
       Math.max(...shapes.map((s) => s.box[2])),
       Math.max(...shapes.map((s) => s.box[3]))
     ],
-    has: (u, v) => shapes.some((s) => s.has(u, v))
+    has(u, v) {
+      for (let i = 0; i < shapes.length; i++) if (shapes[i].has(u, v)) return true
+      return false
+    }
   }
 }
 
@@ -206,11 +209,15 @@ function scan(l: Raster, f: Frame, s: Shape, put: (x: number, y: number) => void
   const y0 = Math.max(0, Math.floor(Math.min(...corners.map((p) => p[1]))) - 1)
   const x1 = Math.min(l.w - 1, Math.ceil(Math.max(...corners.map((p) => p[0]))) + 1)
   const y1 = Math.min(l.h - 1, Math.ceil(Math.max(...corners.map((p) => p[1]))) + 1)
-  for (let y = y0; y <= y1; y++)
+  // The inverse transform, written out (the same arithmetic as `Frame.local`, without an array per pixel).
+  const det = f.a * f.d - f.b * f.c
+  for (let y = y0; y <= y1; y++) {
+    const dy = y + 0.5 - f.f
     for (let x = x0; x <= x1; x++) {
-      const [u, v] = f.local(x + 0.5, y + 0.5)
-      if (s.has(u, v)) put(x, y)
+      const dx = x + 0.5 - f.e
+      if (s.has((f.d * dx - f.c * dy) / det, (f.a * dy - f.b * dx) / det)) put(x, y)
     }
+  }
 }
 
 /** Paints a shape of the frame onto the layer (sampled at pixel centres). */

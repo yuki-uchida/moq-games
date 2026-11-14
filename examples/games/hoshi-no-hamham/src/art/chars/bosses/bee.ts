@@ -15,7 +15,7 @@
  */
 import type { SheetModule } from '../../module'
 import { TAU, lag } from '../../motion'
-import { R, ramp } from '../../palette'
+import { OUTLINE_OF, R, ramp } from '../../palette'
 import { Painter, Raster, farRamp, outlineWith, type Pt, type Ramp } from '../../raster'
 import {
   Frame,
@@ -186,9 +186,18 @@ const EYES_FAR: Record<Eyes, readonly string[]> = {
   tired: ['.KKKK', 'KKKKK', 'PPPPP', 'wyKy.']
 }
 const BROWS: Record<Brow, readonly [readonly string[], readonly string[]]> = {
-  arch: [['..PPP...', '.P...PP.'], ['.PPP', 'P...']],
-  up: [['...PPP..', '.PP...P.', 'P.......'], ['.PP.', 'P..P']],
-  fury: [['PP......', '..PPP...', '.....PP.'], ['...P', '.PP.']],
+  arch: [
+    ['..PPP...', '.P...PP.'],
+    ['.PPP', 'P...']
+  ],
+  up: [
+    ['...PPP..', '.PP...P.', 'P.......'],
+    ['.PP.', 'P..P']
+  ],
+  fury: [
+    ['PP......', '..PPP...', '.....PP.'],
+    ['...P', '.PP.']
+  ],
   flat: [['.PPPPPP.'], ['PPPP']]
 }
 const MOUTH_KEY = { K: SKIN[3] as number, k: PLUM[4], r: BAND[1], R: BAND[2], m: PLUM[3], t: FUR[0] }
@@ -253,11 +262,44 @@ function dimEdge(l: Raster, from: number, to: number) {
   const src = l.clone()
   for (let y = b.y; y < b.y + b.h; y++)
     for (let x = b.x; x < b.x + b.w; x++)
-      if (
-        src.get(x, y) === from &&
-        !(src.get(x - 1, y) && src.get(x + 1, y) && src.get(x, y - 1) && src.get(x, y + 1))
-      )
+      if (src.get(x, y) === from && !(src.get(x - 1, y) && src.get(x + 1, y) && src.get(x, y - 1) && src.get(x, y + 1)))
         l.set(x, y, to)
+}
+
+/**
+ * A one-pixel rim round a pale effect (sparkle, streak), in the deep colour of the pixel it borders: the part's
+ * default lit-side outline is only two ramp steps darker, which is still light on a pale colour.
+ */
+function deepRim(l: Raster, diagonal = false) {
+  const src = l.clone()
+  const around = diagonal
+    ? [
+        [-1, 0],
+        [1, 0],
+        [0, -1],
+        [0, 1],
+        [-1, -1],
+        [1, -1],
+        [-1, 1],
+        [1, 1]
+      ]
+    : [
+        [-1, 0],
+        [1, 0],
+        [0, -1],
+        [0, 1]
+      ]
+  for (let y = 0; y < l.h; y++)
+    for (let x = 0; x < l.w; x++) {
+      if (src.get(x, y)) continue
+      for (const [dx, dy] of around) {
+        const c = src.get(x + dx, y + dy)
+        if (c) {
+          l.set(x, y, OUTLINE_OF[c].deep)
+          break
+        }
+      }
+    }
 }
 
 /** Every painted pixel under the strip one ramp step lighter: a glossy highlight band along a path. */
@@ -414,7 +456,12 @@ export function drawBee(p: BeePose): Raster {
         ] as const) {
           const a = ((i ? dl : du) + turn + s * 26) * RAD
           const r = lens[i]
-          ribbon(m, [root.pt(Math.cos(a) * 5, Math.sin(a) * 5), root.pt(Math.cos(a) * r * 0.82, Math.sin(a) * r * 0.82)], (t) => 2.2 - t * 0.8, tone[0])
+          ribbon(
+            m,
+            [root.pt(Math.cos(a) * 5, Math.sin(a) * 5), root.pt(Math.cos(a) * r * 0.82, Math.sin(a) * r * 0.82)],
+            (t) => 2.2 - t * 0.8,
+            tone[0]
+          )
         }
       })
       outlineWith(l, tone[3])
@@ -446,8 +493,10 @@ export function drawBee(p: BeePose): Raster {
       },
       true
     )
+    // a rim in the wing's own mid blue-grey: the lit-side selout of a pale wing is still too light
+    outlineWith(l, tone[3])
   }
-  g.add(-6, wing(true))
+  g.add(-6, wing(true), p.wings === 'blur')
 
   // ---- far arm: hand on the hip, elbow out behind
   const shF = torso.pt(-6, -6)
@@ -472,7 +521,12 @@ export function drawBee(p: BeePose): Raster {
   g.add(-3, (l) => {
     ribbon(l, path, width, HONEY[1])
     // the stinger, a dark tapered point
-    ribbon(l, [tip, [tip[0] + Math.cos(tipDir) * 4, tip[1] + Math.sin(tipDir) * 4], stingEnd], (t) => 4.4 - t * 3.4, PLUM[1])
+    ribbon(
+      l,
+      [tip, [tip[0] + Math.cos(tipDir) * 4, tip[1] + Math.sin(tipDir) * 4], stingEnd],
+      (t) => 4.4 - t * 3.4,
+      PLUM[1]
+    )
     // stripes: the narrow waist, three bands, the dark tip
     within(l, (m) => {
       for (const [t0, t1] of STRIPES) fill(m, ID, band(path, t0, t1, 16), PLUM[1])
@@ -480,12 +534,21 @@ export function drawBee(p: BeePose): Raster {
     smooth(l)
     cel(l, { shade: 4.5, deep: 1.6, rim: 1.6 })
     // the glossy band along the lit side
-    gloss(l, slice(offset(path, (t) => width(t) * 0.26), 0.12, 0.8), () => 2, {
-      [HONEY[1]]: HONEY[0],
-      [HONEY[2]]: HONEY[1],
-      [PLUM[1]]: PLUM[0],
-      [PLUM[2]]: PLUM[1]
-    })
+    gloss(
+      l,
+      slice(
+        offset(path, (t) => width(t) * 0.26),
+        0.12,
+        0.8
+      ),
+      () => 2,
+      {
+        [HONEY[1]]: HONEY[0],
+        [HONEY[2]]: HONEY[1],
+        [PLUM[1]]: PLUM[0],
+        [PLUM[2]]: PLUM[1]
+      }
+    )
     if (p.sting) {
       const gx = tip[0] + Math.cos(tipDir) * 6
       const gy = tip[1] + Math.sin(tipDir) * 6
@@ -494,7 +557,7 @@ export function drawBee(p: BeePose): Raster {
     }
   })
 
-  g.add(-1, wing(false))
+  g.add(-1, wing(false), p.wings === 'blur')
 
   // ---- legs: thin, pointed, held together like a dancer
   const leg = (far: boolean) => (l: Raster) => {
@@ -505,7 +568,16 @@ export function drawBee(p: BeePose): Raster {
     const ankle = shin.pt(10, 0)
     fill(l, ID, union(capsule(hip.pt(0, 0), knee, 2.4, 1.7), capsule(knee, ankle, 1.7, 1.3)), tone[1])
     // pointed foot
-    fill(l, shin.child(10, 0, 8), polygon([[-1.5, -1.6], [5, 0], [-1.5, 1.6]]), tone[1])
+    fill(
+      l,
+      shin.child(10, 0, 8),
+      polygon([
+        [-1.5, -1.6],
+        [5, 0],
+        [-1.5, 1.6]
+      ]),
+      tone[1]
+    )
     smooth(l)
     cel(l, { shade: 1.2, rim: 1 })
   }
@@ -529,19 +601,45 @@ export function drawBee(p: BeePose): Raster {
     for (let i = 1; i <= 4; i++) {
       const s = i / 4
       const a = d + s * 0.25 * Math.sign(p.sash[0] || 1)
-      end.push([knot[0] + Math.cos(a) * 15 * s - Math.sin(a) * wave(s), knot[1] + Math.sin(a) * 15 * s + Math.cos(a) * wave(s)])
+      end.push([
+        knot[0] + Math.cos(a) * 15 * s - Math.sin(a) * wave(s),
+        knot[1] + Math.sin(a) * 15 * s + Math.cos(a) * wave(s)
+      ])
     }
     const sp = spline(end)
     ribbon(l, sp, (t) => 3.4 + t * 2.6, BAND[1])
     // the swallowtail cut
     const m = sp.length - 1
     const a = heading(sp, m)
-    fill(l, Frame.at(sp[m][0], sp[m][1], a), polygon([[3.5, -3.6], [-2, 0], [3.5, 3.6]]), 0)
+    fill(
+      l,
+      Frame.at(sp[m][0], sp[m][1], a),
+      polygon([
+        [3.5, -3.6],
+        [-2, 0],
+        [3.5, 3.6]
+      ]),
+      0
+    )
     fill(l, Frame.at(knot[0], knot[1]), oval(0, 0, 3, 2.7), BAND[1])
     smooth(l)
     cel(l, { shade: 1.6, rim: 1.2 })
     // the fold line on the hanging end, and a gold clasp on the knot
-    within(l, (mm) => ribbon(mm, slice(offset(sp, () => -0.6), 0.35, 0.65), () => 1, BAND[2]), true)
+    within(
+      l,
+      (mm) =>
+        ribbon(
+          mm,
+          slice(
+            offset(sp, () => -0.6),
+            0.35,
+            0.65
+          ),
+          () => 1,
+          BAND[2]
+        ),
+      true
+    )
     l.stamp(['.y.', 'yhy', '.y.'], Math.round(knot[0]) - 1, Math.round(knot[1]) - 1, { y: HONEY[1], h: HONEY[0] })
   })
 
@@ -636,7 +734,12 @@ export function drawBee(p: BeePose): Raster {
     g.add(2.9, (l) => {
       fill(l, ID, union(capsule(shF, elbF, 2.8, 2.3), capsule(elbF, handF, 2.3, 1.9)), PLUM[1])
       const hand = Frame.at(handF[0], handF[1], -70 + p.armF[0] * 4)
-      fill(l, hand, union(oval(2.5, 0, 3.6, 2.6), capsule([3, -1], [7.5, -2.4], 1.1, 1), capsule([3, 1], [7.5, 1.6], 1.1, 1)), PLUM[1])
+      fill(
+        l,
+        hand,
+        union(oval(2.5, 0, 3.6, 2.6), capsule([3, -1], [7.5, -2.4], 1.1, 1), capsule([3, 1], [7.5, 1.6], 1.1, 1)),
+        PLUM[1]
+      )
       smooth(l)
       cel(l, { shade: 1.4, rim: 1 })
     })
@@ -654,37 +757,53 @@ export function drawBee(p: BeePose): Raster {
   const sparks: Pt[] = [...p.sparks]
   if (p.jewel && rod) sparks.push(rod.pt(27, -1))
   if (sparks.length)
-    g.add(6, (l) => {
-      for (const [i, [x, y]] of sparks.entries())
-        l.stamp(i === sparks.length - 1 && p.jewel ? SPARK : SPARK_SMALL, Math.round(x) - 2, Math.round(y) - 2, {
-          w: FUR[0],
-          y: HONEY[0]
-        })
-    })
+    g.add(
+      6,
+      (l) => {
+        for (const [i, [x, y]] of sparks.entries())
+          l.stamp(i === sparks.length - 1 && p.jewel ? SPARK : SPARK_SMALL, Math.round(x) - 2, Math.round(y) - 2, {
+            w: FUR[0],
+            y: HONEY[0]
+          })
+        deepRim(l, true)
+      },
+      false
+    )
 
   // ---- the crown and the sceptre knocked loose
-  if (p.looseScep)
-    g.add(5, (l) => sceptre(l, Frame.at(p.looseScep![0], p.looseScep![1], p.looseScep![2]), false))
-  if (p.looseCrown)
-    g.add(5.5, (l) => crownShape(l, Frame.at(p.looseCrown![0], p.looseCrown![1], p.looseCrown![2])))
+  if (p.looseScep) g.add(5, (l) => sceptre(l, Frame.at(p.looseScep![0], p.looseScep![1], p.looseScep![2]), false))
+  if (p.looseCrown) g.add(5.5, (l) => crownShape(l, Frame.at(p.looseCrown![0], p.looseCrown![1], p.looseCrown![2])))
 
   // ---- speed streaks behind the dash, in her own colours
   if (p.streaks > 0)
-    g.add(5.8, (l) => {
-      // behind the head (the rear of the dash), above, through and below it
-      const [hx, hy] = head.pt(0, 0)
-      const rows: [number, number, number, number, number][] = [
-        [-9, -15, 14, 1.6, HONEY[1]],
-        [2, -16, 18, 2, WING[1]],
-        [12, -12, 12, 1.6, HONEY[1]]
-      ]
-      for (const [i, [dy, dx, len, w, c]] of rows.entries()) {
-        const sx = Math.round(hx + dx - ((p.streaks * 3 + i * 2) % 4))
-        const y = Math.round(hy + dy)
-        ribbon(l, [[sx, y], [Math.max(3, sx - len), y]], (t) => w * (1 - t * 0.7), c)
-      }
-      cel(l, { shade: 1, rim: 0.8 })
-    })
+    g.add(
+      5.8,
+      (l) => {
+        // behind the head (the rear of the dash), above, through and below it
+        const [hx, hy] = head.pt(0, 0)
+        const rows: [number, number, number, number, number][] = [
+          [-9, -15, 14, 1.6, HONEY[1]],
+          [2, -16, 18, 2, WING[1]],
+          [12, -12, 12, 1.6, HONEY[1]]
+        ]
+        for (const [i, [dy, dx, len, w, c]] of rows.entries()) {
+          const sx = Math.round(hx + dx - ((p.streaks * 3 + i * 2) % 4))
+          const y = Math.round(hy + dy)
+          ribbon(
+            l,
+            [
+              [sx, y],
+              [Math.max(3, sx - len), y]
+            ],
+            (t) => w * (1 - t * 0.7),
+            c
+          )
+        }
+        cel(l, { shade: 1, rim: 0.8 })
+        deepRim(l)
+      },
+      false
+    )
 
   // ---- stars over a knocked-out head
   if (p.stars >= 0)
@@ -692,10 +811,15 @@ export function drawBee(p: BeePose): Raster {
       const [cx, cy] = head.pt(0, -20)
       for (let i = 0; i < 3; i++) {
         const a = (p.stars + i / 3) * TAU
-        l.stamp(Math.sin(a) > 0 ? STAR : STAR_SMALL, Math.round(cx + Math.cos(a) * 12) - 2, Math.round(cy + Math.sin(a) * 3.5) - 2, {
-          y: HONEY[1],
-          Y: HONEY[0]
-        })
+        l.stamp(
+          Math.sin(a) > 0 ? STAR : STAR_SMALL,
+          Math.round(cx + Math.cos(a) * 12) - 2,
+          Math.round(cy + Math.sin(a) * 3.5) - 2,
+          {
+            y: HONEY[1],
+            Y: HONEY[0]
+          }
+        )
       }
     })
 
@@ -1092,7 +1216,7 @@ const defeat = memo(() => {
     }),
     P({
       x: 2,
-      y: -17,
+      y: -8,
       lean: 240,
       nod: -96,
       eyes: 'hurt',

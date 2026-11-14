@@ -130,9 +130,18 @@ export const apePose = (p: Partial<ApePose> = {}): ApePose => ({
   ...p
 })
 
-/** Rest places (x relative to the ground frame). */
+/**
+ * The whole figure is drawn in figure units, scaled by `S` onto the screen: body shapes, bone lengths, fists, head
+ * and cap grow together (the biggest boss fills his 75 px physics box); stamps keep their pixel size.
+ */
+const S = 1.17
+/** Rest places (x relative to the ground frame, in figure units). */
 const REST = { aN: 19, aF: 28, lN: -10, lF: -18 } as const
-const GROUND_X = 58
+const GROUND_X = 54
+/** A screen x a figure-unit distance `u` in front of the ground point (props placed in screen space). */
+const gx = (u: number) => GROUND_X + u * S
+/** A screen point given in the figure's unscaled layout (absolute cell coordinates around the ground point (58, 120)). */
+const fig = (x: number, y: number): Pt => [GROUND_X + (x - 58) * S, 120 - (120 - y) * S]
 
 // ------------------------------------------------------------------------------------------------ stamps
 
@@ -249,8 +258,8 @@ const footShape = (grounded: boolean): Shape => {
 export function drawApe(p: ApePose): Raster {
   const g = new Painter(128, 128, { soft: true })
   const k = 1 + p.squash * 0.05
-  const ground = Frame.at(GROUND_X + Math.round(p.x), 120)
-  const root = ground.child(0, -Math.round(p.y))
+  const ground = Frame.at(GROUND_X + Math.round(p.x * S), 120, 0, S)
+  const root = Frame.at(ground.e, 120 - Math.round(p.y * S), 0, S)
   const torso = root.child(0, -36, p.lean, k, 1 / k)
   const br = p.breath
   const head = torso.child(30 + p.head[0], 0 + p.head[1], p.nod - p.lean * 0.75, HS)
@@ -262,7 +271,7 @@ export function drawApe(p: ApePose): Raster {
     const s = torso.pt(near ? 8 : 15, near ? -4 : -8)
     const want = target.pt(-3, -9)
     // limbs may cheat: an arm thrown overhead grows up to a fifth longer
-    const bone = Math.max(17.5, Math.min(21, Math.hypot(want[0] - s[0], want[1] - s[1]) / 2 + 0.4))
+    const bone = Math.max(17.5 * S, Math.min(21 * S, Math.hypot(want[0] - s[0], want[1] - s[1]) / 2 + 0.4 * S))
     const j = joint(s, want, bone, bone, bend)
     // a fist out of reach follows the wrist
     const f = target.moved(j.end[0] - want[0], j.end[1] - want[1])
@@ -277,7 +286,7 @@ export function drawApe(p: ApePose): Raster {
     const f = ground.child(rest + limb[0], -limb[1], -limb[2])
     const s = torso.pt(near ? -15 : -20, near ? 13 : 11)
     const end = f.pt(-2.5, -5)
-    const j = joint(s, end, 12, 11, -1)
+    const j = joint(s, end, 12 * S, 11 * S, -1)
     return { f, s, mid: j.mid, end: j.end, grounded: limb[1] < 0.6 && Math.abs(limb[2]) < 10 }
   }
   type Leg = ReturnType<typeof legGeo>
@@ -296,12 +305,12 @@ export function drawApe(p: ApePose): Raster {
   /** The forearm: what hangs free below the shoulder, thickest just below the elbow. */
   const foreArm = (l: Raster, arm: Arm, tone: Ramp, smear: Frame | null) => {
     const bulge: Pt = [arm.mid[0] * 0.65 + arm.end[0] * 0.35, arm.mid[1] * 0.65 + arm.end[1] * 0.35]
-    fill(l, ID, union(capsule(arm.mid, arm.end, 7.6, 6.4), oval(bulge[0], bulge[1], 8.6, 8.6)), tone[1])
+    fill(l, ID, union(capsule(arm.mid, arm.end, 7.6 * S, 6.4 * S), oval(bulge[0], bulge[1], 8.6 * S, 8.6 * S)), tone[1])
     // one frame of a blur: the forearm doubled along its path
-    if (smear) fill(l, ID, capsule(arm.end, smear.pt(-3, -9), 7.5, 7.5), tone[1])
+    if (smear) fill(l, ID, capsule(arm.end, smear.pt(-3, -9), 7.5 * S, 7.5 * S), tone[1])
     // the fur at the back of the forearm
     const a = (Math.atan2(arm.end[1] - arm.mid[1], arm.end[0] - arm.mid[0]) * 180) / Math.PI
-    stampAt(l, Frame.at(arm.mid[0], arm.mid[1], a), TUFT_ELBOW, 2, 6.5, { f: tone[1] })
+    stampAt(l, Frame.at(arm.mid[0], arm.mid[1], a, S), TUFT_ELBOW, 2, 6.5, { f: tone[1] })
   }
   const knuckles = (l: Raster, arm: Arm, tone: Ramp, far: boolean) => {
     const key = far ? { h: SKIN[1], s: SKIN[2], d: SKIN[3] } : { h: SKIN[0], s: SKIN[1], d: SKIN[2] }
@@ -312,7 +321,7 @@ export function drawApe(p: ApePose): Raster {
   // ---- far arm and far leg (a ramp step darker), behind everything
   const farDepth = p.farFront ? 3.6 : -4
   g.add(-4, (l) => {
-    fill(l, ID, capsule(armF.s, armF.mid, 9, 7.5), FAR[1])
+    fill(l, ID, capsule(armF.s, armF.mid, 9 * S, 7.5 * S), FAR[1])
     if (!p.farFront) foreArm(l, armF, FAR, null)
     smooth(l)
     cel(l, { shade: 3, rim: 1.2 })
@@ -331,7 +340,7 @@ export function drawApe(p: ApePose): Raster {
     knuckles(l, armF, FAR, true)
   })
   const lowerLeg = (l: Raster, leg: Leg, tone: Ramp) => {
-    fill(l, ID, capsule(leg.mid, leg.end, 5.6, 4.6), tone[1])
+    fill(l, ID, capsule(leg.mid, leg.end, 5.6 * S, 4.6 * S), tone[1])
     fill(l, leg.f, footShape(leg.grounded), tone[1])
   }
   const toes = (l: Raster, leg: Leg, far: boolean) => {
@@ -339,7 +348,7 @@ export function drawApe(p: ApePose): Raster {
     within(l, (m) => stampAt(m, leg.f, TOES, 6, -1.5, key))
   }
   g.add(-3, (l) => {
-    fill(l, ID, capsule(legF.s, legF.mid, 7, 5.6), FAR[1])
+    fill(l, ID, capsule(legF.s, legF.mid, 7 * S, 5.6 * S), FAR[1])
     lowerLeg(l, legF, FAR)
     smooth(l)
     cel(l, { shade: 2.4, rim: 1 })
@@ -353,11 +362,14 @@ export function drawApe(p: ApePose): Raster {
     armN.s[1] + (armN.mid[1] - armN.s[1]) * t
   ]
   const armDeg = (Math.atan2(armN.mid[1] - armN.s[1], armN.mid[0] - armN.s[0]) * 180) / Math.PI
-  const bandFrame = Frame.at(...bandAt(0.52), armDeg)
+  const bandFrame = Frame.at(...bandAt(0.52), armDeg, S)
+  /** The near upper arm and thigh in screen space (radii in figure units scaled). */
+  const upper = capsule(armN.s, armN.mid, 10.5 * S, 8 * S)
+  const thigh = capsule(legN.s, legN.mid, 8 * S, 6 * S)
   g.add(0, (l) => {
     fill(l, torso, bodyShape, FUR[1])
-    fill(l, ID, capsule(armN.s, armN.mid, 10.5, 8), FUR[1])
-    fill(l, ID, capsule(legN.s, legN.mid, 8, 6), FUR[1])
+    fill(l, ID, upper, FUR[1])
+    fill(l, ID, thigh, FUR[1])
     // fur locks: on the rump, under the belly, at the back of the thigh and the shoulder
     stampAt(l, torso, TUFT_BACK, -31, 3, { f: FUR[1] })
     stampAt(l, torso, TUFT_DOWN, -3, 12.5 + br * 0.4, { f: FUR[1] })
@@ -386,11 +398,10 @@ export function drawApe(p: ApePose): Raster {
     cel(l, { shade: 11, deep: 4, rim: 2.4, tooth: 3, pitch: 5, origin: chestAt })
     dimEdge(l, [SILVER, FUR])
     // muscles are soft shadows: under the shoulder, the triceps, in front of the thigh
-    shadow(l, ID, crease(armN.s, armN.mid, 10.5, 8, armN.mid[0] >= armN.s[0] ? -1 : 1))
-    shadow(l, ID, crease(legN.s, legN.mid, 8, 6, legN.mid[1] >= legN.s[1] ? -1 : 1))
+    shadow(l, ID, crease(armN.s, armN.mid, 10.5 * S, 8 * S, armN.mid[0] >= armN.s[0] ? -1 : 1))
+    shadow(l, ID, crease(legN.s, legN.mid, 8 * S, 6 * S, legN.mid[1] >= legN.s[1] ? -1 : 1))
     shadow(l, torso, overlap(oval(19, 2, 8.5, 11), half([19, 6], 0, 1)))
     // the gang's red band round the upper arm: a lit upper edge and a fold
-    const upper = capsule(armN.s, armN.mid, 10.5, 8)
     within(l, (m) => {
       fill(m, bandFrame, squircle(0, 0, 2.6, 12, 4), BAND[1])
       fill(m, bandFrame, squircle(-2, 0, 0.8, 12, 4), BAND[0])
@@ -410,13 +421,13 @@ export function drawApe(p: ApePose): Raster {
   // ---- armband tails: two short cut ends from the knot at the back of the arm
   const knot = bandFrame.pt(0, 9)
   g.add(1.5, (l) => {
-    const wave = (s: number) => Math.sin(p.band[1] - s * 3) * s * 1.6
+    const wave = (s: number) => Math.sin(p.band[1] - s * 3) * s * 1.6 * S
     for (const [d, len] of [
-      [p.band[0] + 12, 10],
-      [p.band[0] - 6, 8]
+      [p.band[0] + 12, 10 * S],
+      [p.band[0] - 6, 8 * S]
     ] as const) {
       const path = hangPath(knot, d, len, wave)
-      ribbon(l, path, (t) => 3 + t * 1.6, BAND[1])
+      ribbon(l, path, (t) => (3 + t * 1.6) * S, BAND[1])
       const n = path.length - 1
       carve(
         l,
@@ -428,7 +439,7 @@ export function drawApe(p: ApePose): Raster {
         ])
       )
     }
-    fill(l, Frame.at(knot[0], knot[1]), oval(0, 0, 2.2, 2.2), BAND[1])
+    fill(l, Frame.at(knot[0], knot[1], 0, S), oval(0, 0, 2.2, 2.2), BAND[1])
     cel(l, { shade: 1.4, rim: 1 })
   })
 
@@ -491,7 +502,8 @@ export function drawApe(p: ApePose): Raster {
       stampAt(l, head, EYES_FAR[p.eyes], 11, -0.5, EYE_KEY)
       stampAt(l, head, NOSE, 12.5, 3, { K: C.inkCool, s: SKIN[3] })
       const tooth = { w: C.white, W: SKIN[0] }
-      if (p.mouth === 'shut') stampAt(l, head, ['KK..........', '.KKKKKKKKKK.', '..........KK'], 9.5, 8.5, { K: C.inkCool })
+      if (p.mouth === 'shut')
+        stampAt(l, head, ['KK..........', '.KKKKKKKKKK.', '..........KK'], 9.5, 8.5, { K: C.inkCool })
       else if (p.mouth === 'grit')
         stampAt(l, head, ['KKKKKKKKKKK', 'KwwwwwwwwwK', 'KKKKKKKKKKK'], 9.5, 8.5, { K: C.inkCool, ...tooth })
       else stampAt(l, head, TEETH_UP, 8.5, 7.6, tooth)
@@ -508,7 +520,7 @@ export function drawApe(p: ApePose): Raster {
 
   // ---- the police cap on its own frame: navy crown, darker band and peak, a gold star
   const capFrame = p.capFree
-    ? Frame.at(p.capFree[0], p.capFree[1], p.capFree[2])
+    ? Frame.at(...fig(p.capFree[0], p.capFree[1]), p.capFree[2], S * HS)
     : head.child(-0.5 + p.cap[0], -11.5 + p.cap[1], p.cap[2])
   g.add(5, (l) => {
     fill(l, capFrame, union(squircle(0.5, -4.2, 12.6, 5.2, 2.8), squircle(1, 0.2, 11, 2.8, 4)), NAVY[1])
@@ -565,11 +577,11 @@ export function drawApe(p: ApePose): Raster {
     const d = p.dust
     const puffs = (l: Raster, front: boolean) => {
       for (const side of [-1, 1]) {
-        const cx = (side < 0 ? GROUND_X - 26 : GROUND_X + REST.aF + 10) + side * d * 8
-        const r = 6 + d * 3
+        const cx = gx((side < 0 ? -22 : REST.aF + 8) + side * d * 6)
+        const r = (6 + d * 3) * S
         if (front !== side > 0) continue
-        fill(l, Frame.at(cx, 117 - d * 2), oval(0, 0, r, r * 0.6), SKIN[1])
-        fill(l, Frame.at(cx + side * (r * 0.9), 116 - d * 4), oval(0, 0, r * 0.55, r * 0.5), SKIN[1])
+        fill(l, Frame.at(cx, 120 - (3 + d * 2) * S), oval(0, 0, r, r * 0.6), SKIN[1])
+        fill(l, Frame.at(cx + side * (r * 0.9), 120 - (4 + d * 4) * S), oval(0, 0, r * 0.55, r * 0.5), SKIN[1])
       }
       cel(l, { shade: 1.6, rim: 1 })
       dimEdge(l, [SKIN])
@@ -587,8 +599,8 @@ export function drawApe(p: ApePose): Raster {
           [-10, 26, 1.3]
         ] as const) {
           const t = 0.25 + d * 0.9
-          const cx = GROUND_X + REST.aN + 8 + vx * t
-          const cy = 116 - vy * t + 30 * t * t
+          const cx = gx(REST.aN + 8 + vx * t)
+          const cy = 120 - (4 + vy * t - 30 * t * t) * S
           fill(l, Frame.at(Math.round(cx), Math.round(cy), 20), squircle(0, 0, s + 0.6, s, 3), SILVER[2])
         }
         cel(l, { rim: 1 })
@@ -603,8 +615,8 @@ export function drawApe(p: ApePose): Raster {
         const a = (p.stars + i / 3) * TAU
         l.stamp(
           Math.sin(a) > 0 ? STAR : STAR_SMALL,
-          Math.round(cx + Math.cos(a) * 13) - 2,
-          Math.round(cy + Math.sin(a) * 3.5) - 2,
+          Math.round(cx + Math.cos(a) * 13 * S) - 2,
+          Math.round(cy + Math.sin(a) * 3.5 * S) - 2,
           { y: GOLD[1], Y: GOLD[0] }
         )
       }
@@ -636,7 +648,7 @@ const idle = memo(() => {
       y: breath[i] * 0.6 - (i === 4 ? 1 : 0),
       lean: -breath[i] * 1.5,
       breath: breath[i],
-      head: [i === 2 || i === 3 ? 1 : 0, -breath[i] * 1.2],
+      head: [i === 2 || i === 3 ? 1 : 0, -breath[i] * 2.4],
       nod: [0, -2, -4, -3, 3, 1][i],
       eyes: i === 4 ? 'narrow' : 'glare',
       mouth: i === 4 ? 'grit' : 'shut',
@@ -650,7 +662,7 @@ const idle = memo(() => {
 /** intro: a deep breath, he rises, beats his chest left-right-left (one smear), roars with the head back, drops. */
 const intro = memo(() => {
   const up: Partial<ApePose> = {
-    y: 14,
+    y: 12,
     lean: -48,
     bendN: -1,
     bendF: -1,
@@ -711,7 +723,7 @@ const intro = memo(() => {
     }),
     P({
       ...up,
-      y: 15,
+      y: 13,
       lean: -52,
       breath: 1,
       head: [-1, -2],
@@ -725,7 +737,17 @@ const intro = memo(() => {
       band: [50, 5]
     }),
     P({ y: 1, lean: 3, head: [1, 1], nod: 4, eyes: 'glare', mouth: 'grit', cap: [0, 1, 5], band: [10, 6] }),
-    P({ y: 0.4, lean: 2, breath: 0.5, head: [1, 0], nod: 3, eyes: 'glare', mouth: 'grit', cap: [0, 0, 2], band: [16, 7.4] })
+    P({
+      y: 0.4,
+      lean: 2,
+      breath: 0.5,
+      head: [1, 0],
+      nod: 3,
+      eyes: 'glare',
+      mouth: 'grit',
+      cap: [0, 0, 2],
+      band: [16, 7.4]
+    })
   ]
 })
 
@@ -971,7 +993,7 @@ const defeat = memo(() => {
   // flat on his belly, the cheek on the floor facing out, arms limp, feet up behind, the cap on his back
   const flat: Partial<ApePose> = {
     x: -4,
-    y: -13,
+    y: -12,
     lean: 4,
     squash: 1.2,
     breath: 0,
@@ -981,12 +1003,12 @@ const defeat = memo(() => {
     mouth: 'open',
     jaw: 0.35,
     tongue: true,
-    aN: [-26, 0, -10],
-    aF: [36, 0, 30],
+    aN: [-17, 0, -10],
+    aF: [25, 0, 30],
     bendN: 1,
     bendF: -1,
-    lN: [-14, 8, 70],
-    lF: [-18, 6, 60],
+    lN: [-6, 8, 70],
+    lF: [-10, 6, 60],
     capFree: [52, 78, -6],
     band: [70, 0]
   }
@@ -1018,7 +1040,7 @@ const defeat = memo(() => {
       aN: [-10, 4, -10],
       aF: [-4, 0, 0],
       lN: [2, 0, 0],
-      capFree: [56, 26, -90],
+      capFree: [56, 44, -90],
       band: [30, 1]
     }),
     P({
@@ -1038,23 +1060,23 @@ const defeat = memo(() => {
     }),
     P({
       x: 0,
-      y: -2,
+      y: -1,
       lean: 30,
       head: [2, 2],
       nod: 12,
       eyes: 'hurt',
       mouth: 'open',
       jaw: 0.5,
-      aN: [16, 10, 40],
-      aF: [22, 8, 40],
+      aN: [12, 10, 40],
+      aF: [17, 8, 40],
       bendN: -1,
       bendF: -1,
-      lN: [-4, 4, 20],
-      lF: [-8, 2, 20],
-      capFree: [36, 50, -200],
+      lN: [-2, 4, 20],
+      lF: [-5, 2, 20],
+      capFree: [38, 50, -200],
       band: [-30, 3]
     }),
-    P({ ...flat, y: -14, squash: 2.4, head: [2, 3], eyes: 'shut', jaw: 0.6, capFree: [46, 62, -40], band: [-40, 4] }),
+    P({ ...flat, y: -13, squash: 2.4, head: [2, 3], eyes: 'shut', jaw: 0.6, capFree: [46, 62, -40], band: [-40, 4] }),
     P({
       ...flat,
       y: -11,
@@ -1062,8 +1084,8 @@ const defeat = memo(() => {
       head: [2, 4],
       nod: -4,
       eyes: 'hurt',
-      lN: [-12, 14, 90],
-      lF: [-16, 12, 80],
+      lN: [-4, 14, 90],
+      lF: [-8, 12, 80],
       capFree: [50, 76, -16],
       band: [60, 5]
     }),

@@ -53,7 +53,6 @@ const BAND = R.bandana
 const STEEL = R.steel
 const GOLD = R.gold
 
-
 type Eyes = 'sly' | 'angry' | 'wide' | 'shut' | 'hurt' | 'dizzy' | 'tired' | 'happy'
 type Mouth = 'smirk' | 'grin' | 'open' | 'flat'
 type Hand = 'fist' | 'two' | 'open'
@@ -171,7 +170,16 @@ const EYE_KEY = { K: C.black, w: C.white, y: GOLD[1], o: FUR[1], B: RUSSET[3], i
 const EYES: Record<Eyes, readonly string[]> = {
   sly: ['BB........', '.BBBB.....', '..KKKKKKK.', '..KwwyyKKK', '..KwyyKyoK', '...KyyKoK.', '....KKKK..'],
   angry: ['B.........', '.BBB......', '...BBBBB..', '..KKKKKKBB', '..KwyyKKK.', '...KyyKoK.', '....KKKK..'],
-  wide: ['..BBB.....', '.B........', '..KKKKKK..', '.KwwyyyKK.', '.KwyyKyyK.', '.KyyyKyoK.', '..KyyyyK..', '...KKKK...'],
+  wide: [
+    '..BBB.....',
+    '.B........',
+    '..KKKKKK..',
+    '.KwwyyyKK.',
+    '.KwyyKyyK.',
+    '.KyyyKyoK.',
+    '..KyyyyK..',
+    '...KKKK...'
+  ],
   shut: ['BB........', '.BBBB.....', '..........', '..iiiiiii.', '...iiiiiii', '..........'],
   hurt: ['B.........', '.BB.......', '..ii......', '....iii...', '......iii.', '....iii...', '..ii......'],
   dizzy: ['..........', '..iiiii...', '.i.....i..', '.i.iii.i..', '.i.i.i.i..', '.i...i.i..', '..iii..i..'],
@@ -261,13 +269,17 @@ function handShape(kind: Hand): Shape {
 
 /** A streak of wind along a circle: thin trailing end, thick head at `a1` (degrees, in frame `f`). */
 function streak(l: Raster, f: Frame, r: number, a0: number, a1: number, w: number, c: number) {
+  const wid = (t: number) => 0.8 + w * Math.sin(Math.PI * Math.min(1, t * 0.62 + 0.38)) * t ** 0.7
   const pts: Pt[] = []
   const n = 8
   for (let i = 0; i <= n; i++) {
     const a = (a0 + ((a1 - a0) * i) / n) * RAD
     pts.push(f.pt(Math.cos(a) * r, Math.sin(a) * r))
   }
-  ribbon(l, spline(pts), (t) => 0.8 + w * Math.sin(Math.PI * Math.min(1, t * 0.62 + 0.38)) * t ** 0.7, c)
+  const path = spline(pts)
+  // a dark rim of its own under the light core, so the streak keeps an edge
+  ribbon(l, path, (t) => wid(t) + 2, NAVY[3])
+  ribbon(l, path, wid, c)
 }
 
 // ------------------------------------------------------------------------------------------------ drawing
@@ -538,7 +550,7 @@ export function drawFox(p: FoxPose): Raster {
     g.add(
       3.7,
       (l) => {
-        fill(l, ID, polygon([head.pt(5, 3.5), head.pt(19, 4.6), jaw.pt(13, 0), jaw.pt(0, -0.5)]), C.mouth)
+        fill(l, ID, polygon([head.pt(5, 3.5), head.pt(19, 4.6), jaw.pt(13, 0), jaw.pt(0, -0.5)]), RUSSET[2])
       },
       false
     )
@@ -551,12 +563,7 @@ export function drawFox(p: FoxPose): Raster {
 
   g.add(4, (l) => {
     fill(l, head, headShape, FUR[1])
-    tint(
-      l,
-      head,
-      union(ruff, capsule([6, 5.2], [18.5, 4.8], 2.4, 1), oval(4, 6, 4.5, 3), oval(-4, 6, 6, 4)),
-      PALE[1]
-    )
+    tint(l, head, union(ruff, capsule([6, 5.2], [18.5, 4.8], 2.4, 1), oval(4, 6, 4.5, 3), oval(-4, 6, 6, 4)), PALE[1])
     smooth(l)
     mantle(l, FUR[1], RUSSET[1], { depth: 4, tooth: 2, pitch: 4, origin: headAt })
     cel(l, { shade: 3.4, deep: 1.3, rim: 1.6, tooth: 1.5, pitch: 4, origin: headAt })
@@ -607,7 +614,11 @@ export function drawFox(p: FoxPose): Raster {
       if (p.mouth === 'smirk') stampAt(l, head, ['K.........', '.KK.......', '...KKKKKKK'], 12.5, 5.6, lip)
       else if (p.mouth === 'flat') stampAt(l, head, ['KKKKKKKKKK'], 13, 5.6, lip)
       else if (p.mouth === 'grin')
-        stampAt(l, head, ['K..........', '.KKKKKKKKKK', '..wWwWwWwW.'], 12.5, 5.4, { ...lip, w: C.white, W: PALE[2] })
+        stampAt(l, head, ['K..........', '.KKKKKKKKKK', '..wWwWwWwWK', '..KKKKKKKKK'], 12.5, 5.4, {
+          ...lip,
+          w: C.white,
+          W: PALE[2]
+        })
     },
     false
   )
@@ -623,7 +634,6 @@ export function drawFox(p: FoxPose): Raster {
       const span = 64 * Math.min(1, p.wind - k)
       g.add(k === 1 ? -6 : 7, (l) => {
         streak(l, centre, r + (k === 2 ? 3 : 0), a1 - span, a1, 2.6, k === 1 ? FUR[0] : PALE[1])
-        cel(l, { rim: 1 })
       })
     }
   }
@@ -662,10 +672,10 @@ const arc = (c: Pt, r0: number, r1: number, degs: readonly number[]): Pt[] =>
 /** The tail curled round the front of his legs (crouch, windup). */
 const TAIL_WRAP: readonly Pt[] = [
   [-6, -1],
-  [-17, 7],
-  [-9, 15],
-  [7, 13],
-  [17, 3]
+  [-17, 2],
+  [-10, 6],
+  [6, 5],
+  [16, -1]
 ]
 /** The tail fanned high behind the intro pose. */
 const TAIL_FAN: readonly Pt[] = [
@@ -917,7 +927,7 @@ const move = memo(() => {
 /** windup: he crouches, crosses his arms before his face, the tail whips round him, the first wind; trembles. */
 const windup = memo(() => {
   const set: Partial<FoxPose> = {
-    y: -7,
+    y: -6,
     lean: 16,
     head: [1, 3],
     nod: 8,
@@ -935,7 +945,7 @@ const windup = memo(() => {
     tail: TAIL_WRAP,
     tailFront: true,
     swayAmp: 0,
-    windR: 33,
+    windR: 26,
     pivot: 30
   }
   return [
@@ -954,17 +964,17 @@ const windup = memo(() => {
       farFront: true,
       tail: [
         [-6, -1],
-        [-20, 6],
-        [-27, 16],
-        [-12, 20],
-        [2, 16]
+        [-20, 1],
+        [-27, 7],
+        [-12, 9],
+        [2, 5]
       ],
       swayAmp: 0,
       band: [10, 30, 1.4, 0, 30]
     }),
     P({ ...set, wind: 1.5, windAt: 200, band: [-10, 30, 1.8, 1, 30] }),
     P({ ...set, x: 1, wind: 2.4, windAt: 214, band: [-14, 30, 2, 2.4, 34] }),
-    P({ ...set, x: -1, y: -6, wind: 2.6, windAt: 232, band: [-12, 30, 2, 3.8, 30] })
+    P({ ...set, x: -1, y: -5, wind: 2.6, windAt: 232, band: [-12, 30, 2, 3.8, 30] })
   ]
 })
 
@@ -1029,10 +1039,10 @@ const recover = memo(() =>
       legF: [-1 + s, 0, 0],
       tail: [
         [-6, 0],
-        [-15, 9],
-        [-26, 14],
-        [-37, 15],
-        [-46, 14]
+        [-15, 7],
+        [-26, 10],
+        [-37, 10],
+        [-46, 9]
       ],
       puff: 0.8,
       sway: phase(i, 4),
@@ -1138,10 +1148,10 @@ const defeat = memo(() => {
       armF: [12, -10, 0, 1],
       legN: [16, 10, -70],
       legF: [12, 14, -50],
-      band: [-80, 28, 1.4, 2, 30]
+      band: [-80, 22, 1.4, 2, 30]
     }),
     P({ ...lying, squash: 2, eyes: 'shut', band: [120, 24, 1.2, 3, -20] }),
-    P({ ...lying, rise: 4, squash: -1, eyes: 'shut', legN: [16, 12, -70], band: [100, 24, 1, 4, -20] }),
+    P({ ...lying, x: 13, rise: 4, squash: -1, eyes: 'shut', legN: [14, 12, -70], band: [100, 20, 1, 4, -20] }),
     P({ ...lying, squash: 1, band: [140, 22, 0.8, 5, -14] }),
     P({ ...lying, stars: 0, band: [148, 22, 0.6, 6, -10] }),
     P({ ...lying, stars: 1 / 6, legN: [14, 14.6, -62], band: [152, 22, 0.6, 7, -8] })

@@ -60,7 +60,9 @@ describe('ハチ女王 (beeBoss) on the rig', () => {
     for (let i = 0; i < f.length; i++) {
       const a = count(f[i], wing)
       const b = count(f[(i + 1) % f.length], wing)
-      expect(Math.abs(a - b) / Math.max(a, b), `idle ${i}→${(i + 1) % f.length}: ${a} vs ${b}`).toBeGreaterThanOrEqual(0.3)
+      expect(Math.abs(a - b) / Math.max(a, b), `idle ${i}→${(i + 1) % f.length}: ${a} vs ${b}`).toBeGreaterThanOrEqual(
+        0.3
+      )
     }
   })
 
@@ -72,8 +74,7 @@ describe('ハチ女王 (beeBoss) on the rig', () => {
       for (let y = b.y; y < b.y + b.h; y++) if (f.get(x, y)) front = f.get(x, y)
       // the rightmost column's pixels belong to the abdomen (gold and plum, or its outline)
       let ok = false
-      for (let y = b.y; y < b.y + b.h; y++)
-        for (let dx = 0; dx <= 2; dx++) if (abdomen.has(f.get(x - dx, y))) ok = true
+      for (let y = b.y; y < b.y + b.h; y++) for (let dx = 0; dx <= 2; dx++) if (abdomen.has(f.get(x - dx, y))) ok = true
       expect(front, `attack ${i} has a front`).toBeGreaterThan(0)
       expect(ok, `attack ${i}: the foremost point is the stinger`).toBe(true)
       expect(b.w / b.h, `attack ${i} ${b.w}×${b.h}`).toBeGreaterThanOrEqual(1.4)

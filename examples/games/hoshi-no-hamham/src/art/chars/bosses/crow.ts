@@ -374,7 +374,12 @@ export function drawCrowBoss(p: CrowBossPose): Raster {
     })
     // the arm with the lesser coverts: the lit leading edge of the wing
     g.add(depth + 0.3, (l) => {
-      fill(l, f, union(capsule(b.S, b.E, 5.6, 4.4), capsule(b.E, b.W, 4.4, 3.2), oval(...b.W, 3.4, 3.2)), tone(covert)[1])
+      fill(
+        l,
+        f,
+        union(capsule(b.S, b.E, 5.6, 4.4), capsule(b.E, b.W, 4.4, 3.2), oval(...b.W, 3.4, 3.2)),
+        tone(covert)[1]
+      )
       smooth(l)
       if (under < 0.5) mantle(l, tone(covert)[1], tone(MANTLE)[1], { depth: 2 })
       cel(l, { shade: 2, rim: near ? 1.4 : 0 })
@@ -416,7 +421,12 @@ export function drawCrowBoss(p: CrowBossPose): Raster {
     const len = 22 - Math.abs(i) * 2.4
     g.add(-4 + (2 - Math.abs(i)) * 0.01, (l) => {
       const end = add(tailBase, pol(len, dir))
-      fill(l, ID, union(capsule(add(tailBase, pol(3, dir)), end, 2.6, 3.4), oval(...add(end, pol(-1, dir)), 3.8, 3.8)), (i < 0 ? farRamp(MANTLE) : MANTLE)[1])
+      fill(
+        l,
+        ID,
+        union(capsule(add(tailBase, pol(3, dir)), end, 2.6, 3.4), oval(...add(end, pol(-1, dir)), 3.8, 3.8)),
+        (i < 0 ? farRamp(MANTLE) : MANTLE)[1]
+      )
       cel(l, { shade: 1.6, rim: 1 })
     })
   }
@@ -735,7 +745,7 @@ const intro = memo(() => [
 const hurt = memo(() => [
   P({
     x: -3,
-    y: 1,
+    y: 6,
     lean: -12,
     squash: -1.5,
     head: [-2, -1],
@@ -906,7 +916,7 @@ const defeat = memo(() => {
   return [
     P({
       x: -3,
-      y: 2,
+      y: 7,
       lean: -14,
       squash: -2,
       head: [-2, -1],
@@ -926,7 +936,7 @@ const defeat = memo(() => {
     }),
     P({
       x: -2,
-      y: -2,
+      y: 8,
       spin: -90,
       jaw: 0.8,
       eyes: 'hurt',
@@ -943,7 +953,7 @@ const defeat = memo(() => {
       ]
     }),
     P({
-      y: -7,
+      y: 14,
       spin: -180,
       jaw: 0.6,
       eyes: 'dizzy',
@@ -960,7 +970,7 @@ const defeat = memo(() => {
     }),
     P({
       x: 1,
-      y: -13,
+      y: 6,
       spin: -270,
       jaw: 0.6,
       eyes: 'dizzy',

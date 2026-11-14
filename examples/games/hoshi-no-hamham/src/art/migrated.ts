@@ -9,19 +9,19 @@
 export const MIGRATED: readonly string[] = [
   'hero',
   'princess',
-  // 'mom',
-  // 'king',
+  'mom',
+  'king',
   'walker',
   'flyer',
   'jumper',
   'spitter',
   'tough',
   'crowBoss',
-  // 'weaselBoss',
+  'weaselBoss',
   'boarBoss',
   'wolfBoss',
   'bearBoss',
-  // 'foxBoss',
+  'foxBoss',
   'apeBoss',
   'beeBoss'
 ]

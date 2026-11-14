@@ -22,6 +22,15 @@ import {
 
 /** Clips where the character is calm: contours must hold still, so flicker is a fault, not motion. */
 const QUIET = new Set(['idle', 'blink', 'sad', 'recover', 'stunned', 'tired'])
+/**
+ * Quiet clips that are not still: a hovering boss beats its wings in `idle` and `recover` (the crow's deep
+ * strokes, the queen's flutter between a spread and a blurred wing). That is the motion, not a contour that
+ * boils, so the flicker gate does not apply to them.
+ */
+const WING_BEAT: Record<string, readonly string[]> = {
+  crowBoss: ['idle', 'recover'],
+  beeBoss: ['idle', 'recover']
+}
 
 const characters = new Set(Object.keys(nextCharacterSpecs()))
 const migrated = MIGRATED.filter((id) => characters.has(id))
@@ -60,7 +69,7 @@ function faults(id: string): string[] {
         )
       for (const [a, b] of stillness(anim)) out.push(`${at}: frames ${a} and ${b} are near duplicates`)
     }
-    if (QUIET.has(name) && anim.frames.length >= LIMITS.boilFrames) {
+    if (QUIET.has(name) && !WING_BEAT[id]?.includes(name) && anim.frames.length >= LIMITS.boilFrames) {
       const b = boil(anim)
       const pct = (v: number) => `${(v * 100).toFixed(1)} %`
       if (b.max > LIMITS.boil)

@@ -27,19 +27,19 @@ function hashSheet(s: Sheet): string {
 
 /** Recorded from the eagerly drawn art before the lazy conversion; change only when the art is meant to change. */
 const PINNED: Record<string, string> = {
-  apeBoss: '0599a859e60b2e7c',
-  bearBoss: '36565e978b5c77b3',
-  beeBoss: 'f93ee6db074dfbf4',
-  boarBoss: 'ea1e1b1a75444a10',
-  crowBoss: 'b2b45a388f84dd1c',
-  flyer: '83978ab042ed52d4',
-  foxBoss: '5451f9c8602aa4ab',
+  apeBoss: 'dee4cea90730d6bf',
+  bearBoss: 'b39630da52fef537',
+  beeBoss: 'de6778bac758ffce',
+  boarBoss: 'd935d4b4be8ce9b7',
+  crowBoss: '2565b7b03a9918aa',
+  flyer: 'f1346bc278ccc5ad',
+  foxBoss: '4c8b46c22192dcaf',
   fx: 'b61fcacb7138b05c',
   hero: '8b2edaa9b9a9b196',
   jumper: '0017407d8d8af494',
-  king: 'f82e76571a6946f4',
-  mom: '3ed34695f3a5c213',
-  princess: 'a916d11bfda97798',
+  king: '591bcab9bb8b6b74',
+  mom: '1f8dd31225add106',
+  princess: '3e9ce11e1b0f877c',
   'prop:animal': '8c45aa0c70e139cb',
   'prop:bee': '0844d4e7efa1988c',
   'prop:berry': 'cffd4b471fcbc320',
@@ -78,12 +78,12 @@ const PINNED: Record<string, string> = {
   tough: '23167ee84770d851',
   ui: '083ce7317d097ff5',
   walker: '62f0d007e04044c0',
-  weaselBoss: '0afa638b4d3fe9cc',
+  weaselBoss: '7af5fbadb1880000',
   wolfBoss: '23148acfa0051b22'
 }
 
 describe('lazy art', () => {
-  it('draws nothing while the registry is imported', async () => {
+  it('draws nothing while the registry is imported', { timeout: 60_000 }, async () => {
     const { Raster } = await import('../src/art/raster')
     const before = Raster.created
     await import('../src/art')

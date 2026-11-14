@@ -286,10 +286,10 @@ export function drawBoar(p: BoarPose): Raster {
   /** The body silhouette in torso units: rump, ribs, the shoulder wedge and the thick neck. */
   const neckEnd = torso.local(...head.pt(-4, 3))
   const bodyShape = union(
-    egg(6, -2 - br * 0.6, 25 + br * 0.4, 23 + br * 0.8, 22),
+    egg(7, -3 - br * 0.6, 27.5 + br * 0.4, 25.5 + br * 0.8, 24),
     capsule([2, 2], [-20, 3], 20 + br * 0.6, 15),
     oval(-22, 3, 14, 15),
-    capsule([14, -5], neckEnd, 18, 14)
+    capsule([14, -5], neckEnd, 19, 14.5)
   )
 
   /** Shank, pastern and hoof: what hangs free below the body, dark below the knee. */
@@ -623,7 +623,17 @@ const intro = memo(() => {
   const stance: Partial<BoarPose> = { x: -4, mouth: 'grit', eyes: 'glare' }
   return [
     P({ y: -1, lean: 4, head: [2, 5], nod: 14, eyes: 'narrow', fN: [5, 5, -25], quiff: [6, 0, 0] }),
-    P({ y: -1, lean: 5, head: [2, 6], nod: 16, eyes: 'narrow', fN: [-7, 0, 0], dust: 1, steam: 0.4, quiff: [-4, 0, 0] }),
+    P({
+      y: -1,
+      lean: 5,
+      head: [2, 6],
+      nod: 16,
+      eyes: 'narrow',
+      fN: [-7, 0, 0],
+      dust: 1,
+      steam: 0.4,
+      quiff: [-4, 0, 0]
+    }),
     P({
       x: -3,
       y: 5,
@@ -820,7 +830,16 @@ const windup = memo(() => {
     }),
     P({ ...set, x: -2, fN: [-8, 0, 0], dust: 1, steam: 0.5, quiff: [-6, 0, 0], kerchief: [60, 1.2, 2] }),
     P({ ...set, x: -1, head: [5, 3.4], fN: [-4, 2, 20], dust: 0.6, steam: 1, quiff: [2, 0, 0], tail: [-10, -260, 2] }),
-    P({ ...set, x: -3, head: [5.6, 4.6], fN: [-9, 0, 0], dust: 1.3, steam: 0.3, quiff: [-2, 0, 0], tail: [-6, -260, 4] })
+    P({
+      ...set,
+      x: -3,
+      head: [5.6, 3.4],
+      fN: [-9, 0, 0],
+      dust: 1.3,
+      steam: 0.3,
+      quiff: [-2, 0, 0],
+      tail: [-6, -260, 4]
+    })
   ]
 })
 
@@ -904,7 +923,7 @@ const recover = memo(() =>
       y: -1 - pant,
       lean: 4,
       breath: pant,
-      head: [2, 10 + pant],
+      head: [2, 10 - pant * 1.4],
       nod: 24 - pant * 4,
       jaw: 0.4 + pant * 0.3,
       mouth: 'open',
@@ -1002,7 +1021,18 @@ const defeat = memo(() => {
       stalk: [0, 1, 98]
     }),
     P({ ...lying, y: -13, squash: 2.6, eyes: 'shut', quiff: [16, 0, 0.8], kerchief: [-10, 1.8, 3.4] }),
-    P({ ...lying, y: -9, squash: -0.5, head: [5, 3], nod: 10, fN: [14, 10, -75], hN: [28, 9, -75], eyes: 'shut', quiff: [-8, 0, 0.6], kerchief: [40, 1.6, 4.4] }),
+    P({
+      ...lying,
+      y: -9,
+      squash: -0.5,
+      head: [5, 3],
+      nod: 10,
+      fN: [14, 10, -75],
+      hN: [28, 9, -75],
+      eyes: 'shut',
+      quiff: [-8, 0, 0.6],
+      kerchief: [40, 1.6, 4.4]
+    }),
     P({ ...lying, y: -12.5, squash: 2, quiff: [14, 0, 1], kerchief: [110, 1, 5.4] }),
     P({ ...lying, stars: 0, kerchief: [96, 0.6, 6.2] }),
     P({ ...lying, stars: 1 / 6, breath: 0.6, quiff: [12, 0, 1], kerchief: [102, 0.6, 7.4] })
