@@ -31,7 +31,10 @@ interface Call {
   name: string
   /** The element the call was made on, for a failure message. */
   on: string
-  /** True for a call on an element that shows a value that changes by itself (the run's clock, the cycling hint). */
+  /**
+   * True for a call on an element that shows a value that changes by itself (the run's clock, the cycling hint, the
+   * star the clock sends across the deck's sky).
+   */
   ticking: boolean
 }
 
@@ -49,7 +52,7 @@ function installProbe() {
   const cost: CostProbe & { inside: boolean } = { updates: 0, busy: 0, calls: [], inside: false }
   ;(window as unknown as { __cost: unknown }).__cost = cost
   const ticking = (target: unknown) =>
-    target instanceof Element && Boolean(target.closest('.hudd-hint, .hudd-stat, .hudd-say'))
+    target instanceof Element && Boolean(target.closest('.hudd-hint, .hudd-stat, .hudd-say, .hudd-shoot'))
   const record = (name: string, target?: unknown) => {
     if (cost.inside)
       cost.calls.push({
@@ -241,10 +244,8 @@ for (const profile of PROFILES) {
       await page.waitForTimeout(1500)
       const run = await recordFrames(page, 120)
       expect(run.updates).toBeGreaterThanOrEqual(120)
-      // The clock and the cycling hint show values that change by themselves; they are the only calls allowed.
-      // So do the deck's ambient motions, written by the clock: the hint line's swap and the shooting star.
-      const ambient = new Set(['style.setProperty', 'style.removeProperty', 'style.transform', 'style.opacity'])
-      const unexpected = run.calls.filter((call) => !call.ticking && !ambient.has(call.name))
+      // The clock, the cycling hint and the shooting star change by themselves; they are the only calls allowed.
+      const unexpected = run.calls.filter((call) => !call.ticking)
       expect(unexpected.map((call) => `${call.name} ${call.on}`)).toEqual([])
       expect(errors).toEqual([])
       await context.close()

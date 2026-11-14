@@ -471,6 +471,18 @@
   will-change: transform;
 }
 
+/*
+ * hud.ts writes the two fills fifteen times a second. After a hit they move far in each step (the fill drops, then
+ * the trail follows): for that moment the compositor glides each from where it is to where it was written, over
+ * the time of one tick, so the bar moves at the display's rate without the page painting. The slow drain of a
+ * stamina bar moves about a pixel in a step and is written as it is; a transition that never ends would make the
+ * page recalculate its style in every frame of the stage.
+ */
+#boss-bar.is-gliding .hudx-trail,
+#boss-bar.is-gliding .hudx-fill {
+  transition: transform 0.0667s linear;
+}
+
 .hudx-trail {
   background: var(--trail);
 }

@@ -8,6 +8,7 @@ import { frameAt, sheet } from '../art'
 import { BITE_COOLDOWN, type World } from '../game/sim'
 import type { StageDef } from '../game/types'
 import {
+  BAR_GLIDE_SECONDS,
   biteRow,
   BITE_ROWS,
   bossRatio,
@@ -144,6 +145,8 @@ export class Hud implements HudApi, PrimeTarget {
   private meterFresh = true
   /** Seconds since the previous tick. */
   private tickTime = 0
+  /** Seconds the boss bar still glides between its ticks after a hit (0: it is written in steps). */
+  private glideLeft = 0
   /** Last written bar fills, and whether the bar carries `is-stamina` (null: not set yet). */
   private fillShown = 1
   private trailShown = 1
@@ -365,7 +368,8 @@ export class Hud implements HudApi, PrimeTarget {
     this.timers = []
     this.bossShown = false
     this.bossBar.hidden = true
-    removeClass(this.bossBar, 'is-breaking', 'is-hit', 'is-stamina')
+    removeClass(this.bossBar, 'is-breaking', 'is-hit', 'is-stamina', 'is-gliding')
+    this.glideLeft = 0
     this.staminaShown = null
     for (const node of [this.banner, this.call, this.plate, this.toast]) removeClass(node, 'is-show')
     this.root.classList.remove('is-cinematic', 'is-dark')
@@ -506,11 +510,15 @@ export class Hud implements HudApi, PrimeTarget {
           this.staminaShown = stamina
           this.bossBar.classList.toggle('is-stamina', stamina)
         }
+        // A hit shows in its own frame (the flash and the fill's first drop together); the rest moves on the ticks.
+        let hit = false
         if (!this.bossBarState) this.bossBarState = newBossBar(target)
-        else if (stepBossBar(this.bossBarState, target, dt) && !reducedMotion()) replay(this.bossBar, 'is-hit')
+        else hit = stepBossBar(this.bossBarState, target, dt)
+        if (hit && !reducedMotion()) replay(this.bossBar, 'is-hit')
+        this.glide(hit, dt)
         const fill = snap(this.bossBarState.fill, BAR_STEPS)
         const trail = snap(this.bossBarState.trail, BAR_STEPS)
-        if (tick && fill !== this.fillShown) {
+        if ((tick || hit) && fill !== this.fillShown) {
           this.fillShown = fill
           this.bossFill.style.transform = `scaleX(${fill})`
         }
@@ -526,6 +534,17 @@ export class Hud implements HudApi, PrimeTarget {
       const due = this.timers.filter((timer) => timer.left <= 0)
       this.timers = this.timers.filter((timer) => timer.left > 0)
       for (const timer of due) timer.run()
+    }
+  }
+
+  /** A hit makes the boss bar glide between its ticks for a moment (see `is-gliding` in hud.css). */
+  private glide(hit: boolean, dt: number) {
+    if (hit) {
+      if (this.glideLeft <= 0) this.bossBar.classList.add('is-gliding')
+      this.glideLeft = BAR_GLIDE_SECONDS
+    } else if (this.glideLeft > 0) {
+      this.glideLeft -= dt
+      if (this.glideLeft <= 0) this.bossBar.classList.remove('is-gliding')
     }
   }
 
@@ -594,7 +613,8 @@ export class Hud implements HudApi, PrimeTarget {
     this.bossBarState = null
     this.bossShown = true
     this.timers = this.timers.filter((timer) => timer.run !== this.finishBreak)
-    removeClass(this.bossBar, 'is-breaking', 'is-hit')
+    removeClass(this.bossBar, 'is-breaking', 'is-hit', 'is-gliding')
+    this.glideLeft = 0
     this.bossBar.hidden = false
     replay(this.bossBar, 'is-in')
     // A fresh bar must not flash a stale fill for one frame.

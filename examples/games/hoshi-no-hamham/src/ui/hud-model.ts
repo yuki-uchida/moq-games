@@ -73,6 +73,12 @@ export function stepBossBar(bar: BossBarState, target: number, dt: number): bool
 export const METER_TICK = 1 / 15
 
 /**
+ * How long after a hit the boss bar glides between its ticks (seconds): the fill has dropped, the trail has waited
+ * its `TRAIL_HOLD` and followed across a bite's worth of the bar.
+ */
+export const BAR_GLIDE_SECONDS = 1.2
+
+/**
  * Counts display frames toward the next write of the meters. Returns the time still waited and whether this frame
  * is the one that writes them; a frame longer than a tick still writes only once.
  */
@@ -103,24 +109,17 @@ export function twinkleStep(t: number): 0 | 1 | 2 {
   return p < 0.4 ? 0 : p < 0.7 ? 1 : 2
 }
 
-/**
- * The shooting star crosses the sky for 0.9 s of each 9 s, the first time 3 s after the start: null while it is away,
- * else how far along its path it is (px) and how bright (0..1). It fades in, flies, and fades out at the far end.
- */
-export function shootingStar(t: number): { x: number; opacity: number } | null {
-  if (t < 3) return null
-  const p = (cycle(t - 3, 9) - 0.86) / 0.1
-  if (p < 0 || p >= 1) return null
-  const x = p < 0.8 ? (p / 0.8) * 120 : 120 + ((p - 0.8) / 0.2) * 30
-  const opacity = p < 0.2 ? p / 0.2 : p < 0.8 ? 1 : 1 - (p - 0.8) / 0.2
-  return { x, opacity }
-}
+/** The shooting star's flight takes this long (the CSS animation `hudd-shoot`). */
+export const STAR_FLIGHT = 0.9
 
-/** How far along the hint line's swap is after `age` seconds (0..1; it takes 0.42 s and eases out). */
-export const SWAP_SECONDS = 0.42
-export const swapProgress = (age: number) => {
-  const x = Math.max(0, Math.min(1, age / SWAP_SECONDS))
-  return 1 - (1 - x) * (1 - x)
+/**
+ * A shooting star crosses the sky once in 9 s, the first time 10.74 s after the start. True from the moment it
+ * sets out until a little after its flight is over, so that a tick that comes late never cuts the flight short.
+ */
+export function starFlying(t: number): boolean {
+  if (t < 3) return false
+  const since = cycle(t - 3, 9) * 9 - 7.74
+  return since >= 0 && since < STAR_FLIGHT + 0.2
 }
 
 /** How high the open goal's star is lifted, in quarter steps of 0.3 s over a 1.2 s cycle: 0, 1, 2, 1 px. */

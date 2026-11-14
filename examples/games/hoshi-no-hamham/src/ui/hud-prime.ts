@@ -161,6 +161,8 @@ export class HudPrimer {
         do {
           if (!alive()) throw new Ended()
           await nextFrame()
+          // The stage's own HUD may have taken over while this waited for the frame: not one more step then.
+          if (!alive()) throw new Ended()
           const now = performance.now()
           const dt = Math.min(0.05, (now - last) / 1000)
           last = now

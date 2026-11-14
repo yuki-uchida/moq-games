@@ -244,15 +244,20 @@
     will-change: transform, opacity;
   }
 
-  /* A swap of the hint line: deck.ts writes `--p` (0..1) on the ticks while it runs. */
-  .hudd-hint span {
-    transform: translateY(calc((1 - var(--p, 1)) * 5px));
-    opacity: var(--p, 1);
+  .hudd-hint.is-swap span,
+  .hudd-hint.is-swap .hudd-hint-mark {
+    animation: hudd-swap 0.42s ease-out 1;
   }
 
-  .hudd-hint .hudd-hint-mark {
-    transform: translateY(calc((1 - var(--p, 1)) * 5px));
-    opacity: calc(var(--p, 1) * 0.85);
+  @keyframes hudd-swap {
+    0% {
+      transform: translateY(5px);
+      opacity: 0;
+    }
+    100% {
+      transform: none;
+      opacity: 1;
+    }
   }
 
   /* A speech line: for a moment the panel shows who speaks (face, name) and what they say, in a balloon. */
@@ -463,9 +468,31 @@
     opacity: 0;
   }
 
-  /* Once in nine seconds it crosses the sky: deck.ts writes its transform and opacity on the ticks for 0.9 s. */
+  /* Once in nine seconds it crosses the sky: deck.ts sends it off by the clock, and it flies on its own layer. */
   .hudd-window .hudd-shoot {
     will-change: transform, opacity;
+  }
+
+  .hudd-window .hudd-shoot.is-flying {
+    animation: hudd-shoot 0.9s linear 1;
+  }
+
+  @keyframes hudd-shoot {
+    0% {
+      opacity: 0;
+      transform: rotate(-24deg) translateX(0);
+    }
+    20% {
+      opacity: 1;
+    }
+    80% {
+      opacity: 1;
+      transform: rotate(-24deg) translateX(120px);
+    }
+    100% {
+      opacity: 0;
+      transform: rotate(-24deg) translateX(150px);
+    }
   }
 
   @container (max-height: 150px) {
@@ -855,6 +882,8 @@
   /*
    * The stage went black (an iris out): the deck's lit parts go dark with it, like a screen switched off. A black
    * sheet over each part at 68 % does what `filter: brightness(0.32)` did, without asking the GPU for a filter.
+   * Each sheet covers its panel's border box and nothing of the deck around it: the information panel's border is
+   * 8 px wide, and the sky's window sits inside the middle part's padding.
    */
   .hudd-info::after,
   .hudd-mid::after {
@@ -869,7 +898,7 @@
   }
 
   .hudd-mid::after {
-    inset: 0;
+    inset: 8px 14px 4px;
   }
 
   #hud.hudx.is-dark .hudd-info::after,
@@ -914,6 +943,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .hudd-aim.is-pop,
+  .hudd-hint.is-swap span,
+  .hudd-hint.is-swap .hudd-hint-mark,
+  .hudd-window .hudd-shoot,
   .hudd-say.is-in,
   .hudd-say[data-tone='yell'] .hudd-say-balloon b {
     animation: none;

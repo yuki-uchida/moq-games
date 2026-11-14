@@ -4,10 +4,10 @@ import {
   biteRow,
   goalBob,
   heartBeat,
-  shootingStar,
   METER_TICK,
+  STAR_FLIGHT,
+  starFlying,
   stepMeterClock,
-  swapProgress,
   twinkleStep
 } from '../src/ui/hud-model'
 
@@ -68,15 +68,6 @@ describe('the bite gauge', () => {
   })
 })
 
-describe('the hint line swap', () => {
-  it('eases out over 0.42 s and is done after it', () => {
-    expect(swapProgress(0)).toBe(0)
-    expect(swapProgress(0.21)).toBeGreaterThan(0.5)
-    expect(swapProgress(0.42)).toBe(1)
-    expect(swapProgress(5)).toBe(1)
-  })
-})
-
 describe('the deck keeps its ambient motion by the clock', () => {
   it('twinkles in the three steps of the old animation, 0.96 s, 0.72 s and 0.72 s', () => {
     const seen = (from: number, to: number) =>
@@ -87,23 +78,28 @@ describe('the deck keeps its ambient motion by the clock', () => {
     expect(twinkleStep(2.4)).toBe(0)
   })
 
-  it('sends a shooting star for 0.9 s of every 9, the first one 3 s after the start', () => {
-    let on = 0
-    for (let t = 0; t < 30; t += 0.01) if (shootingStar(t)) on += 0.01
-    // 3 s of delay, then at 7.74..8.64 s of each cycle: three crossings in 30 s (10.74, 19.74, 28.74).
-    expect(on).toBeCloseTo(2.7, 1)
-    expect(shootingStar(2)).toBeNull()
-    expect(shootingStar(10.9)).not.toBeNull()
-    expect(shootingStar(11.7)).toBeNull()
+  it('sends a shooting star off once in 9 s, the first one 10.74 s after the start', () => {
+    const starts: number[] = []
+    let was = false
+    for (let t = 0; t < 30; t += 0.01) {
+      const now = starFlying(t)
+      if (now && !was) starts.push(t)
+      was = now
+    }
+    expect(starts.length).toBe(3)
+    expect(starts[0]).toBeCloseTo(10.74, 1)
+    expect(starts[1]).toBeCloseTo(19.74, 1)
+    expect(starts[2]).toBeCloseTo(28.74, 1)
+    expect(starFlying(2)).toBe(false)
+    expect(starFlying(10.9)).toBe(true)
+    expect(starFlying(12)).toBe(false)
   })
 
-  it('flies the star 120 px in its first 80 %, fading in at the start and out at the end', () => {
-    const at = (fraction: number) => shootingStar(3 + 7.74 + fraction * 0.9)!
-    expect(at(0.001).opacity).toBeLessThan(0.05)
-    expect(at(0.5)).toEqual({ x: expect.closeTo(75, 0), opacity: 1 })
-    expect(at(0.8).x).toBeCloseTo(120, 0)
-    expect(at(0.999).opacity).toBeLessThan(0.05)
-    expect(at(0.999).x).toBeCloseTo(150, 0)
+  it('keeps the star marked as flying for longer than its flight, a tick and more', () => {
+    let on = 0
+    for (let t = 10; t < 13; t += 0.001) if (starFlying(t)) on += 0.001
+    expect(on).toBeGreaterThanOrEqual(STAR_FLIGHT + 2 * METER_TICK)
+    expect(on).toBeLessThan(STAR_FLIGHT + 0.5)
   })
 
   it('lifts the open goal 0, 1, 2 and 1 px in quarters of 1.2 s', () => {

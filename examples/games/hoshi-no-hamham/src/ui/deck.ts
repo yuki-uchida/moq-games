@@ -19,9 +19,7 @@ import {
   HINT_SECONDS,
   goalBob,
   hintIndex,
-  shootingStar,
-  SWAP_SECONDS,
-  swapProgress,
+  starFlying,
   twinkleStep,
   hintForInput,
   hintLine,
@@ -149,7 +147,13 @@ function drawMoon(canvas: HTMLCanvasElement) {
 /** The boss's face on the track while it sleeps: darker and greyer. */
 const ASLEEP_TONE: Tone = { brightness: 0.55, saturate: 0.6 }
 
-const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+/** The reduced-motion preference: asked on every tick, so the query is made once and read after that. */
+let motionQuery: MediaQueryList | null = null
+const reducedMotion = () => {
+  if (typeof matchMedia !== 'function') return false
+  motionQuery ??= matchMedia('(prefers-reduced-motion: reduce)')
+  return motionQuery.matches
+}
 
 const portrait = () => typeof matchMedia === 'function' && matchMedia('(orientation: portrait)').matches
 
@@ -211,9 +215,8 @@ export class Deck {
   private twinkle = 0
   private shooting = false
   private bob = 0
-  /** The star crossing the sky, and the clock time the hint line's swap began (negative: not swapping). */
+  /** The star that crosses the sky. */
   private star: HTMLElement
-  private swapStart = -1
   /** What the aim line was last worked out from; it is worked out again only when one of these changes. */
   private aimSeen: AimSeen | null = null
 
@@ -432,7 +435,7 @@ export class Deck {
     this.setHold(hold)
     this.hint.classList.add('is-toast')
     this.hintText.textContent = hintForInput(text, this.touchShown())
-    this.startSwap()
+    replay(this.hint, 'is-swap')
   }
 
   /** A character's line on the deck: `face` is a `face_*` name of the `ui` sheet, `who` the speaker's name. */
@@ -557,39 +560,21 @@ export class Deck {
     this.moveAmbient()
   }
 
-  /** The hint line's text slides up and fades in over 0.42 s: `--p` (0..1) is written on the ticks. */
-  private startSwap() {
-    if (reducedMotion()) return
-    this.swapStart = this.ambient
-    this.hint.style.setProperty('--p', '0')
-  }
-
-  private moveSwap() {
-    const age = this.ambient - this.swapStart
-    if (age >= SWAP_SECONDS) {
-      this.swapStart = -1
-      this.hint.style.removeProperty('--p')
-    } else this.hint.style.setProperty('--p', swapProgress(age).toFixed(2))
-  }
-
-  /** The sky's twinkle, the shooting star and the open goal's bob follow the clock, a step at a time. */
+  /**
+   * The sky's twinkle and the open goal's bob follow the clock, a step at a time; the shooting star is sent off by
+   * the clock and flies by itself (one CSS animation on its own layer, which the page does not paint for).
+   */
   private moveAmbient() {
-    if (this.swapStart >= 0) this.moveSwap()
     if (reducedMotion()) return
     const twinkle = twinkleStep(this.ambient)
     if (twinkle !== this.twinkle) {
       this.twinkle = twinkle
       this.sky.dataset.sky = String(twinkle)
     }
-    const star = shootingStar(this.ambient)
-    if (star) {
-      this.shooting = true
-      this.star.style.transform = `rotate(-24deg) translateX(${star.x.toFixed(1)}px)`
-      this.star.style.opacity = star.opacity.toFixed(2)
-    } else if (this.shooting) {
-      this.shooting = false
-      this.star.style.removeProperty('transform')
-      this.star.style.removeProperty('opacity')
+    const flying = starFlying(this.ambient)
+    if (flying !== this.shooting) {
+      this.shooting = flying
+      this.star.classList.toggle('is-flying', flying)
     }
     const bob = this.goalOpen ? goalBob(this.ambient) : 0
     if (bob !== this.bob) {
@@ -634,6 +619,6 @@ export class Deck {
     this.hintShown = i
     this.hintTouch = touch
     this.hintText.textContent = hintLine(hints, t, touch, HINT_SECONDS)
-    if (changed) this.startSwap()
+    if (changed) replay(this.hint, 'is-swap')
   }
 }
