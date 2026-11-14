@@ -10,6 +10,10 @@
  * PvP information boundary: a PvP snapshot's `view` is only the public part (src/net/split.ts); what each team may
  * know travels sealed with that team's key in `s` (src/net/seal.ts). Team keys reach guests wrapped for each one
  * (ECDH: the guest's `ek` in its profile, the host's `hk` in the lobby state) in RoomMsg.keys.
+ *
+ * Guest → host: a guest's track can be read by anyone on the relay who knows its id, so what only the host may
+ * read is sealed with the guest-to-host key (seal.ts): PvP inputs (InputMsg.x) and, in every mode, the
+ * reconnection secret (ProfileMsg.kx).
  */
 import type { MatchSelection, Seat } from '../app/match'
 import type { MatchConfig, PlayerInput, TeamId, View } from '../sim/types'
@@ -98,12 +102,22 @@ export const partAad = (matchId: number, gen: number, team: TeamId, tick: number
 /** Additional data that binds a wrapped team key to its generation and member. */
 export const wrapAad = (gen: number, memberId: string) => `anima-front-v1:key:${gen}:${memberId}`
 
+/** Additional data that binds a sealed reconnection secret to its member. */
+export const rejoinAad = (memberId: string) => `anima-front-v1:rejoin:${memberId}`
+
+/** Additional data that binds a sealed PvP input to its member and slot. */
+export const inputAad = (memberId: string, matchId: number, nonce: number, tick: number) =>
+  `anima-front-v1:input:${memberId}:${matchId}:${nonce}:${tick}`
+
 export interface ProfileMsg {
   v: typeof PROTOCOL
   k: 'profile'
   p: Profile
-  /** The guest's secret: a reconnection with a new network id keeps its seat (never broadcast). */
-  key?: string
+  /**
+   * The guest's reconnection secret sealed with the guest-to-host key (`rejoinAad`): a reconnection with a new
+   * network id keeps its seat. Never sent in clear.
+   */
+  kx?: string
   /** The guest's ECDH public key (base64) for team keys. */
   ek?: string
   /** Spectators: the team whose view to follow (default 0). */
@@ -119,7 +133,10 @@ export interface InputMsg {
   n: number
   /** Guest prediction tick at which this input takes effect. */
   g: number
-  i: PlayerInput
+  /** PvE: the input in clear. */
+  i?: PlayerInput
+  /** PvP: `JSON.stringify` of the input sealed with the guest-to-host key (`inputAad`). */
+  x?: string
 }
 
 export type HostMsg = RoomMsg | SnapMsg

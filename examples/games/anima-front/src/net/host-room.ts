@@ -5,8 +5,14 @@
  *
  * PvP team keys (DESIGN §18): from the start of a PvP match the room holds one AES-GCM key per team and wraps it
  * for every guest allowed to read that team's snapshot part (its seat's team; a spectator's chosen team). The
- * keys are replaced (a new generation) for every match and whenever a holder leaves or changes team, so a key
- * never outlives its holder's right to read.
+ * keys are replaced (a new generation) for every match and whenever a holder leaves, is removed or a seated
+ * player's team changes, so a key never outlives its holder's right to read. A spectator (a room member the host
+ * admitted and can remove) may switch the team it follows at most once a second; it gets that team's key within
+ * the current generation.
+ *
+ * Guest → host (DESIGN §18): a guest's track can be read by anyone on the relay who knows its id, so PvP inputs
+ * and the reconnection secret arrive sealed with the guest-to-host key (seal.ts). A guest's ECDH key is fixed
+ * once known (only a proven reconnection brings a new one).
  */
 import type { LocalChoice, MatchStart } from '../app/lobby'
 import { botSkill, matchConfig, type MatchSelection, type Seat } from '../app/match'
@@ -17,7 +23,7 @@ import { netLog } from './debug'
 import { HostClock, type PulseClock } from './host-clock'
 import { InputBuffer } from './input-buffer'
 import { HostMatch } from './host-match'
-import { isEcdhPub, newEcdh, randomBytes, seal, sealJson, teamKey, wrapKey, type EcdhPair } from './seal'
+import { isB64, isEcdhPub, newEcdh, randomBytes, seal, sealJson, teamKey, unseal, wrapKey, type EcdhPair } from './seal'
 import type { TeamPart } from './split'
 import {
   APP_ID,
@@ -27,6 +33,8 @@ import {
   PROTOCOL,
   translateError,
   partAad,
+  inputAad,
+  rejoinAad,
   wrapAad,
   type InputMsg,
   type NetTransport,
@@ -51,6 +59,14 @@ export interface RoomMember extends SeatMember {
   ek?: string
   /** Spectating: the team it follows. */
   follow?: TeamId
+  /** Room time of the last accepted change of `follow`. */
+  followAt?: number
+  /** Its sealed secret (kx) was tried once already (a member that joined before it could prove itself). */
+  keyTried?: boolean
+  /** PvP: sealed inputs are applied in arrival order (see receiveInput). */
+  inputChain?: Promise<void>
+  /** PvP: sealed inputs being opened. */
+  inputPending?: number
 }
 
 /** One generation of PvP team keys. */
@@ -71,6 +87,18 @@ const ARRIVAL_INPUT = 2
 const PRESENCE_REPEAT = 2
 /** Seconds a member that left the lobby is kept in case its connection comes back. */
 const MEMBER_GRACE = 20
+/** Seconds between accepted changes of the team a spectator follows. */
+export const FOLLOW_COOLDOWN = 1
+/** Sealed PvP inputs being opened per member at most (newer ones are dropped). */
+const MAX_INPUT_DECRYPTS = 8
+/** Longest sealed reconnection secret / sealed input accepted (base64 characters). */
+const MAX_KX = 256
+const MAX_SEALED_INPUT = 2048
+/** Cached guest-to-host / wrapping keys at most (each map). */
+const MAX_DERIVED = 256
+
+const utf8Decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
+const SECRET = /^[a-z0-9]{16,64}$/
 
 export interface RoomStatus {
   kind: 'connecting' | 'online' | 'closed'
@@ -154,6 +182,9 @@ export class HostRoom {
   private keySet: KeySet | null = null
   private keyGen = 0
   private readonly wrapKeys = new Map<string, Promise<CryptoKey>>()
+  private readonly guestKeys = new Map<string, Promise<CryptoKey>>()
+  /** Network ids whose sealed reconnection secret is being opened (their profiles wait). */
+  private readonly rejoining = new Set<string>()
 
   constructor(private readonly opts: HostRoomOptions) {
     this.code = opts.code
@@ -404,19 +435,85 @@ export class HostRoom {
     if (!raw || typeof raw !== 'object') return
     const msg = raw as Record<string, unknown>
     if (msg.v !== PROTOCOL) return
-    if (msg.k === 'profile') this.receiveProfile(id, msg.p, msg.key, msg.ek, msg.f)
+    if (msg.k === 'profile') this.receiveProfile(id, msg)
     else if (msg.k === 'input') this.receiveInput(id, msg as Partial<InputMsg>)
   }
 
-  private receiveProfile(id: string, raw: unknown, key: unknown, ek?: unknown, follow?: unknown) {
-    const profile = validateProfile(raw)
+  /** The guest-to-host key (seal.ts) shared with guest `id` whose ECDH public key is `ek` (cached). */
+  private guestKey(id: string, ek: string): Promise<CryptoKey> {
+    const cacheKey = `${id}:${ek}`
+    let key = this.guestKeys.get(cacheKey)
+    if (!key) {
+      key = this.ecdh.then((pair) => {
+        if (!pair) throw new Error('ECDH unavailable')
+        return wrapKey(pair.priv, ek, this.code, id, 'guest-to-host')
+      })
+      key.catch(() => undefined)
+      remember(this.guestKeys, cacheKey, key)
+    }
+    return key
+  }
+
+  /** Opens a sealed reconnection secret (undefined when it does not open or is malformed). */
+  private async openSecret(id: string, ek: string, kx: string): Promise<string | undefined> {
+    try {
+      const secret = utf8Decode(await unseal(await this.guestKey(id, ek), kx, rejoinAad(id)))
+      return SECRET.test(secret) ? secret : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  private receiveProfile(id: string, msg: Record<string, unknown>) {
+    const profile = validateProfile(msg.p)
     if (!profile) return
-    const secret = typeof key === 'string' && /^[a-z0-9]{16,64}$/.test(key) ? key : undefined
-    if (secret && this.kickedKeys.has(secret)) return
+    // Its sealed secret is being opened: the guest repeats its profile every second anyway.
+    if (this.rejoining.has(id)) return
+    const ek = isEcdhPub(msg.ek) ? msg.ek : undefined
+    const kx = isB64(msg.kx, MAX_KX) ? msg.kx : undefined
+    const known = this.members.get(id)
+    if (!known && kx && ek && this.ecdhPub) {
+      // A newcomer with a sealed secret: it may be a reconnection (it gets its member back) or a kicked guest.
+      this.rejoining.add(id)
+      void this.openSecret(id, ek, kx).then((secret) => {
+        this.rejoining.delete(id)
+        if (this.status.kind === 'closed' || this.closedByUs || this.kicked.includes(id)) return
+        if (secret && this.kickedKeys.has(secret)) return
+        this.applyProfile(id, profile, ek, msg.f, secret)
+      })
+      return
+    }
+    const m = this.applyProfile(id, profile, ek, msg.f, undefined)
+    // A member that joined before it could prove itself (no host key yet): learn its secret once, for kicks.
+    if (kx && !m.key && !m.keyTried && m.ek && this.ecdhPub) {
+      m.keyTried = true
+      void this.openSecret(id, m.ek, kx).then((secret) => {
+        if (!secret || this.members.get(id) !== m || m.key) return
+        if (this.kickedKeys.has(secret)) this.kick(id)
+        else m.key = secret
+      })
+    }
+  }
+
+  /**
+   * A guest's profile: `secret` (opened from its kx) moves a member that reconnected with a new network id to
+   * this id; otherwise a new id becomes a new member. Returns the member.
+   */
+  private applyProfile(
+    id: string,
+    profile: Profile,
+    ek: string | undefined,
+    follow: unknown,
+    secret: string | undefined
+  ): RoomMember {
     let m = this.members.get(id)
+    let rebound = false
     if (!m && secret) {
       m = this.rebind(id, secret)
-      if (m) this.changed()
+      if (m) {
+        rebound = true
+        this.changed()
+      }
     }
     const before = m ? JSON.stringify(m.profile) : ''
     if (!m) {
@@ -425,17 +522,23 @@ export class HostRoom {
     } else m.profile = profile
     m.present = true
     let keysChanged = false
-    if (isEcdhPub(ek) && ek !== m.ek) {
+    // The ECDH key is set once; only a proven reconnection (its kx opened with this ek) brings a new one.
+    if (ek && ek !== m.ek && (!m.ek || rebound)) {
       m.ek = ek
       keysChanged = true
     }
     const f: TeamId = follow === 1 || follow === 2 ? follow : 0
-    if (m.follow !== f) {
+    if (m.follow === undefined) {
       m.follow = f
+      keysChanged = true
+    } else if (m.follow !== f && (m.followAt === undefined || this.now() - m.followAt >= FOLLOW_COOLDOWN)) {
+      m.follow = f
+      m.followAt = this.now()
       keysChanged = true
     }
     if (this.phase !== 'lobby' && !this.matchSeatOf.has(id)) this.seatLateJoiner(m)
     if (JSON.stringify(m.profile) !== before || keysChanged) this.changed()
+    return m
   }
 
   /** A guest that reconnected with a new network id: the member (order, seat, match seat) moves to the new id. */
@@ -487,17 +590,44 @@ export class HostRoom {
 
   private receiveInput(id: string, msg: Partial<InputMsg>) {
     const m = this.members.get(id)
-    if (!m || !this.match || msg.m !== this.matchId) return
+    const match = this.match
+    const matchId = this.matchId
+    if (!m || !match || msg.m !== matchId) return
     const nonce = msg.n
     const g = msg.g
     if (typeof nonce !== 'number' || !Number.isSafeInteger(nonce) || typeof g !== 'number' || !Number.isSafeInteger(g))
       return
     if (g < 0 || g > 1e9) return
+    if (this.config?.mode !== 'pvp') {
+      this.pushInput(m, nonce, g, msg.i, this.now())
+      return
+    }
+    // PvP: only the sealed input counts. Opened in parallel, applied in arrival order.
+    const x = msg.x
+    const ek = m.ek
+    if (!isB64(x, MAX_SEALED_INPUT) || !ek || (m.inputPending ?? 0) >= MAX_INPUT_DECRYPTS) return
+    const at = this.now()
+    m.inputPending = (m.inputPending ?? 0) + 1
+    const opened = this.guestKey(id, ek).then((key) => unseal(key, x, inputAad(id, matchId, nonce, g)))
+    opened.catch(() => undefined)
+    m.inputChain = (m.inputChain ?? Promise.resolve())
+      .then(() => opened)
+      .then((bytes) => {
+        if (this.members.get(id) !== m || this.match !== match || this.matchId !== matchId) return
+        this.pushInput(m, nonce, g, JSON.parse(utf8Decode(bytes)), at)
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        m.inputPending = (m.inputPending ?? 1) - 1
+      })
+  }
+
+  private pushInput(m: RoomMember, nonce: number, g: number, raw: unknown, at: number) {
     const prev = m.input && m.input.nonce === nonce ? m.input : undefined
-    const value = validatePlayerInput(msg.i, prev?.latest)
+    const value = validatePlayerInput(raw, prev?.latest)
     if (!value) return
-    if (prev) prev.push(g, value, this.now())
-    else m.input = new InputBuffer(nonce, g, value, this.now())
+    if (prev) prev.push(g, value, at)
+    else m.input = new InputBuffer(nonce, g, value, at)
   }
 
   private dropFromMatch(id: string) {
@@ -548,15 +678,15 @@ export class HostRoom {
   // ---- PvP team keys
 
   /** The team each guest may read now: its seat's team, or the team a spectator follows. */
-  private readers(): Map<string, TeamId> {
-    const out = new Map<string, TeamId>()
+  private readers(): Map<string, { team: TeamId; seated: boolean }> {
+    const out = new Map<string, { team: TeamId; seated: boolean }>()
     const config = this.config
     if (!config) return out
     for (const [id, seat] of this.matchSeatOf) {
       const m = this.members.get(id)
       if (!m || m.host || !m.present || !m.ek) continue
       const team = seat ? config.players.find((p) => p.id === seat)?.team : (m.follow ?? 0)
-      if (team !== undefined) out.set(id, team)
+      if (team !== undefined) out.set(id, { team, seated: !!seat })
     }
     return out
   }
@@ -569,7 +699,14 @@ export class HostRoom {
     }
     const want = this.readers()
     let ks = this.keySet
-    const revoked = !!ks && [...ks.grants].some(([id, team]) => want.get(id) !== team)
+    // A grant that went away or a seated player on another team needs new keys; a spectator switching the team
+    // it follows gets the other team's key in this generation.
+    const revoked =
+      !!ks &&
+      [...ks.grants].some(([id, team]) => {
+        const r = want.get(id)
+        return !r || (r.seated && r.team !== team)
+      })
     if (!ks || revoked) {
       const raw = [randomBytes(32), randomBytes(32), randomBytes(32)]
       ks = {
@@ -584,7 +721,16 @@ export class HostRoom {
       this.keySet = ks
       netLog(`host team keys generation ${ks.gen}`)
     }
-    for (const [id, team] of want) ks.grants.set(id, team)
+    for (const [id, { team }] of want) {
+      const had = ks.grants.get(id)
+      if (had === team) continue
+      ks.grants.set(id, team)
+      if (had !== undefined) {
+        // wrapFor runs again for the new team (one still on its way for the old team is discarded there).
+        ks.started.delete(id)
+        ks.wrapped.delete(id)
+      }
+    }
     for (const id of ks.grants.keys()) if (!ks.started.has(id)) void this.wrapFor(ks, id)
   }
 
@@ -600,7 +746,7 @@ export class HostRoom {
       let wk = this.wrapKeys.get(cacheKey)
       if (!wk) {
         wk = wrapKey(pair.priv, m.ek, this.code, id)
-        this.wrapKeys.set(cacheKey, wk)
+        remember(this.wrapKeys, cacheKey, wk)
       }
       const blob = new Uint8Array(33)
       blob[0] = team
@@ -746,4 +892,10 @@ export class HostRoom {
     void this.transport.stop().catch(() => undefined)
     this.listeners.clear()
   }
+}
+
+/** Adds to a bounded cache (the oldest entry goes first). */
+function remember<V>(map: Map<string, V>, key: string, value: V) {
+  if (map.size >= MAX_DERIVED) map.delete(map.keys().next().value!)
+  map.set(key, value)
 }
