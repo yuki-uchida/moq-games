@@ -379,6 +379,16 @@ select {
   display: block;
 }
 
+/* 3D thumbnails of the antiques (src/ui/thumbs.ts) take the place of the vector glyphs */
+.item-thumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+}
+
 /* species badge */
 .badge {
   display: inline-grid;

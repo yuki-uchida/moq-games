@@ -6,7 +6,8 @@ import { ITEMS, type ItemId } from '../../data/items'
 import { SPECIES } from '../../data/species'
 import { TEAMS } from '../../app/match'
 import type { PlayerView, SimEvent, V3, View } from '../../sim/types'
-import { ANIMA_GLYPH, itemIconSvg } from '../art'
+import { ANIMA_GLYPH } from '../art'
+import { itemIconNode } from '../thumbs'
 import { h, setClass, setStyle, setText, svg } from '../dom'
 import { speciesBadge } from '../widgets'
 import {
@@ -82,7 +83,7 @@ function paintPaw(p: PawEls, card: PawCard, keyLabel: string) {
         { duration: 250, easing: 'ease-out' }
       )
     p.item = card.item
-    p.icon.replaceChildren(card.item ? svg(itemIconSvg(card.item)) : '')
+    p.icon.replaceChildren(card.item ? itemIconNode(card.item) : '')
     setText(p.name, card.name)
     setText(p.cost, card.cost ? `◆ ${card.cost}` : '')
   }
@@ -102,7 +103,7 @@ function paintPaw(p: PawEls, card: PawCard, keyLabel: string) {
         h(
           'span',
           { class: `paw-li ${x.active ? 'is-on' : ''}`, attrs: { title: ITEMS[x.item].name } },
-          svg(itemIconSvg(x.item))
+          itemIconNode(x.item)
         )
       )
     )
@@ -257,7 +258,7 @@ export function createHud(): Hud {
                 class: `ag-passive ${me.passivesOnline ? '' : 'is-off'}`,
                 attrs: { title: `${ITEMS[id].name}${me.passivesOnline ? '' : '（停止中）'}` }
               },
-              svg(itemIconSvg(id)),
+              itemIconNode(id),
               me.passives.filter((x) => x === id).length > 1
                 ? h('small', null, `×${me.passives.filter((x) => x === id).length}`)
                 : null
