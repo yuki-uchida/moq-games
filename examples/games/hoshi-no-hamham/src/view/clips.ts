@@ -70,10 +70,11 @@ export const HARD_LANDING = 520
 export const WAIT_AFTER = 5
 export const WAIT_EVERY = 8
 /**
- * In the air a bite shows only its first `AIR_BITE_FRAMES` frames (the lunge and the chomp): the rest (recoil, chew,
- * settle) is a planted standing pose, so the air clip takes over.
+ * The first `LUNGE_FRAMES` frames of a bite (the lunge and the chomp) are thrown forward off the feet: they show
+ * anywhere, at a run and in the air. The rest (recoil, chew, settle) is a planted standing pose: it shows only on
+ * the ground at rest, and otherwise the clip of his motion takes over for good.
  */
-export const AIR_BITE_FRAMES = 2
+export const LUNGE_FRAMES = 2
 /** Reversing faster than this (px/s) skids. */
 export const SKID_SPEED = 110
 /** Below this horizontal speed (px/s) the hero stands. */
@@ -113,37 +114,53 @@ export interface HeroSnapshot {
   skidAge: number | null
   /** Seconds since the facing flipped on the ground (not skidding), or null. */
   turnAge: number | null
+  /** The fidget now due was cut by another clip: it does not come back (the next one plays in full). */
+  waitCut?: boolean
 }
 
 export const isSkidding = (s: Pick<HeroSnapshot, 'onGround' | 'vx' | 'facing'>) =>
   s.onGround && s.vx * s.facing < 0 && Math.abs(s.vx) > SKID_SPEED
 
 /**
- * The hero's clip, in priority order: cheer, bite, hurt, swim, jump/apex/fall, land, skid, turn, run, wait, blink,
- * idle. The blink has the idle poses with the eyes shut, so it is played on the idle time base and the breath
- * never skips.
+ * The time into a ground cycle of `spec` after `distance` px of ground: one pass per `stride`, so a planted foot
+ * stays put at any speed (a clip without a stride is timed as if covered at the hero's running speed).
+ */
+export const strideTime = (spec: AnimSpec, distance: number) =>
+  spec.stride ? (distance / spec.stride) * specDuration(spec) : distance / RUN_SPEED
+
+/** The hero's bite as it can be shown now, or null (its standing frames show only on the ground at rest). */
+function heroBite(s: HeroSnapshot, spec: Record<string, AnimSpec>): ClipChoice | null {
+  if (s.biteAge === null) return null
+  const t = s.biteAge + hitTime(spec.bite)
+  if (t < frameStart(spec.bite, LUNGE_FRAMES)) return { name: 'bite', t }
+  return s.onGround && Math.abs(s.vx) <= RUN_THRESHOLD ? { name: 'bite', t } : null
+}
+
+/**
+ * The hero's clip, in priority order: cheer, bite or hurt (the one that began later; on the same step the hurt),
+ * swim, jump/apex/fall, land, skid, turn, run, wait, blink, idle. The blink has the idle poses with the eyes shut,
+ * so it is played on the idle time base and the breath never skips. An action the view has dropped (see
+ * `ActorsView`) comes in as absent: this function only says what can show now.
  */
 export function heroClip(s: HeroSnapshot, spec: Record<string, AnimSpec> = HERO_SPEC): ClipChoice {
   if (s.cheering) return { name: 'cheer', t: s.cheerAge }
-  if (s.biteAge !== null) {
-    const t = s.biteAge + hitTime(spec.bite)
-    if (s.onGround || t < frameStart(spec.bite, AIR_BITE_FRAMES)) return { name: 'bite', t }
-  }
+  const bite = heroBite(s, spec)
+  if (bite && !(s.hurt && s.hurtAge <= s.biteAge!)) return bite
   if (s.hurt) return { name: 'hurt', t: s.hurtAge }
   if (s.inWater) return { name: 'swim', t: s.waterTime }
   if (!s.onGround) {
     if (Math.abs(s.vy) <= APEX_SPEED) return { name: 'apex', t: s.airTime, frame: s.vy < 0 ? 0 : 1 }
     return s.vy < 0 ? { name: 'jump', t: s.airTime } : { name: 'fall', t: s.airTime }
   }
-  if (s.hardLanding && s.landAge < specDuration(spec.land)) return { name: 'land', t: s.landAge }
+  // A landing at a run goes straight on into the run (the squash carries it).
+  if (s.hardLanding && s.landAge < specDuration(spec.land) && Math.abs(s.vx) <= RUN_THRESHOLD)
+    return { name: 'land', t: s.landAge }
   // The skid keeps cycling (`sustain`) for as long as the view's skid timer runs.
   if (s.skidAge !== null) return { name: 'skid', t: s.skidAge }
   if (s.turnAge !== null && s.turnAge < specDuration(spec.turn)) return { name: 'turn', t: s.turnAge }
-  if (Math.abs(s.vx) > RUN_THRESHOLD) {
-    // The cycle advances with distance (one pass per 8/14 s at full speed), so feet never slide.
-    return { name: 'run', t: s.distance / RUN_SPEED }
-  }
-  if (s.idleTime >= WAIT_AFTER) {
+  // The cycle advances with the ground covered, one pass per stride, so feet never slide.
+  if (Math.abs(s.vx) > RUN_THRESHOLD) return { name: 'run', t: strideTime(spec.run, s.distance) }
+  if (s.idleTime >= WAIT_AFTER && !s.waitCut) {
     const since = (s.idleTime - WAIT_AFTER) % WAIT_EVERY
     if (since < specDuration(spec.wait)) return { name: 'wait', t: since }
   }
@@ -180,23 +197,20 @@ export interface EnemySnapshot {
   vx: number
   vy: number
   onGround: boolean
+  /** The hit flash of a hit shown as `hurt` (0 when the hit shows as the white flash only). */
   hitFlash: number
   shootTimer: number
   /** Seconds since touching down (jumper). */
   landAge: number
-  /** Seconds standing still (|vx| ≤ `STILL_SPEED`), 0 while moving (walker, tough). */
-  stillTime: number
+  /** Ground its drawn body has covered the way it faces (px), and whether it stands (walker, tough: see `Tread`). */
+  gain: number
+  standing: boolean
   /** Seconds alive (loop clips). */
   time: number
 }
 
-/** At or below this horizontal speed (px/s) a walking enemy counts as standing still. */
-export const STILL_SPEED = 8
-/**
- * The rat and the mole show their standing pose only after standing still this long (s): they stop for a single
- * step when a wall turns them round, and that must not pop the standing pose into the stride.
- */
-export const STAND_AFTER = 0.15
+/** A hit enemy flashes for this long (s, sim.ts `damageEnemy`): its `hurt` plays over it. */
+export const ENEMY_HURT_SECONDS = 0.16
 
 /** The spitter's shot timer resets to this after a shot (sim.ts). */
 export const SPIT_INTERVAL = 2.4
@@ -220,8 +234,30 @@ export const ENEMY_DEFEAT_GROUND_FRAME: Record<EnemyKind, number> = {
   tough: 3
 }
 
+/**
+ * Whether a squirrel with this shot timer is in its throw: from the first frame of the wind-up (loaded and waiting
+ * included) to the last frame of the follow-through.
+ */
+export function spitThrowing(shootTimer: number, spec: AnimSpec = ENEMY_SPEC.spitter.shoot) {
+  return shootTimer <= hitTime(spec) || spitFollowing(shootTimer, spec)
+}
+
+/** Whether a squirrel with this shot timer is following its throw through (the acorn has just left). */
+export function spitFollowing(shootTimer: number, spec: AnimSpec = ENEMY_SPEC.spitter.shoot) {
+  const since = SPIT_INTERVAL - shootTimer
+  return since >= 0 && since < specDuration(spec) - hitTime(spec)
+}
+
+/**
+ * Whether a bite a squirrel survives shows `hurt`: not during its throw (the hit is the white flash over the throw),
+ * and not when the wind-up would have to begin before the hurt is over.
+ */
+export function spitterHurtShows(shootTimer: number, spec: AnimSpec = ENEMY_SPEC.spitter.shoot) {
+  return !spitThrowing(shootTimer, spec) && shootTimer - hitTime(spec) >= ENEMY_HURT_SECONDS
+}
+
 export function enemyClip(s: EnemySnapshot, specs: Record<string, AnimSpec> = ENEMY_SPEC[s.kind]): ClipChoice {
-  if (s.hitFlash > 0) return { name: 'hurt', t: 0.16 - s.hitFlash }
+  if (s.hitFlash > 0) return { name: 'hurt', t: ENEMY_HURT_SECONDS - s.hitFlash }
   switch (s.kind) {
     case 'flyer':
       return { name: 'move', t: s.time }
@@ -246,7 +282,8 @@ export function enemyClip(s: EnemySnapshot, specs: Record<string, AnimSpec> = EN
       return { name: 'idle', t: s.time }
     }
     default:
-      return s.stillTime >= STAND_AFTER ? { name: 'idle', t: s.time } : { name: 'move', t: s.time }
+      // The walk advances with the ground gained; a body that marks time on the spot stands.
+      return s.standing ? { name: 'idle', t: s.time } : { name: 'move', t: strideTime(specs.move, s.gain) }
   }
 }
 
@@ -261,17 +298,33 @@ export interface BossSnapshot {
   active: boolean
   vx: number
   vy: number
+  /** His cruising speed (`def.speed`, px/s): a flier's hover gives way to his dash clip well above it. */
+  speed: number
+  /** The fight's phase (the king's states are shorter in phase 2). */
+  phase: number
   /** Seconds since the phase-2 transformation began, or null. */
   rageAge: number | null
-  /** Seconds since the boss was last hit (view time, so a hit-stop holds it), or null. */
+  /**
+   * The time into the `hurt` clip of the flinch the view started for a hit (view time scaled to the seconds it was
+   * given, so a hit-stop holds it; see `flinchFit`), or null when none is playing.
+   */
   hurtAge: number | null
   onGround: boolean
   /** The simulation's shot timer (`boss.shotTimer`): the throw or cast leaves when it has run out. */
   shotTimer: number
-  /** Seconds since a throw or cast left while the boss could show it (idle or recovering), or null. */
-  shotAge: number | null
-  /** Seconds since the boss summoned a minion, or null. */
-  summonAge: number | null
+  /**
+   * The time into the `shoot` clip of the throw, cast or summon gesture the view started, fitted to its time
+   * (`castFit`, `summonFit`), or null when none is playing.
+   */
+  castAge: number | null
+  /** The king's transformation cut his volley: its follow-through does not come back. */
+  volleyCut: boolean
+  /** Seconds since his last dash (charge or dive) began, and the ground he has gained since (null: no dash yet). */
+  dashAge: number | null
+  dashGain: number
+  /** What his body does (`Tread`): ground his drawn body has covered the way he faces, and whether he stands. */
+  gain: number
+  standing: boolean
   time: number
 }
 
@@ -301,14 +354,27 @@ export const FINAL_VOLLEY_AT = 0.5
 
 /**
  * The thrown and cast shots of the crow (`updateFlyerBoss` in sim.ts: only while `idle`, the timer then reset to
- * 1.7 s) and of the fox and the bee (`updateSwarmBoss`: in any state, reset to 2.1 s); how long the crow hovers
- * (`idle` 1.4 s) and recovers (0.9 s), and how long a swarm boss walks before its wind-up (0.9 s).
+ * 1.7 s) and of the fox and the bee (`updateSwarmBoss`: in any state, reset to 2.1 s).
  */
 export const FLYER_SHOT_INTERVAL = 1.7
 export const SWARM_SHOT_INTERVAL = 2.1
+/**
+ * How long each boss kind stays in a state before the next (sim.ts `updateBruteBoss`, `updateTankBoss`,
+ * `updateSwarmBoss`, `updateFinalBoss`, `updateFlyerBoss`; `tests/view-boss-timing.test.ts` measures them in the
+ * simulation). The view starts a flinch or a cast only when it fits before he next walks or winds up.
+ */
+export const BRUTE_IDLE_SECONDS = 0.7
+export const BRUTE_RECOVER_SECONDS = 0.6
+export const BRUTE_STUN_SECONDS = 1.1
+export const TANK_IDLE_SECONDS = 1.2
+export const TANK_RECOVER_SECONDS = 1.0
+export const SWARM_IDLE_SECONDS = 0.9
+export const SWARM_RECOVER_SECONDS = 0.7
+/** The king's, in phase 1 and phase 2. */
+export const FINAL_IDLE_SECONDS = [0.9, 0.6] as const
+export const FINAL_RECOVER_SECONDS = [0.8, 0.5] as const
 export const FLYER_IDLE_SECONDS = 1.4
 export const FLYER_RECOVER_SECONDS = 0.9
-export const SWARM_IDLE_SECONDS = 0.9
 /** A boss flinches (`hurt`) only when he is nearly still (|vx| in px/s at or below this). */
 export const FLINCH_MAX_SPEED = 20
 /** A `stunned` state shows its clip and the dizzy mark only once it has lasted this long (s). */
@@ -317,15 +383,66 @@ export const STUN_SHOW_AFTER = 0.05
 export const DIVE_LEVEL_SPEED = 40
 /** A levelled-out dive that travels no faster than this (px/s) is pinned against a wall: he flaps on the spot. */
 export const DIVE_PINNED_SPEED = 40
+/**
+ * After a dash a boss keeps its clip while he still travels faster than this (px/s): his standing poses show only
+ * once he has nearly stopped. A slam landing (`land`) keeps showing while he slides faster than this.
+ */
+export const DASH_REST_SPEED = 40
+/** A flier's hover shows only up to this many times his cruising speed; faster, his dash clip shows. */
+export const DASH_FACTOR = 1.5
 
 /** Whether a `stunned` state is shown (its clip, the dizzy mark): only once it has lasted `STUN_SHOW_AFTER`. */
 export const stunShown = (state: BossState, stateTime: number) => state === 'stunned' && stateTime >= STUN_SHOW_AFTER
+
+const rest = (s: BossSnapshot, length: number) => Math.max(0, length - s.stateTime)
+const finalLength = (lengths: readonly [number, number], phase: number) => lengths[phase >= 2 ? 1 : 0]
+
+/**
+ * Seconds until the boss next walks or winds up from where he is (0 in a state he walks or attacks in): a flinch
+ * starts only if it is over by then. ハム代 has no wind-up: hers always fit.
+ */
+export function flinchRoom(s: BossSnapshot): number {
+  switch (s.kind) {
+    case 'chaser':
+      return Infinity
+    case 'brute':
+      if (s.state === 'idle') return rest(s, BRUTE_IDLE_SECONDS)
+      if (s.state === 'recover') return rest(s, BRUTE_RECOVER_SECONDS) + BRUTE_IDLE_SECONDS
+      if (s.state === 'stunned') return rest(s, BRUTE_STUN_SECONDS) + BRUTE_RECOVER_SECONDS + BRUTE_IDLE_SECONDS
+      return 0
+    case 'tank':
+      return s.state === 'recover' ? rest(s, TANK_RECOVER_SECONDS) : 0
+    case 'swarm':
+      return s.state === 'recover' ? rest(s, SWARM_RECOVER_SECONDS) : 0
+    case 'final':
+      return s.state === 'recover' ? rest(s, finalLength(FINAL_RECOVER_SECONDS, s.phase)) : 0
+    case 'flyer':
+      if (s.state === 'idle') return rest(s, FLYER_IDLE_SECONDS)
+      if (s.state === 'recover') return rest(s, FLYER_RECOVER_SECONDS) + FLYER_IDLE_SECONDS
+      return 0
+    default:
+      return 0
+  }
+}
+
+/** Seconds until the next wind-up of a crow or a swarm boss (0 outside `idle` and `recover`): a cast must end by then. */
+export function castRoom(s: BossSnapshot): number {
+  if (s.kind === 'swarm') {
+    if (s.state === 'idle') return rest(s, SWARM_IDLE_SECONDS)
+    if (s.state === 'recover') return rest(s, SWARM_RECOVER_SECONDS) + SWARM_IDLE_SECONDS
+  }
+  if (s.kind === 'flyer') {
+    if (s.state === 'idle') return rest(s, FLYER_IDLE_SECONDS)
+    if (s.state === 'recover') return rest(s, FLYER_RECOVER_SECONDS) + FLYER_IDLE_SECONDS
+  }
+  return 0
+}
 
 /**
  * The seconds until the next throw or cast of a crow or a swarm boss, when the boss will show it from the state
  * he is in (null when the shot will leave in a state that keeps its own clip, or no shot is coming).
  */
-function shotLead(s: BossSnapshot): number | null {
+export function shotLead(s: BossSnapshot): number | null {
   if (s.kind === 'flyer') {
     // Thrown only from the hover: a timer that ran out elsewhere fires on the step the crow hovers again.
     if (s.state === 'recover') return Math.max(s.shotTimer, FLYER_RECOVER_SECONDS - s.stateTime)
@@ -339,18 +456,101 @@ function shotLead(s: BossSnapshot): number | null {
   return null
 }
 
-/** The throw or cast of a crow, a fox or a bee: the wind-up before the shot, the release and follow-through after. */
-function shotClip(s: BossSnapshot, spec: Record<string, AnimSpec>): ClipChoice | null {
+/**
+ * Whether the clip `name` can show on the body as it moves now: a flier's hover up to `DASH_FACTOR` times his
+ * cruising speed, a planted pose only on a body that has (nearly) stopped, anything drawn to travel at any speed.
+ */
+export function canShow(s: BossSnapshot, spec: Record<string, AnimSpec>, name: string) {
+  const clip = spec[name]
+  if (!clip) return false
+  if (clip.travel === 'hover') return Math.abs(s.vx) <= DASH_FACTOR * s.speed
+  if (clip.stride || clip.travel) return true
+  return Math.abs(s.vx) <= DASH_REST_SPEED
+}
+
+/** Whether the landing of a slam shows: for its length, and on while he slides (it is drawn sliding). */
+function landShows(s: BossSnapshot, spec: Record<string, AnimSpec>) {
+  if (!spec.land || s.state !== 'recover' || s.prevState !== 'slam') return false
+  return s.stateTime < specDuration(spec.land) || Math.abs(s.vx) > DASH_REST_SPEED
+}
+
+/**
+ * The least time (s) an action is shown in: a flinch or a cast is fitted to the time there is (its frames played
+ * faster, every one of them still shown), and with less than this it is not shown at all.
+ */
+export const FIT_MIN = 0.1
+
+/**
+ * The seconds a hit's `hurt` flinch is played over, decided once when the hit lands; 0 when it is not shown. Not in
+ * states that carry a warning or an attack (windup, charge, dive, slam, shoot: there the hit is the white flash and
+ * the jolt), not on a moving body (a planted flinch would slide), not during a slam landing or a volley's
+ * follow-through; and it ends before he next walks or winds up (`flinchRoom`): the whole clip when it has the time,
+ * faster when it has less, not at all under `FIT_MIN`.
+ */
+export function flinchFit(s: BossSnapshot, spec: Record<string, AnimSpec>) {
+  if (!spec.hurt || !s.active) return 0
+  if (Math.abs(s.vx) > FLINCH_MAX_SPEED) return 0
+  if (s.kind !== 'chaser') {
+    if (s.state !== 'idle' && s.state !== 'recover' && s.state !== 'stunned') return 0
+    if (landShows(s, spec)) return 0
+    if (s.kind === 'final' && s.state === 'recover' && s.prevState === 'shoot' && !s.volleyCut)
+      if (s.stateTime < specDuration(spec.shoot) - hitTime(spec.shoot)) return 0
+  }
+  const room = flinchRoom(s)
+  return room + 1e-9 < FIT_MIN ? 0 : Math.min(specDuration(spec.hurt), room)
+}
+
+/**
+ * The seconds the follow-through of a throw or cast of a crow, a fox or a bee would be played over if its pose
+ * started now; 0 when it does not start. It starts while the shot is due within the natural lead-in (`hitTime`) and
+ * he can show it, with at least `FIT_MIN` before the shot (its lead-in is played over that time, the release frame
+ * landing on the step the shot leaves) and at least `FIT_MIN` after it before his next wind-up (the follow-through
+ * is played over its natural length, or that time when it is shorter). Otherwise that shot leaves without a pose.
+ */
+export function castFit(s: BossSnapshot, spec: Record<string, AnimSpec>) {
   const shoot = spec.shoot
-  if (!shoot || (s.kind !== 'flyer' && s.kind !== 'swarm')) return null
+  if (!shoot || (s.kind !== 'flyer' && s.kind !== 'swarm') || !s.active) return 0
   const lead = hitTime(shoot)
-  const tail = specDuration(shoot) - lead
-  if (s.shotAge !== null && s.shotAge < tail) return { name: 'shoot', t: lead + s.shotAge }
   const until = shotLead(s)
-  if (until !== null && until > 0 && until <= lead) return { name: 'shoot', t: lead - until }
-  // A summon is the same gesture from its release on.
-  if (s.kind === 'swarm' && s.summonAge !== null && s.summonAge < tail) return { name: 'shoot', t: lead + s.summonAge }
-  return null
+  if (until === null || until > lead + 1e-9 || until + 1e-9 < FIT_MIN) return 0
+  if (!canShow(s, spec, 'shoot')) return 0
+  const after = castRoom(s) - until
+  return after + 1e-9 < FIT_MIN ? 0 : Math.min(specDuration(shoot) - lead, after)
+}
+
+/**
+ * Seconds into the cast clip while its lead-in runs, for a lead-in that began with the shot `from` seconds away:
+ * the frames before the release played over that time, so the release frame shows the moment the shot leaves.
+ */
+export function castLeadTime(s: BossSnapshot, spec: Record<string, AnimSpec>, from: number) {
+  const lead = hitTime(spec.shoot)
+  const until = Math.max(0, Math.min(from, shotLead(s) ?? 0))
+  // Up to the frame before the release: the release frame waits for the step the shot leaves (a timer that runs out
+  // to a hair above zero leaves its shot a step later).
+  return Math.min(from > 0 ? lead * (1 - until / from) : lead, frameStart(spec.shoot, spec.shoot.hit ?? 0) - 1e-6)
+}
+
+/** The seconds a summon's gesture (the cast from its release) is played over, fitted as a cast's; 0: not shown. */
+export function summonFit(s: BossSnapshot, spec: Record<string, AnimSpec>) {
+  const shoot = spec.shoot
+  if (!shoot || s.kind !== 'swarm' || !s.active) return 0
+  if (s.state !== 'idle' && s.state !== 'recover') return 0
+  if (!canShow(s, spec, 'shoot')) return 0
+  const room = castRoom(s)
+  return room + 1e-9 < FIT_MIN ? 0 : Math.min(specDuration(shoot) - hitTime(shoot), room)
+}
+
+/** The clip of his dash a boss shows (the crow skims in `sweep` once level), or null when he has none. */
+function dashName(s: BossSnapshot, spec: Record<string, AnimSpec>) {
+  if (s.kind === 'flyer' && spec.sweep) return 'sweep'
+  return spec.attack ? 'attack' : null
+}
+
+/** A dash clip on a time base that does not jump when the state changes: by ground gained when it has a stride. */
+function dashClip(s: BossSnapshot, spec: Record<string, AnimSpec>, name: string): ClipChoice {
+  const clip = spec[name]
+  if (clip?.stride) return { name, t: strideTime(clip, s.dashGain) }
+  return { name, t: s.dashAge ?? s.stateTime }
 }
 
 /** The boss's clip; a state its kind never reaches falls back to a clip its sheet has. */
@@ -359,87 +559,94 @@ export function bossClip(
   art: string,
   spec: Record<string, AnimSpec> = bossSheetSpec(s.kind, art)
 ): ClipChoice {
-  const choice = pickBossClip(s, spec)
-  if (spec[choice.name]) return choice
-  const fallback = Math.abs(s.vx) > 10 && spec.move ? 'move' : 'idle'
-  return { name: fallback, t: s.time }
+  let choice = pickBossClip(s, spec)
+  if (!spec[choice.name]) {
+    const fallback = Math.abs(s.vx) > 10 && spec.move ? 'move' : 'idle'
+    choice = { name: fallback, t: s.time }
+  }
+  // A flier's hover shows only at about his cruising speed: faster, in any state, his dash clip carries him.
+  if (s.active && spec[choice.name].travel === 'hover' && Math.abs(s.vx) > DASH_FACTOR * s.speed) {
+    const dash = dashName(s, spec)
+    if (dash) return dashClip(s, spec, dash)
+  }
+  return choice
 }
 
-/**
- * Whether a hit in this state shows the `hurt` flinch. States that carry a warning or an attack (windup, charge,
- * dive, slam, shoot) keep their own clip so they stay readable; there the hit shows as the white flash only. The
- * landing of a slam and the follow-through of a volley (in `recover`) are part of their attack and are kept too.
- */
-function flinches(s: BossSnapshot, spec: Record<string, AnimSpec>) {
-  if (s.hurtAge === null || !spec.hurt || s.hurtAge >= specDuration(spec.hurt)) return false
-  // A walking or running boss shows the hit as the flash and the jolt: a planted flinch would slide.
-  if (Math.abs(s.vx) > FLINCH_MAX_SPEED) return false
-  if (s.kind === 'chaser') return true
-  if (s.state === 'idle' || s.state === 'stunned') return true
-  if (s.state !== 'recover') return false
-  const leapsAndSlams = s.kind === 'tank' || s.kind === 'final'
-  if (leapsAndSlams && s.prevState === 'slam' && s.stateTime < specDuration(spec.land)) return false
-  if (s.kind === 'final' && s.prevState === 'shoot' && s.stateTime < specDuration(spec.shoot) - hitTime(spec.shoot))
-    return false
-  return true
+/** Whether the boss walks now (a walking kind in `idle` that gains ground), else he stands. */
+function walkClip(s: BossSnapshot, spec: Record<string, AnimSpec>): ClipChoice {
+  const walks = s.kind === 'tank' || s.kind === 'swarm' || s.kind === 'final'
+  if (!walks || !spec.move || s.standing) return { name: 'idle', t: s.time }
+  return spec.move.stride ? { name: 'move', t: strideTime(spec.move, s.gain) } : { name: 'move', t: s.time }
 }
 
 function pickBossClip(s: BossSnapshot, spec: Record<string, AnimSpec>): ClipChoice {
   if (!s.active) return { name: 'idle', t: s.time }
-  // The transformation comes first, then the flinch of a hit (a new hit restarts it).
+  // The transformation comes first, then a flinch or a cast the view has started (each plays out).
   if (s.kind === 'final' && s.rageAge !== null && s.rageAge < specDuration(spec.rage))
     return { name: 'rage', t: s.rageAge }
-  if (flinches(s, spec)) return { name: 'hurt', t: s.hurtAge! }
+  if (s.hurtAge !== null && spec.hurt && s.hurtAge < specDuration(spec.hurt)) return { name: 'hurt', t: s.hurtAge }
+  if (s.castAge !== null && spec.shoot && s.castAge < specDuration(spec.shoot)) return { name: 'shoot', t: s.castAge }
+  const fast = Math.abs(s.vx) > DASH_REST_SPEED
   if (s.kind === 'chaser') {
-    if (s.state === 'tired') return { name: 'tired', t: s.stateTime }
-    if (stunShown(s.state, s.stateTime)) return { name: 'stunned', t: s.stateTime }
-    return { name: 'move', t: s.time }
+    // She keeps running into a stop: her standing poses show once she has nearly stopped.
+    // Her run plays by the ground she covers; off the ground (a hop) her legs go on, on time.
+    const running = s.onGround ? { name: 'move', t: strideTime(spec.move, s.gain) } : { name: 'move', t: s.time }
+    // (Both stand on the ground: worn out in the middle of a hop, she comes down first.)
+    if (s.state === 'tired') return fast || !s.onGround ? running : { name: 'tired', t: s.stateTime }
+    if (stunShown(s.state, s.stateTime) && !fast && s.onGround) return { name: 'stunned', t: s.stateTime }
+    // Standing over the hero (she gains no ground) she stands.
+    if (s.state === 'idle' && s.standing) return { name: 'idle', t: s.time }
+    return running
   }
   const leapsAndSlams = s.kind === 'tank' || s.kind === 'final'
+  const dash = dashName(s, spec)
+  // Falling (put down above the ground, or off a ledge), the bear, the ape and the king show their leap's fall
+  // whatever they were about to do: a crouch or a slump is not drawn in the air.
+  const falling: ClipChoice | null =
+    leapsAndSlams && !s.onGround && spec.air && s.vy > 0
+      ? { name: 'air', t: 0, frame: airFrame(s.vy, spec.air.frames, BOSS_APEX_SPEED) }
+      : null
   // The first moments of a stun keep the clip of the state before it (a stun of a single step is never shown).
   if (s.state === 'stunned' && !stunShown(s.state, s.stateTime)) {
-    if (s.prevState === 'charge' || s.prevState === 'dive') return { name: 'attack', t: s.time }
+    if ((s.prevState === 'charge' || s.prevState === 'dive') && dash) return dashClip(s, spec, dash)
     return { name: 'idle', t: s.time }
   }
   switch (s.state) {
     case 'windup':
-      return { name: 'windup', t: s.stateTime }
+      return falling ?? { name: 'windup', t: s.stateTime }
     case 'charge':
-      return { name: 'attack', t: s.stateTime }
+      return spec.attack ? dashClip(s, spec, 'attack') : { name: 'idle', t: s.time }
     case 'dive':
       // Steep while he comes down; once he travels level (on the ground, or his fall has gone) he skims, and
       // pinned against a wall (the dive runs on, he goes nowhere) he flaps on the spot.
       if (s.kind === 'flyer' && spec.sweep && (s.onGround || Math.abs(s.vy) <= DIVE_LEVEL_SPEED))
-        return Math.abs(s.vx) > DIVE_PINNED_SPEED ? { name: 'sweep', t: s.stateTime } : { name: 'recover', t: s.time }
-      return { name: 'attack', t: s.stateTime }
+        return Math.abs(s.vx) > DIVE_PINNED_SPEED ? dashClip(s, spec, 'sweep') : { name: 'recover', t: s.time }
+      return dashClip(s, spec, 'attack')
     case 'stunned':
+      if (fast && dash) return dashClip(s, spec, dash)
       return { name: s.kind === 'brute' ? 'stunned' : 'recover', t: s.stateTime }
     case 'slam':
       return leapsAndSlams
         ? { name: 'air', t: 0, frame: airFrame(s.vy, spec.air.frames, BOSS_APEX_SPEED) }
         : { name: 'idle', t: s.time }
     case 'shoot': {
-      if (s.kind !== 'final') return { name: 'idle', t: s.time }
+      if (s.kind !== 'final') return walkClip(s, spec)
       const lead = hitTime(spec.shoot)
       return { name: 'shoot', t: Math.max(0, s.stateTime - (FINAL_VOLLEY_AT - lead)) }
     }
     case 'recover': {
-      if (leapsAndSlams && s.prevState === 'slam' && s.stateTime < specDuration(spec.land))
-        return { name: 'land', t: s.stateTime }
-      if (s.kind === 'final' && s.prevState === 'shoot') {
+      if (leapsAndSlams && landShows(s, spec)) return { name: 'land', t: s.stateTime }
+      if (s.kind === 'final' && s.prevState === 'shoot' && !s.volleyCut) {
         const lead = hitTime(spec.shoot)
         if (s.stateTime < specDuration(spec.shoot) - lead) return { name: 'shoot', t: lead + s.stateTime }
       }
-      return shotClip(s, spec) ?? { name: 'recover', t: s.stateTime }
+      // After a dash he keeps its clip until he has nearly stopped.
+      if (fast && dash) return dashClip(s, spec, dash)
+      return falling ?? { name: 'recover', t: s.stateTime }
     }
     case 'idle':
-    default: {
-      const shot = shotClip(s, spec)
-      if (shot) return shot
-      if ((s.kind === 'tank' || s.kind === 'swarm' || s.kind === 'final') && Math.abs(s.vx) > 10)
-        return { name: 'move', t: s.time }
-      return { name: 'idle', t: s.time }
-    }
+    default:
+      return falling ?? walkClip(s, spec)
   }
 }
 

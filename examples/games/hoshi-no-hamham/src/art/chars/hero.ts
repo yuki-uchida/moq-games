@@ -13,7 +13,7 @@
  * the forearms under the scarf band and both paws over the face. Speed streaks of a smear frame go behind everything.
  */
 import type { SheetModule } from '../module'
-import { clamp, ease, lag, type Key } from '../motion'
+import { clamp, ease, lag, type FootfallModule, type Key } from '../motion'
 import { R, ramp } from '../palette'
 import { Raster, farRamp, type Pt } from '../raster'
 import { Frame, carve, cel, fill, oval, polygon, ribbon, shadow, smooth, spline } from '../rig'
@@ -22,10 +22,10 @@ import {
   LONG,
   cyc,
   drawHamster,
+  hamGait,
   hamLook,
   hamPose,
   sample,
-  shift,
   stampOn,
   type Foot,
   type HamAccessory,
@@ -151,18 +151,22 @@ const idlePoses = memo(() => {
 const idle = () => draw(idlePoses())
 const blink = () => draw(idlePoses().map((p) => ({ ...p, eyes: 'closed' as const })))
 
+/**
+ * The run: a scurry that covers `RUN_STRIDE` px a pass. Each foot lands ahead of him, carries him and pushes off
+ * (three frames on the ground, 8 px further back on each: the ground passing under him), then swings forward; on
+ * frames 3 and 7 both feet are off the ground. The far foot treads 5 px ahead of the near one (three-quarter view).
+ */
+const RUN_STRIDE = 64
+const RUN_X = 2
+const RUN = hamGait(1, N, RUN_STRIDE, {
+  x: RUN_X,
+  near: { land: 0, contact: 3, front: 7 },
+  far: { land: 4, contact: 3, front: 12 },
+  tilt: [-8, 0, 12] // heel first, flat, up on the toe
+})
+
 const run = () => {
-  // contact (0, 4), down (1, 5), passing (2, 6), up (3, 7)
-  const FOOT_CYCLE: Foot[] = [
-    [11, 0, -10], // contact: heel first, well ahead
-    [5.5, 0, 0], // down: the body sinks over the planted foot
-    [0, 0, 0], // passing
-    [-5.5, 0.5, 26], // push-off from the toe
-    [-10, 4.5, 68], // kicked up behind, sole showing
-    [-6, 7.5, 45], // swinging through
-    [2, 6, 8], // crossing under the body
-    [9, 2.5, -16] // reaching for the next contact
-  ]
+  // contact (0, 4), carrying (1, 5), push-off (2, 6), flight (3, 7)
   const BOB = [1, 0, 1, 2]
   const SQUASH = [0.5, 1.4, 0, -1.2]
   const bob = Array.from({ length: N }, (_, i) => BOB[i % 4])
@@ -171,7 +175,7 @@ const run = () => {
     Array.from({ length: N }, (_, i) => {
       const swing = Math.cos(cyc(i - 3.5)) // near arm forward while the near foot pushes off
       return hamPose({
-        x: 2,
+        x: RUN_X,
         y: 3 + bob[i],
         lean: 12,
         squash: SQUASH[i % 4],
@@ -181,9 +185,8 @@ const run = () => {
         earF: 20 + late[i] * 7,
         tuft: 'back',
         tuftY: late[i] > 0.4 ? -1 : 0,
-        // in the run both feet travel under the hips (the near one sits further back when standing)
-        footN: shift(FOOT_CYCLE[i], 3.5),
-        footF: shift(FOOT_CYCLE[(i + 4) % N], -2),
+        footN: RUN.near[i],
+        footF: RUN.far[i],
         armN: [1 + swing * 6, 4.5 - Math.abs(swing) * 1.5],
         armF: [-1 - swing * 5, 4 - Math.abs(swing) * 1.5],
         scarf: [-4 + Math.sin(cyc(i) + 1) * 6, 14, 2.4, cyc(i) * 2],
@@ -847,6 +850,9 @@ const swim = () => {
     })
   )
 }
+
+/** Where the feet of his ground cycles are on the ground (`tests/art-footfall.test.ts`). */
+export const footfalls: FootfallModule = { hero: { run: RUN.footfall } }
 
 export const sheets: SheetModule = {
   hero: () => ({

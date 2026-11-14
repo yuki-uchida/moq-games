@@ -13,7 +13,7 @@
  * mouth, lower jaw, head, face, leaves, front dust, stars.
  */
 import type { SheetModule } from '../../module'
-import { TAU, lag } from '../../motion'
+import { TAU, footPath, footfall, lag, type FootStep, type FootfallModule } from '../../motion'
 import { C, R, ramp } from '../../palette'
 import { Painter, Raster, farRamp, type Pt, type Ramp } from '../../raster'
 import {
@@ -682,24 +682,34 @@ const hurt = memo(() => [
  * move: the walk of something heavy — contact, sink, pass, rise on each foot, the body rolling, the arms swinging
  * like pendulums against the legs, the belly bouncing a beat late and the gourd swinging behind.
  */
+/** The ground his walk covers in one pass, and where a foot's sole sits from its rest origin (the frame is at 62, the anchor at 64). */
+const MOVE_STRIDE = 96
+const SOLE_AT = -1
+
 const move = memo(() => {
   const N = 8
-  const foot = (t: number): Leg => {
-    const u = ((t % 1) + 1) % 1
-    if (u < 0.5) return [9 - 36 * u, 0, 0]
-    const s = (u - 0.5) * 2
-    return [-9 + 18 * s, Math.sin(Math.PI * s) * 6, -Math.sin(Math.PI * s) * 12]
+  // Each foot is down three frames (24 px of ground, 12 px a frame back) and swings forward in one; both feet are
+  // off the ground on frames 3 and 7, where the body is highest.
+  const near = footPath(N, MOVE_STRIDE, { land: 0, contact: 3, front: 3 })
+  const far = footPath(N, MOVE_STRIDE, { land: 4, contact: 3, front: 16 })
+  /** A foot's place on the ground (px from the anchor column) as the leg parameter, cancelling the body's sway. */
+  const foot = (step: FootStep, rest: number, sway: number): Leg => {
+    const u = step.x - (rest + SOLE_AT) - sway
+    if (step.down) return [u, 0, 0]
+    const s = Math.sin(Math.PI * step.swing)
+    return [u - 4 * s * (1 - step.swing), 5 * s, -14 * s]
   }
   const t = Array.from({ length: N }, (_, i) => i / N)
   const bob = t.map((u) => -1.8 * Math.cos(TAU * 2 * (u - 0.125)))
   const roll = t.map((u) => Math.sin(TAU * u))
+  const sway = roll.map((r) => Math.round(r * 0.8))
   const bellyLag = lag(bob, { stiffness: 0.4, damping: 0.45, loop: true })
   const gourdLag = lag(roll, { stiffness: 0.3, damping: 0.3, loop: true })
   const leafLag = lag(bob, { stiffness: 0.35, damping: 0.4, loop: true })
   return t.map((u, i) => {
     const swing = Math.cos(TAU * u)
     return P({
-      x: Math.round(roll[i] * 0.8),
+      x: sway[i],
       y: bob[i],
       lean: 5 + roll[i] * 2.2,
       belly: bellyLag[i] * 1.6,
@@ -707,8 +717,8 @@ const move = memo(() => {
       nod: 4 + bob[i],
       eyes: 'sleepy',
       mouth: i === 2 || i === 6 ? 'grump' : 'shut',
-      legN: foot(u),
-      legF: foot(u + 0.5),
+      legN: foot(near[i], FOOT.n, sway[i]),
+      legF: foot(far[i], FOOT.f, sway[i]),
       armN: [-3 - swing * 9, 29 - Math.abs(swing) * 2, 1, swing * 10],
       armF: [-1 + swing * 9, 28 - Math.abs(swing) * 2, 1, -swing * 10],
       gourd: 18 + gourdLag[i] * 14 + bob[i] * 2,
@@ -1023,6 +1033,17 @@ const defeat = memo(() => {
 })
 
 const draw = (poses: BearPose[]) => poses.map(drawBear)
+
+/** Where the feet of his walk are on the ground (`tests/art-footfall.test.ts`). */
+export const footfalls: FootfallModule = {
+  bearBoss: {
+    move: footfall(
+      9,
+      footPath(8, MOVE_STRIDE, { land: 0, contact: 3, front: 3 }),
+      footPath(8, MOVE_STRIDE, { land: 4, contact: 3, front: 16 })
+    )
+  }
+}
 
 export const sheets: SheetModule = {
   bearBoss: () => ({

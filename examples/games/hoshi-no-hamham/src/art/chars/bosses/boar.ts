@@ -14,7 +14,7 @@
  * knot, far ear, mouth, lower jaw, head, snout disc, face, leaf stalk, near tusk, near ear, pompadour, steam, stars.
  */
 import type { SheetModule } from '../../module'
-import { TAU, lag } from '../../motion'
+import { TAU, ease, footPath, footfall, lag, lerp, type FootStep, type FootfallModule } from '../../motion'
 import { C, R, color, ramp } from '../../palette'
 import { Painter, Raster, farRamp, type Pt, type Ramp } from '../../raster'
 import {
@@ -843,35 +843,82 @@ const windup = memo(() => {
   ]
 })
 
+/** How far below its origin a hoof (with the pastern above it) reaches when turned by `deg`. */
+function hoofDrop(deg: number) {
+  const f = Frame.at(0, 0, deg)
+  const sole: Pt[] = [
+    [-3.6, -6],
+    [2.6, -6],
+    [6.4, 0.4],
+    [-4.2, 0.4],
+    [-3.8, -3.4]
+  ]
+  return Math.max(...sole.map(([u, v]) => f.pt(u, v)[1]), f.pt(0.4, -3.6)[1] + 4.6)
+}
+
 /**
- * attack: the charge, a heavy rocking gallop — the fronts reach and land together, the hinds gather under and
- * drive; the head low and level like a ram, quiff and neckerchief blown back, dust at the hooves.
+ * The charge's gallop, a transverse one with a single gathered flight (stride 138 over 6 frames, 23 px a frame):
+ * the far hind lands on frame 0 and the near hind a frame later, the far fore on frame 2 and the near fore on 3,
+ * each hoof down two frames; on frame 5 all four are tucked under in the air. Table x is px ahead of the anchor.
+ */
+const CHARGE_X = 2
+const CHARGE = (() => {
+  const N = 6
+  const stride = 138
+  const paths = {
+    fN: footPath(N, stride, { land: 3, contact: 2, front: 19 }),
+    fF: footPath(N, stride, { land: 2, contact: 2, front: 13 }),
+    hN: footPath(N, stride, { land: 1, contact: 2, front: -13 }),
+    hF: footPath(N, stride, { land: 0, contact: 2, front: -10 })
+  }
+  const hoof = (path: readonly FootStep[], rest: number, hind: boolean): Hoof[] =>
+    path.map((step) => {
+      const u = step.x - (CHARGE_X - 8 + rest)
+      if (step.down) return [u, 0, 0]
+      const t = step.swing
+      // just off the ground the hoof flicks back sole-up, then folds and reaches forward toe-up to land
+      const turn = lerp(hind ? 65 : 55, -25, ease.inOut(t))
+      const lift = Math.max(hoofDrop(turn) + 4, (hind ? 10 : 12) * Math.sin(Math.PI * t) ** 0.8)
+      return [u - 7 * Math.sin(Math.PI * t) * (1 - t), lift, turn]
+    })
+  return {
+    fN: hoof(paths.fN, REST.fN, false),
+    fF: hoof(paths.fF, REST.fF, false),
+    hN: hoof(paths.hN, REST.hN, true),
+    hF: hoof(paths.hF, REST.hF, true),
+    footfall: footfall(7, paths.fN, paths.fF, paths.hN, paths.hF)
+  }
+})()
+
+/**
+ * attack: the charge, a heavy pounding gallop — the hinds slam down one after the other and drive, the body
+ * stretches as the fores reach and land, then everything tucks under for one short hop; the head low and level like
+ * a ram, quiff and neckerchief blown back.
  */
 const attack = memo(() => {
   const N = 6
-  const legs: [Hoof, Hoof, Hoof, Hoof, number, number, number, number][] = [
-    // fN, fF, hN, hF, y, lean, squash, dust
-    [[17, 8, -40], [13, 9, -35], [-14, 8, 50], [-11, 9, 45], 5, -4, 1.8, 0],
-    [[12, 0, 0], [8, 0, 0], [-13, 10, 70], [-10, 11, 60], 1, 6, 1, 1],
-    [[-2, 0, 0], [-5, 2, 10], [2, 10, -20], [5, 11, -15], 0, 8, -1.6, 0],
-    [[-12, 7, 60], [-9, 6, 50], [10, 0, 0], [13, 0, 0], 1, -2, -1, 0.8],
-    [[0, 11, 30], [3, 10, 20], [-2, 0, 0], [1, 0, 0], 3, -7, 0, 0.4],
-    [[10, 10, -15], [7, 9, -10], [-10, 3, 40], [-7, 4, 30], 5, -6, 1.6, 0]
+  const body: [number, number, number][] = [
+    // y, lean, squash
+    [0, -2, 1.4],
+    [0, 2, 0.4],
+    [0, 6, 1.8],
+    [0, 8, 1],
+    [1, 3, -1],
+    [4, -3, -1.8]
   ]
-  const bob = legs.map((l) => l[4])
+  const bob = body.map((b) => b[0])
   const headLag = lag(bob, { stiffness: 0.5, damping: 0.6, loop: true })
   const qLag = lag(bob, { stiffness: 0.35, damping: 0.5, loop: true })
-  return legs.map(([fN, fF, hN, hF, y, lean, squash, dust], i) =>
+  return body.map(([y, lean, squash], i) =>
     P({
-      x: 2,
+      x: CHARGE_X,
       y,
       lean: lean + 4,
       squash,
-      fN,
-      fF,
-      hN,
-      hF,
-      dust,
+      fN: CHARGE.fN[i],
+      fF: CHARGE.fF[i],
+      hN: CHARGE.hN[i],
+      hF: CHARGE.hF[i],
       head: [4, 6 - headLag[i] * 0.8],
       nod: 28 + headLag[i] * 2,
       mouth: 'grit',
@@ -1040,6 +1087,9 @@ const defeat = memo(() => {
 })
 
 const draw = (poses: BoarPose[]) => poses.map(drawBoar)
+
+/** Where the feet of his charge are on the ground (`tests/art-footfall.test.ts`). */
+export const footfalls: FootfallModule = { boarBoss: { attack: CHARGE.footfall } }
 
 export const sheets: SheetModule = {
   boarBoss: () => ({

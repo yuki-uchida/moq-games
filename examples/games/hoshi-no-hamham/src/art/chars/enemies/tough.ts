@@ -10,7 +10,7 @@
  * A helmet knocked off (`free`) is drawn as its own object in front of everything.
  */
 import { C, R, ramp } from '../../palette'
-import { TAU, lag } from '../../motion'
+import { TAU, footPath, footfall, lag, type FootfallModule } from '../../motion'
 import { Painter, Raster, farRamp, type Pt, type Ramp } from '../../raster'
 import {
   Frame,
@@ -542,17 +542,27 @@ const idle = memo(() => {
   )
 })
 
-/** Foot of the march on each of its 8 frames: forward, lift, toe-down tilt. */
-const STEP: readonly MoleFoot[] = [
-  [6, 0, -6], // contact: the stomp, heel first
-  [3, 0, 0], // down: the body sinks over the planted foot
-  [0, 0, 0], // passing
-  [-3, 0, 8], // push-off
-  [-6, 2, 24], // lifted behind
-  [-3, 3.6, 10], // swinging through, high
-  [1.5, 4, -6], // passing high
-  [5, 2.4, -16] // raised, about to stomp
+/**
+ * The march's feet: each is down four frames (15 px of ground, the near one frames 0-3, the far one frames 4-7) and
+ * swings forward in the four frames between. A foot down moves back 5 px a frame, as far as the body moves on. The
+ * near foot plants behind the middle of the body, the far one ahead of it, under their own hips.
+ */
+const STRIDE = 40
+const PATHS = [
+  footPath(8, STRIDE, { land: 0, contact: 4, front: 1.5 }),
+  footPath(8, STRIDE, { land: 4, contact: 4, front: 9 })
 ]
+/** Where the middle of the sole lies from the foot's origin (the sole is ~9 px long). */
+const SOLE_MID = 0.6
+
+/** Foot of the march on frame `i`: forward, lift, toe-down tilt. `u` is the foot's seat in the rig. */
+const stepFoot = (path: ReturnType<typeof footPath>, i: number, u: number): MoleFoot => {
+  const st = path[i]
+  const fwd = st.x - u - SOLE_MID
+  if (st.down) return [fwd, 0, 0]
+  const s = st.swing
+  return [fwd, Math.max(3, 5.4 * Math.sin(Math.PI * s)), 26 * (1 - 2 * s) * (1 - s)]
+}
 /** Pelvis sink per half stride (+ down): lowest just after the stomp, highest at passing. */
 const SINK = [1, 2, 1, 0]
 
@@ -577,8 +587,8 @@ const move = memo(() => {
         nod: -rock * 2,
         // the helmet stays up a beat when the body drops, then lands back on the head (never over the eyes)
         helmet: [0, Math.round(Math.max(0, late[i]) * 1.4), 4 + late[i] * 3],
-        footN: STEP[i],
-        footF: STEP[(i + 4) % N],
+        footN: stepFoot(PATHS[0], i, -4),
+        footF: stepFoot(PATHS[1], i, 6),
         pawN: [4 - swing * 3, 3.5 + Math.abs(swing) * 0.5, 18 - swing * 14, 0.25],
         pawF: [10.5 + swing * 2, 3 + Math.abs(swing) * 0.5, 12 + swing * 10, 0.25],
         scarf: [30 - scarfLate[i] * 12, 6.5, 1.2, a * 2],
@@ -700,3 +710,6 @@ export const toughSheet = () => ({
   hurt: lazyAnim(hurt, 12, false),
   defeat: lazyAnim(defeat, 12, false)
 })
+
+/** Where the feet of the mole's walk are on the ground (`tests/art-footfall.test.ts`). */
+export const footfalls: FootfallModule = { tough: { move: footfall(5, ...PATHS) } }

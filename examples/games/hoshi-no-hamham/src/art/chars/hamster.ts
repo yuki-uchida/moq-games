@@ -55,7 +55,19 @@
  * accessory parts are driven from the pose: `scarf` ([direction, length, ripple, phase]) is any look's cloth end
  * (scarf, ribbon tails, cape) and `acc` carries free numbers for the rest (a glint, a tear, a ladle's swing).
  */
-import { clamp, lerp, TAU, track, type Key } from '../motion'
+import {
+  clamp,
+  ease,
+  footPath,
+  footfall,
+  lerp,
+  TAU,
+  track,
+  type FootPlan,
+  type FootStep,
+  type Footfall,
+  type Key
+} from '../motion'
 import { C, OUTLINE_OF } from '../palette'
 import { Painter, Raster, type Pt, type Ramp } from '../raster'
 import {
@@ -633,6 +645,9 @@ export const hamHeadShape = (p: HamPose, fc: number): Shape => {
   return union(...parts)
 }
 
+/** Where the two feet hang when a pose leaves them at [0, 0, 0]: kit units along the ground from the body's centre. */
+const FOOT_REST = { near: -6, far: 4.5 } as const
+
 /** The foot in its own frame (toe forward, sole flat on v = 0): a rounded toe, a hint of heel. */
 const FOOT = overlap(
   union(oval(0.8, -1.9, 3.4, 2.1), oval(2.7, -1.6, 2.2, 1.8), oval(-2, -1.9, 1.9, 1.9)),
@@ -790,8 +805,8 @@ export function drawHamster(look: HamLook, p: HamPose, size: HamSize = look.size
     fill(l, Frame.at(0, 0), capsule(a, b, 3.3 * s, 2.5 * s), tone[1])
     cel(l, { shade: 1.3 * s })
   }
-  const fFar = footFrame(p.footF, 4.5)
-  const fNear = footFrame(p.footN, -6)
+  const fFar = footFrame(p.footF, FOOT_REST.far)
+  const fNear = footFrame(p.footN, FOOT_REST.near)
   g.add(-3.6, (l) => leg(l, fFar, [4, -3.5], side < 0.5 ? FUR : FAR))
   g.add(-3.5, (l) => foot(l, fFar, p.footF[2], side < 0.5 ? PAW : PAW_FAR))
   g.add(-1, (l) => leg(l, fNear, [-4.5, -3.5], FUR))
@@ -1024,3 +1039,58 @@ export const sample = <T extends object>(base: T, keys: readonly Key<T>[], n: nu
 }
 /** Cheated arms for airborne and cheering poses: half again as long, paws a size up. */
 export const LONG = { reach: 1.5, paw: 0.5 } as const
+
+/** The feet of a ground cycle, frame by frame, with the table of where they are down. */
+export interface HamGait {
+  near: readonly Foot[]
+  far: readonly Foot[]
+  footfall: Footfall
+}
+
+export interface HamGaitPlan {
+  /** The pose's `x` on every frame of the cycle (kit units): the figure's place ahead of the anchor. */
+  x: number
+  /** Each foot: the frame it lands on, the frames it stays down, and where it lands (px ahead of the anchor). */
+  near: FootPlan
+  far: FootPlan
+  /** The sole's tilt on each frame a foot is down (heel first … up on the toe). */
+  tilt: readonly number[]
+  /** In the air: how high the foot swings and how far it hangs back as it leaves the ground (kit units). */
+  lift?: number
+  trail?: number
+}
+
+/**
+ * The two feet of a run or a walk for the family build, at the look's `scale`: a cycle of `frames` frames that
+ * covers `stride` px (the clip's `stride` in the contract). A foot that is down moves back stride/frames px a
+ * frame, so it stays where it is on the ground while the body passes over it; then it peels off, hangs back for a
+ * moment, swings through with the sole showing and reaches for the next step. Use `near[i]` and `far[i]` as the
+ * pose's `footN` and `footF`, and export `footfall` in the module's `footfalls`.
+ */
+export function hamGait(scale: number, frames: number, stride: number, plan: HamGaitPlan): HamGait {
+  const lift = plan.lift ?? 8.5
+  const trail = plan.trail ?? 6
+  const feet = (path: readonly FootStep[], rest: number): Foot[] =>
+    path.map((step) => {
+      const u = step.x / scale - plan.x - rest
+      if (step.down) return [u, 0, plan.tilt[step.since] ?? 0]
+      const t = step.swing
+      const tilt = lerp(62, -16, ease.inOut(t))
+      // A foot in the air stays clear of the ground rows: its lowest point, tilted as it is, at least 3 px up.
+      const tilted = Frame.at(0, 0).child(0, 0, tilt)
+      const drop = Math.max(...FOOT_SOLE.map(([su, sv]) => tilted.pt(su, sv)[1]))
+      return [
+        u - trail * Math.sin(Math.PI * t) * (1 - t),
+        Math.max(drop + 3 / scale, lift * Math.sin(Math.PI * t) ** 0.8),
+        tilt
+      ]
+    })
+  const near = footPath(frames, stride, plan.near)
+  const far = footPath(frames, stride, plan.far)
+  return {
+    near: feet(near, FOOT_REST.near),
+    far: feet(far, FOOT_REST.far),
+    // the sole is about 9 kit units long
+    footfall: footfall(Math.ceil(5.5 * scale), near, far)
+  }
+}

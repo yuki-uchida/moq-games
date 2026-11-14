@@ -138,3 +138,63 @@ export const hop = (t: number) => 4 * clamp(t) * (1 - clamp(t))
 
 /** A sine wave on a 0..1 cycle. */
 export const wave = (t: number, phase = 0) => Math.sin((t + phase) * TAU)
+
+// ------------------------------------------------------------------------------------------------- footfalls
+
+/** One foot on one frame of a ground cycle. */
+export interface FootStep {
+  /** The foot's place along the ground: px ahead (+) of the body's centre line (the sheet's anchor column). */
+  x: number
+  /** On the ground on this frame, and for how many frames it has been (0 on the frame it lands; -1 in the air). */
+  down: boolean
+  since: number
+  /** In the air: how far through its swing the foot is (above 0 just lifted, below 1 about to land); 0 on the ground. */
+  swing: number
+}
+
+export interface FootPlan {
+  /** The frame on which the foot lands, and how many frames it stays on the ground. */
+  land: number
+  contact: number
+  /** Where it lands: px ahead of the body's centre line. */
+  front: number
+}
+
+/**
+ * One foot through a ground cycle of `frames` frames in which the body covers `stride` px (the clip's `stride` in
+ * the contract; the view plays the clip by distance covered). From the frame it lands the foot stays `contact`
+ * frames on the ground, each of them stride/frames px further back than the one before: the ground passing under a
+ * body that travels, so the foot stays where it is in the world. Then it swings forward and lands again at `front`.
+ * In the air `x` eases from where the foot left the ground to where it lands; shape the swing (how far it trails,
+ * how high it lifts, the tilt of the sole) from `swing`.
+ */
+export function footPath(frames: number, stride: number, plan: FootPlan): FootStep[] {
+  const per = stride / frames
+  const back = plan.front - per * (plan.contact - 1)
+  const air = frames - plan.contact
+  return Array.from({ length: frames }, (_, i) => {
+    const k = (((i - plan.land) % frames) + frames) % frames
+    if (k < plan.contact) return { x: plan.front - per * k, down: true, since: k, swing: 0 }
+    const swing = (k - plan.contact + 1) / (air + 1)
+    return { x: lerp(back, plan.front, ease.inOut(swing)), down: false, since: -1, swing }
+  })
+}
+
+/**
+ * Where the feet of a ground cycle are on the ground, for `tests/art-footfall.test.ts`: one row per foot, one entry
+ * per frame, the foot's `x` (px ahead of the anchor column) while it is down and null while it is in the air; and
+ * `reach`, how far the sole's pixels may lie from that point (about half the foot's length, a little more).
+ */
+export interface Footfall {
+  reach: number
+  feet: readonly (readonly (number | null)[])[]
+}
+
+/** The footfall table of a cycle drawn from these foot paths. */
+export const footfall = (reach: number, ...paths: readonly FootStep[][]): Footfall => ({
+  reach,
+  feet: paths.map((path) => path.map((step) => (step.down ? step.x : null)))
+})
+
+/** What a module exports as `footfalls`: the tables of its ground cycles, by sheet id and clip name. */
+export type FootfallModule = Record<string, Record<string, Footfall>>

@@ -159,7 +159,8 @@ describe('walker (ネズミ団員) on the rig', () => {
     for (const name of STANDING)
       for (const [i, f] of sheet[name].frames.entries()) {
         const b = f.bounds()!
-        expect(b.y + b.h - 1, `${name} ${i}`).toBeGreaterThanOrEqual(59)
+        // the scurry's flight frames (both feet in the air) lift the whole rat off the ground rows
+        expect(b.y + b.h - 1, `${name} ${i}`).toBeGreaterThanOrEqual(name === 'move' ? 57 : 59)
         expect(b.y + b.h - 1, `${name} ${i}`).toBeLessThanOrEqual(61)
       }
   })

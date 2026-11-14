@@ -128,11 +128,66 @@ describe('黒ハム王 (king) on the hamster kit', () => {
   })
 
   test('standing clips keep their lowest row on the anchor (rows 118–123)', () => {
-    for (const name of ['idle', 'intro', 'hurt', 'move', 'windup', 'attack', 'land', 'shoot', 'recover', 'rage'])
+    for (const name of ['idle', 'intro', 'hurt', 'windup', 'land', 'shoot', 'recover', 'rage'])
       for (const [i, f] of s[name].frames.entries()) {
         expect(bottom(f), `${name} ${i}`).toBeGreaterThanOrEqual(118)
         expect(bottom(f), `${name} ${i}`).toBeLessThanOrEqual(123)
       }
+  })
+
+  test('the jog: a foot on the anchor row on every frame but the two flights (3, 7), which are 3 px up', () => {
+    const ground = Math.max(...s.move.frames.map(bottom))
+    expect(ground).toBeGreaterThanOrEqual(118)
+    expect(ground).toBeLessThanOrEqual(123)
+    for (const [i, f] of s.move.frames.entries())
+      if (i % 4 === 3) expect(bottom(f), `move ${i}`).toBeLessThanOrEqual(ground - 3)
+      else expect(bottom(f), `move ${i}`).toBe(ground)
+  })
+
+  test('the charge rolls along the ground: every frame on the ground rows of his stance, at one height', () => {
+    const ground = Math.max(...s.idle.frames.map(bottom))
+    for (const [i, f] of s.attack.frames.entries()) {
+      expect(bottom(f), `attack ${i}`).toBeGreaterThanOrEqual(ground - 1)
+      expect(bottom(f), `attack ${i}`).toBeLessThanOrEqual(ground + 1)
+    }
+  })
+
+  test('the roll turns: the crown goes round the ball one full turn a pass, clockwise, about 60° a frame', () => {
+    const frames = s.attack.frames
+    /** The crown's angle round the middle of the painted ball (screen degrees, clockwise +). */
+    const angle = (f: Raster) => {
+      const b = box(f)
+      const cy = b.y + b.h / 2
+      const cx = b.x + b.w - b.h / 2 // the ball's centre: its right edge less its radius (the cape's loose end trails left)
+      let gx = 0
+      let gy = 0
+      let n = 0
+      for (let y = 0; y < f.h; y++)
+        for (let x = 0; x < f.w; x++)
+          if (gold.has(f.get(x, y))) {
+            gx += x
+            gy += y
+            n++
+          }
+      expect(n, 'the crown shows').toBeGreaterThan(40)
+      return (Math.atan2(gy / n - cy, gx / n - cx) * 180) / Math.PI
+    }
+    const a = frames.map(angle)
+    let total = 0
+    for (let i = 0; i < a.length; i++) {
+      const step = ((((a[(i + 1) % a.length] - a[i]) % 360) + 540) % 360) - 180
+      expect(step, `attack ${i} to ${(i + 1) % a.length}`).toBeGreaterThan(30)
+      expect(step, `attack ${i} to ${(i + 1) % a.length}`).toBeLessThan(90)
+      total += step
+    }
+    expect(total).toBeCloseTo(360, 0)
+  })
+
+  test('the roll keeps the cape red and the eyes in every frame', () => {
+    for (const [i, f] of s.attack.frames.entries()) {
+      expect(count(f, crimson), `attack ${i} cape`).toBeGreaterThan(800)
+      expect(count(f, new Set<number>([C.glow])), `attack ${i} eyes`).toBeGreaterThan(2)
+    }
   })
 })
 

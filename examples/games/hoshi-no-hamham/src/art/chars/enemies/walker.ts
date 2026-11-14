@@ -8,7 +8,7 @@
  * the near thigh and shank), near foot, near upper arm, bandana, knot, near ear, head, face, near paw.
  */
 import { C, R, ramp } from '../../palette'
-import { TAU, ease, lag, track } from '../../motion'
+import { TAU, ease, footPath, footfall, lag, track, type FootfallModule } from '../../motion'
 import { Painter, Raster, farRamp, type Pt, type Ramp } from '../../raster'
 import {
   Frame,
@@ -434,17 +434,28 @@ const idle = memo(() => {
   })
 })
 
-/** Foot of the scurry on each of its 8 frames: forward, lift, toe-down tilt. */
-const STEP: readonly RatFoot[] = [
-  [6, 0, -10], // contact, heel first
-  [3, 0, 0], // down: the body sinks over the planted foot
-  [0, 0, 0], // passing
-  [-3.5, 0.6, 16], // push-off
-  [-6.5, 3.4, 38], // kicked up behind
-  [-4, 4.6, 24], // swinging through
-  [1, 3.6, 4], // passing high
-  [4.5, 1.6, -14] // reaching for the next contact
+/**
+ * The scurry's feet: each is down three frames (10 px of ground) and in the air for five, so both leave the
+ * ground on frames 3 and 7. A foot down moves back 5 px a frame, the same as the body moves on.
+ */
+const STRIDE = 40
+const PATHS = [
+  footPath(8, STRIDE, { land: 0, contact: 3, front: 3 }),
+  footPath(8, STRIDE, { land: 4, contact: 3, front: 3 })
 ]
+/** The pose's own shift of the figure, which the foot cancels. */
+const SHIFT = -9
+/** Where the heel's front sits, so that the middle of the sole is under the table's x (the sole is ~7 px long). */
+const SOLE_MID = 1
+
+/** Foot of the scurry on frame `i`: forward, lift, toe-down tilt. `u` is the foot's seat in the rig. */
+const stepFoot = (path: ReturnType<typeof footPath>, i: number, u: number): RatFoot => {
+  const st = path[i]
+  const fwd = st.x - SHIFT - u - SOLE_MID
+  if (st.down) return [fwd, 0, 0]
+  const s = st.swing
+  return [fwd, Math.max(3, 5.2 * Math.sin(Math.PI * s)), 34 * (1 - 2 * s) * (1 - s)]
+}
 const STEP_BOB = [0.8, 0, 1, 2]
 const STEP_SQUASH = [0.6, 1.2, 0, -0.8]
 
@@ -458,9 +469,9 @@ const move = memo(() => {
     const a = (i / N) * TAU
     return drawRat(
       ratPose({
-        x: -9,
+        x: SHIFT,
         y: bob[i],
-        hip: 8.5,
+        hip: 10,
         lean: 72,
         squash: STEP_SQUASH[i % 4] - 3,
         stretch: 1.15,
@@ -468,8 +479,8 @@ const move = memo(() => {
         nod: -2,
         earN: 14 + earLag[i] * 8,
         earF: 8 + earLag[i] * 6,
-        footN: STEP[i],
-        footF: STEP[(i + 4) % N],
+        footN: stepFoot(PATHS[0], i, -3),
+        footF: stepFoot(PATHS[1], i, -2.2),
         armN: [6 + Math.cos(a) * 1.6, -0.8 + Math.sin(a) * 1.4],
         armF: [5 - Math.cos(a) * 1.6, -1.6 - Math.sin(a) * 1.4],
         tail: [22 + Math.sin(a) * 5, 3.6, a, 15],
@@ -626,3 +637,6 @@ export const walkerSheet = () => ({
   hurt: lazyAnim(hurt, 12, false),
   defeat: lazyAnim(defeat, 12, false)
 })
+
+/** Where the feet of the rat's walk are on the ground (`tests/art-footfall.test.ts`). */
+export const footfalls: FootfallModule = { walker: { move: footfall(5, ...PATHS) } }

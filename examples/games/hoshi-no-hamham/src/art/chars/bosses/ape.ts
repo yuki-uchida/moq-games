@@ -14,7 +14,7 @@
  * head, face, near ear, cap, near forearm and fist, dust and stone chips in front, stars.
  */
 import type { SheetModule } from '../../module'
-import { TAU, ease, lag, track, type Key } from '../../motion'
+import { TAU, ease, footPath, footfall, lag, track, type FootStep, type FootfallModule, type Key } from '../../motion'
 import { C, R, ramp } from '../../palette'
 import { Painter, Raster, farRamp, type Pt, type Ramp } from '../../raster'
 import {
@@ -793,40 +793,55 @@ const hurt = memo(() => [
   })
 ])
 
-/** move: the knuckle walk — fists reach and plant, the body swings between the arms, the legs catch up. */
+/**
+ * move: the knuckle walk, a heavy rocking lope that covers `MOVE_STRIDE` px a pass. The fists plant together, near
+ * one a frame ahead of the far one (near down 0–2, far 1–3), and the shoulders drop onto them while the hind feet
+ * swing through; then the feet plant (near 4–6, far 5–7) and the hips take the weight while the arms reach forward.
+ * Every limb is down three frames, 12 px further back on each (the ground passing under him), and up five.
+ */
+const MOVE_STRIDE = 96
+const MOVE_N = 8
+/** px ahead of the anchor column (64) of the ground point (`GROUND_X`). */
+const GROUND_PX = GROUND_X - 64
+const APE_MOVE = {
+  aN: footPath(MOVE_N, MOVE_STRIDE, { land: 0, contact: 3, front: 24 }),
+  aF: footPath(MOVE_N, MOVE_STRIDE, { land: 1, contact: 3, front: 35 }),
+  lN: footPath(MOVE_N, MOVE_STRIDE, { land: 4, contact: 3, front: -10 }),
+  lF: footPath(MOVE_N, MOVE_STRIDE, { land: 6, contact: 3, front: -16 })
+}
+/** A limb of the lope in pose units: down flat, or lifted on an arc (`height` units) and turned (`turn` degrees). */
+const lopeLimb = (step: FootStep, rest: number, height: number, turn: number): Limb => {
+  const u = (step.x - GROUND_PX) / S - rest
+  if (step.down) return [u, 0, 0]
+  const arc = Math.sin(Math.PI * step.swing)
+  return [u, height * arc, turn * arc]
+}
+
 const move = memo(() => {
-  const N = 8
-  /** A fist or foot: planted and sliding back for `stance` of the cycle, then swinging forward on an arc. */
-  const stride = (s: number, reach: number, height: number, stance: number) => {
-    const t = ((s % 1) + 1) % 1
-    if (t < stance) return [reach - (2 * reach * t) / stance, 0, 0] as const
-    const u = (t - stance) / (1 - stance)
-    return [-reach + 2 * reach * ease.inOut(u), Math.sin(u * Math.PI) * height, -Math.sin(u * Math.PI) * 25] as const
-  }
-  const bob = Array.from({ length: N }, (_, i) => -Math.cos(phase(i, N) * 2) * 1.2)
+  const N = MOVE_N
+  // the shoulders drop onto the fists as they land (0) and the hips onto the feet (4); the body rocks between
+  const SHOULDER = [-1.6, -0.8, 0.2, 0.8, 0.6, 0.4, 0, -0.6]
+  const HIP = [0.4, 0.2, 0, -0.4, -1.4, -0.8, 0.2, 0.6]
+  const bob = Array.from({ length: N }, (_, i) => (SHOULDER[i] + HIP[i]) * 0.6)
+  const rock = Array.from({ length: N }, (_, i) => HIP[i] - SHOULDER[i])
   const capLag = lag(bob, { stiffness: 0.35, damping: 0.4, loop: true })
+  const late = lag(rock, { stiffness: 0.3, damping: 0.45, loop: true })
   return Array.from({ length: N }, (_, i) => {
-    const s = i / N
-    const roll = Math.sin(phase(i, N))
-    const fN = stride(s, 7, 7, 0.5)
-    const fF = stride(s + 0.5, 7, 6, 0.5)
-    const lN = stride(s + 0.3, 6, 4, 0.7)
-    const lF = stride(s + 0.8, 6, 4, 0.7)
     return P({
       x: 0,
       y: bob[i],
-      lean: 3 + roll * 2.5,
-      breath: 0.3 + roll * 0.2,
+      lean: 3 - rock[i] * 1.6,
+      breath: 0.3 + late[i] * 0.1,
       head: [1, -bob[i] * 0.5],
-      nod: -roll * 3,
+      nod: late[i] * 2,
       eyes: 'glare',
-      mouth: i % 4 === 1 ? 'grit' : 'shut',
-      aN: [fN[0], fN[1], fN[2]],
-      aF: [fF[0], fF[1], fF[2]],
-      lN: [lN[0], lN[1], -lN[2] * 0.6],
-      lF: [lF[0], lF[1], -lF[2] * 0.6],
-      cap: [0, Math.round(capLag[i] * 1.5), Math.round(-capLag[i] * 3)],
-      band: [34 + roll * 8, phase(i, N) * 2]
+      mouth: i % 4 === 0 ? 'grit' : 'shut',
+      aN: lopeLimb(APE_MOVE.aN[i], REST.aN, 8, -25),
+      aF: lopeLimb(APE_MOVE.aF[i], REST.aF, 7, -25),
+      lN: lopeLimb(APE_MOVE.lN[i], REST.lN, 6, 12),
+      lF: lopeLimb(APE_MOVE.lF[i], REST.lF, 5, 12),
+      cap: [0, Math.round(capLag[i] * 1.5), Math.round(-capLag[i] * 3 - late[i] * 2)],
+      band: [34 + late[i] * 8, phase(i, N) * 2]
     })
   })
 })
@@ -1095,6 +1110,12 @@ const defeat = memo(() => {
 })
 
 const draw = (poses: ApePose[]) => poses.map(drawApe)
+
+/** Where the feet of his walk are on the ground (`tests/art-footfall.test.ts`). */
+export const footfalls: FootfallModule = {
+  // the fists and the feet are all about 16 px long on the ground
+  apeBoss: { move: footfall(11, APE_MOVE.aN, APE_MOVE.aF, APE_MOVE.lN, APE_MOVE.lF) }
+}
 
 export const sheets: SheetModule = {
   apeBoss: () => ({

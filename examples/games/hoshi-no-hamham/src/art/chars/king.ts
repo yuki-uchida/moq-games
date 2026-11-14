@@ -24,13 +24,14 @@
  * (3), the flame in the paw (3.2), the flash (3.3), front dust (3.4), stars and the loose crown (6, 6.5).
  */
 import type { SheetModule } from '../module'
-import { TAU, clamp, lag, lerp } from '../motion'
+import { TAU, clamp, lag, lerp, type FootfallModule } from '../motion'
 import { C, R, color, ramp } from '../palette'
 import { Raster, farRamp, type Pt, type Ramp } from '../raster'
 import { Frame, capsule, cel, fill, oval, polygon, ribbon, shadow, smooth, spline, squircle, tint, union } from '../rig'
 import { lazyAnim, memo } from '../sheet'
 import {
   drawHamster,
+  hamGait,
   hamLook,
   hamPose,
   hamStamps,
@@ -483,8 +484,58 @@ function capeGeometry(p: HamPose, torso: Frame, s: number) {
   return { outer, inner, mid, hem, d, n, top, halfAt }
 }
 
-const cape: HamAccessory = ({ g, pose: p, torso, s, ground }) => {
+/** The kit's centre of turn on screen (its body's middle, 23 units over the soles' line): the rolled ball's centre. */
+const rollCentre = (p: HamPose, s: number, size: HamSize): Pt => [
+  size.anchor[0] + p.x * s,
+  size.anchor[1] - (p.air + 23) * s
+]
+
+/**
+ * The cape wrapped round a king rolled into a ball (`acc.wrap` 1): a crimson disc of radius `acc.ar` px round the
+ * kit's centre of turn, behind him, so he and the cloth read as one boulder. Its hem (the wine lining) and three
+ * swirling folds turn with the body, `acc.wl` degrees behind it; the loose end trails back as a ribbon
+ * (`acc.wt` its flutter phase). Nothing below the screen's ground line less `acc.cfl` rows.
+ */
+function capeWrap(l: Raster, p: HamPose, s: number, size: HamSize) {
+  const [cx, cy] = rollCentre(p, s, size)
+  const R = accOf(p, 'ar', 34)
+  const base = ((p.turn - accOf(p, 'wl')) * Math.PI) / 180
+  const at = (a: number, r: number): Pt => [cx + Math.cos(a) * r, cy + Math.sin(a) * r]
+  // the loose end: from the top of his back, trailing back and fluttering
+  const ph = accOf(p, 'wt')
+  const tail: Pt[] = []
+  const start = at((236 * Math.PI) / 180, R - 4)
+  for (let j = 0; j <= 8; j++) {
+    const t = j / 8
+    tail.push([start[0] - t * 20, start[1] - 2 + t * 6 + Math.sin(ph - t * 4) * t * 4])
+  }
+  fill(l, ID, oval(cx, cy, R, R), CAPE[1])
+  ribbon(l, tail, (t) => lerp(10, 5, t), CAPE[1])
+  smooth(l)
+  // the hem: a band of the lining along a third of the rim, turning with him
+  const hem: Pt[] = []
+  for (let j = 0; j <= 12; j++) hem.push(at(base + 1.2 + (j / 12) * 2.1, R + 1))
+  for (let j = 12; j >= 0; j--) hem.push(at(base + 1.2 + (j / 12) * 2.1, R - 4.5))
+  tint(l, ID, polygon(hem), LINING)
+  cel(l, { shade: 2.4 * s, rim: 1 })
+  // three folds swirling in from the rim
+  for (let k = 0; k < 3; k++) {
+    const a0 = base + (k * TAU) / 3
+    for (let j = 0; j < 5; j++) {
+      const r0 = R * (0.98 - j * 0.12)
+      const r1 = R * (0.98 - (j + 1) * 0.12)
+      shadow(l, ID, capsule(at(a0 + j * 0.16, r0), at(a0 + (j + 1) * 0.16, r1), 1.1 - j * 0.15, 1 - j * 0.15))
+    }
+  }
+  clearOutside(l, Math.round(size.anchor[1] - p.air * s) - accOf(p, 'cfl'))
+}
+
+const cape: HamAccessory = ({ g, pose: p, torso, s, ground, size }) => {
   if (accOf(p, 'rug') > 0) return
+  if (accOf(p, 'wrap') > 0) {
+    g.add(-4.3, (l) => capeWrap(l, p, s, size))
+    return
+  }
   g.add(-4.3, (l) => {
     const { outer, inner, mid, hem } = capeGeometry(p, torso, s)
     const N = outer.length - 1
@@ -751,7 +802,7 @@ const AURA_BASES: readonly (readonly ['g' | 't', number, number, number, number]
  */
 /** The aura's body: a step deeper than the rage's flames, so the lit core and the flash of the cast share its ramp. */
 const AURA_BODY = DARK[2]
-const aura: HamAccessory = ({ g, pose: p, ground, torso, s }) => {
+const aura: HamAccessory = ({ g, pose: p, ground, torso, s, size }) => {
   const level = accOf(p, 'aura')
   if (level <= 0) return
   const ph = accOf(p, 'aph')
@@ -761,14 +812,25 @@ const aura: HamAccessory = ({ g, pose: p, ground, torso, s }) => {
   const gut = accOf(p, 'agut')
   g.add(-7.1, (l) => {
     const [gx, gy] = ground.pt(0, 0)
+    // rolled into a ball (`acc.wrap`): the tongues rise from the back half of the ball's rim, the smoulder on the
+    // screen's ground line, whatever the turn
+    const rolled = accOf(p, 'wrap') > 0
+    const [cx, cy] = rollCentre(p, s, size)
+    const rim = accOf(p, 'ar', 34) - 4
+    const floorY = size.anchor[1] - p.air * s
     const lo = 3
     const hiX = l.w - 4
     const hiY = l.h - 4
     const inside = (pts: Pt[]) => pts.every(([x, y]) => x >= lo && x <= hiX && y >= lo && y <= hiY)
     const tongues: { body: Pt[]; core: Pt[] }[] = []
     AURA_BASES.forEach(([on, u, v, share, w], i) => {
-      const base = on === 'g' ? ground.pt(u, v) : torso.pt(u, v)
-      const side = Math.sign(base[0] - gx) || -1
+      const a = ((100 + (i / (AURA_BASES.length - 1)) * 190) * Math.PI) / 180
+      const base: Pt = rolled
+        ? [cx + Math.cos(a) * rim, cy + Math.sin(a) * rim]
+        : on === 'g'
+          ? ground.pt(u, v)
+          : torso.pt(u, v)
+      const side = Math.sign(base[0] - (rolled ? cx : gx)) || -1
       const dx = lx + side * sp
       const dy = -1 - ly
       const len = Math.hypot(dx, dy) || 1
@@ -785,15 +847,19 @@ const aura: HamAccessory = ({ g, pose: p, ground, torso, s }) => {
     for (const t of tongues) fill(l, ID, polygon(t.body), AURA_BODY)
     // the aura's root: a low smoulder behind his feet
     for (const u of [-9, 0, 9]) {
-      const [x, y] = ground.pt(u, -2)
+      const [x, y] = rolled ? [cx + u * s, floorY - 2 * s] : ground.pt(u, -2)
       const rx = Math.min((5.5 + sp * 3) * s * level, x - lo, hiX - x)
       fill(l, ID, oval(x, y, rx, (2.6 - Math.min(0, ly) * 0.8) * s * level), AURA_BODY)
     }
     smooth(l)
     cel(l, { shade: 2, dir: [-0.45, 0.89] })
     for (const t of tongues) tint(l, ID, polygon(t.core), DARK[0])
-    // nothing below the soles of a standing king (its outline lands on their row), nothing within 3 px of the cell's edge
-    const floor = p.air <= 0 ? Math.floor(gy) - 1 : hiY
+    // nothing below the soles of a standing king (its outline lands on their row), nothing within 3 px of the cell's
+    // edge; with `acc.afl` nothing on the screen's ground line (the soles' row when he stands upright) or the `afl` rows
+    // above it, however he is turned or lifted (the run keeps the fire off the rows its feet tread, the roll on them)
+    const lift = p.acc.afl
+    const floor =
+      lift !== undefined ? Math.floor(size.anchor[1] - p.air * s) - 1 - lift : p.air <= 0 ? Math.floor(gy) - 1 : hiY
     for (let y = 0; y < l.h; y++)
       for (let x = 0; x < l.w; x++) if (x < lo || y < lo || x > hiX || y > Math.min(floor, hiY)) l.set(x, y, 0)
   })
@@ -881,6 +947,43 @@ const dust: HamAccessory = ({ g, pose: p, s, size }) => {
       }
       cel(l, { shade: 1, rim: 1 })
     })
+}
+
+/**
+ * Speed arcs round the back of the rolling ball (`acc.arc` 0..1, `acc.ar` the ball's radius in px): three curved strokes in the cape's red and the coat's
+ * shade, concentric with the ball's centre (the kit's centre of turn), sweeping up its back.
+ */
+const ROLL_ARCS: readonly (readonly [number, number, number, number])[] = [
+  // radius past the ball (px), first and last angle on screen (degrees, 180 = straight back, 270 = up), thickness
+  [5, 168, 238, 2],
+  [10, 182, 226, 1.5],
+  [15, 196, 214, 1]
+]
+const rollArcs: HamAccessory = ({ g, pose: p, s, size }) => {
+  const k = accOf(p, 'arc')
+  if (k <= 0) return
+  const [cx, cy] = rollCentre(p, s, size)
+  const r0 = accOf(p, 'ar', 34)
+  g.add(
+    -6.8,
+    (l) => {
+      ROLL_ARCS.forEach(([dr, a0, a1, w], j) => {
+        const pts: Pt[] = []
+        for (let t = 0; t <= 8; t++) {
+          const a = ((a0 + (a1 - a0) * (t / 8) * k) * Math.PI) / 180
+          pts.push([cx + Math.cos(a) * (r0 + dr), cy + Math.sin(a) * (r0 + dr)])
+        }
+        for (let t = 0; t < 8; t++)
+          fill(
+            l,
+            ID,
+            capsule(pts[t], pts[t + 1], Math.max(1, w * (1 - t / 12)), Math.max(1, w * (1 - (t + 1) / 12))),
+            j === 0 ? CAPE[1] : FUR[2]
+          )
+      })
+    },
+    false
+  )
 }
 
 /** The cape spread flat on the ground under a fallen king (`acc.rug` 0..1 how far it has settled). */
@@ -992,7 +1095,7 @@ export const KING_LOOK = hamLook({
     headLocks: HEAD_LOCKS
   },
   eyeKeyOf: (p) => (accOf(p, 'red') > 0 ? EYE_KEY_RED : accOf(p, 'hot') > 0 ? EYE_KEY_HOT : EYE_KEY),
-  accessories: [fire, aura, rug, dust, cape, collar, clasp, scar, crown, knuckles, handFire, stars]
+  accessories: [fire, aura, rug, dust, rollArcs, cape, collar, clasp, scar, crown, knuckles, handFire, stars]
 })
 
 /** His pose: the family pose with his rest (blush off, heavy brows, the sneer, the cape hanging). */
@@ -1235,49 +1338,56 @@ const hurtPoses = memo((): HamPose[] => [
   })
 ])
 
-/** A slow, crushing walk: each step a small fall, the body rolling, the cape swinging a beat late. */
+/**
+ * The heavy, angry jog: contact (0, 4), carrying (1, 5), push-off (2, 6), flight (3, 7). It covers `MOVE_STRIDE` px
+ * a pass: each foot is down three frames, 12 px further back on each (the ground passing under him), and both are
+ * off the ground on frames 3 and 7. He lands hard and rises little; the cape streams back off the ground and swings
+ * a beat late, the crown and ears jolt after every step.
+ */
+const MOVE_STRIDE = 96
+const MOVE_X = 1
+const KING_MOVE = hamGait(KING_LOOK.scale, 8, MOVE_STRIDE, {
+  x: MOVE_X,
+  near: { land: 0, contact: 3, front: 12 },
+  far: { land: 4, contact: 3, front: 18 },
+  tilt: [-8, 0, 12],
+  lift: 6.5,
+  trail: 5
+})
+
 const movePoses = memo((): HamPose[] => {
   const n = 8
-  // contact (0, 4), down (1, 5), passing (2, 6), up (3, 7)
-  const FOOT: [number, number, number][] = [
-    [8, 0, -10],
-    [4, 0, 0],
-    [0, 0, 0],
-    [-4.5, 0.5, 18],
-    [-8, 3.5, 34],
-    [-4, 5.5, 20],
-    [2, 5, 0],
-    [7, 2, -14]
-  ]
-  const BOB = [0.6, -0.6, 0.4, 1.2]
+  const BOB = [0, -1.2, 0.6, 1.4]
+  const SQUASH = [0.8, 1.8, 0, -0.8]
   const bob = Array.from({ length: n }, (_, i) => BOB[i % 4])
-  const roll = Array.from({ length: n }, (_, i) => Math.sin((i / n) * TAU))
-  const late = lag(roll, { stiffness: 0.3, damping: 0.45, loop: true })
-  const fall = lag(bob, { stiffness: 0.35, damping: 0.5, loop: true })
+  const late = lag(bob, { stiffness: 0.3, damping: 0.45, loop: true })
+  const later = lag(late, { stiffness: 0.35, damping: 0.45, loop: true })
   return Array.from({ length: n }, (_, i) => {
-    const swing = Math.cos((i / n) * TAU)
+    // the near arm swings forward while the near foot pushes off
+    const swing = Math.cos(((i - 3.5) / n) * TAU)
     return P({
-      y: bob[i],
-      x: roll[i] * 0.6,
-      lean: 5 + roll[i] * 2,
-      squash: i % 4 === 1 ? 1.4 : i % 4 === 3 ? -0.6 : 0.4,
-      head: [1, Math.round(-bob[i] * 0.5)],
-      nod: 5,
+      x: MOVE_X,
+      y: 1.5 + bob[i],
+      lean: 10,
+      squash: SQUASH[i % 4],
+      head: [1, Math.round(-bob[i] * 0.4)],
+      nod: 6 + late[i] * 1.5,
       eyes: 'open',
       brow: 'hard',
-      mouth: 'flat',
-      footN: [FOOT[i][0] - 1, FOOT[i][1], FOOT[i][2]],
-      footF: [FOOT[(i + 4) % n][0] + 1, FOOT[(i + 4) % n][1], FOOT[(i + 4) % n][2]],
-      armN: [7 - swing * 4, 4 - Math.abs(swing)],
-      armF: [3 + swing * 3, 3.5 - Math.abs(swing)],
-      earN: 6 + fall[i] * 8,
-      earF: 5 + fall[i] * 6,
-      scarf: [74 - late[i] * 10, 22, 1, (i / n) * TAU],
-      tail: -fall[i],
+      mouth: i % 4 === 1 ? 'grit' : 'flat',
+      footN: KING_MOVE.near[i],
+      footF: KING_MOVE.far[i],
+      armN: [3 + swing * 6, 5 - Math.abs(swing) * 1.5],
+      armF: [2 - swing * 5, 4.5 - Math.abs(swing) * 1.5],
+      earN: 14 + late[i] * 7,
+      earF: 12 + late[i] * 6,
+      scarf: [34 - later[i] * 6, 21, 1.2, (i / n) * TAU * 2],
+      tail: -late[i],
       acc: {
-        ct: -late[i] * 5,
-        billow: 1 + late[i] * 0.4,
-        lining: Math.max(0, -late[i]) * 0.3,
+        ct: -3 - later[i] * 4,
+        cy: Math.round(-late[i] * 0.6),
+        billow: 0.9 + later[i] * 0.15,
+        lining: 0.15 + Math.max(0, later[i]) * 0.15,
         hot: i % 4 === 0 ? 1 : 0
       }
     })
@@ -1328,46 +1438,55 @@ const windupPoses = memo((): HamPose[] => {
   ]
 })
 
-/** The charge: head down like a ram, crown leading, cape streaming flat, a heavy two-legged gallop with dust. */
+/**
+ * The charge, a rolling boulder: he tucks into a ball and rolls along the ground, one full turn a pass (60° a frame,
+ * clockwise: the way he travels). Head down into the chest with the crown leading, fists and feet folded in, the
+ * cape wrapped round him into one round boulder whose hem and folds turn a beat behind him, its loose end trailing
+ * back as a ribbon; speed arcs sweep round the back of the ball on two frames. Frame 0 is the crouch tipping forward.
+ * The ball's rim stays on the ground row of his stance at every angle. (The view adds the dust.)
+ */
+const ROLL_TURN = 20
+/** The ball's radius (px): the cape wrapped round him. */
+const ROLL_R = 35
+/** How far the ball rides up (kit units, below 0 down): the cape's rim on the ground row of his stance. */
+const ROLL_AIR = -1.5
 const attackPoses = memo((): HamPose[] => {
   const n = 6
-  const FOOT: [number, number, number][] = [
-    [9, 0, -12], // contact
-    [3, 0, 0], // down
-    [-4, 0, 20], // push-off
-    [-9, 5, 60], // kicked up behind
-    [-1, 7, 30], // swinging through
-    [7, 3, -14] // reaching
-  ]
-  const BOB = [1, 0, 2, 3.5, 3, 2]
-  const late = lag(BOB, { stiffness: 0.4, damping: 0.5, loop: true })
+  const spin = Array.from({ length: n }, (_, i) => Math.sin((i / n) * TAU))
+  const late = lag(spin, { stiffness: 0.4, damping: 0.5, loop: true })
   return Array.from({ length: n }, (_, i) => {
-    const j = (i + 3) % n
-    const swing = Math.cos((i / n) * TAU)
+    const turn = ROLL_TURN + i * 60
     return P({
-      x: 3,
-      y: BOB[i],
-      lean: 24,
-      squash: i === 1 ? 1.6 : i === 3 ? -1 : 0.4,
-      head: [2, -2 - Math.round(late[i] * 0.4)],
-      nod: 18 + late[i] * 2,
+      x: 5,
+      air: ROLL_AIR,
+      turn,
+      y: 4,
+      lean: -4,
+      squash: 3,
+      headSquash: 0.8,
+      head: [-5, -9],
+      nod: 40,
       eyes: 'squint',
       brow: 'hard',
       mouth: 'grit',
-      footN: FOOT[i],
-      footF: FOOT[j],
-      armN: [-2 + swing * 4, 6],
-      armF: [-1 - swing * 3, 5],
-      earN: 40 + late[i] * 4,
-      earF: 34 + late[i] * 4,
-      scarf: [4 + Math.sin((i / n) * TAU) * 5, 25, 1.8, (i / n) * TAU * 2],
+      // limbs folded in against the ball
+      footN: [14, 10, 60],
+      footF: [11, 11, 50],
+      armN: [1, 6],
+      armF: [0, 5],
+      earN: 44,
+      earF: 38,
+      tail: -8,
       acc: {
-        ct: 8 + late[i] * 2,
-        spread: 0.8,
-        billow: 0.6,
-        lining: 0.35,
-        kick: i === 0 || i === 3 ? 1 : i === 1 || i === 4 ? 0.5 : 0,
-        kx: -10 + (i % 3) * -3
+        ct: 10,
+        // the cape wrapped round the ball, its folds a little behind the turn, the loose end fluttering
+        wrap: 1,
+        collar: -2.5,
+        ar: ROLL_R,
+        wl: 18 + late[i] * 10,
+        wt: (i / n) * TAU * 2,
+        cfl: 0,
+        arc: i === 1 || i === 4 ? 1 : 0
       }
     })
   })
@@ -1911,6 +2030,8 @@ interface AuraSet {
   ly?: number
   sp?: number
   gut?: number
+  /** Rows kept clear above the soles' line (see `aura`). */
+  fl?: number
 }
 
 /** One turn of the aura's phase per pass of a loop of `n` frames (times `turns`): the flames close with the loop. */
@@ -1925,11 +2046,11 @@ const AURA: Record<string, (i: number, n: number) => AuraSet> = {
   // the blow knocks him back: the flames drag forward a frame, then stand again
   hurt: (i) => ({ ph: step(i), h: [0.9, 0.95, 1][i], lx: [0.25, 0.1, 0][i] }),
   // the walk: trailing back a little
-  move: (i, n) => ({ ph: turn(i, n), lx: -0.25 }),
+  move: (i, n) => ({ ph: turn(i, n), lx: -0.25, fl: 3 }),
   // the coil: the fire sinks with him and gathers; the held tail flickers between two states
   windup: (i) => ({ ph: [0, 2.2, 3.4, 3.4 + Math.PI][i], h: [0.95, 0.85, 0.85, 0.85][i] }),
   // the charge: streaming back, short (he already reaches far forward)
-  attack: (i, n) => ({ ph: turn(i, n, 2), h: 0.85, lx: -1.5, ly: -0.15 }),
+  attack: (i, n) => ({ ph: turn(i, n, 2), h: 1.1, lx: -2.2, ly: -0.1, fl: 1 }),
   // the leap: spread wide on the way up and at the top, pulled up behind him in the fall
   air: (i) => ({ ph: step(i), h: [0.95, 1.15, 1][i], sp: [0.7, 1.1, 0.4][i], ly: [-0.2, 0, 0.3][i] }),
   // the slam: flattened and thrown outward, then rising back
@@ -1943,7 +2064,17 @@ const AURA: Record<string, (i: number, n: number) => AuraSet> = {
 /** A plain pose after the transformation: red eyes, the aura of the frame. */
 const ragedPose = (p: HamPose, a: AuraSet): HamPose => ({
   ...p,
-  acc: { ...p.acc, red: 1, aura: a.h ?? 1, aph: a.ph, alx: a.lx ?? 0, aly: a.ly ?? 0, asp: a.sp ?? 0, agut: a.gut ?? 0 }
+  acc: {
+    ...p.acc,
+    red: 1,
+    aura: a.h ?? 1,
+    aph: a.ph,
+    alx: a.lx ?? 0,
+    aly: a.ly ?? 0,
+    asp: a.sp ?? 0,
+    agut: a.gut ?? 0,
+    ...(a.fl === undefined ? {} : { afl: a.fl })
+  }
 })
 
 const clips = new Map<string, () => Raster[]>()
@@ -1978,6 +2109,9 @@ const fight = (raged: boolean) =>
   Object.fromEntries(
     FIGHT.map(([name, poses, fps, loop, extra]) => [name, lazyAnim(clip(name, poses, raged), fps, loop, extra)])
   )
+
+/** Where the feet of his walk are on the ground (`tests/art-footfall.test.ts`). */
+export const footfalls: FootfallModule = { king: { move: KING_MOVE.footfall } }
 
 export const sheets: SheetModule = {
   king: () => {

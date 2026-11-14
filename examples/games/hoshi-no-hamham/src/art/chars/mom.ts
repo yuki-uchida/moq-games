@@ -15,7 +15,7 @@
  * `hamster.ts`, plus hers).
  */
 import type { SheetModule } from '../module'
-import { clamp, lag, lerp } from '../motion'
+import { clamp, lag, lerp, type FootfallModule } from '../motion'
 import { C, R } from '../palette'
 import { Raster, farRamp, type Pt } from '../raster'
 import {
@@ -39,6 +39,7 @@ import {
   cyc,
   drawHamster,
   hamFrames,
+  hamGait,
   hamLook,
   hamPose,
   hamStamps,
@@ -301,8 +302,10 @@ const ladle: HamAccessory = ({ g, pose: p, handN, handF, ground, s }) => {
 /** What her portrait wears of the sprite's accessories (by name, so the look's own list can change freely). */
 export const MOM_PORTRAIT_ACCESSORIES: readonly HamAccessory[] = [strings, apron, bow]
 
+const MOM_SCALE = 1.3
+
 export const MOM_LOOK = hamLook({
-  scale: 1.3,
+  scale: MOM_SCALE,
   size: MOM_CELL,
   limb: 0.72,
   head: 0.88,
@@ -466,21 +469,24 @@ const yell = memo(() => {
 })
 
 /**
- * The furious run: contact (0, 4), down (1, 5), passing (2, 6), up (3, 7). The heavy body pounds, leaning in, the
- * ladle held high and jolting a beat after every step, the far arm pumping, apron strings streaming, curlers late.
+ * The furious run: contact (0, 4), carrying (1, 5), push-off (2, 6), flight (3, 7). It covers `MOVE_STRIDE` px a
+ * pass: each foot is down for three frames, 10 px further back on each (the ground passing under her), and both
+ * are off the ground on frames 3 and 7. The heavy body pounds, leaning in, the ladle held high and jolting a beat
+ * after every step, the far arm pumping, apron strings streaming, curlers late.
  */
+const MOVE_STRIDE = 80
+const MOVE_X = 1
+const MOVE = hamGait(MOM_SCALE, 8, MOVE_STRIDE, {
+  x: MOVE_X,
+  near: { land: 0, contact: 3, front: 9 },
+  far: { land: 4, contact: 3, front: 15 },
+  tilt: [-8, 0, 12],
+  lift: 7,
+  trail: 5
+})
+
 const move = memo(() => {
   const n = 8
-  const FOOT_CYCLE: [number, number, number][] = [
-    [10, 0, -10],
-    [5, 0, 0],
-    [0, 0, 0],
-    [-5, 0.5, 24],
-    [-9, 3.5, 60],
-    [-5.5, 6, 40],
-    [2, 5, 8],
-    [8, 2, -14]
-  ]
   const BOB = [0, -0.6, 1.6, 2]
   const SQUASH = [0.6, 1.6, -0.2, -1.2]
   const bob = Array.from({ length: n }, (_, i) => BOB[i % 4])
@@ -489,13 +495,11 @@ const move = memo(() => {
   return draw(
     Array.from({ length: n }, (_, i) => {
       const swing = Math.cos(cyc(i - 3.5, n))
-      const fn = FOOT_CYCLE[i]
-      const ff = FOOT_CYCLE[(i + 4) % n]
       return momPose({
         ...FREE,
         ...LONG_ARM,
         upN: true,
-        x: 1,
+        x: MOVE_X,
         y: 2 + bob[i],
         lean: 14,
         squash: SQUASH[i % 4],
@@ -504,8 +508,8 @@ const move = memo(() => {
         armN: [-18 + late[i] * 0.8, -15 + late[i] * 1.2],
         armF: [1 + swing * 6, 5 - Math.abs(swing) * 1.5],
         farBehind: swing < -0.3,
-        footN: [fn[0] + 3, fn[1], fn[2]],
-        footF: [ff[0] - 2, ff[1], ff[2]],
+        footN: MOVE.near[i],
+        footF: MOVE.far[i],
         earN: 26 + late[i] * 6,
         earF: 22 + late[i] * 5,
         scarf: [-6 + Math.sin(cyc(i, n) + 1) * 8, 13, 2.4, cyc(i, n) * 2],
@@ -657,6 +661,9 @@ const hurt = memo(() =>
     })
   ])
 )
+
+/** Where the feet of her run are on the ground (`tests/art-footfall.test.ts`). */
+export const footfalls: FootfallModule = { mom: { move: MOVE.footfall } }
 
 export const sheets: SheetModule = {
   mom: () => ({

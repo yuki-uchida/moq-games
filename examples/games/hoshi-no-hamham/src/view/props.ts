@@ -8,9 +8,10 @@ import type { SimEvent } from '../game/events'
 import { T, type Prop, type World } from '../game/sim'
 import { TILE } from '../game/types'
 import { blit, brush, clip, type BlitCall } from './bake'
-import { princessClip, specDuration } from './clips'
+import { princessClip, specDuration, strideTime, type ClipChoice } from './clips'
 import { PROP_SPEC, themedProp } from '../art/contract'
 import type { FxPool } from './fx'
+import { groundBelow } from './actors'
 
 export interface Piece {
   x: number
@@ -78,6 +79,27 @@ const GATE_FADE = 0.4
 const TREE_FALL = 0.45
 
 const duration = (sheet: string, name: string) => specDuration(PROP_SPEC[sheet][name])
+/** A うりぼう that moves further than this (px) in one update was put there, not run there. */
+const ANIMAL_JUMP_PX = 96
+/** A woken うりぼう that has not moved for this long (s) has been stopped (by a wall, a rock): it sits dazed. */
+export const ANIMAL_DAZE_AFTER = 0.1
+/** A うりぼう in the air kicks between the two airborne frames of its leap this many times a second. */
+export const ANIMAL_KICKS = 6
+/** Whether a うりぼう has ground within 2 px under its feet (the simulation lets one off a ledge sink slowly). */
+const animalOnGround = (world: World, prop: Prop) =>
+  (groundBelow(world, prop.x + TILE / 2, prop.y + TILE, 2) ?? Infinity) - (prop.y + TILE) <= 2
+
+/**
+ * One awake うりぼう: where it was, the ground it has covered, how long it has not moved, when it sat dazed, and when
+ * it left the ground (NaN while it is on it).
+ */
+interface AnimalRun {
+  x: number
+  distance: number
+  still: number
+  dazedAt: number
+  airSince: number
+}
 
 const sheetIds = new Map<string, string>()
 /** The id of the `prop:<key>` sheet, built once per key (drawing a frame joins no strings). */
@@ -98,6 +120,8 @@ export class PropsView {
   private gateCells: Piece[] = []
   private gateOf: object | null = null
   private themedSheets = new Map<string, string>()
+  /** Each awake うりぼう's ground covered since it woke (its run plays by it) and where it was last. */
+  private runs = new Map<number, AnimalRun>()
 
   constructor(
     private world: World,
@@ -144,9 +168,12 @@ export class PropsView {
       case 'door-open':
         this.mark(this.find(['door'], event.x + 1, event.y + 1), 'open')
         break
-      case 'animal-wake':
-        this.mark(this.find(['animal'], event.x, event.y), 'wake')
+      case 'animal-wake': {
+        const animal = this.find(['animal'], event.x, event.y)
+        this.mark(animal, 'wake')
+        if (animal) this.runs.set(animal.id, { x: animal.x, distance: 0, still: 0, dazedAt: NaN, airSince: NaN })
         break
+      }
       case 'princess-free':
         this.mark(this.find(['princess'], event.x, event.y), 'free')
         break
@@ -164,6 +191,31 @@ export class PropsView {
 
   update(dt: number) {
     this.time += dt
+    // The ground each awake うりぼう covers (a jump of more than a few tiles is not running), and whether it has
+    // been stopped: then it sits dazed from the moment it stopped (after its leap) while it stays there. In the air
+    // (off a ledge) it neither runs nor sits: it kicks as it sinks, and what it does there counts for neither.
+    for (const prop of this.world.props) {
+      if (prop.kind !== 'animal' || (prop.state !== 'awake' && prop.state !== 'charging')) continue
+      let run = this.runs.get(prop.id)
+      if (!run) this.runs.set(prop.id, (run = { x: prop.x, distance: 0, still: 0, dazedAt: NaN, airSince: NaN }))
+      if (!(dt > 0)) continue
+      if (!animalOnGround(this.world, prop)) {
+        if (Number.isNaN(run.airSince)) run.airSince = this.time - dt
+        run.x = prop.x
+        run.still = 0
+        run.dazedAt = NaN
+        continue
+      }
+      run.airSince = NaN
+      const step = Math.abs(prop.x - run.x)
+      if (step <= ANIMAL_JUMP_PX) run.distance += step
+      run.x = prop.x
+      run.still = step > 1e-6 ? 0 : run.still + dt
+      // (Something it was stopped by can give way, a rock it breaks: then it runs on.)
+      if (step > 1e-6) run.dazedAt = NaN
+      const leaping = (this.since(prop, 'wake') ?? 99) < duration('prop:animal', 'wake')
+      if (Number.isNaN(run.dazedAt) && !leaping && run.still >= ANIMAL_DAZE_AFTER) run.dazedAt = this.time - run.still
+    }
     if (this.gate?.down !== null && this.gate && this.time - this.gate.down! > GATE_FADE) this.gate = null
     // The open exit glitters.
     if (this.world.goalOpen) {
@@ -308,19 +360,38 @@ export class PropsView {
       this.draw(ctx, 'fx', 'zzz', this.time, prop.x + 46, prop.y + 6 + bob)
       return
     }
-    if (prop.state !== 'awake' && prop.state !== 'charging') return
-    const woke = this.since(prop, 'wake') ?? 99
-    const flip = prop.dir < 0
-    const name = woke < duration('prop:animal', 'wake') ? 'wake' : 'run'
+    const choice = this.selectAnimal(prop)
+    if (!choice) return
     this.draw(
       ctx,
       'prop:animal',
-      name,
-      woke,
+      choice.name,
+      choice.t,
       prop.x,
       prop.y,
-      brush(flip, undefined, undefined, undefined, undefined, undefined, TILE / 2)
+      brush(prop.dir < 0, undefined, choice.frame, undefined, undefined, undefined, TILE / 2)
     )
+    // Dazed, stars circle over its head (as over a stunned boss).
+    if (choice.name === 'daze') this.draw(ctx, 'fx', 'dizzy', this.time, prop.x + TILE / 2, prop.y + 8)
+  }
+
+  /**
+   * The clip an awake うりぼう is drawn with (null while it sleeps or once it is gone): its leap on its own time, then
+   * its run by the ground covered since it woke (one pass per stride), and once something has stopped it, sitting
+   * dazed (from the moment it stopped) for as long as it stays there. Off the ground it shows its leap in the air:
+   * the airborne frames of `wake` (1 and 2), in turn, `ANIMAL_KICKS` times a second.
+   */
+  selectAnimal(prop: Prop): ClipChoice | null {
+    if (prop.state !== 'awake' && prop.state !== 'charging') return null
+    const woke = this.since(prop, 'wake') ?? 99
+    if (woke < duration('prop:animal', 'wake')) return { name: 'wake', t: woke }
+    const run = this.runs.get(prop.id)
+    if (run && !Number.isNaN(run.airSince)) {
+      const air = this.time - run.airSince
+      return { name: 'wake', t: woke, frame: 1 + (Math.floor(air * ANIMAL_KICKS) % 2) }
+    }
+    if (run && !Number.isNaN(run.dazedAt)) return { name: 'daze', t: this.time - run.dazedAt }
+    return { name: 'run', t: strideTime(PROP_SPEC['prop:animal'].run, run?.distance ?? 0) }
   }
 
   private drawDoor(ctx: CanvasRenderingContext2D, prop: Prop) {

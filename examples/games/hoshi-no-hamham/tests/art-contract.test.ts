@@ -10,6 +10,7 @@ import {
   allSheetSpecs,
   type Neighbour
 } from '../src/art/contract'
+import { charFootfalls } from '../src/art/chars'
 import { anchorOf, backdrop, clearArtCache, decor, sheet, sheetIds, tile } from '../src/art/index'
 import { paletteSize } from '../src/art/palette'
 import { STAGES } from '../src/game/stages'
@@ -18,7 +19,12 @@ const specs = allSheetSpecs()
 
 /** Character cells: sheets whose frames must stay clear of the frame edge and stand on their anchor row. */
 const CHARACTERS = ['hero', 'princess', 'mom', ...ENEMY_KINDS, ...BOSS_ARTS]
-/** Clips in which the character stands on the ground (flying characters have none). */
+/**
+ * Clips in which the character stands on the ground (flying characters have none). A ground cycle (a clip with a
+ * `stride`) may leave the ground between steps: on the frames its footfall table has no foot down, it may be up to
+ * `FLIGHT_PX` above its anchor row.
+ */
+const FLIGHT_PX = 12
 const GROUNDED: Record<string, string[]> = {
   hero: ['idle', 'run', 'land'],
   princess: ['idle', 'sad'],
@@ -90,10 +96,14 @@ describe('drawn sheets are real pixel art, not padding', () => {
         }
         if (GROUNDED[id]?.includes(name)) {
           const [, ay] = anchorOf(a)
+          const feet = spec[name].stride ? charFootfalls[id]?.[name]?.feet : undefined
           for (const [i, f] of a.frames.entries()) {
             const b = f.bounds()!
             const bottom = b.y + b.h - 1
-            expect(bottom, `${id}#${name} frame ${i} floats above its anchor row`).toBeGreaterThanOrEqual(ay - 2)
+            const flight = feet !== undefined && feet.every((foot) => foot[i] === null)
+            expect(bottom, `${id}#${name} frame ${i} floats above its anchor row`).toBeGreaterThanOrEqual(
+              ay - (flight ? FLIGHT_PX : 2)
+            )
             expect(bottom, `${id}#${name} frame ${i} sinks below its anchor row`).toBeLessThanOrEqual(ay + 3)
           }
         }

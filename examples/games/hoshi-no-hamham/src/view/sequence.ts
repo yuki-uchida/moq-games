@@ -65,6 +65,7 @@ export class Sequence {
   private beats: Beat[] = []
   private tracks: Track[] = []
   private ends: (() => void)[] = []
+  private stops: (() => void)[] = []
   private skipTo: number | null
   private claimsOf: (t: number) => Claims
 
@@ -97,6 +98,12 @@ export class Sequence {
   /** Runs when the sequence ends by itself or is skipped (not when it is cancelled). */
   onEnd(run: () => void): this {
     this.ends.push(run)
+    return this
+  }
+
+  /** Runs when the sequence stops for any reason: it ends by itself, is skipped or is cancelled. */
+  onStop(run: () => void): this {
+    this.stops.push(run)
     return this
   }
 
@@ -148,9 +155,11 @@ export class Sequence {
     return true
   }
 
-  /** Stops at once: no more beats and no end handlers; the claims are released. */
+  /** Stops at once: no more beats and no end handlers (the stop handlers run); the claims are released. */
   cancel() {
-    if (this.running) this.state = 'cancelled'
+    if (!this.running) return
+    this.state = 'cancelled'
+    for (const stop of this.stops) stop()
   }
 
   private finish() {
@@ -163,6 +172,7 @@ export class Sequence {
     }
     this.state = 'done'
     for (const end of this.ends) end()
+    for (const stop of this.stops) stop()
   }
 }
 

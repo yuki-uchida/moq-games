@@ -99,6 +99,10 @@ const run = bob.map((b, i) =>
 - [ ] The silhouette, the face and the action read at 1× on all three grounds.
 - [ ] No stray pixels, broken outlines, clipped limbs or frames touching the frame edge.
 - [ ] Loops close; attacks anticipate and follow through; nothing slides.
+- [ ] A walk, a run or a gallop has its `stride` in the contract and its `footfalls` table, and
+      `tests/art-footfall.test.ts` passes: on the ground ruler (`node scripts/hoshi-no-hamham-footfall.mjs`) every
+      foot that is down stays on one plumb line. A clip the game shows on a moving body without a stride is drawn
+      off the ground, rolling or sliding, and says so in the contract (`travel`).
 - [ ] The sheet looks like it belongs next to `hero` (same light, outline weight, eye style, saturation).
 - [ ] `tests/art-contract.test.ts` passes and `pending.txt` no longer lists your sheets; for a character,
       `tests/art-rig-quality.test.ts` passes too.
