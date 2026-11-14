@@ -8,7 +8,7 @@ import { openGame } from './hoshi-no-hamham-helpers'
  */
 
 interface PrimeHook {
-  app: { hud: { primer: { running: boolean; done: Set<string> } } }
+  app: { hud: { show(): void; hide(): void; primer: { running: boolean; done: Set<string> } } }
 }
 
 const WALK_TIMEOUT = 20_000
@@ -100,3 +100,41 @@ for (const layout of LAYOUTS) {
     await context.close()
   })
 }
+
+test('a walk that a stage cut short is made again back in the menus', async ({ browser }) => {
+  test.setTimeout(90_000)
+  const context = await browser.newContext({
+    viewport: { width: 844, height: 390 },
+    baseURL: `http://127.0.0.1:${process.env.E2E_PORT || 5196}`
+  })
+  const page = await context.newPage()
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  page.on('console', (message) => message.type() === 'error' && errors.push(message.text()))
+  await openGame(page)
+  await expect.poll(() => priming(page), { timeout: WALK_TIMEOUT, intervals: [50] }).toBe(true)
+  // A stage's HUD takes over in the middle of the walk, then the game is back in a menu.
+  const cut = await page.evaluate(() => {
+    const hud = (window as unknown as { __hamham: PrimeHook }).__hamham.app.hud
+    hud.show()
+    const whileShown = {
+      priming: document.querySelector('#hud')!.classList.contains('is-priming'),
+      hidden: document.querySelector<HTMLElement>('#hud')!.hidden,
+      done: hud.primer.done.size
+    }
+    hud.hide()
+    return whileShown
+  })
+  expect(cut).toEqual({ priming: false, hidden: false, done: 0 })
+  await expect(page.locator('#hud')).toBeHidden()
+  // The walk starts over by itself and this time runs to its end.
+  await expect.poll(() => priming(page), { timeout: WALK_TIMEOUT, intervals: [50] }).toBe(true)
+  await expect.poll(() => priming(page), { timeout: WALK_TIMEOUT, intervals: [100] }).toBe(false)
+  const after = await page.evaluate(() => {
+    const hud = (window as unknown as { __hamham: PrimeHook }).__hamham.app.hud
+    return { done: hud.primer.done.has('landscape'), hidden: document.querySelector<HTMLElement>('#hud')!.hidden }
+  })
+  expect(after).toEqual({ done: true, hidden: true })
+  expect(errors).toEqual([])
+  await context.close()
+})
