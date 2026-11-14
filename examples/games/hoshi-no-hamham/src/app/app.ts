@@ -288,6 +288,16 @@ export class App {
     return this.session?.world ?? null
   }
 
+  /** True while a stage is played: not paused, not in a menu (the `?perf` readout counts frames only then). */
+  get inPlay(): boolean {
+    return this.screen === 'play' && !this.paused && Boolean(this.session)
+  }
+
+  /** A number that changes whenever a stage is started or left. */
+  get playRun(): number {
+    return this.startToken
+  }
+
   /** The live stage view, or null outside play (test hook). */
   get view(): StageView | null {
     return this.session?.view ?? null
