@@ -29,4 +29,7 @@ boot(document.querySelector<HTMLCanvasElement>('#game')!).then((app) => {
     autopilot: (on: boolean) => app.setAutopilot(on),
     openEnding: () => app.openEnding()
   }
+  // `?perf` in the address: a readout of late frames in a corner, for checking the game on the device in hand.
+  if (new URLSearchParams(location.search).has('perf'))
+    void import('./app/perf-readout').then(({ startPerfReadout }) => startPerfReadout(app))
 })
