@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   CHECK_EVERY,
+  MAIN_SHARE,
   Renderer,
   SCALE_WINDOW,
   SETTLE_FRAMES,
@@ -66,7 +67,30 @@ describe('windowStats', () => {
     expect(stats.median).toBe(10)
     expect(stats.quartile).toBe(10)
     expect(stats.missed).toBeCloseTo(0.2, 9)
-    expect(windowStats([], 0, 0)).toEqual({ median: 0, quartile: 0, missed: 0 })
+    expect(stats.bound).toBe(false)
+    expect(windowStats([], 0, 0)).toEqual({ median: 0, quartile: 0, missed: 0, bound: false })
+  })
+
+  it('does not count a late frame that follows one in which the game worked into the next refresh', () => {
+    const values = [10, 10, 10, 10, 10, 10, 10, 10, 20, 20]
+    // The frame before the first late one was still working 9 ms in (of a 10 ms period); the other was done at 2.
+    const busy = [2, 2, 2, 2, 2, 2, 2, 2, 9, 2]
+    const stats = windowStats(values, 0, values.length, busy)
+    expect(stats.missed).toBeCloseTo(0.1, 9)
+    expect(stats.bound).toBe(false)
+    // Exactly at the share counts as the main thread's.
+    const edge = [2, 2, 2, 2, 2, 2, 2, 2, 10 * MAIN_SHARE, 10 * MAIN_SHARE - 0.01]
+    expect(windowStats(values, 0, values.length, edge).missed).toBeCloseTo(0.1, 9)
+    // A slice reads its own part of both arrays.
+    expect(windowStats([99, ...values], 1, values.length + 1, [0, ...busy]).missed).toBeCloseTo(0.1, 9)
+  })
+
+  it('says when the main thread sets the pace: more than half of the frames worked past the share', () => {
+    const values = Array.from({ length: 10 }, () => 40)
+    expect(windowStats(values, 0, 10, Array(10).fill(30)).bound).toBe(true)
+    expect(windowStats(values, 0, 10, [30, 30, 30, 30, 30, 5, 5, 5, 5, 5]).bound).toBe(false)
+    expect(windowStats(values, 0, 10, [30, 30, 30, 30, 30, 30, 5, 5, 5, 5]).bound).toBe(true)
+    expect(windowStats(values, 0, 10, Array(10).fill(5)).bound).toBe(false)
   })
 
   it('reads a slice in any order, agrees with median() and leaves its input alone', () => {
@@ -82,7 +106,7 @@ describe('windowStats', () => {
 })
 
 describe('dropHelped', () => {
-  const stats = (median: number, missed = 0) => ({ median, quartile: median, missed })
+  const stats = (median: number, missed = 0) => ({ median, quartile: median, missed, bound: false })
 
   it('wants a median at least 10 % shorter', () => {
     expect(dropHelped(stats(40), stats(36))).toBe(true)
@@ -145,6 +169,39 @@ describe('nextScale', () => {
   it('looks only at the last window', () => {
     expect(nextScale(4, [...slow(200), ...fast()], false)).toBe(4)
     expect(nextScale(4, [...fast(200), ...slow()], false)).toBe(3)
+  })
+
+  it('keeps the scale when the main thread is the reason: a smaller canvas would not help', () => {
+    // One frame in four is late, and each late one follows a frame the game was still working in at 15 ms.
+    const patterned = Array.from({ length: SCALE_WINDOW }, (_, i) => (i % 4 === 3 ? 33.4 : 16.7))
+    const own = patterned.map((v) => (v > 20 ? 15 : 4))
+    expect(nextScale(3, patterned, false, own)).toBe(3)
+    // The same rhythm with the game done early in every frame is the canvas's doing.
+    expect(
+      nextScale(
+        3,
+        patterned,
+        false,
+        patterned.map(() => 4)
+      )
+    ).toBe(2)
+    // A slow median: the main thread working through most of every frame explains it, a free one does not.
+    expect(
+      nextScale(
+        4,
+        slow(),
+        false,
+        slow().map(() => 28)
+      )
+    ).toBe(4)
+    expect(
+      nextScale(
+        4,
+        slow(),
+        false,
+        slow().map(() => 6)
+      )
+    ).toBe(3)
   })
 })
 
@@ -251,6 +308,27 @@ describe('Renderer frame watching', () => {
     phone(renderer, t, FULL, rhythm)
     expect(renderer.k).toBe(3)
     expect(renderer.adaptationOff).toBe(false)
+  })
+
+  it('never lowers on a phone whose own work makes the frames late, however long it goes on', () => {
+    const renderer = new Renderer(canvas as unknown as HTMLCanvasElement)
+    let t = 0
+    let changed = 0
+    // 8.3 ms frames (a 120 Hz screen), every third one twice as long after a frame that worked 7.6 ms.
+    for (let i = 1; i <= 5 * FULL; i++) {
+      const late = i % 3 === 0
+      t += late ? 16.6 : 8.3
+      if (renderer.observeFrame(t, true, false, late ? 7.6 : 3)) changed += 1
+    }
+    expect(changed).toBe(0)
+    expect(renderer.k).toBe(4)
+    expect(renderer.adaptationOff).toBe(false)
+    // The same screen with the game done early in every frame: the canvas is the reason, and the scale drops.
+    for (let i = 1; i <= FULL; i++) {
+      t += i % 3 === 0 ? 16.6 : 8.3
+      renderer.observeFrame(t, true, false, 2)
+    }
+    expect(renderer.k).toBe(3)
   })
 
   it('gives the pixels back and stops adapting when a drop did not make the frames shorter (capped rate)', () => {
