@@ -3,6 +3,7 @@
  * squad of passive クロヅメ animals at `dummy` (respawning), the optional infinite anima (MatchConfig.training)
  * and the 8-step tutorial whose steps complete only by doing the action. Broken armour warps out and respawns.
  */
+import { ITEMS } from '../../data/items'
 import { DT, REVIVE_RANGE, REVIVE_TIME, TRAINING_RESPAWN } from '../constants'
 import { spawnFoe } from '../foes/index'
 import { addProp } from '../props'
@@ -22,8 +23,13 @@ export const TUTORIAL_HINTS = [
   '右クリックで左手のアンティークを使おう。アニマは体力でもあるから、使いすぎに注意',
   '倒れた仲間のそばでFを長押しして助け起こそう'
 ] as const
+/** Seconds a switch step waits before moving on when the build has nothing to switch. */
+const NO_SWITCH_BEAT = 1.5
+/** Seconds a shield/guard/charge must be held to count as using a paw. */
+const HOLD_USE = 0.3
 export const TUTORIAL_DONE = 'チュートリアル完了！ ここからは自由に練習しよう'
 
+const REVIVE_STEP = 7
 const TARGET_HP = 200
 const TARGET_RESPAWN = 3
 const DUMMY_RESPAWN = 5
@@ -35,6 +41,9 @@ export function createTraining(cfg: MatchConfig): ModeCtl {
   let lastEvent = 0
   let base = { walked: 0, turned: 0 }
   let reviveT = 0
+  let stepAt = 0
+  let holdT = 0
+  let usesBase: [number, number] = [0, 0]
   let tutorialProp: Prop | null = null
   const respawns: { at: number; fn: () => void }[] = []
   const movers: { prop: Prop; path: Vec[]; d: number; dir: 1 | -1 }[] = []
@@ -55,21 +64,49 @@ export function createTraining(cfg: MatchConfig): ModeCtl {
     if (tutorialProp) tutorialProp.gone = true
     tutorialProp = null
     if (step < 0 || step >= TUTORIAL_HINTS.length) return
-    const at = anchor(sim, `tutorial${step + 1}`, step, TUTORIAL_HINTS.length)
+    // The revive step uses the training dummies' area so the marker always sits where the learner can stand.
+    const at =
+      step === REVIVE_STEP && sim.map.anchors.dummy
+        ? anchor(sim, 'dummy')
+        : anchor(sim, `tutorial${step + 1}`, step, TUTORIAL_HINTS.length)
     tutorialProp = addProp(sim, 'tutorial', at, 0, -1, { state: step, label: String(step + 1) })
+  }
+
+  const hand = (p: Player, h: 'R' | 'L') => p.hands.find((x) => x.hand === h)
+  const hasItems = (p: Player, h: 'R' | 'L') => (hand(p, h)?.items.length ?? 0) > 0
+  const canSwitch = (p: Player) => p.hands.some((h) => h.items.length >= 2)
+  const hasWeapon = (p: Player, h: 'R' | 'L') =>
+    (hand(p, h)?.items ?? []).some((i) => ITEMS[i].category === 'melee' || ITEMS[i].category === 'ranged')
+
+  /** The hint of a step, adapted to the learner's build so that every step can be done. */
+  function hintFor(p: Player | undefined, s: number): string {
+    if (!p) return TUTORIAL_HINTS[s]
+    if (s === 4 && !hasWeapon(p, 'R') && hasWeapon(p, 'L'))
+      return '右クリックで左手のアンティークを使い、的に当てよう。使うたびにアニマが減るよ'
+    if (s === 5 && !canSwitch(p)) return 'この構成には持ち替えるアンティークがないよ。このまま次へ進もう'
+    if (s === 5 && !hasItems(p, 'R') && canSwitch(p)) return 'Q（またはホイール）でアンティークを持ち替えよう'
+    if (s === 6 && !hasItems(p, 'L')) return '左手は空なので、左クリックで右手のアンティークをもう一度使おう'
+    return TUTORIAL_HINTS[s]
+  }
+
+  function tutorPlayer(sim: Sim) {
+    return sim.players.find((q) => q.bot === undefined) ?? sim.players[0]
   }
 
   function advance(sim: Sim, p: Player) {
     step++
     base = { walked: p.walked, turned: p.turned }
     reviveT = 0
+    stepAt = sim.time
+    holdT = 0
+    usesBase = [hand(p, 'R')?.uses ?? 0, hand(p, 'L')?.uses ?? 0]
     if (step >= TUTORIAL_HINTS.length) {
       emit(sim, { type: 'tutorial', step: TUTORIAL_HINTS.length, hint: TUTORIAL_DONE })
       step = -1
       placeTutorialMarker(sim)
       return
     }
-    emit(sim, { type: 'tutorial', step, hint: TUTORIAL_HINTS[step] })
+    emit(sim, { type: 'tutorial', step, hint: hintFor(p, step) })
     placeTutorialMarker(sim)
   }
 
@@ -91,16 +128,26 @@ export function createTraining(cfg: MatchConfig): ModeCtl {
             e.type === 'hit' && e.by === p.id && e.amount > 0 && (e.targetKind === 'prop' || e.targetKind === 'foe')
         )
       case 5:
-        return evs.some((e) => e.type === 'swap' && mine(e))
-      case 6:
-        return evs.some(
-          (e) =>
-            ((e.type === 'fire' || e.type === 'swing' || e.type === 'empty') && mine(e) && e.hand === 'L') ||
-            ((e.type === 'deploy' || e.type === 'hook' || e.type === 'cloak' || e.type === 'reveal') && mine(e))
+        // Switching either paw counts; a build with nothing to switch moves on by itself after a short beat.
+        if (evs.some((e) => e.type === 'swap' && mine(e))) return true
+        return !canSwitch(p) && sim.time - stepAt >= NO_SWITCH_BEAT
+      case 6: {
+        // Any use of the left paw (right paw when the left one is empty): a shot, swing, gadget or a held shield.
+        const side = hasItems(p, 'L') ? 'L' : 'R'
+        const h = hand(p, side)
+        if (!h) return false
+        if (
+          evs.some((e) => (e.type === 'fire' || e.type === 'swing' || e.type === 'empty') && mine(e) && e.hand === side)
         )
-      case 7: {
+          return true
+        if (h.uses > usesBase[side === 'R' ? 0 : 1]) return true
+        const holding = h.mode === 'shield' || h.mode === 'guard' || h.act === 'guard' || h.act === 'charge'
+        holdT = holding ? holdT + DT : 0
+        return holdT >= HOLD_USE
+      }
+      case REVIVE_STEP: {
         // Hold interact next to the downed dummy marker for the revive time.
-        const near = tutorialProp && vdist(p.p, tutorialProp.p) <= REVIVE_RANGE + 0.5
+        const near = tutorialProp && Math.hypot(p.p[0] - tutorialProp.p[0], p.p[2] - tutorialProp.p[2]) <= REVIVE_RANGE
         if (near && (p.input.held & BTN.INTERACT) !== 0) reviveT += DT
         else reviveT = 0
         if (tutorialProp) tutorialProp.data.revive = Math.min(1, reviveT / REVIVE_TIME)
@@ -126,7 +173,7 @@ export function createTraining(cfg: MatchConfig): ModeCtl {
       if (sim.map.anchors.dummy) for (let i = 0; i < 3; i++) spawnDummy(sim, i)
       if (tutorial) {
         placeTutorialMarker(sim)
-        emit(sim, { type: 'tutorial', step: 0, hint: TUTORIAL_HINTS[0] })
+        emit(sim, { type: 'tutorial', step: 0, hint: hintFor(tutorPlayer(sim), 0) })
       }
     },
 
@@ -169,7 +216,7 @@ export function createTraining(cfg: MatchConfig): ModeCtl {
       }
       // Tutorial (driven by the first human player, else the first player).
       if (step >= 0) {
-        const p = sim.players.find((q) => q.bot === undefined) ?? sim.players[0]
+        const p = tutorPlayer(sim)
         const evs: SimEvent[] = []
         for (let i = sim.events.length - 1; i >= 0 && sim.events[i].id > lastEvent; i--) evs.push(sim.events[i])
         if (sim.events.length) lastEvent = Math.max(lastEvent, sim.events[sim.events.length - 1].id)
@@ -214,7 +261,7 @@ export function createTraining(cfg: MatchConfig): ModeCtl {
         step,
         steps: TUTORIAL_HINTS.length
       }
-      if (step >= 0) v.hint = TUTORIAL_HINTS[step]
+      if (step >= 0) v.hint = hintFor(tutorPlayer(sim), step)
       return v
     },
 

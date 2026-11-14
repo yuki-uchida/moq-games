@@ -1397,6 +1397,45 @@
     font-size: 12px;
   }
 }
+/* short landscape phones: the whole card, including 「わかった」, fits without scrolling */
+@media (max-height: 380px) {
+  .game-guide {
+    padding: 8px;
+  }
+  .guide-panel {
+    padding: 10px 14px;
+    gap: 6px;
+  }
+  .guide-head b {
+    font-size: 17px;
+  }
+  .guide-tab {
+    padding: 4px 10px;
+  }
+  .guide-rows {
+    padding: 6px 10px;
+    gap: 2px 12px;
+  }
+  .guide-rows dt,
+  .guide-rows dd {
+    font-size: 12px;
+  }
+  .guide-tip {
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .guide-foot small {
+    display: none;
+  }
+  .guide-foot {
+    justify-content: flex-end;
+  }
+  .guide-ok {
+    min-height: 36px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+}
 
 .game-click {
   position: absolute;
@@ -1491,7 +1530,6 @@
 }
 .touch .hud .hud-bottom {
   left: 22%;
-  right: 38%;
   grid-template-columns: minmax(0, 1fr);
 }
 .touch .hud .hud-paw {

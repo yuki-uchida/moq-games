@@ -28,7 +28,7 @@ export function moveFocus(root: HTMLElement, dir: NavDir): HTMLElement | null {
   if (!items.length) return null
   const active = document.activeElement as HTMLElement | null
   if (!active || !root.contains(active) || !items.includes(active)) {
-    const first = root.querySelector<HTMLElement>('[data-autofocus]') ?? items[0]
+    const first = items.find((el) => el.hasAttribute('data-autofocus')) ?? items[0]
     focusEl(first)
     return first
   }
@@ -76,6 +76,8 @@ export function focusEl(el: HTMLElement | null): void {
 
 /** Focuses the screen's preferred element (or the first focusable) after a screen change. */
 export function focusInitial(root: HTMLElement): void {
-  const el = root.querySelector<HTMLElement>('[data-autofocus]') ?? focusables(root)[0]
+  // Only visible candidates count: a hidden card's autofocus button must not swallow the focus.
+  const items = focusables(root)
+  const el = items.find((e) => e.hasAttribute('data-autofocus')) ?? items[0]
   if (el) el.focus({ preventScroll: true })
 }

@@ -21,6 +21,7 @@ import {
   type PawCard
 } from './model'
 import { createBanner, createCountdown, createKillFeed, createRadio, createScoreboard } from './overlays'
+import { nearReviveMarker, tutorialBuild, tutorialHint, TUTORIAL_REVIVE_STEP } from './tutorial'
 import { createCrosshair, createDamageArcs, createHitMarkers, createRadar } from './widgets'
 
 export interface HudFrame {
@@ -295,7 +296,7 @@ export function createHud(): Hud {
       paintSquad(view, me)
 
       // top centre
-      paintTop(view)
+      paintTop(view, me, f.device)
 
       // revive prompt
       paintRevive(view, me, f.device)
@@ -360,10 +361,10 @@ export function createHud(): Hud {
     const marker = hitMarkerFor(view.events, f.me)
     if (marker) hits.show(marker)
     for (const src of damageSources(view, f.me)) arcs.add(directionAngle(me.p, f.yaw, src.at), src.amount)
-    for (const e of view.events) handleEvent(view, e, f)
+    for (const e of view.events) handleEvent(view, e, f, me)
   }
 
-  function handleEvent(view: View, e: SimEvent, f: HudFrame) {
+  function handleEvent(view: View, e: SimEvent, f: HudFrame, me: PlayerView) {
     switch (e.type) {
       case 'ko': {
         const entry = feedEntry(view, e, f.me)
@@ -405,7 +406,10 @@ export function createHud(): Hud {
         }
         break
       case 'tutorial':
-        banner.show(e.hint, `STEP ${e.step + 1}`, 'info')
+        if (view.training && e.step >= view.training.steps)
+          banner.show('チュートリアル完了！', 'TUTORIAL COMPLETE', 'good')
+        else
+          banner.show(tutorialHint(e.step, f.device, tutorialBuild(me.hands)) ?? e.hint, `STEP ${e.step + 1}`, 'info')
         break
       default:
         break
@@ -453,7 +457,7 @@ export function createHud(): Hud {
     }
   }
 
-  function paintTop(view: View) {
+  function paintTop(view: View, me: PlayerView, device: HudFrame['device']) {
     setClass(pve, 'is-on', view.mode === 'pve')
     setClass(pvp, 'is-on', view.mode === 'pvp')
     setClass(training, 'is-on', view.mode === 'training' && !!view.training?.hint)
@@ -500,7 +504,8 @@ export function createHud(): Hud {
         trainStep,
         view.training.step >= 0 ? `STEP ${view.training.step + 1} / ${view.training.steps}` : '自由練習'
       )
-      setText(trainHint, view.training.hint)
+      const own = tutorialHint(view.training.step, device, tutorialBuild(me.hands))
+      setText(trainHint, own ?? view.training.hint ?? '')
     }
   }
 
@@ -520,9 +525,20 @@ export function createHud(): Hud {
         }
       }
     }
-    interactLabel = target ? '救助' : null
-    setClass(revive, 'is-on', !!target)
-    if (target) {
+    // Tutorial step 8: the "fallen dummy" is the training marker (a prop), not a downed player.
+    let marker = false
+    if (me.state === 'alive' && !target && view.training?.step === TUTORIAL_REVIVE_STEP) {
+      const m = view.props.find((p) => p.kind === 'tutorial')
+      marker = !!m && nearReviveMarker(me.p, m.p)
+    }
+    interactLabel = target || marker ? '救助' : null
+    setClass(revive, 'is-on', !!target || marker)
+    if (marker) {
+      const key = device === 'gamepad' ? 'X' : device === 'touch' ? '' : 'F'
+      setText(revive.querySelector('.rv-key')!, key)
+      setText(revive.querySelector('.rv-text')!, `${key ? `${key} 長押しで` : ''}救助：倒れた仲間`)
+      setStyle(revive.querySelector('.rv-bar i') as HTMLElement, 'transform', 'scaleX(0)')
+    } else if (target) {
       const key = device === 'gamepad' ? 'X' : device === 'touch' ? '' : 'F'
       setText(revive.querySelector('.rv-key')!, key)
       setText(

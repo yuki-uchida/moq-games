@@ -113,6 +113,12 @@ export class GamePad {
   private prev: boolean[] = []
   connected = false
 
+  /** Treats buttons held right now as already pressed (a menu press must not also act in the game). */
+  rearm(): void {
+    const pad = firstPad()
+    this.prev = pad ? pad.buttons.map((_, i) => pressed(pad, i)) : []
+  }
+
   /**
    * @param assist 0..1 slowdown of look speed (aim assist over a target), 0 = none.
    * @returns UI actions (pause / scoreboard) triggered this frame.

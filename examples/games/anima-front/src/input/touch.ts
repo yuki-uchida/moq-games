@@ -4,15 +4,28 @@
  * the ≡ menu. Styles live in src/ui/styles/touch.css.
  */
 import { itemIconMarkup } from '../ui/thumbs'
-import { h, setClass, setStyle } from '../ui/dom'
+import { h, setClass, setStyle, setText, svg } from '../ui/dom'
 import type { ItemId } from '../data/items'
 import type { Button, ControlState, UiAction } from './controls'
 
 export const TOUCH_RAD_PER_PX = 0.0052
 
+/** What a touch paw button shows besides its icon: cost, cooldown sweep, charge/lock progress, affordability. */
+export interface TouchPaw {
+  item: ItemId | null
+  /** Cost text as on the HUD paw cards ('2', '1.5/秒'), empty when free. */
+  cost: string
+  /** 0..1 of the cooldown still to go. */
+  cooldown: number
+  /** 0..1 charge / lock progress. */
+  charge: number
+  /** False when anima < cost + 1. */
+  affordable: boolean
+}
+
 export interface TouchControls {
   readonly el: HTMLElement
-  setPaws(r: ItemId | null, l: ItemId | null): void
+  setPaws(r: TouchPaw, l: TouchPaw): void
   setInteract(label: string | null): void
   setVisible(on: boolean): void
   dispose(): void
@@ -32,9 +45,24 @@ export function createTouchControls(o: {
   const moveZone = h('div', 'tc-zone tc-move', stickBase)
   const lookZone = h('div', 'tc-zone tc-look')
 
-  const pawIcon = (cls: string) => h('span', `tc-paw-icon ${cls}`)
-  const rIcon = pawIcon('r')
-  const lIcon = pawIcon('l')
+  /** One paw button's readouts: a ring (cooldown sweep + charge/lock), the icon and the anima cost badge. */
+  const pawParts = (cls: string) => {
+    const ring = svg(
+      `<svg viewBox="0 0 64 64" class="tc-ring"><circle cx="32" cy="32" r="29" class="tc-ring-cd" pathLength="100" transform="rotate(-90 32 32)"/><circle cx="32" cy="32" r="29" class="tc-ring-ch" pathLength="100" transform="rotate(-90 32 32)"/></svg>`
+    )
+    const icon = h('span', `tc-paw-icon ${cls}`)
+    const cost = h('span', 'tc-cost')
+    return {
+      ring,
+      icon,
+      cost,
+      cd: ring.querySelector('.tc-ring-cd') as SVGElement,
+      ch: ring.querySelector('.tc-ring-ch') as SVGElement,
+      extra: h('span', 'tc-paw-extra', ring, icon, cost)
+    }
+  }
+  const rParts = pawParts('r')
+  const lParts = pawParts('l')
   const btn = (cls: string, label: string, button?: Button, extra?: Node) => {
     const el = h(
       'button',
@@ -73,8 +101,8 @@ export function createTouchControls(o: {
       fn()
     })
 
-  const rBtn = btn('tc-paw tc-r', '右', 'R', rIcon)
-  const lBtn = btn('tc-paw tc-l', '左', 'L', lIcon)
+  const rBtn = btn('tc-paw tc-r', '右', 'R', rParts.extra)
+  const lBtn = btn('tc-paw tc-l', '左', 'L', lParts.extra)
   const rCycle = btn('tc-cycle tc-cycle-r', '右を切替')
   const lCycle = btn('tc-cycle tc-cycle-l', '左を切替')
   tap(rCycle, () => state.command({ type: 'cycle', hand: 'R', dir: 1 }))
@@ -176,19 +204,27 @@ export function createTouchControls(o: {
   lookZone.addEventListener('pointerup', endLook)
   lookZone.addEventListener('pointercancel', endLook)
 
-  let lastR: ItemId | null | undefined
-  let lastL: ItemId | null | undefined
+  const paintPaw = (btnEl: HTMLElement, parts: ReturnType<typeof pawParts>, p: TouchPaw, label: string) => {
+    const key = `${p.item ?? ''}`
+    if (parts.icon.dataset.item !== key) {
+      parts.icon.dataset.item = key
+      parts.icon.innerHTML = p.item ? itemIconMarkup(p.item) : ''
+    }
+    setText(parts.cost, p.item && p.cost ? `◆ ${p.cost}` : '')
+    parts.cd.setAttribute('stroke-dasharray', `${(p.cooldown * 100).toFixed(1)} 100`)
+    parts.ch.setAttribute('stroke-dasharray', `${(p.charge * 100).toFixed(1)} 100`)
+    setClass(btnEl, 'is-cooling', p.cooldown > 0)
+    setClass(btnEl, 'is-empty', !p.item)
+    const broke = !!p.item && !p.affordable
+    setClass(btnEl, 'is-broke', broke)
+    const labelEl = btnEl.querySelector('.tc-label')
+    if (labelEl) setText(labelEl as HTMLElement, broke ? '不足' : label)
+  }
   return {
     el,
     setPaws(r, l) {
-      if (r !== lastR) {
-        lastR = r
-        rIcon.innerHTML = r ? itemIconMarkup(r) : ''
-      }
-      if (l !== lastL) {
-        lastL = l
-        lIcon.innerHTML = l ? itemIconMarkup(l) : ''
-      }
+      paintPaw(rBtn, rParts, r, '右')
+      paintPaw(lBtn, lParts, l, '左')
     },
     setInteract(label) {
       setClass(interact, 'is-on', !!label)
