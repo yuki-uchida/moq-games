@@ -266,6 +266,38 @@ describe('hero clips', () => {
   })
 })
 
+describe('hero in water: he swims off the ground, and stands and walks on the floor of a pool as on land', () => {
+  const water = (extra: Partial<HeroSnapshot>) => heroClip(hero({ inWater: true, waterTime: 0.7, ...extra }))
+
+  it('in water off the ground he swims, at any vertical speed', () => {
+    for (const vy of [-240, -60, 0, 60, 260]) expect(water({ onGround: false, vy })).toEqual({ name: 'swim', t: 0.7 })
+    // A bite's lunge and a hurt still come first.
+    expect(water({ onGround: false, biteAge: 0.01 }).name).toBe('bite')
+    expect(water({ onGround: false, hurt: true }).name).toBe('hurt')
+  })
+
+  it('on the floor at rest he stands: idle, blink, the fidget, the standing frames of a bite', () => {
+    expect(water({ idleTime: 1.3 })).toEqual({ name: 'idle', t: 1.3 })
+    expect(water({ idleTime: 1.3, blinkAge: 0.05 }).name).toBe('blink')
+    expect(water({ idleTime: WAIT_AFTER + 0.5 }).name).toBe('wait')
+    const chew = water({ biteAge: 0.15 })
+    expect(chew.name).toBe('bite')
+    expect(frameOf(HERO_SPEC.bite, chew)).toBeGreaterThanOrEqual(LUNGE_FRAMES)
+  })
+
+  it('walking on the floor he runs by the ground covered, turns and skids', () => {
+    const stride = HERO_SPEC.run.stride!
+    for (let frame = 0; frame < HERO_SPEC.run.frames; frame++) {
+      const distance = (frame + 0.5) * (stride / HERO_SPEC.run.frames)
+      const choice = water({ vx: 120, distance })
+      expect(choice.name).toBe('run')
+      expect(frameOf(HERO_SPEC.run, choice)).toBe(frame)
+    }
+    expect(water({ vx: 120, turnAge: 0 }).name).toBe('turn')
+    expect(water({ vx: -150, facing: 1, skidAge: 0.02 }).name).toBe('skid')
+  })
+})
+
 describe('hero: a bite in the air, the fidget again', () => {
   it('a bite at the top of a jump plays the lunge and the chomp, then the air clip', () => {
     expect(LUNGE_FRAMES).toBe(2)
@@ -350,7 +382,9 @@ describe('hero turn', () => {
     expect(turning({ cheering: true }).name).toBe('cheer')
     expect(turning({ biteAge: 0.01 }).name).toBe('bite')
     expect(turning({ hurt: true }).name).toBe('hurt')
-    expect(turning({ inWater: true }).name).toBe('swim')
+    expect(turning({ inWater: true, onGround: false }).name).toBe('swim')
+    // On the floor of a pool he turns as on land.
+    expect(turning({ inWater: true }).name).toBe('turn')
     expect(turning({ onGround: false, vy: 400 }).name).toBe('fall')
     expect(turning({ onGround: false, vy: 0 }).name).toBe('apex')
     expect(turning({ landAge: 0.02, hardLanding: true }).name).toBe('land')
@@ -456,6 +490,16 @@ describe('enemy clips', () => {
     ['tough', {}, 'move'],
     ['tough', { standing: true }, 'idle'],
     ['tough', { vx: -62 }, 'move'],
+    // In the air (no ground within a few px): thrown up, the top, falling, by vertical speed.
+    ['walker', { onGround: false, airborne: true, vy: -300 }, 'air', 0],
+    ['walker', { onGround: false, airborne: true, vy: 0 }, 'air', 1],
+    ['walker', { onGround: false, airborne: true, vy: 300, vx: 74 }, 'air', 2],
+    ['tough', { onGround: false, airborne: true, vy: -300, standing: true }, 'air', 0],
+    ['tough', { onGround: false, airborne: true, vy: 300 }, 'air', 2],
+    // Off the ground but with ground right under it (a minion's first step): it walks.
+    ['walker', { onGround: false, vy: 30 }, 'move'],
+    // A bite's hurt plays over the fall.
+    ['walker', { onGround: false, airborne: true, vy: 300, hitFlash: 0.1 }, 'hurt'],
     ['flyer', {}, 'move'],
     ['jumper', {}, 'idle'],
     ['jumper', { onGround: false, vy: -300 }, 'air', 1], // rising: frame 1 of the 5-frame hop
@@ -489,6 +533,16 @@ describe('enemy clips', () => {
       expect(enemyClip(enemy(kind, { standing: false, vx: 74 })).name).toBe('move')
       expect(enemyClip(enemy(kind, { standing: true, vx: 74 })).name).toBe('idle')
     }
+  })
+
+  it('a squirrel shows its release frame on the step the acorn leaves, not on the step before', () => {
+    const shoot = ENEMY_SPEC.spitter.shoot
+    const hit = shoot.hit!
+    // Its timer ran out to a hair above zero: the simulation throws on the next step.
+    expect(frameOf(shoot, enemyClip(enemy('spitter', { shootTimer: 1e-7 })))).toBe(hit - 1)
+    expect(frameOf(shoot, enemyClip(enemy('spitter', { shootTimer: 1 / 60 })))).toBe(hit - 1)
+    // The step it throws (its timer set again).
+    expect(frameOf(shoot, enemyClip(enemy('spitter', { shootTimer: SPIT_INTERVAL })))).toBe(hit)
   })
 
   it('a squirrel bitten during its throw shows the flash over the throw; a hurt only when it fits before it', () => {
@@ -753,6 +807,58 @@ describe('boss clips', () => {
     expect(pick('recover', { prevState: 'shoot', stateTime: 0.01 }).name).toBe('shoot')
     expect(frameOf(shoot, pick('recover', { prevState: 'shoot', stateTime: tail - 0.005 }))).toBe(shoot.frames - 1)
     expect(pick('recover', { prevState: 'shoot', stateTime: tail + 0.005 }).name).toBe('recover')
+  })
+
+  it('a slam landing that slides off a ledge falls in his leap, not in his landing; on the ground no leap', () => {
+    for (const kind of ['tank', 'final'] as const) {
+      const spec = bossSpecOf(kind)
+      const pick = (extra: Partial<BossSnapshot>) =>
+        bossClip(boss(kind, 'recover', { prevState: 'slam', stateTime: 0.05, vx: -200, ...extra }), ART[kind], spec)
+      // Still on the ground, sliding: his landing.
+      expect(pick({ onGround: true }).name).toBe('land')
+      // The slide carried him over the edge: falling.
+      expect(pick({ onGround: false, vy: 120 })).toMatchObject({ name: 'air', frame: 1 })
+      expect(pick({ onGround: false, vy: 400 })).toMatchObject({ name: 'air', frame: 2 })
+      // Down again after that fall, slow by now: he lands again, whole (timed from that touchdown), then recovers.
+      const land = specDuration(spec.land)
+      const again = { onGround: true, vx: -30, landedAt: 0.3, clipFrom: 0.3 }
+      expect(pick({ ...again, stateTime: 0.3 })).toMatchObject({ name: 'land', t: 0 })
+      expect(pick({ ...again, stateTime: 0.3 + land - 0.01 }).name).toBe('land')
+      expect(pick({ ...again, stateTime: 0.3 + land + 0.01 }).name).toBe('recover')
+      // A touchdown too late for the whole landing before he stands up again: no landing is begun.
+      const late = { onGround: true, vx: -30, landedAt: 0.45, clipFrom: 0.45, stateTime: 0.45, phase: 2 }
+      expect(pick(late).name).toBe(kind === 'final' ? 'recover' : 'land')
+      // (Without a fall the landing is the state's own: long over by then.)
+      expect(pick({ onGround: true, vx: -30, stateTime: 0.3 + land - 0.01 }).name).toBe('recover')
+      // In his slam with his feet on the ground (the step he touches down, a pose held there): his landing begins.
+      const slam = bossClip(boss(kind, 'slam', { onGround: true, vy: 0 }), ART[kind], spec)
+      expect(slam).toMatchObject({ name: 'land', frame: 0 })
+      expect(bossClip(boss(kind, 'slam', { onGround: false, vy: -300 }), ART[kind], spec).name).toBe('air')
+    }
+  })
+
+  it("the king's gathering shares the time up to the volley evenly among the frames before the release", () => {
+    const spec = bossSpecOf('final')
+    const shoot = spec.shoot
+    const hit = shoot.hit!
+    expect(hit).toBe(3)
+    const frame = (stateTime: number) => frameOf(shoot, bossClip(boss('final', 'shoot', { stateTime }), 'king', spec))
+    for (let k = 0; k < hit; k++) {
+      expect(frame((k * FINAL_VOLLEY_AT) / hit + 0.001), String(k)).toBe(k)
+      expect(frame(((k + 1) * FINAL_VOLLEY_AT) / hit - 0.001), String(k)).toBe(k)
+    }
+    // The release on the step the orbs leave, not before.
+    expect(frame(FINAL_VOLLEY_AT - 0.001)).toBe(hit - 1)
+    expect(frame(FINAL_VOLLEY_AT)).toBe(hit)
+  })
+
+  it('a clip timed from the state start that takes over inside the state is timed from there (clipFrom)', () => {
+    const spec = bossSpecOf('final')
+    const at = (stateTime: number, clipFrom: number) =>
+      bossClip(boss('final', 'recover', { prevState: 'idle', stateTime, clipFrom }), 'king', spec)
+    expect(at(0.3, 0).t).toBeCloseTo(0.3)
+    expect(at(0.3, 0.3)).toEqual({ name: 'recover', t: 0 })
+    expect(frameOf(spec.recover, at(0.31, 0.3))).toBe(0)
   })
 
   it('a sustained windup is shown for the whole state with no frame override', () => {

@@ -631,9 +631,84 @@ const defeat = memo(() => {
   ].map(drawRat)
 })
 
+/**
+ * Off the ground, one frame per phase (the view picks it by vertical speed): 0 tossed upward, stretched, legs
+ * trailing; 1 the top, limbs spread, the "uh-oh"; 2 falling, feet reaching down, paws grabbing at the air, ears,
+ * tail and bandana tails flying up. Surprised, not hit: round eyes, no spin. The lowest pixel stays a few px above
+ * the ground row.
+ */
+export const RAT_AIR: readonly RatPose[] = [
+  ratPose({
+    x: 2,
+    y: 6,
+    planted: false,
+    hip: 11,
+    lean: -16,
+    squash: -2.4,
+    stretch: 1.08,
+    head: [0, 1],
+    nod: -10,
+    earN: 30,
+    earF: 22,
+    armN: [11, 0],
+    armF: [12, -4],
+    footN: [-5, 1, 40],
+    footF: [-1, 2.5, 36],
+    tail: [-34, 2, 0.4, 16],
+    scarf: [78, 7, 0.6, 0],
+    eyes: 'alert',
+    look: 0.4,
+    mouth: 'shut'
+  }),
+  ratPose({
+    x: 2,
+    y: 7,
+    planted: false,
+    hip: 9,
+    lean: 6,
+    squash: 0.6,
+    head: [0.5, 0],
+    nod: 0,
+    earN: 4,
+    earF: 0,
+    armN: [10, 4],
+    armF: [-2, -17],
+    footN: [-5, 1.5, -18],
+    footF: [7, 2.5, 24],
+    tail: [8, 5, 1.6, 16],
+    scarf: [14, 7, 1.4, 1.2],
+    eyes: 'alert',
+    look: -0.4,
+    mouth: 'open'
+  }),
+  ratPose({
+    x: 2,
+    y: 6,
+    planted: false,
+    hip: 10,
+    lean: 2,
+    squash: -1,
+    head: [0, 0.5],
+    nod: 6,
+    earN: -16,
+    earF: -20,
+    armN: [17, -20],
+    armF: [20, -16],
+    footN: [-3, 0, 20],
+    footF: [5, 0.5, 30],
+    tail: [52, 4, 2.4, 16],
+    scarf: [-62, 8, 1.6, 2.6],
+    eyes: 'alert',
+    look: 1,
+    mouth: 'open'
+  })
+]
+const air = memo(() => RAT_AIR.map(drawRat))
+
 export const walkerSheet = () => ({
   idle: lazyAnim(idle, 8, true),
   move: lazyAnim(move, 12, true),
+  air: lazyAnim(air, 8, false),
   hurt: lazyAnim(hurt, 12, false),
   defeat: lazyAnim(defeat, 12, false)
 })

@@ -9,13 +9,15 @@
  * and a shot whose art is still on its way keeps the picture before it (the night colour for a first shot) and fades
  * in when it arrives. Nothing is painted on the page.
  */
-import { tile, type ThemeId } from '../art'
+import { anchorOf, tile, type ThemeId } from '../art'
 import { whenArt } from '../app/art-fetch'
 import { BackdropView } from '../view/backdrop'
-import { bake, blit, clip } from '../view/bake'
+import { bake, blit, brush, clip, frameIndex } from '../view/bake'
 import { backingScale } from './rules'
 import { CLASSIC_FRAME, frameFor, type Frame } from './story-frame'
-import { GROUND, groundTiles, SCENE_H, SCENE_W, shotArt, type Figure, type Shot } from './story-scenes'
+import { groundStrip, placeFigure, placeMark, shotScroll } from './story-motion'
+import { GROUND, SCENE_H, SCENE_W, shotArt, type Figure, type Shot } from './story-scenes'
+import { seatHeight, SEAT_HALF } from './story-seat'
 
 /** Where the game's backdrops expect the main ground (view pixels), lined up with the scene's ground row. */
 const BACKDROP_GROUND = 296
@@ -33,9 +35,6 @@ const keyOf = (shot: Shot) => {
   return key
 }
 
-/** Clips whose own drawing leaves the ground: a figure playing one gets no `hop` on top. */
-const LEAVES_THE_GROUND = new Set(['cheer'])
-
 export class Diorama {
   private shot: Shot | null = null
   private previous: Shot | null = null
@@ -43,6 +42,8 @@ export class Diorama {
   private time = 0
   /** Seconds since the shot changed. */
   private since = 99
+  /** The shot's own clock: seconds since it came up (since its art arrived, when it had to wait for it). */
+  private shotTime = 0
   private frame = 0
   private last = 0
   private running = false
@@ -104,6 +105,7 @@ export class Diorama {
     this.previous = cut ? this.shot : null
     this.shot = shot
     this.since = cut && this.previous ? 0 : 99
+    this.shotTime = 0
     this.resize()
     this.draw()
   }
@@ -119,6 +121,7 @@ export class Diorama {
       this.last = now
       this.time += dt
       this.since += dt
+      this.shotTime += dt
       for (const view of this.backdrops.values()) view.update(this.reducedMotion() ? 0 : dt)
       this.draw()
       this.frame = requestAnimationFrame(loop)
@@ -153,6 +156,7 @@ export class Diorama {
       readyShots.add(shot)
       if (this.shot !== shot) return
       this.since = 0
+      this.shotTime = 0
       this.draw()
     })
     if (now) {
@@ -192,51 +196,51 @@ export class Diorama {
 
   private paint(ctx: CanvasRenderingContext2D, shot: Shot) {
     const view = this.backdrop(shot.theme)
-    const scroll = shot.scroll ?? 0
+    const still = this.reducedMotion()
+    const scroll = shotScroll(shot, this.shotTime, still)
     const dy = GROUND - BACKDROP_GROUND
     ctx.save()
     ctx.translate(0, dy)
     view.drawBack(ctx, scroll, BACKDROP_GROUND)
     ctx.restore()
-    // The ground strip, under the whole width of any frame.
-    groundTiles(shot).forEach((q, i) => ctx.drawImage(bake(tile(q)), Math.round(i * 64 - (scroll % 64)), GROUND))
-    const still = this.reducedMotion()
-    const figures = [...shot.figures.filter((f) => !f.front), ...shot.figures.filter((f) => f.front)]
-    for (const figure of figures) this.drawFigure(ctx, figure, still)
-    for (const mark of shot.marks ?? []) {
+    // The ground strip, under the whole width of any frame (a tracking shot cycles through the same tiles).
+    for (const { tile: q, x } of groundStrip(shot, this.shotTime, still))
+      ctx.drawImage(bake(tile(q)), Math.round(x), GROUND)
+    const order = shot.figures.map((_, i) => i)
+    for (const i of [...order.filter((i) => !shot.figures[i].front), ...order.filter((i) => shot.figures[i].front)])
+      this.drawFigure(ctx, shot, i, still)
+    shot.marks?.forEach((mark, i) => {
       const a = clip('fx', mark.clip)
-      if (!a) continue
+      const at = placeMark(shot, i, this.shotTime, still)
+      if (!a || !at) return
       const bob = still ? 0 : Math.round(Math.sin(this.time * 3 + mark.x) * 2)
-      blit(ctx, a, this.time + mark.x * 0.01, mark.x, GROUND - mark.lift + bob)
-    }
+      blit(ctx, a, this.time + mark.x * 0.01, at.x, GROUND - at.lift + bob, brush(undefined, at.alpha))
+    })
     ctx.save()
     ctx.translate(0, dy)
     view.drawFront(ctx, scroll, BACKDROP_GROUND)
     ctx.restore()
   }
 
-  private drawFigure(ctx: CanvasRenderingContext2D, figure: Figure, still: boolean) {
+  /** How high a seated figure's feet are: the back of the mount's frame shown now, less how far she sits into it. */
+  private seatLift(shot: Shot, rider: Figure, still: boolean) {
+    const mount = shot.figures[rider.follow!]
+    const at = placeFigure(shot, rider.follow!, this.shotTime, still)
+    const anim = mount && at && clip(mount.sheet, mount.clip)
+    if (!anim || !at) return 0
+    const dx = rider.x - mount.x
+    const top = seatHeight(anim.frames[frameIndex(anim, at.clipTime)], anchorOf(anim), at.flip ? -dx : dx, SEAT_HALF)
+    return at.lift + (top ?? 0) - (rider.seat ?? 0)
+  }
+
+  /** Draws a figure where `placeFigure` puts it. */
+  private drawFigure(ctx: CanvasRenderingContext2D, shot: Shot, index: number, still: boolean) {
+    const figure = shot.figures[index]
     const a = clip(figure.sheet, figure.clip)
-    if (!a) return
-    const t = this.time + (figure.phase ?? 0)
-    let x = figure.x
-    let lift = figure.lift ?? 0
-    let flip = figure.flip
-    const motion = still ? 'none' : (figure.motion ?? 'none')
-    // A clip that leaves the ground itself (the cheer) gets no hop on top: the two would drift out of phase.
-    if (motion === 'hop' && !LEAVES_THE_GROUND.has(figure.clip)) lift += Math.round(Math.abs(Math.sin(t * 4.2)) * 10)
-    else if (motion === 'float') lift += Math.round(Math.sin(t * 2.2) * 4)
-    else if (motion === 'shake') x += Math.floor(t * 18) % 2 ? 1 : -1
-    else if (motion === 'pace') {
-      // A patrol faces the way it goes: it turns round at each end instead of walking backwards.
-      x += Math.round(Math.sin(t * 1.4) * 10)
-      flip = Math.cos(t * 1.4) < 0
-    } else if (motion === 'fall') {
-      const drop = Math.max(0, 96 - this.since * 40)
-      lift += Math.round(drop)
-      x += Math.round(Math.sin(t * 2.4) * (drop > 0 ? 8 : 0))
-    }
-    if (still && figure.motion === 'fall') lift = figure.lift ?? 0
-    blit(ctx, a, t, x, GROUND - lift, { flip })
+    const placed = placeFigure(shot, index, this.shotTime, still)
+    if (!a || !placed) return
+    const seated = figure.seat !== undefined && figure.follow !== undefined
+    const lift = placed.lift + (seated ? this.seatLift(shot, figure, still) : 0)
+    blit(ctx, a, placed.clipTime, placed.x, GROUND - lift, brush(placed.flip, placed.alpha))
   }
 }

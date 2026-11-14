@@ -20,6 +20,22 @@ const count = (f: Raster, set: Set<number>, y0 = 0, y1 = f.h) => {
   for (let y = y0; y < y1; y++) for (let x = 0; x < f.w; x++) if (set.has(f.get(x, y))) n++
   return n
 }
+/** The dark fire's ramp (his cast's flame and burst on the plain sheet). */
+const fire = new Set<number>(R.dark.slice(0, 3))
+/**
+ * The share of the box where the game throws his orbs painted in one of the colours, in the worse of his two
+ * facings. The box is 14 px wide with its left edge on his centre column whichever way he faces, 41 to 27 px over
+ * the anchor row; the sprite is mirrored about the anchor column (64) and the box is not, so in the cell's own
+ * pixels it is x 64–77 when he faces right and x 50–63 when he faces left (y 79–93 both).
+ */
+const inBirthBox = (f: Raster, set: Set<number>) =>
+  Math.min(
+    ...[64, 50].map((x0) => {
+      let n = 0
+      for (let y = 79; y <= 93; y++) for (let x = x0; x < x0 + 14; x++) if (set.has(f.get(x, y))) n++
+      return n / (14 * 15)
+    })
+  )
 /** The highest row holding a colour of the set. */
 const topOf = (f: Raster, set: Set<number>) => {
   for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) if (set.has(f.get(x, y))) return y
@@ -75,11 +91,56 @@ describe('黒ハム王 (king) on the hamster kit', () => {
     expect(slam.w).toBeGreaterThan(idle.w)
   })
 
-  test('the cast: shoot frame 3 (the hit frame) reaches furthest forward of its clip', () => {
-    const reaches = s.shoot.frames.map(reach)
+  test('the cast gathers a flame under his chin (0–2): it grows each frame, on the orbs’ birth box', () => {
+    const flame = s.shoot.frames.slice(0, 3).map((f) => count(f, fire))
+    expect(flame[0]).toBeGreaterThan(40)
+    expect(flame[1]).toBeGreaterThan(flame[0])
+    expect(flame[2]).toBeGreaterThan(flame[1])
+    expect(inBirthBox(s.shoot.frames[2], fire)).toBeGreaterThan(0.4)
+  })
+
+  test('the cast flings the volley up (hit frame 3): the burst covers the birth box, the arms go up, nothing low', () => {
     expect(spec.shoot.hit).toBe(3)
-    expect(reaches[3]).toBe(Math.max(...reaches))
-    for (const [i, r] of reaches.entries()) if (i !== 3) expect(r).toBeLessThan(reaches[3])
+    const hit = s.shoot.frames[3]
+    expect(inBirthBox(hit, new Set<number>([...fire, C.white]))).toBeGreaterThan(0.8)
+    // the paws thrown up and out: the painted body (not the crown) reaches higher and wider than in any gathering frame
+    const body = (f: Raster) => {
+      let top = f.h
+      for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) if (purple.has(f.get(x, y)) && y < top) top = y
+      return top
+    }
+    for (const f of s.shoot.frames.slice(0, 3)) {
+      expect(body(hit)).toBeLessThan(body(f))
+      expect(box(hit).w).toBeGreaterThanOrEqual(box(f).w)
+    }
+    // nothing thrust forward: the release reaches no further ahead than his stance does
+    expect(reach(hit)).toBeLessThanOrEqual(Math.max(...s.idle.frames.map(reach)) + 2)
+    // the burst thins to wisps, then almost nothing
+    const after = s.shoot.frames.slice(3).map((f) => count(f, fire))
+    expect(after[1]).toBeLessThan(after[0])
+    expect(after[2]).toBeLessThan(after[1])
+  })
+
+  test('the cast keeps him planted over the anchor', () => {
+    /** The mean column of his soles: the paw colours on his four lowest rows. */
+    const soles = new Set<number>(R.kingBelly.slice(0, 4))
+    const feet = (f: Raster) => {
+      let sum = 0
+      let n = 0
+      for (let y = bottom(f) - 3; y <= bottom(f); y++)
+        for (let x = 0; x < f.w; x++)
+          if (soles.has(f.get(x, y))) {
+            sum += x
+            n++
+          }
+      expect(n).toBeGreaterThan(10)
+      return sum / n
+    }
+    const stance = feet(s.idle.frames[0])
+    for (const [i, f] of s.shoot.frames.entries()) {
+      expect(bottom(f), `shoot ${i}`).toBe(bottom(s.idle.frames[0]))
+      expect(Math.abs(feet(f) - stance), `shoot ${i} feet`).toBeLessThanOrEqual(3)
+    }
   })
 
   test('red eyes appear only in the rage, and there in the second half', () => {
@@ -320,9 +381,11 @@ describe('黒ハム王 after the transformation (king:raged)', () => {
     expect(auraTop(raged.land.frames[0])).toBeGreaterThan(Math.max(...raged.idle.frames.map(auraTop)))
   })
 
-  test('the hit frame of the cast still reaches furthest forward', () => {
-    const reaches = raged.shoot.frames.map(reach)
+  test('the raged cast flings its volley up too: the burst on the orbs’ birth box, its heart his rage red', () => {
     expect(KING_RAGED_SPEC.shoot.hit).toBe(3)
-    for (const [i, r] of reaches.entries()) if (i !== 3) expect(r).toBeLessThan(reaches[3])
+    const hit = raged.shoot.frames[3]
+    expect(inBirthBox(hit, new Set<number>([...R.dark.slice(0, 3), C.white, KING_RAGE_RED]))).toBeGreaterThan(0.8)
+    // red only in the eyes and the fire's heart: more of it on the burst frame than on a plain gathering frame
+    expect(count(hit, red)).toBeGreaterThan(count(raged.shoot.frames[0], red))
   })
 })

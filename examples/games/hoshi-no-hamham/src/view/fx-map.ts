@@ -24,6 +24,15 @@ export interface FxApi {
   hurtPulse(): void
   /** View-only random number in [0, 1). */
   rand(): number
+  /**
+   * Where a boss's shots leave his body, for a `boss-shoot` at his centre `x`: the edge of his body on the side they
+   * go (his pose throws them from there). Without it (or without a boss) the effects sit on `x`.
+   */
+  shotEdge?(x: number): number | undefined
+  /** Whether the world point (x, y) is in water (optional: dry without it). */
+  underWater?(x: number, y: number): boolean | undefined
+  /** The actors view puffs a summoned minion in itself, once it shows (see `ActorsView`); the event does nothing. */
+  summonsLater?: boolean
 }
 
 type Handler<K extends SimEventType> = (event: Extract<SimEvent, { type: K }>, view: FxApi) => void
@@ -31,7 +40,31 @@ export type FxMap = { [K in SimEventType]: Handler<K> }
 
 const UP = -Math.PI / 2
 const FAN = (center: number, width: number): [number, number] => [center - width / 2, center + width / 2]
+/** The width of a shockwave's box (sim.ts `spawnShock`). */
+export const SHOCK_W = 30
+/** Where a squirrel's throw leaves its paw, from the `spit` event's point (px; x towards the shot). */
+export const SPIT_TIP_X = 26
+export const SPIT_TIP_Y = 4
 const DEBRIS: BurstOptions = { gravity: 900, speed: [120, 260], angle: FAN(UP, 2.2), life: [0.45, 0.8], drag: 0.6 }
+
+/** The puff a summoned minion appears in (its centre at x, y). */
+export function summonPuff(view: Pick<FxApi, 'spawn' | 'burst'>, x: number, y: number) {
+  view.spawn('puff', x, y)
+  view.burst('sparkle', x, y, 3, { speed: [40, 80], life: [0.3, 0.4] })
+}
+
+/**
+ * A foot on the ground (its feet row y) in water raises no dust. On the floor of a pool (water just above the feet)
+ * it stirs a couple of bubbles; on the lip of a bank with the body over the pool at its surface (water just under the
+ * feet) nothing. Whether it was wet.
+ */
+function wetFoot(x: number, y: number, view: FxApi) {
+  if (view.underWater?.(x, y - 4)) {
+    view.burst('bubble', x, y - 8, 2, { speed: [10, 30], angle: FAN(UP, 1.2), life: [0.5, 0.9], layer: 'front' })
+    return true
+  }
+  return Boolean(view.underWater?.(x, y + 4))
+}
 
 function confetti(view: FxApi, x: number, y: number, count: number) {
   const names: FxName[] = ['confettiA', 'confettiB', 'confettiC']
@@ -50,11 +83,12 @@ function confetti(view: FxApi, x: number, y: number, count: number) {
 export const FX_MAP: FxMap = {
   // ----- the hero
   jump: (e, v) => {
+    if (wetFoot(e.x, e.y, v)) return
     v.spawn('dust', e.x - 8, e.y - 6, { vx: -30, vy: -10 })
     v.spawn('dust', e.x + 8, e.y - 6, { vx: 30, vy: -10, flip: true })
   },
   land: (e, v) => {
-    if (e.speed < 260) return
+    if (e.speed < 260 || wetFoot(e.x, e.y, v)) return
     v.spawn('dust', e.x - 12, e.y - 6, { vx: -50, vy: -6 })
     v.spawn('dust', e.x + 12, e.y - 6, { vx: 50, vy: -6, flip: true })
     if (e.speed > 650) v.trauma(0.12)
@@ -265,7 +299,9 @@ export const FX_MAP: FxMap = {
     v.trauma(0.18)
   },
   hop: (e, v) => v.spawn('dust', e.x, e.y - 6, { rate: 1.3 }),
-  spit: (e, v) => v.spawn('smoke', e.x + e.dir * 14, e.y, { vx: e.dir * 30, rate: 1.6 }),
+  // At the tip of the squirrel's throw on its release frame: 26 px in front of its centre, 21 px above its feet (the
+  // event's y is 0.4 of its 42 px height down from its top).
+  spit: (e, v) => v.spawn('smoke', e.x + e.dir * SPIT_TIP_X, e.y + SPIT_TIP_Y, { vx: e.dir * 30, rate: 1.6 }),
   'shot-hit': (e, v) => {
     if (e.kind === 'shock')
       v.burst('dust', e.x, e.y + 10, 3, { speed: [30, 80], angle: FAN(UP, 2.4), life: [0.3, 0.45] })
@@ -305,8 +341,9 @@ export const FX_MAP: FxMap = {
     }
   },
   'boss-shoot': (e, v) => {
-    v.spawn('smoke', e.x, e.y, { rate: 1.5 })
-    v.burst('sparkle', e.x, e.y, Math.min(6, e.count + 1), { speed: [60, 120], life: [0.2, 0.35] })
+    const x = v.shotEdge?.(e.x) ?? e.x
+    v.spawn('smoke', x, e.y, { rate: 1.5 })
+    v.burst('sparkle', x, e.y, Math.min(6, e.count + 1), { speed: [60, 120], life: [0.2, 0.35] })
   },
   'boss-slam': (e, v) => {
     v.spawn('ring', e.x, e.y - 8, { layer: 'front' })
@@ -314,7 +351,9 @@ export const FX_MAP: FxMap = {
     v.burst('clod', e.x, e.y - 6, 6, DEBRIS)
     v.trauma(0.7)
   },
-  shock: (e, v) => v.spawn('dust', e.x + e.dir * 20, e.y - 6, { vx: e.dir * 40 }),
+  // Under the wave's leading edge: sim.ts puts its box (SHOCK_W wide) with its left at the event's x, whichever way
+  // it goes.
+  shock: (e, v) => v.spawn('dust', e.dir > 0 ? e.x + SHOCK_W : e.x, e.y - 6, { vx: e.dir * 40 }),
   'boss-crash': (e, v) => {
     v.burst('star', e.x + e.dir * 24, e.y - 20, 6, {
       speed: [100, 200],
@@ -363,9 +402,9 @@ export const FX_MAP: FxMap = {
       })
     v.burst('star', e.x, e.y, 10, { speed: [140, 260], gravity: 300, life: [0.7, 1.1], layer: 'front' })
   },
+  // A view that shows a minion only once the simulation has settled it puffs it in then (`summonPuff`), where it is.
   minion: (e, v) => {
-    v.spawn('puff', e.x, e.y)
-    v.burst('sparkle', e.x, e.y, 3, { speed: [40, 80], life: [0.3, 0.4] })
+    if (!v.summonsLater) summonPuff(v, e.x, e.y)
   },
   'gate-up': (e, v) => {
     v.burst('dust', e.tx * TILE + TILE / 2, (e.bottom + 1) * TILE - 6, 6, {

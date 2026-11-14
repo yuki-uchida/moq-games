@@ -30,6 +30,7 @@ interface DioramaHook {
   shown: unknown
   time: number
   since: number
+  shotTime: number
   canvas: HTMLCanvasElement
   stop(): void
   draw(): void
@@ -189,7 +190,10 @@ test('a story opened at once after a reload at a 6x CPU throttle is up and typin
   expect(errors).toEqual([])
 })
 
-/** The diorama at `which` once its shot is drawn, frozen at time 0, as a PNG. */
+/**
+ * The diorama at `which` once its shot is drawn, frozen at a fixed moment, as a PNG: its running clock at 0 and the
+ * shot's own clock at 4 s (a figure that comes down from the sky has landed by then).
+ */
 async function frozenPicture(page: Page, which: 'storyArt' | 'resultArt') {
   await page.waitForFunction(
     (key) => {
@@ -204,6 +208,7 @@ async function frozenPicture(page: Page, which: 'storyArt' | 'resultArt') {
     d.stop()
     d.time = 0
     d.since = 99
+    d.shotTime = 4
     d.draw()
     return d.canvas.toDataURL()
   }, which)

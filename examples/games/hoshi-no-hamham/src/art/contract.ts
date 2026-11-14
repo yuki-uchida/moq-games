@@ -149,10 +149,22 @@ export type EnemyArt = (typeof ENEMY_KINDS)[number]
 // the blow, flung back head over heels (drawn, never a turned picture), limp
 const DEFEAT = cell(6, 12, false, { travel: 'air' })
 const HURT = cell(2, 12, false, { travel: 'air' }) // a bite knocks an enemy off its feet for a moment
+/**
+ * A walker off the ground (summoned in mid-air beside a boss, stepping off a ledge, the ground dug away under it):
+ * it does not walk on air. The view picks the frame by vertical speed, as for the bosses' leaps: 0 thrown upward,
+ * 1 the top (hanging for a moment, limbs spread), 2 falling (feet reaching down for the ground).
+ */
+const WALKER_AIR = cell(3, 8, false, { travel: 'air' })
 
 export const ENEMY_SPEC: Record<EnemyArt, Specs> = {
   // The rat's walk covers 40 px a pass (5 px a frame under a planted foot), walking or chasing.
-  walker: { idle: cell(6, 8, true), move: cell(8, 12, true, { stride: 40 }), hurt: HURT, defeat: DEFEAT },
+  walker: {
+    idle: cell(6, 8, true),
+    move: cell(8, 12, true, { stride: 40 }),
+    air: WALKER_AIR,
+    hurt: HURT,
+    defeat: DEFEAT
+  },
   flyer: { move: cell(8, 16, true, { travel: 'air' }), hurt: HURT, defeat: DEFEAT }, // always flapping
   jumper: {
     idle: cell(6, 8, true), // the throat pumps
@@ -167,7 +179,13 @@ export const ENEMY_SPEC: Record<EnemyArt, Specs> = {
     defeat: DEFEAT
   },
   spitter: { idle: cell(6, 8, true), shoot: cell(6, 12, false, { hit: 3 }), hurt: HURT, defeat: DEFEAT },
-  tough: { idle: cell(6, 8, true), move: cell(8, 10, true, { stride: 40 }), hurt: HURT, defeat: DEFEAT }
+  tough: {
+    idle: cell(6, 8, true),
+    move: cell(8, 10, true, { stride: 40 }),
+    air: WALKER_AIR,
+    hurt: HURT,
+    defeat: DEFEAT
+  }
 }
 
 /** How each boss fights; decides which clips its sheet needs. */
@@ -388,7 +406,13 @@ const BASE_PROP_SPEC: Record<string, Specs> = {
   'prop:feather': { spin: small(24, 4, 14, true) }, // カラス助
   'prop:stinger': { fly: small(24, 2, 14, true) }, // ハチ女王
   'prop:orb': { pulse: small(24, 4, 12, true) }, // きつね旋風 and 黒ハム王
-  'prop:shock': { roll: clip(48, 32, 4, 14, true, { anchor: [24, 30] }) }, // ground shockwave
+  // The shockwave of a slam or a charge. `roll` hugs the ground it runs along. The simulation keeps a wave going
+  // level when the ground ends under it (off a mound, a step, a platform): there it is drawn as `fly`, the same
+  // crest torn free of the ground, a blade of air with nothing under it.
+  'prop:shock': {
+    roll: clip(48, 32, 4, 14, true, { anchor: [24, 30] }),
+    fly: clip(48, 32, 4, 14, true, { anchor: [24, 30] })
+  },
   'prop:bee': { fly: small(24, 2, 24, true) }
 }
 

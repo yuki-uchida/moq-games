@@ -13,6 +13,18 @@ import type { Raster } from '../art/raster'
 import { defaultAnchor } from '../art/sheet'
 import { whenArt } from '../app/art-fetch'
 import { bake } from '../view/bake'
+import {
+  GROUND_SPACING,
+  HOP_CLIPS,
+  HOP_HEIGHT,
+  HOP_TOP,
+  groundShift,
+  hopDrawLift,
+  hopPose,
+  soleGap,
+  type HopClip,
+  type HopPose
+} from './help-moves'
 import { nineSlice } from './rules'
 
 const urls = new Map<string, string>()
@@ -168,7 +180,15 @@ interface Player {
   cycle?: { frames: readonly number[]; every: number }
   /** On screen, as far as the observer knows (true until it has reported). */
   visible: boolean
+  /** Marks on the ground band that go back with the clip's frames: the px of ground one pass of the clip covers. */
+  ground?: { stride: number }
+  /** A whole hop instead of one clip: every clip it draws and the height it rises. */
+  hop?: { anims: Record<HopClip, Anim>; height: number; pose: HopPose }
 }
+
+/** The ground marks of a walking sprite: small dark dashes on the band under the feet. */
+const GROUND_MARK = 'rgba(14, 40, 30, 0.7)'
+const GROUND_MARK_W = 8
 
 const players = new Set<Player>()
 const byCanvas = new WeakMap<Element, Player>()
@@ -197,21 +217,46 @@ function wake() {
 
 const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
-function drawPlayer(player: Player, now: number) {
-  const { canvas, anim: a } = player
-  if (!a) return
-  // A frame callback's timestamp can precede the moment a player restarted, hence the clamp.
-  let t = Math.max(0, now - player.start) / 1000
-  if (player.repeatEvery) t %= player.repeatEvery
-  const { cycle } = player
-  const frame = cycle
-    ? a.frames[cycle.frames[Math.floor(t / cycle.every) % cycle.frames.length]]
-    : a.frames[frameAt(a, t)]
+/** Draws frame `index` of `a` on the canvas, lifted `lift` px, over the ground marks of a walk (if it has any). */
+function paintFrame(canvas: HTMLCanvasElement, a: Anim, index: number, ground: Player['ground'], lift = 0) {
   const ctx = canvas.getContext('2d')!
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   const [ax, ay] = anchorOf(a)
   const [cx, cy] = [Number(canvas.dataset.ax), Number(canvas.dataset.ay)]
-  ctx.drawImage(bake(frame), cx - ax, cy - ay)
+  if (ground) {
+    // The marks are where the ground is: each frame of the cycle they are one step further back.
+    ctx.fillStyle = GROUND_MARK
+    const shift = groundShift(index, a.frames.length, ground.stride)
+    for (let x = -shift; x < canvas.width; x += GROUND_SPACING) ctx.fillRect(x, cy + 1, GROUND_MARK_W, 2)
+  }
+  ctx.drawImage(bake(a.frames[index]), cx - ax, cy - ay - lift)
+}
+
+const soleGaps = new WeakMap<Raster, number>()
+
+/** A frame of the hop: on the hop's curve, its soles brought down to the line near the ground. */
+function paintHop(canvas: HTMLCanvasElement, a: Anim, pose: HopPose) {
+  const index = frameAt(a, pose.t)
+  const frame = a.frames[index]
+  let gap = soleGaps.get(frame)
+  if (gap === undefined) soleGaps.set(frame, (gap = soleGap(frame, anchorOf(a)[1])))
+  paintFrame(canvas, a, index, undefined, hopDrawLift(pose.lift, gap))
+}
+
+function drawPlayer(player: Player, now: number) {
+  const { canvas, anim: a, hop } = player
+  if (!a) return
+  // A frame callback's timestamp can precede the moment a player restarted, hence the clamp.
+  let t = Math.max(0, now - player.start) / 1000
+  if (player.repeatEvery) t %= player.repeatEvery
+  if (hop) {
+    const pose = hopPose(t, hop.height, hop.pose)
+    paintHop(canvas, hop.anims[pose.clip], pose)
+    return
+  }
+  const { cycle } = player
+  const index = cycle ? cycle.frames[Math.floor(t / cycle.every) % cycle.frames.length] : frameAt(a, t)
+  paintFrame(canvas, a, index, player.ground)
 }
 
 function tick(now: number) {
@@ -232,13 +277,13 @@ function tick(now: number) {
 }
 
 /** Gives the canvas the clip's frame size and anchor. */
-function shape(canvas: HTMLCanvasElement, w: number, h: number, anchor: readonly [number, number]) {
+function shape(canvas: HTMLCanvasElement, w: number, h: number, anchor: readonly [number, number], headroom = 0) {
   if (canvas.width !== w) canvas.width = w
-  if (canvas.height !== h) canvas.height = h
+  if (canvas.height !== h + headroom) canvas.height = h + headroom
   canvas.dataset.ax = String(anchor[0])
-  canvas.dataset.ay = String(anchor[1])
+  canvas.dataset.ay = String(anchor[1] + headroom)
   canvas.style.setProperty('--w', String(w))
-  canvas.style.setProperty('--h', String(h))
+  canvas.style.setProperty('--h', String(h + headroom))
 }
 
 /** A frame number, or one worked out from the clip's frame count. */
@@ -262,12 +307,23 @@ export function spritePlayer(
     label?: string
     /** Hold a pose by alternating between these frames, `every` seconds each. */
     cycle?: ByCount<{ frames: readonly number[]; every: number }>
+    /**
+     * A walk over the ground: marks on the ground band under the feet go back with the clip's frames (`stride` of the
+     * contract, per pass), so a foot that is down stays over the same mark. Needs a clip with a stride.
+     */
+    groundMarks?: boolean
+    /**
+     * Plays a whole hop instead of the clip (`hopPose`, help-moves.ts): the canvas gets `HOP_HEIGHT` rows of headroom
+     * above the clip's frame for the leap. Under reduced motion it shows one frame at the top of the hop.
+     */
+    hop?: boolean
   } = {}
 ): HTMLCanvasElement {
   const canvas = document.createElement('canvas')
   canvas.className = `px ${options.className ?? ''}`.trim()
   const spec = specOf(id, clip)
-  if (spec) shape(canvas, spec.w, spec.h, spec.anchor ?? defaultAnchor(spec.w, spec.h))
+  const headroom = options.hop ? HOP_HEIGHT : 0
+  if (spec) shape(canvas, spec.w, spec.h, spec.anchor ?? defaultAnchor(spec.w, spec.h), headroom)
   if (options.scale) canvas.style.setProperty('--s', String(options.scale))
   if (options.label) {
     canvas.setAttribute('role', 'img')
@@ -282,20 +338,38 @@ export function spritePlayer(
     visible: true
   }
   const fill = () => {
+    if (options.hop) {
+      if (player.hop || !HOP_CLIPS.every((name) => clipReady(id, name))) return
+      const anims = Object.fromEntries(HOP_CLIPS.map((name) => [name, anim(id, name)])) as Record<HopClip, Anim>
+      const { w, h } = anims.idle.frames[0]
+      shape(canvas, w, h, anchorOf(anims.idle), headroom)
+      player.hop = { anims, height: HOP_HEIGHT, pose: { clip: 'idle', t: 0, lift: 0 } }
+      player.anim = anims.idle
+      if (still) {
+        const pose = hopPose(HOP_TOP, HOP_HEIGHT, player.hop.pose)
+        paintHop(canvas, anims[pose.clip], pose)
+        return
+      }
+      drawPlayer(player, performance.now())
+      return
+    }
     const a = anim(id, clip)
     const { w, h } = a.frames[0]
     shape(canvas, w, h, anchorOf(a))
     const count = a.frames.length
+    const stride = options.groundMarks ? specOf(id, clip)?.stride : undefined
+    if (stride) player.ground = { stride }
     if (still) {
-      const frame = a.frames[Math.min(count - 1, byCount(options.stillFrame ?? Math.floor(count / 2), count))]
-      canvas.getContext('2d')!.drawImage(bake(frame), 0, 0)
+      const index = Math.min(count - 1, byCount(options.stillFrame ?? Math.floor(count / 2), count))
+      paintFrame(canvas, a, index, player.ground)
       return
     }
     player.anim = a
     if (options.cycle) player.cycle = byCount(options.cycle, count)
     drawPlayer(player, performance.now())
   }
-  withClip(id, clip, fill)
+  if (options.hop) for (const name of HOP_CLIPS) withClip(id, name, fill)
+  else withClip(id, clip, fill)
   if (still) return canvas
   players.add(player)
   byCanvas.set(canvas, player)

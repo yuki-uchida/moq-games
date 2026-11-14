@@ -7,7 +7,7 @@ import { sharedArtSource, type ArtSource } from '../art/remote'
 import type { SimEvent } from '../game/events'
 import type { World } from '../game/sim'
 import { TILE } from '../game/types'
-import { ActorsView } from './actors'
+import { ActorsView, shotSide } from './actors'
 import { BackdropView } from './backdrop'
 import { Camera } from './camera'
 import { FxPool } from './fx'
@@ -89,8 +89,17 @@ export class StageView {
       popup: (text, x, y, color) => this.overlay.popup(text, x, y, color),
       flash: (color, alpha, seconds) => this.overlay.flash(color, alpha, seconds),
       hurtPulse: () => this.overlay.hurt(),
-      rand: fx.rand
+      rand: fx.rand,
+      // (The king's volley bursts out of his chest: its smoke stays on his centre.)
+      shotEdge: (x) => {
+        const boss = this.world.boss
+        if (!boss || boss.def.kind === 'final') return x
+        return x + (shotSide(this.world.player.x, x, boss.w) * boss.w) / 2
+      },
+      summonsLater: true,
+      underWater: (x, y) => this.world.waterAt(Math.floor(x / TILE), Math.floor(y / TILE))
     }
+    this.props.drawnFrame = (body, out) => this.actors.drawnFrame(body, out)
   }
 
   get frozen() {
@@ -124,6 +133,7 @@ export class StageView {
     this.backdrop.update(dt)
     this.water.update(dt)
     this.props.update(animDt)
+    this.props.tickReal(dt)
     this.actors.update(animDt)
     this.actors.tickReal(dt)
     this.fx.update(dt)
@@ -149,11 +159,13 @@ export class StageView {
     this.terrain.drawDecor(ctx, v.x, v.y)
     this.props.drawProps(ctx)
     this.props.drawPickups(ctx)
+    // A shot still inside the body that threw it comes out from behind his silhouette (see `PropsView.shotBehind`).
+    this.props.drawProjectiles(ctx, 'behind')
     this.actors.drawEnemies(ctx)
     this.actors.drawBoss(ctx)
     this.props.drawPrincess(ctx)
     this.actors.drawHero(ctx)
-    this.props.drawProjectiles(ctx)
+    this.props.drawProjectiles(ctx, 'front')
     this.fx.draw(ctx, 'world')
     this.water.draw(ctx, v.x, v.y)
     this.fx.draw(ctx, 'front')

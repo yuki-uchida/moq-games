@@ -1349,8 +1349,12 @@ export class DomScreens implements Screens {
     const move = (clip: (typeof HELP_MOVES)[number], title: string, keys: HTMLElement, touch: string, note: string) => {
       const li = el('li', 'move')
       const stage = el('span', 'move-sprite')
+      // The walk runs over ground marks that go back with its frames; the jump is a whole hop; the bite stands.
       stage.append(
-        spritePlayer('hero', clip, { className: 'move-hero', repeatEvery: clip === 'run' ? undefined : 1.2 })
+        spritePlayer('hero', clip, {
+          className: 'move-hero',
+          ...(clip === 'run' ? { groundMarks: true } : clip === 'jump' ? { hop: true } : { repeatEvery: 1.2 })
+        })
       )
       const body = el('span', 'move-body')
       const head = el('span', 'move-head')

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { FX_SPEC } from '../src/art/contract'
 import { SIM_EVENT_TYPES, type SimEvent, type SimEventType } from '../src/game/events'
 import { FX_NAMES } from '../src/view/fx'
-import { FX_MAP, playFx, type FxApi } from '../src/view/fx-map'
+import { FX_MAP, SHOCK_W, playFx, type FxApi } from '../src/view/fx-map'
 import { SFX } from '../src/audio/api'
 import { SOUND_MAP, callsFor } from '../src/view/sound-map'
 
@@ -159,6 +159,98 @@ describe('fx-map', () => {
     const pickup = stubView()
     playFx({ type: 'pickup', kind: 'berry', x: 0, y: 0, hp: 6, count: 3, need: 8 }, pickup.view)
     expect(pickup.calls).toContain('popup')
+  })
+
+  it("a new shockwave's dust is under its leading edge, whichever way it goes", () => {
+    // sim.ts puts the wave's 30 px box with its left at the event's x.
+    for (const dir of [1, -1] as const) {
+      const at: { name: string; x: number }[] = []
+      const { view } = stubView()
+      view.spawn = (name, x) => void at.push({ name, x })
+      playFx({ type: 'shock', x: 500, y: 896, dir }, view)
+      expect(at).toEqual([{ name: 'dust', x: dir > 0 ? 500 + SHOCK_W : 500 }])
+    }
+    expect(SHOCK_W).toBe(30)
+  })
+
+  it("a summon's puff is left to a view that shows the minion only once it has settled", () => {
+    const now = stubView()
+    playFx({ type: 'minion', kind: 'walker', x: 0, y: 0 }, now.view)
+    expect(now.calls).toEqual(['spawn:puff', 'burst:sparkle'])
+    const later = stubView()
+    later.view.summonsLater = true
+    playFx({ type: 'minion', kind: 'walker', x: 0, y: 0 }, later.view)
+    expect(later.calls).toEqual([])
+  })
+
+  it('a landing or a jump on the floor of a pool stirs bubbles, not dust', () => {
+    const events: SimEvent[] = [
+      { type: 'land', x: 3872, y: 1088, speed: 260 },
+      { type: 'jump', x: 3872, y: 1088 }
+    ]
+    for (const event of events) {
+      const wet = stubView()
+      // (Water in the cells above the floor at 1088.)
+      wet.view.underWater = (x, y) => x === 3872 && y < 1088
+      playFx(event, wet.view)
+      expect(wet.calls, event.type).toEqual(['burst:bubble'])
+      // On dry ground (or without the hook) the dust as before.
+      const dry = stubView()
+      playFx(event, dry.view)
+      expect(
+        dry.calls.filter((c) => c === 'spawn:dust'),
+        event.type
+      ).toHaveLength(2)
+      dry.view.underWater = () => false
+      dry.calls.length = 0
+      playFx(event, dry.view)
+      expect(
+        dry.calls.filter((c) => c === 'spawn:dust'),
+        event.type
+      ).toHaveLength(2)
+    }
+    // A soft landing under water does nothing at all, as on land.
+    const soft = stubView()
+    soft.view.underWater = () => true
+    playFx({ type: 'land', x: 0, y: 0, speed: 100 }, soft.view)
+    expect(soft.calls).toEqual([])
+    // On the lip of a bank, the body over the pool at its surface (water under the feet, air above): no dust, and no
+    // bubbles in the air either.
+    for (const event of events) {
+      const lip = stubView()
+      lip.view.underWater = (_x, y) => y > 1088
+      playFx(event, lip.view)
+      expect(lip.calls, event.type).toEqual([])
+    }
+  })
+
+  it("puts a throw's smoke where the pose releases it, not on the thrower's chest", () => {
+    const at: { name: string; x: number; y: number }[] = []
+    const { view } = stubView()
+    view.spawn = (name, x, y) => void at.push({ name, x, y })
+    view.burst = (name, x, y) => void at.push({ name, x, y })
+    // A boss at x 500: his shots go to the hero's side, from the edge of his 92 px body.
+    view.shotEdge = (x) => x - 46
+    playFx({ type: 'boss-shoot', x: 500, y: 300, count: 3 }, view)
+    expect(at.map((f) => [f.name, f.x, f.y])).toEqual([
+      ['smoke', 454, 300],
+      ['sparkle', 454, 300]
+    ])
+    // Without the hook (or a boss) the effects stay on the event's point.
+    at.length = 0
+    delete view.shotEdge
+    playFx({ type: 'boss-shoot', x: 500, y: 300, count: 3 }, view)
+    expect(at.map((f) => f.x)).toEqual([500, 500])
+    // A squirrel's: at the tip of its throw, 26 px in front of its centre and 21 px above its feet. sim.ts puts the
+    // event 0.4 of its 42 px height down from the top of its box (16.8 px).
+    for (const dir of [1, -1] as const) {
+      at.length = 0
+      const top = 200
+      playFx({ type: 'spit', id: 1, x: 100, y: top + 42 * 0.4, dir }, view)
+      expect(at[0].name).toBe('smoke')
+      expect(at[0].x).toBe(100 + dir * 26)
+      expect(Math.abs(top + 42 - at[0].y - 21)).toBeLessThan(1)
+    }
   })
 })
 

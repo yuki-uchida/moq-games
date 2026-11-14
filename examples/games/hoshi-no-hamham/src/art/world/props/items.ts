@@ -371,6 +371,78 @@ function drawShock(f: number): Raster {
   return out
 }
 
+/**
+ * The same wave torn free of the ground (it has run off a ledge): the crest and its bright rim fly on as a crescent,
+ * the base and the dust slope are gone, and the lower edge frays into streaks and crumbs of grit that trail back and
+ * fall away. The crest keeps the shape, place and breathing of `roll`; nothing is painted on rows 30 and 31.
+ */
+function drawShockFly(f: number): Raster {
+  const out = new Raster(48, 32)
+  const cx = 21 + f * 1.5
+  const ry = [16, 18, 19, 17][f]
+  const rx = [12.5, 13.5, 14, 13][f]
+  const ox = [6, 5, 4, 5][f]
+  const iy = [-1, -1, 0, -1][f]
+  const crest = (x: number, y: number) => {
+    const nx = (x + 0.5 - cx) / rx
+    const ny = (y + 0.5 - 30) / ry
+    return nx * nx + ny * ny
+  }
+  const hollow = (x: number, y: number) => {
+    const nx = (x + 0.5 - (cx + ox)) / (rx - 4.5)
+    const ny = (y + 0.5 - (31 + iy)) / (ry - 7)
+    return nx * nx + ny * ny
+  }
+  // the torn underside: high at the back of the crest, sloping down to the curl, ragged in steps that move back
+  const back = cx - rx
+  const tear = (x: number) => Math.min(27, 18 + (x - back) * 0.6) + [0, 1.5, 0.5, 2][(x + f * 2 + 64) % 4]
+  const l = new Raster(48, 32)
+  for (let y = 0; y <= 27; y++)
+    for (let x = 0; x < 48; x++) {
+      const q = crest(x, y)
+      if (q > 1 || hollow(x, y) <= 1 || y >= tear(x)) continue
+      let col: number = R.dust[1]
+      const depth = 1 - Math.sqrt(q)
+      const rim = Math.sqrt(hollow(x, y)) - 1
+      if (rim < 0.07) col = C.white
+      else if (rim < 0.16) col = R.gold[1]
+      else if (depth < 0.1) col = y < 21 ? R.dust[0] : R.dust[2]
+      else if (depth < 0.2 || y > 23) col = R.dust[2]
+      l.set(x, y, col)
+    }
+  // streaks of dust peeling off the underside and trailing back and down (a slant, never a level line), each a beat
+  // apart so the loop has no seam
+  const streaks: [number, number, number][] = [
+    [1, 19, 7],
+    [4, 21, 6],
+    [7, 23, 5]
+  ]
+  streaks.forEach(([dx, y0, len], i) => {
+    const ph = (f + i) % 4
+    const x1 = Math.round(back + dx - ph * 2)
+    const n = len - ph
+    for (let k = 0; k < n; k++) l.set(x1 - k, Math.min(27, y0 + ph + (k >> 1)), k < 2 ? R.dust[1] : R.dust[2])
+  })
+  outline(l)
+  out.blit(l)
+  // crumbs of grit dropping out of the torn edge, back and down
+  const crumbs: [number, number][] = [
+    [-1, 23],
+    [4, 24]
+  ]
+  crumbs.forEach(([dx, y0], i) => {
+    const ph = (f + i * 2) % 4
+    const sx = Math.max(1, Math.round(back + dx - ph * 2))
+    const sy = Math.min(28, y0 + Math.round(ph * 1.5))
+    out.rect(sx, sy, 2, 2, R.rock[1])
+    out.set(sx, sy, R.rock[0])
+    out.set(sx + 1, sy + 1, R.rock[3])
+  })
+  // dust blown off the top of the crest, as in `roll`
+  twinkle(out, Math.round(cx + 2 + f), 9 + ((f * 2) % 3), C.white, R.dust[0])
+  return out
+}
+
 function wing(l: Raster, x: number, y: number, dx: number, dy: number, w: number) {
   const n = Math.hypot(dx, dy) || 1
   const nx = (-dy / n) * w
@@ -418,6 +490,9 @@ export const sheets: SheetModule = {
   'prop:feather': () => ({ spin: lazyAnim(() => [0, 1, 2, 3].map(drawFeather), 14, true) }),
   'prop:stinger': () => ({ fly: lazyAnim(() => [drawStinger(0), drawStinger(1)], 14, true) }),
   'prop:orb': () => ({ pulse: lazyAnim(() => [0, 1, 2, 3].map(drawOrb), 12, true) }),
-  'prop:shock': () => ({ roll: lazyAnim(() => [0, 1, 2, 3].map(drawShock), 14, true, { anchor: [24, 30] }) }),
+  'prop:shock': () => ({
+    roll: lazyAnim(() => [0, 1, 2, 3].map(drawShock), 14, true, { anchor: [24, 30] }),
+    fly: lazyAnim(() => [0, 1, 2, 3].map(drawShockFly), 14, true, { anchor: [24, 30] })
+  }),
   'prop:bee': () => ({ fly: lazyAnim(() => [drawBee(0), drawBee(1)], 24, true) })
 }

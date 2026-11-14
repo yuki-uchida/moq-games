@@ -6,6 +6,7 @@
  *
  * - the view asks only for clips the sheet it draws from has;
  * - a pose drawn with planted feet does not travel along the ground, and a dash is drawn as one;
+ * - a pose drawn in the air (a jump, a fall, a swim, a leap) is not shown on a body that stands on the ground;
  * - a ground cycle advances with the ground covered (`stride` in the contract);
  * - whatever travels faces where it goes, a shot leaves from its release frame towards the side its shooter
  *   faces, and nobody flickers between left and right;
@@ -23,11 +24,14 @@ import { STAGES } from '../src/game/stages'
 import {
   audit,
   heroBlows,
+  heroInWater,
   heroOverlaps,
+  minionFight,
   hitSweep,
   pigletCharges,
   playthrough,
   spitterOverlaps,
+  squirrelVolleys,
   summarise,
   type Recorder
 } from './play-audit'
@@ -82,6 +86,55 @@ describe('the picture and the motion agree in real play', () => {
     expectClean(runs)
   })
 
+  // The bosses' minions (the playthroughs and sweeps keep the stage's own enemies, so nothing is summoned there).
+  // The brutes' own summons hardly ever come (sim.ts): theirs are called by hand.
+  it.each(
+    STAGES.filter((stage) => stage.boss.minions.length).map((stage) => ({ no: stage.no, kind: stage.boss.kind }))
+  )(
+    'stage $no: the boss summons his minions, and they are drawn as their bodies move from their first frame',
+    { timeout: 120_000 },
+    ({ no, kind }) => {
+      const force = kind === 'brute'
+      const runs = [minionFight(no, 5, { force }), minionFight(no, 11, { force, hz: no % 2 ? 120 : 30 })]
+      expectClean(runs)
+      const seen = new Set(
+        runs.flatMap((r) => [...r.tracks.values()].filter((t) => t.kind === 'enemy').map((t) => t.art))
+      )
+      expect([...seen].sort()).toEqual([...new Set(STAGES[no - 1].boss.minions)].sort())
+    }
+  )
+
+  // The bosses' own summons (none by hand): most are born inside the raised gate or a rock and pushed out by the
+  // next step; none may be drawn there, nor jump on its first frames.
+  it.each([60, 120])(
+    'the minions of every boss that summons appear where they are, not in the gate they are born in (%i Hz)',
+    { timeout: 240_000 },
+    (hz) => {
+      const runs = [2, 6, 7, 8, 9, 10].flatMap((no) => [minionFight(no, 5, { hz }), minionFight(no, 7, { hz })])
+      expectClean(runs)
+      const minions = runs.flatMap((r) => [...r.tracks.values()].filter((t) => t.kind === 'enemy'))
+      expect(minions.length).toBeGreaterThan(100)
+    }
+  )
+
+  it('a rat summoned beside the hovering crow falls in its air clip, and lands walking', { timeout: 120_000 }, () => {
+    const r = minionFight(2, 42)
+    expectClean([r])
+    // (A drop on to ground a few px under it, over in a frame or two, is no fall: it walks at once.)
+    const landing = (t: { rows: { onGround: boolean }[] }) => t.rows.findIndex((row) => row.onGround)
+    const falls = [...r.tracks.values()].filter((t) => t.art === 'walker' && t.rows[0]?.aloft && landing(t) > 5)
+    expect(falls.length).toBeGreaterThan(0)
+    let longest = 0
+    for (const t of falls) {
+      expect(t.rows[0].clip).toBe('air')
+      const landed = t.rows.findIndex((row) => row.onGround)
+      longest = Math.max(longest, landed)
+      for (const row of t.rows.slice(0, landed)) expect(row.clip).toBe('air')
+    }
+    // (The longest is the fall of some 160 px from the crow's height.)
+    expect(longest).toBeGreaterThan(20)
+  })
+
   it('every piglet charges and is stopped, to the right and to the left', { timeout: 120_000 }, () => {
     const runs = STAGES.flatMap((stage) => [...pigletCharges(stage.no, 1), ...pigletCharges(stage.no, -1)])
     expectClean(runs)
@@ -104,6 +157,39 @@ describe('the picture and the motion agree in real play', () => {
     const runs = heroBlows()
     expectClean(runs)
     expect(runs.length).toBe(12)
+  })
+
+  it('the hero wades into a pool, walks its floor, swims up, sinks back, bites there and climbs out', () => {
+    const r = heroInWater()
+    expectClean([r])
+    const rows = r.tracks.get('hero')!.rows
+    // He did swim, and he did stand, walk and bite on the floor of the pool with his ground clips.
+    expect(rows.some((row) => row.clip === 'swim' && row.water && !row.onGround)).toBe(true)
+    const floor = new Set(rows.filter((row) => row.water && row.onGround).map((row) => row.clip))
+    for (const clip of ['idle', 'run', 'bite']) expect([...floor], clip).toContain(clip)
+    expect(floor.has('swim')).toBe(false)
+  })
+
+  it.each([60, 120])(
+    'shots come out from behind the crow, the fox, the bee and a squirrel, never over them (%i Hz)',
+    { timeout: 120_000 },
+    (hz) => {
+      const runs = [...[2, 7, 9].map((no) => hitSweep(no, 7, { every: 1.31, cross: true, hz })), ...squirrelVolleys(hz)]
+      expectClean(runs)
+      // Shots of each shooter did come out from behind him.
+      const out = new Set(runs.flatMap((r) => r.shotRows.filter((row) => row.first).map((row) => row.who)))
+      expect([...out].sort()).toEqual(['beeBoss', 'crowBoss', 'foxBoss', 'spitter'])
+      for (const r of squirrelVolleys(hz))
+        expect(r.shotRows.filter((row) => row.first).length).toBeGreaterThanOrEqual(3)
+    }
+  )
+
+  it("the king's volley is in front of him from the frame it is born, in both phases", { timeout: 120_000 }, () => {
+    const runs = [hitSweep(10, 5), hitSweep(10, 5, { phase2: true })]
+    expectClean(runs)
+    const births = runs.flatMap((r) => r.shotBirths)
+    expect(births.filter((b) => b.who === 'king').length).toBeGreaterThan(20)
+    expect(births.filter((b) => b.behind)).toEqual([])
   })
 
   it('a squirrel is bitten around its shot, and knocked out on it', () => {

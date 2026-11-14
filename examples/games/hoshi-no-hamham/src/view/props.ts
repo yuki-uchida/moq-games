@@ -5,13 +5,15 @@
  * The placement maths (`doorPieces`, `gatePieces`, `logPieces`, `hivePostRows`) is pure and tested.
  */
 import type { SimEvent } from '../game/events'
-import { T, type Prop, type World } from '../game/sim'
+import { T, type Boss, type Enemy, type Prop, type Shot, type World } from '../game/sim'
 import { TILE } from '../game/types'
 import { blit, brush, clip, type BlitCall } from './bake'
 import { princessClip, specDuration, strideTime, type ClipChoice } from './clips'
 import { PROP_SPEC, themedProp } from '../art/contract'
 import type { FxPool } from './fx'
 import { groundBelow } from './actors'
+import { anchorOf } from '../art'
+import { clipBounds, newBox, newPlaced, opaqueBounds, overlaps, placeBox, type Box, type Placed } from './bounds'
 
 export interface Piece {
   x: number
@@ -101,6 +103,18 @@ interface AnimalRun {
   airSince: number
 }
 
+/** A shockwave rolls on ground within this many px under its middle (else it flies). */
+export const SHOCK_GROUND_PX = 4
+
+/** A body a shot can be born in. */
+export type Shooter = Boss | Enemy
+/** The sheet (`prop:<skin>`) and the clip a shot is drawn with. */
+export const shotSkin = (shot: Shot) => shot.skin ?? 'seed'
+export const shotClip = (shot: Shot) => (shot.skin === 'stinger' ? 'fly' : shot.skin === 'orb' ? 'pulse' : 'spin')
+/** Whether (x, y) is inside a body's box. */
+const contains = (body: Shooter, x: number, y: number) =>
+  x >= body.x && x < body.x + body.w && y >= body.y && y < body.y + body.h
+
 const sheetIds = new Map<string, string>()
 /** The id of the `prop:<key>` sheet, built once per key (drawing a frame joins no strings). */
 function propSheet(key: string): string {
@@ -122,6 +136,20 @@ export class PropsView {
   private themedSheets = new Map<string, string>()
   /** Each awake うりぼう's ground covered since it woke (its run plays by it) and where it was last. */
   private runs = new Map<number, AnimalRun>()
+  /** Each shot the view has seen: the body it was born in, and whether it is still behind it (see `shotBehind`). */
+  private shooters = new WeakMap<Shot, { shooter: Shooter | null; behind: boolean }>()
+  /**
+   * The frame a shooter is drawn with now (the stage view hands in `ActorsView.drawnFrame`); without it a shot is
+   * behind while it overlaps the shooter's physics box.
+   */
+  drawnFrame: ((body: Shooter, out: Placed) => boolean) | null = null
+  /** Real seconds (they run while the simulation is held or slowed). */
+  private realTime = 0
+  /** Each freed ハム姫's cheer: the real time it began, null while it waits for her moment, -Infinity: given up. */
+  private cheers = new Map<number, { at: number | null }>()
+  private placed = newPlaced()
+  private shooterBox = newBox()
+  private shotBox = newBox()
 
   constructor(
     private world: World,
@@ -176,6 +204,8 @@ export class PropsView {
       }
       case 'princess-free':
         this.mark(this.find(['princess'], event.x, event.y), 'free')
+        // Without a director she cheers at once (a director holds it for her moment: `holdCheer`).
+        this.startCheer(event.x, event.y)
         break
       case 'gate-up':
         this.gate = { tx: event.tx, top: event.top, bottom: event.bottom, at: this.time, down: null }
@@ -460,6 +490,44 @@ export class PropsView {
     }
   }
 
+  /**
+   * ハム姫's clip: sad in her cage; freed, her cheer on real time from when it began (`cheerAt`), standing while it
+   * waits for her moment, then waving once the exit is open (see `princessClip`).
+   */
+  selectPrincess(prop: Prop): ClipChoice {
+    const time = this.time + prop.id * 0.4
+    const caged = prop.data === 1
+    const cheer = this.cheers.get(prop.id)
+    if (!caged && cheer?.at === null) return { name: 'idle', t: time }
+    return princessClip(caged, cheer && cheer.at !== null ? this.realTime - cheer.at : null, this.world.goalOpen, time)
+  }
+
+  /**
+   * Staging: the director will stage her rescue, so the cheer of the ハム姫 freed at (x, y) waits for it (she stands);
+   * `startCheer` begins it, `dropCheer` gives it up (the moment will not play: she goes on as after a cheer).
+   */
+  holdCheer(x: number, y: number) {
+    this.setCheer(x, y, null)
+  }
+
+  startCheer(x: number, y: number) {
+    this.setCheer(x, y, this.realTime)
+  }
+
+  dropCheer(x: number, y: number) {
+    this.setCheer(x, y, -Infinity)
+  }
+
+  private setCheer(x: number, y: number, at: number | null) {
+    const princess = this.find(['princess'], x, y)
+    if (princess) this.cheers.set(princess.id, { at })
+  }
+
+  /** Advances real time (the stage view calls this with the frame's real dt): ハム姫's cheer runs on it. */
+  tickReal(dt: number) {
+    this.realTime += dt
+  }
+
   /** ハム姫 and her cage. */
   drawPrincess(ctx: CanvasRenderingContext2D) {
     const hero = this.world.player
@@ -469,7 +537,7 @@ export class PropsView {
       const freed = this.since(prop, 'free')
       const cageBreak = freed !== null && freed < duration('prop:cage', 'break')
       if (caged) this.draw(ctx, 'prop:cage', 'back', 0, prop.x, prop.y)
-      const choice = princessClip(caged, freed, this.world.goalOpen, this.time + prop.id * 0.4)
+      const choice = this.selectPrincess(prop)
       const anim = clip('princess', choice.name)
       const flip = hero.x + hero.w / 2 < prop.x + TILE / 2
       if (anim) blit(ctx, anim, choice.t, prop.x + TILE / 2, prop.y + TILE, brush(flip))
@@ -478,20 +546,122 @@ export class PropsView {
     }
   }
 
-  /** Projectiles, shockwaves and bees. */
-  drawProjectiles(ctx: CanvasRenderingContext2D) {
+  /**
+   * Whether a shot is drawn behind the actors now. A hostile shot (not a shockwave) is born at the centre of its
+   * shooter (sim.ts), but his pose throws it from a hand, a wing or a mouth at the edge of his silhouette: it is
+   * drawn behind him while it overlaps the drawing he shows now (the opaque bounds of his frame, placed and flipped
+   * as it is drawn: `drawnFrame`) or the live boss's (a squirrel minion may stand in front of him), and in front
+   * from the first frame it is clear of both, never behind again. So a
+   * shot is only ever seen coming out from behind his silhouette. It is behind when it was born in a body: the live
+   * boss or a live squirrel whose box holds its centre when the view first sees it. A shot born in nobody's box is in
+   * front from the start, and so is the king's volley (it bursts out of his chest, in front of him).
+   */
+  shotBehind(shot: Shot): boolean {
+    let record = this.shooters.get(shot)
+    if (record === undefined) {
+      const shooter = this.bornIn(shot)
+      this.shooters.set(shot, (record = { shooter, behind: shooter !== null }))
+    }
+    if (!record.behind) return false
+    const shooter = record.shooter!
+    const extent = this.shotExtent(shot)
+    if (!shooter.dead && overlaps(extent, this.shooterExtent(shooter))) return true
+    // A squirrel minion standing in the boss's drawing throws from behind him: its acorn comes out past him too.
+    const boss = this.world.boss
+    if (boss && boss !== shooter && !boss.dead && overlaps(extent, this.shooterExtent(boss))) return true
+    record.behind = false
+    return false
+  }
+
+  /**
+   * The clip a shockwave is drawn with: `roll` while there is ground (a solid or a one-way platform) within
+   * `SHOCK_GROUND_PX` under its middle, `fly` (the crest torn free of the ground) when there is none: the simulation
+   * keeps a wave level whatever is under it. Decided by its middle only, so it changes once as it crosses an edge.
+   */
+  shockClip(shot: Shot): 'roll' | 'fly' {
+    const feet = shot.y + shot.h
+    const ground = groundBelow(this.world, shot.x + shot.w / 2, feet, 2)
+    return ground !== null && ground - feet <= SHOCK_GROUND_PX ? 'roll' : 'fly'
+  }
+
+  /** The body a shot was born in (null: none, or the view has not seen the shot yet). */
+  shooterOf(shot: Shot): Shooter | null {
+    return this.shooters.get(shot)?.shooter ?? null
+  }
+
+  /** The live boss (not the king) or squirrel whose box holds the shot's centre, or null (never a shockwave). */
+  private bornIn(shot: Shot): Shooter | null {
+    if (!shot.hostile || shot.kind === 'shock') return null
+    const x = shot.x + shot.w / 2
+    const y = shot.y + shot.h / 2
+    const boss = this.world.boss
+    if (boss && !boss.dead && contains(boss, x, y)) return boss.def.kind === 'final' ? null : boss
+    for (const enemy of this.world.enemies)
+      if (enemy.kind === 'spitter' && !enemy.dead && contains(enemy, x, y)) return enemy
+    return null
+  }
+
+  /** The shooter's drawing now (its physics box when the view cannot say), in the scratch box. */
+  private shooterExtent(shooter: Shooter): Box {
+    const out = this.shooterBox
+    const placed = this.placed
+    const b = this.drawnFrame?.(shooter, placed) && placed.raster ? opaqueBounds(placed.raster) : null
+    if (b) return placeBox(b, placed.anchor, placed.x, placed.y, placed.flip, out)
+    out.x = shooter.x
+    out.y = shooter.y
+    out.w = shooter.w
+    out.h = shooter.h
+    return out
+  }
+
+  /** The pixels a shot can cover now: its box and its sprite (every frame of its spin), in the scratch box. */
+  private shotExtent(shot: Shot): Box {
+    const out = this.shotBox
+    const anim = clip(propSheet(shotSkin(shot)), shotClip(shot))
+    const b = anim?.frames ? clipBounds(anim) : null
+    if (b) placeBox(b, anchorOf(anim!), shot.x + shot.w / 2, shot.y + shot.h / 2, shot.vx < 0, out)
+    else {
+      out.x = shot.x
+      out.y = shot.y
+      out.w = 0
+      out.h = 0
+    }
+    const x1 = Math.max(out.x + out.w, shot.x + shot.w)
+    const y1 = Math.max(out.y + out.h, shot.y + shot.h)
+    out.x = Math.min(out.x, shot.x)
+    out.y = Math.min(out.y, shot.y)
+    out.w = x1 - out.x
+    out.h = y1 - out.y
+    return out
+  }
+
+  /**
+   * Projectiles, shockwaves and bees, in two passes: `behind` (before the actors: the shots still inside their
+   * shooter) and `front` (after them: every other shot, the shockwaves and the bees). Each live shot is drawn in
+   * exactly one of the two passes of a frame.
+   */
+  drawProjectiles(ctx: CanvasRenderingContext2D, layer: 'behind' | 'front') {
     const time = this.time
+    const behind = layer === 'behind'
     for (const shot of this.world.shots) {
       if (shot.dead) continue
+      if (this.shotBehind(shot) !== behind) continue
       const flip = shot.vx < 0
       if (shot.kind === 'shock') {
-        this.draw(ctx, 'prop:shock', 'roll', time, shot.x + shot.w / 2, shot.y + shot.h, brush(flip))
+        this.draw(ctx, 'prop:shock', this.shockClip(shot), time, shot.x + shot.w / 2, shot.y + shot.h, brush(flip))
         continue
       }
-      const skin = shot.skin ?? 'seed'
-      const name = skin === 'stinger' ? 'fly' : skin === 'orb' ? 'pulse' : 'spin'
-      this.draw(ctx, propSheet(skin), name, time, shot.x + shot.w / 2, shot.y + shot.h / 2, brush(flip))
+      this.draw(
+        ctx,
+        propSheet(shotSkin(shot)),
+        shotClip(shot),
+        time,
+        shot.x + shot.w / 2,
+        shot.y + shot.h / 2,
+        brush(flip)
+      )
     }
+    if (behind) return
     for (const bee of this.world.bees) this.draw(ctx, 'prop:bee', 'fly', time + bee.t, bee.x, bee.y, brush(bee.vx < 0))
   }
 }

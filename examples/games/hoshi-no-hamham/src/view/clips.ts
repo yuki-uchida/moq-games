@@ -138,16 +138,17 @@ function heroBite(s: HeroSnapshot, spec: Record<string, AnimSpec>): ClipChoice |
 
 /**
  * The hero's clip, in priority order: cheer, bite or hurt (the one that began later; on the same step the hurt),
- * swim, jump/apex/fall, land, skid, turn, run, wait, blink, idle. The blink has the idle poses with the eyes shut,
- * so it is played on the idle time base and the breath never skips. An action the view has dropped (see
- * `ActorsView`) comes in as absent: this function only says what can show now.
+ * swim (in water off the ground), jump/apex/fall, land, skid, turn, run, wait, blink, idle. The blink has the idle
+ * poses with the eyes shut, so it is played on the idle time base and the breath never skips. An action the view
+ * has dropped (see `ActorsView`) comes in as absent: this function only says what can show now.
  */
 export function heroClip(s: HeroSnapshot, spec: Record<string, AnimSpec> = HERO_SPEC): ClipChoice {
   if (s.cheering) return { name: 'cheer', t: s.cheerAge }
   const bite = heroBite(s, spec)
   if (bite && !(s.hurt && s.hurtAge <= s.biteAge!)) return bite
   if (s.hurt) return { name: 'hurt', t: s.hurtAge }
-  if (s.inWater) return { name: 'swim', t: s.waterTime }
+  // On the floor of a pool he stands and walks as on land (the simulation walks and jumps him there as on land).
+  if (s.inWater && !s.onGround) return { name: 'swim', t: s.waterTime }
   if (!s.onGround) {
     if (Math.abs(s.vy) <= APEX_SPEED) return { name: 'apex', t: s.airTime, frame: s.vy < 0 ? 0 : 1 }
     return s.vy < 0 ? { name: 'jump', t: s.airTime } : { name: 'fall', t: s.airTime }
@@ -207,7 +208,17 @@ export interface EnemySnapshot {
   standing: boolean
   /** Seconds alive (loop clips). */
   time: number
+  /**
+   * Off the ground with no ground within `ENEMY_AIR_GAP` px under its feet (a rat or a mole that fell off a ledge,
+   * was summoned in the air, or had the ground dug away): its walk and its stand are not drawn there.
+   */
+  airborne?: boolean
 }
+
+/** A body off the ground with ground this close (px) under its feet is still drawn on it (a minion's first step). */
+export const ENEMY_AIR_GAP = 4
+/** The rat's and the mole's `air` shows the top of the arc while |vy| (px/s) is at or below this. */
+export const WALKER_APEX_SPEED = 90
 
 /** A hit enemy flashes for this long (s, sim.ts `damageEnemy`): its `hurt` plays over it. */
 export const ENEMY_HURT_SECONDS = 0.16
@@ -270,7 +281,10 @@ export function enemyClip(s: EnemySnapshot, specs: Record<string, AnimSpec> = EN
       const spec = specs.shoot
       const lead = hitTime(spec)
       // Wind up so the `hit` frame shows the moment the acorn leaves, then finish the follow-through.
-      if (s.shootTimer > 0 && s.shootTimer <= lead) return { name: 'shoot', t: lead - s.shootTimer }
+      // (Up to the frame before the release: a timer that runs out to a hair above zero throws a step later, and
+      // the release frame waits for the step the acorn leaves.)
+      if (s.shootTimer > 0 && s.shootTimer <= lead)
+        return { name: 'shoot', t: Math.min(lead - s.shootTimer, frameStart(spec, spec.hit ?? 0) - 1e-6) }
       // Loaded with nobody in range (the timer runs on below zero): stay at the end of the wind-up, pulsing.
       if (s.shootTimer <= 0) {
         const ready = Math.max(0, (spec.hit ?? 0) - 1)
@@ -282,6 +296,9 @@ export function enemyClip(s: EnemySnapshot, specs: Record<string, AnimSpec> = EN
       return { name: 'idle', t: s.time }
     }
     default:
+      // In the air it is thrown up, at the top, or falling (by its vertical speed), never walking on nothing.
+      if (s.airborne && specs.air)
+        return { name: 'air', t: 0, frame: airFrame(s.vy, specs.air.frames, WALKER_APEX_SPEED) }
       // The walk advances with the ground gained; a body that marks time on the spot stands.
       return s.standing ? { name: 'idle', t: s.time } : { name: 'move', t: strideTime(specs.move, s.gain) }
   }
@@ -326,6 +343,16 @@ export interface BossSnapshot {
   gain: number
   standing: boolean
   time: number
+  /**
+   * The state time at which the clip timed from the state's start took over from another clip inside the state (a
+   * recovery after a landing, a follow-through or a dash; a wind-up after a fall), so it begins on its first frame.
+   */
+  clipFrom?: number
+  /**
+   * The state time at which he last touched down from the air inside the state (0: he came into the state on the
+   * ground, or lands with it): a landing after a fall is timed from there.
+   */
+  landedAt?: number
 }
 
 /** The sheet a boss is drawn from: the chasing parent uses ハム代's sheet. */
@@ -348,6 +375,14 @@ export const BOSS_DEFEAT_GROUND_FRAME: Record<BossArt, number> = {
   apeBoss: 3,
   king: 3
 }
+
+/**
+ * The hero is clearly to one side of a boss for his aim when he is further over than one step of the boss's own
+ * travel and `AIM_MARGIN_PX` (sim.ts aims by the sign of `player.x - boss.x`, which flips only while the boss, walking
+ * at him, overshoots him by a step).
+ */
+export const AIM_MARGIN_PX = 2
+export const aimClear = (speed: number) => speed / 60 + AIM_MARGIN_PX
 
 /** Seconds into the final boss's `shoot` state when the volley leaves (sim.ts). */
 export const FINAL_VOLLEY_AT = 0.5
@@ -468,10 +503,20 @@ export function canShow(s: BossSnapshot, spec: Record<string, AnimSpec>, name: s
   return Math.abs(s.vx) <= DASH_REST_SPEED
 }
 
-/** Whether the landing of a slam shows: for its length, and on while he slides (it is drawn sliding). */
+/**
+ * Whether the landing of a slam shows: for its length from the step he touched down (the state's first, or later
+ * when his slide took him off a ledge and he fell: he lands again, whole), and on while he slides (it is drawn
+ * sliding). A second landing that could not play out before he stands up again is not begun: he goes on with his
+ * recovery.
+ */
 function landShows(s: BossSnapshot, spec: Record<string, AnimSpec>) {
   if (!spec.land || s.state !== 'recover' || s.prevState !== 'slam') return false
-  return s.stateTime < specDuration(spec.land) || Math.abs(s.vx) > DASH_REST_SPEED
+  if (Math.abs(s.vx) > DASH_REST_SPEED) return true
+  const landed = s.landedAt ?? 0
+  const length = specDuration(spec.land)
+  const recover = s.kind === 'final' ? finalLength(FINAL_RECOVER_SECONDS, s.phase) : TANK_RECOVER_SECONDS
+  if (landed > 0 && landed + length > recover + 1e-9) return false
+  return s.stateTime - landed < length
 }
 
 /**
@@ -553,6 +598,12 @@ function dashClip(s: BossSnapshot, spec: Record<string, AnimSpec>, name: string)
   return { name, t: s.dashAge ?? s.stateTime }
 }
 
+/**
+ * The time into a clip that is timed from the state's start (a wind-up, a recovery, a stun, a landing, the rest):
+ * from where it took over inside the state (`clipFrom`), so it begins on its first frame after another clip.
+ */
+const clipTime = (s: BossSnapshot) => s.stateTime - (s.clipFrom ?? 0)
+
 /** The boss's clip; a state its kind never reaches falls back to a clip its sheet has. */
 export function bossClip(
   s: BossSnapshot,
@@ -592,8 +643,8 @@ function pickBossClip(s: BossSnapshot, spec: Record<string, AnimSpec>): ClipChoi
     // Her run plays by the ground she covers; off the ground (a hop) her legs go on, on time.
     const running = s.onGround ? { name: 'move', t: strideTime(spec.move, s.gain) } : { name: 'move', t: s.time }
     // (Both stand on the ground: worn out in the middle of a hop, she comes down first.)
-    if (s.state === 'tired') return fast || !s.onGround ? running : { name: 'tired', t: s.stateTime }
-    if (stunShown(s.state, s.stateTime) && !fast && s.onGround) return { name: 'stunned', t: s.stateTime }
+    if (s.state === 'tired') return fast || !s.onGround ? running : { name: 'tired', t: clipTime(s) }
+    if (stunShown(s.state, s.stateTime) && !fast && s.onGround) return { name: 'stunned', t: clipTime(s) }
     // Standing over the hero (she gains no ground) she stands.
     if (s.state === 'idle' && s.standing) return { name: 'idle', t: s.time }
     return running
@@ -613,36 +664,50 @@ function pickBossClip(s: BossSnapshot, spec: Record<string, AnimSpec>): ClipChoi
   }
   switch (s.state) {
     case 'windup':
-      return falling ?? { name: 'windup', t: s.stateTime }
+      return falling ?? { name: 'windup', t: clipTime(s) }
     case 'charge':
       return spec.attack ? dashClip(s, spec, 'attack') : { name: 'idle', t: s.time }
     case 'dive':
       // Steep while he comes down; once he travels level (on the ground, or his fall has gone) he skims, and
       // pinned against a wall (the dive runs on, he goes nowhere) he flaps on the spot.
       if (s.kind === 'flyer' && spec.sweep && (s.onGround || Math.abs(s.vy) <= DIVE_LEVEL_SPEED))
-        return Math.abs(s.vx) > DIVE_PINNED_SPEED ? dashClip(s, spec, 'sweep') : { name: 'recover', t: s.time }
+        return Math.abs(s.vx) > DIVE_PINNED_SPEED ? dashClip(s, spec, 'sweep') : { name: 'recover', t: clipTime(s) }
       return dashClip(s, spec, 'attack')
     case 'stunned':
       if (fast && dash) return dashClip(s, spec, dash)
-      return { name: s.kind === 'brute' ? 'stunned' : 'recover', t: s.stateTime }
+      return { name: s.kind === 'brute' ? 'stunned' : 'recover', t: clipTime(s) }
     case 'slam':
-      return leapsAndSlams
-        ? { name: 'air', t: 0, frame: airFrame(s.vy, spec.air.frames, BOSS_APEX_SPEED) }
-        : { name: 'idle', t: s.time }
+      if (leapsAndSlams && !s.onGround)
+        return { name: 'air', t: 0, frame: airFrame(s.vy, spec.air.frames, BOSS_APEX_SPEED) }
+      // On the ground in his slam he has just touched down (the simulation ends the slam on its next step; a staged
+      // pose may hold him there): the first frame of his landing, so the landing begins on the frame he lands.
+      return leapsAndSlams && spec.land ? { name: 'land', t: 0, frame: 0 } : { name: 'idle', t: s.time }
     case 'shoot': {
       if (s.kind !== 'final') return walkClip(s, spec)
-      const lead = hitTime(spec.shoot)
-      return { name: 'shoot', t: Math.max(0, s.stateTime - (FINAL_VOLLEY_AT - lead)) }
+      // The gathering (the frames before the release) shares the time up to the volley evenly; the release frame
+      // shows from the step the orbs leave (as it did when the clip ran on its own time into it).
+      const shoot = spec.shoot
+      const lead = hitTime(shoot)
+      const t = s.stateTime - (FINAL_VOLLEY_AT - lead)
+      const hit = shoot.hit ?? 0
+      if (hit > 0 && t < frameStart(shoot, hit)) {
+        const frame = Math.min(hit - 1, Math.floor((Math.max(0, s.stateTime) / FINAL_VOLLEY_AT) * hit))
+        return { name: 'shoot', t: frameStart(shoot, frame), frame }
+      }
+      return { name: 'shoot', t }
     }
     case 'recover': {
-      if (leapsAndSlams && landShows(s, spec)) return { name: 'land', t: s.stateTime }
+      // Slid off a ledge after his slam he falls first (his landing is drawn with planted feet); touching down again
+      // he lands again, from its first frame to its last, and then goes on with his recovery from its first frame.
+      if (falling) return falling
+      if (leapsAndSlams && landShows(s, spec)) return { name: 'land', t: clipTime(s) }
       if (s.kind === 'final' && s.prevState === 'shoot' && !s.volleyCut) {
         const lead = hitTime(spec.shoot)
         if (s.stateTime < specDuration(spec.shoot) - lead) return { name: 'shoot', t: lead + s.stateTime }
       }
       // After a dash he keeps its clip until he has nearly stopped.
       if (fast && dash) return dashClip(s, spec, dash)
-      return falling ?? { name: 'recover', t: s.stateTime }
+      return falling ?? { name: 'recover', t: clipTime(s) }
     }
     case 'idle':
     default:

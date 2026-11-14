@@ -22,8 +22,13 @@ export type Motion =
   | 'float'
   /** Trembles on the spot. */
   | 'shake'
-  /** Patrols back and forth over a short track, facing the way it goes (a runner who flees runs on the spot). */
+  /** Patrols back and forth over a short track, facing the way it goes; its clip plays by the ground it covers. */
   | 'pace'
+  /**
+   * Runs across the ground the way it faces until it is out of the picture, rests, and starts again from its `x`
+   * (a runner who flees must cover ground, or be tracked by the camera: see `Shot.pan`).
+   */
+  | 'dash'
   /** Drifts slowly down from above, swaying (a fall from the sky). */
   | 'fall'
 
@@ -40,6 +45,17 @@ export interface Figure {
   phase?: number
   /** Drawn in front of the other figures. */
   front?: boolean
+  /** Ground speed (px/s) of a `dash` (default: the clip's natural speed) or a `pace` (default 40). */
+  speed?: number
+  /** In a shot that pans: the camera follows this figure, which keeps its place while the world goes by. */
+  tracked?: boolean
+  /** Index (in the shot's figures) of the figure this one rides or belongs to: it is displaced as that one is. */
+  follow?: number
+  /**
+   * Sits on the figure it `follow`s: its feet are put on the top of that figure's drawing under it (the mount's
+   * frame shown now), this many px into it. Replaces `lift`.
+   */
+  seat?: number
 }
 
 export interface Mark {
@@ -48,12 +64,20 @@ export interface Mark {
   x: number
   /** Height of the centre above the ground. */
   lift: number
+  /** Index (in the shot's figures) of the figure this mark belongs to: it is displaced as that figure is. */
+  follow?: number
 }
 
 export interface Shot {
   theme: ThemeId
   /** Horizontal scroll into the 640 px wide backdrop. */
   scroll?: number
+  /**
+   * A tracking shot: the camera travels to the right at this speed (px/s) with the figures that are `tracked`, so
+   * the world, and everything that is not tracked, goes by to the left. A clip with a stride only ever plays by
+   * ground that really passes under its figure.
+   */
+  pan?: number
   figures: readonly Figure[]
   marks?: readonly Mark[]
 }
@@ -105,13 +129,14 @@ const OPENING: Shot[] = [
     ]
   },
   {
-    // 「ママと大げんかして、思いきり巣を飛び出しました」: the nest and mom behind, the hero running off.
+    // 「ママと大げんかして、思いきり巣を飛び出しました」: mom stands on the left and yells after the hero, who dashes
+    // out of the nest (drawn over him) to the right, away from both.
     theme: 'meadow',
     scroll: 20,
-    figures: [prop('prop:nest', 'open', 24), mom('yell', 136), hero('run', 236)],
+    figures: [hero('run', 132, { motion: 'dash', speed: 160 }), prop('prop:nest', 'open', 96), mom('yell', 44)],
     marks: [
-      { clip: 'anger', x: 164, lift: 104 },
-      { clip: 'sweat', x: 240, lift: 62 }
+      { clip: 'anger', x: 72, lift: 104 },
+      { clip: 'sweat', x: 136, lift: 62, follow: 0 }
     ]
   },
   {
@@ -125,13 +150,14 @@ const OPENING: Shot[] = [
     ]
   },
   {
-    // 「後ろでママの怒涛の足音が近づいています」: the hero runs right, mom thunders after him.
+    // 「後ろでママの怒涛の足音が近づいています」: the camera runs right with the hero, mom thunders after him.
     theme: 'meadow',
     scroll: 320,
-    figures: [mom('move', 78, { phase: 0.2 }), hero('run', 232)],
+    pan: 160,
+    figures: [mom('move', 78, { phase: 0.2, tracked: true }), hero('run', 232, { tracked: true })],
     marks: [
-      { clip: 'sweat', x: 248, lift: 58 },
-      { clip: 'anger', x: 100, lift: 100 }
+      { clip: 'sweat', x: 248, lift: 58, follow: 1 },
+      { clip: 'anger', x: 100, lift: 100, follow: 0 }
     ]
   },
   {
@@ -165,7 +191,8 @@ const STAGE_SHOTS: Record<number, Shot[]> = {
     {
       theme: 'meadow',
       scroll: 360,
-      figures: [mom('tired', 72), hero('run', 210)],
+      // Nobody runs: she is worn out, he stands ahead and looks back at her.
+      figures: [mom('tired', 72), hero('idle', 210, { flip: true })],
       marks: [{ clip: 'sweat', x: 92, lift: 92 }]
     }
   ],
@@ -173,7 +200,7 @@ const STAGE_SHOTS: Record<number, Shot[]> = {
     {
       theme: 'meadow',
       scroll: 100,
-      figures: [princess('wave', 190, { motion: 'fall' }), hero('idle', 110)],
+      figures: [princess('wave', 190, { motion: 'fall', flip: true }), hero('idle', 110)],
       marks: [
         { clip: 'sparkle', x: 170, lift: 120 },
         { clip: 'alert', x: 112, lift: 64 }
@@ -201,19 +228,21 @@ const STAGE_SHOTS: Record<number, Shot[]> = {
     {
       theme: 'night',
       scroll: 60,
-      // 「ボスにさらわれてしまった！」: the weasel gallops away to the right with the princess on his back, the hero
-      // left behind. She sits behind his shoulders, clear of his cap, so both read on their own.
+      // 「ボスにさらわれてしまった！」: the camera gallops away to the right with the weasel and the princess on his
+      // back, the hero left behind. She sits behind his shoulders, clear of his cap, so both read on their own.
+      pan: 200,
       figures: [
         hero('hurt', 80),
-        gang('weaselBoss', 'attack', 232, { flip: false }),
-        princess('sad', 214, { lift: 36 })
+        gang('weaselBoss', 'attack', 232, { flip: false, tracked: true }),
+        princess('sad', 214, { seat: 4, follow: 1 })
       ],
       marks: [{ clip: 'alert', x: 84, lift: 70 }]
     },
     {
       theme: 'night',
       scroll: 200,
-      figures: [hero('run', 150)],
+      pan: 160,
+      figures: [hero('run', 150, { tracked: true })],
       marks: [{ clip: 'sparkle', x: 230, lift: 90 }]
     },
     {
@@ -260,14 +289,17 @@ const STAGE_SHOTS: Record<number, Shot[]> = {
     {
       theme: 'forest',
       scroll: 40,
-      figures: [princess('idle', 120, { phase: 0.3 }), hero('run', 180)]
+      // Nobody runs: they have got away, and he looks back the way they came.
+      figures: [princess('idle', 120, { phase: 0.3 }), hero('idle', 180, { flip: true })],
+      marks: [{ clip: 'sweat', x: 184, lift: 58 }]
     },
     {
       theme: 'forest',
       scroll: 160,
-      // 「追っ手がすぐ後ろ！」: the wolf is right behind, the hero runs away from him.
-      figures: [gang('wolfBoss', 'windup', 82, { flip: false }), hero('run', 232)],
-      marks: [{ clip: 'sweat', x: 250, lift: 58 }]
+      // 「追っ手がすぐ後ろ！」: the camera runs with the hero, the wolf gallops right behind him.
+      pan: 200,
+      figures: [gang('wolfBoss', 'attack', 82, { flip: false, tracked: true }), hero('run', 232, { tracked: true })],
+      marks: [{ clip: 'sweat', x: 250, lift: 58, follow: 1 }]
     },
     {
       theme: 'forest',
@@ -318,7 +350,7 @@ const STAGE_SHOTS: Record<number, Shot[]> = {
         gang('walker', 'move', 264, { motion: 'pace' }),
         gang('flyer', 'move', 214, { lift: 84, motion: 'float' })
       ],
-      marks: [{ clip: 'anger', x: 246, lift: 60 }]
+      marks: [{ clip: 'anger', x: 246, lift: 60, follow: 3 }]
     },
     {
       theme: 'fortress',

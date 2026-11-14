@@ -9,22 +9,25 @@
  * back, a body that lies in the air, a picture that is not where its body is.
  */
 import { ENEMY_SPEC, allSheetSpecs, type AnimSpec, type EnemyArt } from '../src/art/contract'
-import { frameAt, type Anim } from '../src/art/sheet'
+import { anchorOf, frameAt, type Anim } from '../src/art/sheet'
 import { Interpolator } from '../src/app/interpolate'
 import type { SimEvent } from '../src/game/events'
-import { TILE, World, emptyInput, type InputState, type Prop } from '../src/game/sim'
+import { TILE, World, emptyInput, type InputState, type Prop, type Shot } from '../src/game/sim'
+import { clip } from '../src/view/bake'
+import { newPlaced, paintedAt } from '../src/view/bounds'
 import { STAGES } from '../src/game/stages'
-import { ActorsView, groundBelow } from '../src/view/actors'
+import { AIR_SHORT_SECONDS, ActorsView, aloft, groundBelow } from '../src/view/actors'
 import {
   BOSS_DEFEAT_GROUND_FRAME,
   ENEMY_DEFEAT_GROUND_FRAME,
   LUNGE_FRAMES,
+  aimClear,
   clipLife,
   type ClipChoice
 } from '../src/view/clips'
 import { playFx, type FxApi } from '../src/view/fx-map'
 import type { FxPool } from '../src/view/fx'
-import { PropsView } from '../src/view/props'
+import { PropsView, shotClip, shotSkin, type Shooter } from '../src/view/props'
 import { RAGE_POSE_MARGIN } from '../src/view/staging'
 import { botInput, type BotMemory } from './bot'
 
@@ -85,6 +88,23 @@ export interface Row {
   heroDx: number
   /** Ghosts: there is ground exactly under the feet. */
   supported: boolean
+  /** The hero: in water (`player.inWater`). */
+  water: boolean
+  /** Enemies: off the ground with no ground within `ENEMY_AIR_GAP` px under the feet. */
+  aloft: boolean
+  /** Enemies: the box (but for a pixel at its edges) overlaps a solid tile. */
+  inSolid: boolean
+}
+
+/** A frame on which a shot born in a shooter is drawn in front of the actors. */
+export interface ShotRow {
+  step: number
+  /** The shooter: a boss's art, or the enemy kind. */
+  who: string
+  /** Pixels of the shot drawn on top of its shooter's drawing. */
+  overlap: number
+  /** The first frame it is drawn in front. */
+  first: boolean
 }
 
 export interface Track {
@@ -135,6 +155,16 @@ export class Recorder {
   private memory: BotMemory
   /** Clips the view asked for that their sheet does not have (the game would draw nothing): "sheet.clip at step n". */
   readonly missing: string[] = []
+  /**
+   * Shots born in a shooter, drawn in front of the actors: the first such frame of each, and every frame on which
+   * any of its pixels lies on its shooter's drawing (see `shotsComeOutFromBehind`).
+   */
+  readonly shotRows: ShotRow[] = []
+  /** Every hostile shot on the first frame it is seen: in whose box it was born (a boss's art, an enemy kind, or
+   * 'none') and whether it is drawn behind the actors then. */
+  readonly shotBirths: { who: string; behind: boolean }[] = []
+  private shotFront = new WeakMap<object, boolean>()
+  private shooterPlaced = newPlaced()
   private movedNow = new Set<string>()
   private ghostIds = new WeakMap<object, number>()
   private ghostCount = 0
@@ -155,6 +185,8 @@ export class Recorder {
     const pool = { rand: () => 0.5, spawn: () => {}, burst: () => {} } as unknown as FxPool
     this.view = new ActorsView(world, pool)
     this.props = new PropsView(world, pool)
+    // As the stage view does: a shot stays behind its shooter while it overlaps his drawing.
+    this.props.drawnFrame = (body, out) => this.view.drawnFrame(body, out)
     this.frameDt = 1 / hz
     this.memory = { x: world.player.x, stuck: 0, reverse: 0 }
     // The effects of an event: only the hit-stop matters here.
@@ -190,6 +222,7 @@ export class Recorder {
     this.view.update(anim)
     this.view.tickReal(this.frameDt)
     this.props.update(anim)
+    this.props.tickReal(this.frameDt)
     this.time += this.frameDt
     this.record(this.pending, anim <= 0)
     this.pending = []
@@ -239,8 +272,10 @@ export class Recorder {
     if (events.some((event) => event.type === 'boss-phase') && world.boss) {
       const seconds = clipLife(SPECS[world.boss.def.art].rage) + RAGE_POSE_MARGIN
       view.pose('boss', 'rage', seconds)
+      // (The hero on the ground finishes what he does and stands; the director would also wait for him to land.)
+      if (world.player.onGround && !world.player.dead) view.standStill(seconds)
       for (let t = 0; t < seconds - this.frameDt / 2; t += this.frameDt) this.show(0)
-      view.unpose('boss')
+      view.unpose()
     }
     this.movedNow.clear()
   }
@@ -259,7 +294,10 @@ export class Recorder {
       state: null,
       heroSide: 1 as 1 | -1,
       heroDx: 0,
-      supported: true
+      supported: true,
+      water: false,
+      aloft: false,
+      inSolid: false
     }
 
     const hero = view.selectHero()
@@ -276,6 +314,7 @@ export class Recorder {
         vx: p.vx,
         vy: p.vy,
         onGround: p.onGround,
+        water: p.inWater,
         flip: (view as unknown as { heroFlip?: () => boolean }).heroFlip?.() ?? p.facing < 0,
         events: types((event) => HERO_EVENTS.has(event.type)),
         // After his knock-out the view moves the body itself.
@@ -284,7 +323,8 @@ export class Recorder {
 
     if (world.state === 'play') {
       for (const enemy of world.enemies) {
-        if (enemy.dead) continue
+        // (A summoned enemy is drawn only once the simulation has settled it.)
+        if (enemy.dead || !view.enemyShown(enemy)) continue
         const choice = view.selectEnemy(enemy)
         if (!ENEMY_SPEC[enemy.kind as EnemyArt][choice.name]) {
           this.missing.push(`${enemy.kind}.${choice.name} at step ${this.step}`)
@@ -301,6 +341,8 @@ export class Recorder {
           vx: enemy.vx,
           vy: enemy.vy,
           onGround: enemy.onGround,
+          aloft: !enemy.onGround && aloft(world, enemy),
+          inSolid: inSolid(world, enemy),
           flip: view.enemyFlip(enemy),
           heroDx: p.x - enemy.x,
           events: types((event) => ofEnemy(event, enemy.id)),
@@ -368,6 +410,45 @@ export class Recorder {
             moved: false
           })
         }
+      // Shots born in a shooter, once they are drawn in front of the actors.
+      for (const shot of world.shots) {
+        if (shot.dead) continue
+        const born = !this.shotFront.has(shot)
+        const behind = this.props.shotBehind(shot)
+        const shooter = this.props.shooterOf(shot)
+        if (born && shot.hostile && shot.kind !== 'shock') {
+          const cx = shot.x + shot.w / 2
+          const cy = shot.y + shot.h / 2
+          const inside = (b: { x: number; y: number; w: number; h: number }) =>
+            cx >= b.x && cx < b.x + b.w && cy >= b.y && cy < b.y + b.h
+          const who = shooter
+            ? 'def' in shooter
+              ? shooter.def.art
+              : shooter.kind
+            : boss && !boss.dead && inside(boss)
+              ? boss.def.art
+              : 'none'
+          this.shotBirths.push({ who, behind })
+        }
+        if (!this.shotFront.has(shot)) this.shotFront.set(shot, false)
+        if (!shooter || shooter.dead) continue
+        if (behind) {
+          this.shotFront.set(shot, false)
+          continue
+        }
+        const first = this.shotFront.get(shot) !== true
+        this.shotFront.set(shot, true)
+        // On its shooter, or on the live boss (a squirrel minion may throw from in front of him).
+        const onBoss = boss && boss !== shooter && !boss.dead ? this.shotOverlap(shot, boss) : 0
+        const overlap = this.shotOverlap(shot, shooter) + onBoss
+        if (first || overlap > 0)
+          this.shotRows.push({
+            step: this.step,
+            who: 'def' in shooter ? shooter.def.art : shooter.kind,
+            overlap,
+            first
+          })
+      }
     }
     // Enemies that went down on this step: their events land on the ghost that replaces them.
     const downs = events.filter((event) => event.type === 'enemy-down') as Extract<SimEvent, { type: 'enemy-down' }>[]
@@ -396,6 +477,26 @@ export class Recorder {
         supported: ground !== null && Math.abs(ground - ghost.feet) <= 1
       })
     }
+  }
+
+  /** How many pixels of a shot, drawn as the props view draws it now, lie on its shooter's drawing. */
+  private shotOverlap(shot: Shot, shooter: Shooter) {
+    const body = this.shooterPlaced
+    if (!this.view.drawnFrame(shooter, body)) return 0
+    const anim = clip(`prop:${shotSkin(shot)}`, shotClip(shot))
+    if (!anim) return 0
+    const r = anim.frames[frameAt(anim, (this.props as unknown as { time: number }).time)]
+    const [ax, ay] = anchorOf(anim)
+    const x = Math.round(shot.x + shot.w / 2)
+    const y = Math.round(shot.y + shot.h / 2)
+    const flip = shot.vx < 0
+    let count = 0
+    for (let j = 0; j < r.h; j++)
+      for (let i = 0; i < r.w; i++) {
+        if (!r.get(i, j)) continue
+        if (paintedAt(body, flip ? x + ax - i - 1 : x - ax + i, y - ay + j)) count++
+      }
+    return count
   }
 
   /** The knocked-out bodies as the view draws them, each with the view's own record of it as its identity. */
@@ -444,6 +545,14 @@ export function fightInput(world: World): InputState {
     input.jumpPressed = true
   }
   return input
+}
+
+/** Whether a body's box, but for a pixel at its edges, overlaps a solid tile. */
+function inSolid(world: World, body: { x: number; y: number; w: number; h: number }) {
+  for (let ty = Math.floor((body.y + 1) / TILE); ty <= Math.floor((body.y + body.h - 2) / TILE); ty++)
+    for (let tx = Math.floor((body.x + 1) / TILE); tx <= Math.floor((body.x + body.w - 2) / TILE); tx++)
+      if (world.solidAt(tx, ty)) return true
+  return false
 }
 
 function openWorld(no: number, seed: number) {
@@ -559,6 +668,55 @@ export function hitSweep(
   return r
 }
 
+/**
+ * A boss fight with his minions. The simulation summons only while fewer than 3 enemies live in the whole stage, so
+ * the stage's own enemies are removed; the hero, out of harm, keeps his distance and the boss is hit by hand every
+ * 0.83 s (his health topped up), as in `hitSweep`. A minion is knocked out by hand once it has lived 3 s (as a bite
+ * would), so that more are summoned.
+ */
+export function minionFight(
+  no: number,
+  seed: number,
+  options: { seconds?: number; hz?: number; force?: boolean } = {}
+) {
+  const { seconds = 30, hz = 60, force = false } = options
+  const world = openWorld(no, seed)
+  for (const enemy of world.enemies) enemy.dead = true
+  const r = new Recorder(
+    world,
+    `stage ${no}, seed ${seed}: the boss and his minions${force ? ' (summoned by hand)' : ''}${atRate(hz)}`,
+    hz
+  )
+  enterArena(r)
+  const boss = world.boss!
+  const p = world.player
+  // The brutes' own summons hardly ever come (sim.ts counts their timer down only on the first steps of an idle):
+  // with `force` the simulation's own summon is called every 2.5 s, from wherever he is.
+  const summon = () => (world as unknown as { spawnMinion(boss: unknown): void }).spawnMinion(boss)
+  let next = 0.83
+  let nextSummon = 2.5
+  for (let t = 0; t < seconds && !boss.dead; t += STEP) {
+    p.invuln = 99999
+    p.hp = p.maxHp
+    if (force && boss.active && t >= nextSummon) {
+      nextSummon += 2.5
+      summon()
+    }
+    if (t >= next) {
+      next += 0.83
+      boss.hp = Math.max(boss.hp, Math.ceil(boss.maxHp / 2) + 2)
+      boss.invuln = 0
+      world.damageBoss(1)
+    }
+    for (const enemy of world.enemies) if (!enemy.dead && enemy.t > 3) enemy.dead = true
+    const dx = boss.x + boss.w / 2 - (p.x + p.w / 2)
+    const input = emptyInput()
+    if (Math.abs(dx) < 150) input[dx > 0 ? 'left' : 'right'] = true
+    r.advance(input)
+  }
+  return r
+}
+
 /** A flat stretch of stage 2 the hero can run on: he starts there and the script drives him. */
 function heroWorld(seed = 5) {
   const world = openWorld(2, seed)
@@ -654,6 +812,89 @@ export function heroBlows() {
         }
         runs.push(r)
       }
+  return runs
+}
+
+/** The first water cell of a world at its start, by rows from the top (null when it has none). */
+function firstWater(world: World) {
+  for (let ty = 0; ty < world.h; ty++) for (let tx = 0; tx < world.w; tx++) if (world.waterAt(tx, ty)) return { tx, ty }
+  return null
+}
+
+/**
+ * The hero through the pool of stage 4 (two tiles wide and two deep, its surface level with the bank): he walks in
+ * from the bank, stands on its floor, walks along it, swims up, comes down again, bites on the floor and climbs out.
+ * On the floor the simulation walks him as on land: his ground clips show there, and `swim` only off the ground.
+ */
+export function heroInWater() {
+  const world = openWorld(4, 5)
+  for (const enemy of world.enemies) enemy.dead = true
+  const pool = firstWater(world)
+  if (!pool) throw new Error('stage 4 has no water')
+  const r = new Recorder(
+    world,
+    'the hero wades into a pool, walks its floor, swims up, sinks, bites there and climbs out'
+  )
+  const p = world.player
+  p.x = (pool.tx - 3) * TILE + TILE / 2 - p.w / 2
+  p.y = pool.ty * TILE - p.h
+  p.vx = 0
+  p.vy = 0
+  p.facing = 1
+  p.invuln = 99999
+  r.moved('hero')
+  const centre = () => p.x + p.w / 2
+  r.run(0.3, () => true, hold({}))
+  // In from the bank, stopping over the middle of the pool's left column.
+  const middle = (pool.tx + 0.5) * TILE
+  r.run(
+    1.2,
+    () => true,
+    () => hold(centre() < middle ? { right: true } : {})()
+  )
+  r.run(1, () => true, hold({}))
+  // Along the floor, both ways.
+  r.run(0.3, () => true, hold({ right: true }))
+  r.run(0.4, () => true, hold({}))
+  r.run(0.3, () => true, hold({ left: true }))
+  r.run(0.6, () => true, hold({}))
+  // Up (holding jump paddles) and back down.
+  r.run(0.4, () => true, hold({ jump: true }))
+  r.run(1.6, () => true, hold({}))
+  // A bite on the floor.
+  r.advance({ ...emptyInput(), bite: true, bitePressed: true })
+  r.run(0.8, () => true, hold({}))
+  // Out to the right.
+  r.run(1.5, () => true, hold({ right: true, jump: true }))
+  r.run(1, () => true, hold({ right: true }))
+  r.run(0.5, () => true, hold({}))
+  return r
+}
+
+/** A squirrel throwing at the hero standing 200 px away on either side, for eight seconds (three acorns). */
+export function squirrelVolleys(hz = 60) {
+  const runs: Recorder[] = []
+  const stage = STAGES.find((s) => new World(s, { seed: 5 }).enemies.some((e) => e.kind === 'spitter'))
+  if (!stage) throw new Error('no stage has a squirrel')
+  for (const side of [-1, 1] as const) {
+    const world = openWorld(stage.no, 5)
+    const squirrel = world.enemies.find((e) => e.kind === 'spitter')!
+    for (const enemy of world.enemies) if (enemy !== squirrel) enemy.dead = true
+    const r = new Recorder(
+      world,
+      `a squirrel throws at the hero on its ${side > 0 ? 'right' : 'left'}${atRate(hz)}`,
+      hz
+    )
+    const p = world.player
+    p.x = squirrel.x + squirrel.w / 2 + side * 200 - p.w / 2
+    p.y = squirrel.y + squirrel.h - p.h
+    r.moved('hero')
+    for (let n = 0; n < 8 / STEP; n++) {
+      p.invuln = 99999
+      r.advance(emptyInput())
+    }
+    runs.push(r)
+  }
   return runs
 }
 
@@ -901,6 +1142,33 @@ export function dashesAreDrawnAsDashes(r: Recorder): Finding[] {
 }
 
 /**
+ * How closely `cyclesFollowTheGround` holds a cycle to the ground. The view plays a cycle exactly by distance; the
+ * two frames are the counting's own noise (a stretch starts and ends part-way through a frame, and at 30 Hz a
+ * display frame spans two steps), and the 1 % lets a long walk's held-and-eased picture (`Tread`) through.
+ */
+export const CYCLE_CHECK = {
+  /** Pieces shorter than this many steps are not checked. */
+  minSteps: 5,
+  /** The frames shown may differ from the ground covered by this many frames plus this share of them. */
+  frames: 2,
+  slack: 0.01,
+  /** Split a stretch where the body jumps and check each piece (else a jump would exempt the whole stretch). */
+  split: true
+}
+
+/** The pieces of a stretch between the frames where the body did not get there by its own motion. */
+function pieces(rows: Row[]): Row[][] {
+  const out: Row[][] = []
+  let from = 0
+  for (let i = 1; i <= rows.length; i++)
+    if (i === rows.length || !continuous(rows[i - 1], rows[i])) {
+      out.push(rows.slice(from, i))
+      from = i
+    }
+  return out
+}
+
+/**
  * I2: a ground cycle advances with the ground covered: over a stretch of it, the frames shown match the distance
  * the picture travelled the way it faces, at stride/frames px a frame (so a planted foot stays put at any speed).
  */
@@ -908,37 +1176,41 @@ export function cyclesFollowTheGround(r: Recorder): Finding[] {
   const out: Finding[] = []
   for (const track of r.tracks.values()) {
     if (track.kind === 'ghost') continue
-    for (const stretch of stretches(track.rows)) {
-      const spec = specOf(stretch[0])
-      if (!spec?.stride || stretch[stretch.length - 1].t - stretch[0].t < 20 * STEP - EPS) continue
+    for (const whole of stretches(track.rows)) {
+      const spec = specOf(whole[0])
+      if (!spec?.stride) continue
       const per = spec.stride / spec.frames
-      let distance = 0
-      let frames = 0
-      let ok = true
-      for (let i = 1; i < stretch.length; i++) {
-        const a = stretch[i - 1]
-        const b = stretch[i]
-        if (!continuous(a, b)) {
-          ok = false
-          break
+      // A jump in the body (a respawn, the script's hand) ends a piece: each piece is checked on its own.
+      for (const stretch of CYCLE_CHECK.split ? pieces(whole) : [whole]) {
+        if (stretch[stretch.length - 1].t - stretch[0].t < CYCLE_CHECK.minSteps * STEP - EPS) continue
+        let distance = 0
+        let frames = 0
+        let ok = true
+        for (let i = 1; i < stretch.length; i++) {
+          const a = stretch[i - 1]
+          const b = stretch[i]
+          if (!continuous(a, b)) {
+            ok = false
+            break
+          }
+          // In the air the legs may go as they like (ハム代 hops with hers still running).
+          if (!a.onGround || !b.onGround) continue
+          distance += Math.max(0, (b.x - a.x) * (b.flip ? -1 : 1))
+          frames += (b.frame - a.frame + spec.frames) % spec.frames
         }
-        // In the air the legs may go as they like (ハム代 hops with hers still running).
-        if (!a.onGround || !b.onGround) continue
-        distance += Math.max(0, (b.x - a.x) * (b.flip ? -1 : 1))
-        frames += (b.frame - a.frame + spec.frames) % spec.frames
-      }
-      if (!ok) continue
-      const expected = distance / per
-      if (Math.abs(frames - expected) > 2 + expected * 0.08)
-        out.push(
-          finding(
-            'cycle does not follow the ground',
-            r,
-            track,
-            stretch[0],
-            `${frames} frames over ${distance.toFixed(0)} px (${expected.toFixed(1)} expected at ${per} px a frame)`
+        if (!ok) continue
+        const expected = distance / per
+        if (Math.abs(frames - expected) > CYCLE_CHECK.frames + expected * CYCLE_CHECK.slack)
+          out.push(
+            finding(
+              'cycle does not follow the ground',
+              r,
+              track,
+              stretch[0],
+              `${frames} frames over ${distance.toFixed(0)} px (${expected.toFixed(1)} expected at ${per} px a frame)`
+            )
           )
-        )
+      }
     }
   }
   return out
@@ -1078,6 +1350,30 @@ export function shotsLeaveFromTheirPose(r: Recorder): Finding[] {
   return out
 }
 
+/**
+ * I7b: a shot comes out from behind its shooter. A shot born in a shooter (sim.ts spawns it at his centre) does not
+ * come in front of the actors while a pixel of it lies on its shooter's drawing: on the frame it comes in front it
+ * is clear of him. (Once in front it stays there: a shooter whose next frame reaches further, or who overtakes his
+ * own shot in a dash, can be drawn under it later. The king's volley is born in nobody: it bursts out of his chest
+ * in front of him.)
+ */
+export function shotsComeOutFromBehind(r: Recorder): Finding[] {
+  const rows = r.shotRows.filter((row) => row.first && row.overlap > 0)
+  if (!rows.length) return []
+  const first = rows[0]
+  return [
+    {
+      rule: 'shot drawn on top of its shooter',
+      run: r.label,
+      who: first.who,
+      sheet: first.who,
+      clip: 'shot',
+      step: first.step,
+      detail: `${first.overlap} px on him${first.first ? ' on the frame it comes in front' : ''} (${rows.length} frames in all)`
+    }
+  ]
+}
+
 /** Clips that are one action from start to end, by who plays them. */
 const ACTIONS: Record<'hero' | 'enemy' | 'boss', readonly string[]> = {
   hero: ['bite', 'hurt', 'land', 'turn', 'wait'],
@@ -1129,8 +1425,11 @@ export function actionsStartAtTheirStart(r: Recorder): Finding[] {
   return out
 }
 
-/** What may cut an action of an enemy or a boss short: a hit, the transformation, a stun (the track ends on a fall). */
-const MAY_CUT = ['hurt', 'rage', 'stunned']
+/**
+ * What may cut an action of an enemy or a boss short: a hit, the transformation, a stun (the track ends on a fall),
+ * and the ground giving way under him (a slam landing that slides off a ledge falls).
+ */
+const MAY_CUT = ['hurt', 'rage', 'stunned', 'air']
 
 /**
  * I5: an enemy's or a boss's action plays to its last frame. (The hero's are cut by the player's next input, which
@@ -1295,8 +1594,11 @@ export function groundPosesNeedGround(r: Recorder): Finding[] {
     for (const stretch of stretches(track.rows)) {
       const spec = specOf(stretch[0])
       if (!spec) continue
-      const grounded = planted(stretch[0]) || (track.kind === 'prop' && Boolean(spec.stride))
+      // A boss's slam landing is drawn sliding (`travel: 'slide'`) but with his feet on the ground: a few frames at most.
+      const landing = track.kind === 'boss' && stretch[0].clip === 'land'
+      const grounded = landing || planted(stretch[0]) || (track.kind === 'prop' && Boolean(spec.stride))
       if (!grounded) continue
+      const limit = landing ? GROUNDED_SECONDS : AIRBORNE_SECONDS
       let air = 0
       let worst = 0
       let first: Row | null = null
@@ -1315,7 +1617,7 @@ export function groundPosesNeedGround(r: Recorder): Finding[] {
         }
         from ??= row
         if (!row.held) air += row.dt
-        if (air > AIRBORNE_SECONDS + EPS && air > worst) {
+        if (air > limit + EPS && air > worst) {
           worst = air
           first ??= from
         }
@@ -1327,8 +1629,247 @@ export function groundPosesNeedGround(r: Recorder): Finding[] {
   return out
 }
 
-/** A cast is held to its aim only when the hero is clearly on one side (px, as the simulation measures it). */
-export const AIM_CLEAR = 12
+/** A boss's clips timed from the start of the state they show in. */
+const STATE_TIMED_CLIPS: readonly string[] = ['windup', 'recover', 'stunned', 'land', 'tired']
+
+/**
+ * I4b: a boss's clip timed from his state's start (a wind-up, a recovery, a stun, a landing) that takes over from
+ * another clip inside one state (after a landing, a follow-through, a dash, a flinch, a fall) begins on its first
+ * frame.
+ */
+export function takeOversStartAtTheirStart(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  const track = r.tracks.get('boss')
+  if (!track) return out
+  for (let i = 1; i < track.rows.length; i++) {
+    const a = track.rows[i - 1]
+    const b = track.rows[i]
+    if (b.step !== a.step + 1 || b.state === null || b.state !== a.state || b.clip === a.clip) continue
+    if (!STATE_TIMED_CLIPS.includes(b.clip) || b.frame === 0) continue
+    const detail = `frame ${b.frame} after ${a.clip} frame ${a.frame} (state ${b.state})`
+    out.push(finding('clip takes over in its middle', r, track, b, detail))
+  }
+  return out
+}
+
+/**
+ * I4c: a boss's leap comes down into its landing. The display frame after the last one of his slam's `air` on which
+ * he is on the ground shows the first frame of `land` (the simulation keeps him in `slam` for the step he touches
+ * down: nothing else, a stand least of all, is drawn in between).
+ */
+export function leapsLandOnTheirLanding(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  const track = r.tracks.get('boss')
+  if (!track) return out
+  for (let i = 1; i < track.rows.length; i++) {
+    const a = track.rows[i - 1]
+    const b = track.rows[i]
+    if (a.clip !== 'air' || a.state !== 'slam' || a.onGround || !b.onGround || b.state === null) continue
+    if (b.step - a.step > 1 || !continuous(a, b) || !specOf({ ...b, clip: 'land' })) continue
+    if (b.clip === 'land' && b.frame === 0) continue
+    out.push(finding('leap does not land on its landing', r, track, b, `${b.clip} frame ${b.frame} on touchdown`))
+  }
+  return out
+}
+
+/** The first frames of a body the view draws, over which it must not jump. */
+export const FIRST_FRAMES = 6
+/** A body may move this far (px) beyond what its speed carries it between two frames and still not be jumping. */
+export const STEP_SLACK = 4
+
+/**
+ * I11d: a rat or a mole in the air turns round at most once in a fall, and only towards where its body has gone
+ * since the fall began (the simulation flips its speed on every step while it is over the hero or against a wall).
+ */
+export function airTurnsFollowTheBody(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  for (const track of r.tracks.values()) {
+    if (track.kind !== 'enemy' || (track.art !== 'walker' && track.art !== 'tough')) continue
+    for (const stretch of stretches(track.rows)) {
+      if (stretch[0].clip !== 'air') continue
+      let turns = 0
+      let min = stretch[0].body
+      let max = stretch[0].body
+      for (let i = 1; i < stretch.length; i++) {
+        const a = stretch[i - 1]
+        const b = stretch[i]
+        min = Math.min(min, b.body)
+        max = Math.max(max, b.body)
+        if (a.flip === b.flip) continue
+        turns++
+        // How far its body has come back the new way from the furthest point it reached the other way.
+        const gone = b.flip ? max - b.body : b.body - min
+        if (turns > 1 || gone < 1) {
+          const detail = `turn ${turns} of the fall, its body ${gone.toFixed(1)} px back the way it turns to`
+          out.push(finding('turns in the air', r, track, b, detail))
+          break
+        }
+      }
+    }
+  }
+  return out
+}
+
+/**
+ * I14b: a live enemy that was drawn is drawn on every later frame until it is knocked out (or the stage ends): it
+ * never blinks out.
+ */
+export function enemiesDoNotBlink(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  for (const track of r.tracks.values()) {
+    if (track.kind !== 'enemy') continue
+    for (let i = 1; i < track.rows.length; i++) {
+      const a = track.rows[i - 1]
+      const b = track.rows[i]
+      if (b.step === a.step + 1) continue
+      out.push(finding('blinks out', r, track, b, `not drawn for ${b.step - a.step - 1} frames while alive`))
+      break
+    }
+  }
+  return out
+}
+
+/**
+ * I14: a body appears where it is. An enemy that appears during the run (a summoned minion) is not drawn inside a
+ * solid tile over its first frames (one summoned into the raised gate or a rock is pushed out by the simulation's
+ * next step: the view waits for that), and over them its picture moves no further than its own speed carries it.
+ * (An enemy there from the start is drawn wherever the simulation has it: see `enemiesDoNotBlink`.)
+ */
+export function bodiesAppearInPlace(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  for (const track of r.tracks.values()) {
+    if (track.kind !== 'enemy' || track.rows[0].step <= 1) continue
+    const rows = track.rows
+    const solid = rows.slice(0, FIRST_FRAMES).find((row) => row.inSolid)
+    if (solid)
+      out.push(
+        finding('drawn inside a solid', r, track, solid, `x ${solid.x.toFixed(0)}, feet ${solid.feet.toFixed(0)}`)
+      )
+    for (let i = 1; i < Math.min(FIRST_FRAMES, rows.length); i++) {
+      const a = rows[i - 1]
+      const b = rows[i]
+      if (b.step !== a.step + 1 || b.moved) continue
+      // (A frame may show a whole step at once: the frame a hit-stop begins shows the true positions.)
+      const dt = Math.max(b.dt, STEP)
+      const dx = Math.abs(b.x - a.x) - Math.max(Math.abs(a.vx), Math.abs(b.vx)) * dt
+      const dy = Math.abs(b.feet - a.feet) - Math.max(Math.abs(a.vy), Math.abs(b.vy)) * dt
+      if (dx > STEP_SLACK || dy > STEP_SLACK) {
+        out.push(
+          finding(
+            'appears and jumps',
+            r,
+            track,
+            b,
+            `frame ${i} of its life: ${(b.x - a.x).toFixed(0)} px across, ${(b.feet - a.feet).toFixed(0)} px down`
+          )
+        )
+        break
+      }
+    }
+  }
+  return out
+}
+
+/** A pose drawn in the air may show this long (s) on a body that stands on the ground. */
+export const GROUNDED_SECONDS = 0.1
+
+/** The clips drawn in the air (or in water, off the ground): the hero's, the frog's and the bosses' leaps. */
+const HERO_AIR_CLIPS: readonly string[] = ['jump', 'apex', 'fall', 'swim']
+const airPose = (track: Track, row: Row) =>
+  track.kind === 'hero'
+    ? HERO_AIR_CLIPS.includes(row.clip)
+    : row.clip === 'air' && (track.kind === 'boss' || (track.kind === 'enemy' && ENEMY_AIR_SHEETS.includes(row.sheet)))
+/** The enemies with an `air` clip: the frog, the rat and the mole. */
+const ENEMY_AIR_SHEETS: readonly string[] = ['jumper', 'walker', 'tough']
+
+/**
+ * A rat or a mole in the air may be drawn walking or standing this long (s): a fall on to ground close under it that
+ * lasts no longer than `AIR_SHORT_SECONDS` is not drawn as a fall (and a step of rounding).
+ */
+export const WALK_ON_AIR_SECONDS = AIR_SHORT_SECONDS + STEP
+
+/**
+ * I11c: a rat or a mole does not walk on air. Off the ground with no ground within a few px under its feet (it fell
+ * off a ledge, was summoned in the air, had the ground dug away), it is not drawn in `move` or `idle` for more than
+ * `WALK_ON_AIR_SECONDS`.
+ */
+export function walkersDoNotWalkOnAir(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  for (const track of r.tracks.values()) {
+    if (track.kind !== 'enemy' || (track.art !== 'walker' && track.art !== 'tough')) continue
+    for (const stretch of stretches(track.rows)) {
+      if (stretch[0].clip !== 'move' && stretch[0].clip !== 'idle') continue
+      let air = 0
+      let worst = 0
+      let first: Row | null = null
+      let from: Row | null = null
+      for (const row of stretch) {
+        if (!row.aloft) {
+          air = 0
+          from = null
+          continue
+        }
+        from ??= row
+        if (!row.held) air += row.dt
+        if (air > WALK_ON_AIR_SECONDS + EPS && air > worst) {
+          worst = air
+          first ??= from
+        }
+      }
+      if (first) out.push(finding('walks on air', r, track, first, `${worst.toFixed(2)} s with no ground under it`))
+    }
+  }
+  return out
+}
+
+/**
+ * I11b: a body that stands on the ground is not drawn in the air. The hero's `jump`, `apex`, `fall` and `swim`, the
+ * frog's `air` and a boss's `air` do not show for more than `GROUNDED_SECONDS` while the simulation has the body on
+ * the ground (the hero on the floor of a pool walks and stands there as on land).
+ */
+export function airPosesNeedAir(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  for (const track of r.tracks.values()) {
+    if (track.kind !== 'hero' && track.kind !== 'enemy' && track.kind !== 'boss') continue
+    for (const stretch of stretches(track.rows)) {
+      if (!airPose(track, stretch[0])) continue
+      let ground = 0
+      let worst = 0
+      let first: Row | null = null
+      let from: Row | null = null
+      for (const row of stretch) {
+        if (!row.onGround || row.moved) {
+          ground = 0
+          from = null
+          continue
+        }
+        from ??= row
+        if (!row.held) ground += row.dt
+        if (ground > GROUNDED_SECONDS + EPS && ground > worst) {
+          worst = ground
+          first ??= from
+        }
+      }
+      if (first)
+        out.push(
+          finding(
+            'air pose on a body on the ground',
+            r,
+            track,
+            first,
+            `${worst.toFixed(2)} s on the ground${first.water ? ' (in water)' : ''}`
+          )
+        )
+    }
+  }
+  return out
+}
+
+/**
+ * A cast is held to its aim only when the hero is clearly on one side (px, as the simulation measures it): further
+ * over than one step of the shooter's own travel and a margin (`aimClear`; a squirrel stands, a boss walks).
+ */
+export const AIM_CLEAR = aimClear
 
 /**
  * I12: an action does not turn round. While an enemy's or a boss's action plays (a flinch, a throw, a landing) the
@@ -1341,7 +1882,7 @@ export function actionsKeepTheirFacing(r: Recorder): Finding[] {
     if (track.kind !== 'boss' && track.kind !== 'enemy') continue
     for (const { rows } of actionRuns(track)) {
       const first = rows[0]
-      if (first.clip === 'shoot' && first.frame === 0 && Math.abs(first.heroDx) > AIM_CLEAR) {
+      if (first.clip === 'shoot' && first.frame === 0 && Math.abs(first.heroDx) > AIM_CLEAR(track.speed)) {
         if (first.flip !== first.heroDx < 0)
           out.push(
             finding(
@@ -1415,12 +1956,20 @@ export const CHECKS = [
   cyclesNeedGround,
   travelFacesItsWay,
   shotsLeaveFromTheirPose,
+  shotsComeOutFromBehind,
   actionsStartAtTheirStart,
   actionsPlayOut,
   bodiesLieOnTheGround,
   facingDoesNotFlicker,
   pictureStaysWithTheBody,
   groundPosesNeedGround,
+  airPosesNeedAir,
+  walkersDoNotWalkOnAir,
+  bodiesAppearInPlace,
+  enemiesDoNotBlink,
+  airTurnsFollowTheBody,
+  takeOversStartAtTheirStart,
+  leapsLandOnTheirLanding,
   actionsKeepTheirFacing,
   hurtFacesTheBlow
 ] as const

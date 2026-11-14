@@ -6,6 +6,7 @@
  */
 import { allSheetSpecs, type AnimSpec } from '../art/contract'
 import { defaultAnchor } from '../art/sheet'
+import { DASH_VIEW, PACE_REACH } from './story-motion'
 import { SCENE_H, SCENE_W, type Figure, type Mark, type Shot } from './story-scenes'
 
 /** Rows of backdrop above the classic picture (the backdrop is drawn with its ground on the scene's ground). */
@@ -27,8 +28,8 @@ export interface Frame {
 
 export const CLASSIC_FRAME: Frame = { x: 0, y: 0, w: SCENE_W, h: SCENE_H }
 
-/** How far each motion moves a figure sideways (see `Diorama.drawFigure`). */
-const SWAY: Record<string, number> = { pace: 10, shake: 1, fall: 8 }
+/** How far each motion moves a figure sideways, around its `x` (see story-motion.ts and `Diorama`). */
+const SWAY: Record<string, number> = { pace: PACE_REACH, shake: 1, fall: 8 }
 
 let specs: Record<string, Record<string, AnimSpec>> | null = null
 const specOf = (sheet: string, clip: string): AnimSpec | undefined => (specs ??= allSheetSpecs())[sheet]?.[clip]
@@ -41,7 +42,9 @@ export function figureSpan(figure: Figure): readonly [number, number] | null {
   const sway = SWAY[figure.motion ?? 'none'] ?? 0
   // A mirrored frame turns around its anchor column.
   const left = figure.flip ? figure.x - (spec.w - ax) : figure.x - ax
-  return [left - sway, left + spec.w + sway]
+  // A dash runs on across the picture: a tall frame keeps this much of its run in view.
+  const run = figure.motion === 'dash' ? DASH_VIEW : 0
+  return [left - sway - (figure.flip ? run : 0), left + spec.w + sway + (figure.flip ? 0 : run)]
 }
 
 /** The horizontal extent of a mark (an `fx` clip centred on its x). */
