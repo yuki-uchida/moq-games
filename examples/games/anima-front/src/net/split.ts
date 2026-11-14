@@ -14,6 +14,7 @@
  * roster as players waiting off the field (`state: 'away'`).
  */
 import type { MatchConfig, PlayerView, PropView, ShardView, ShotView, SimEvent, TeamId, View } from '../sim/types'
+import { SPECIES, type SpeciesId } from '../data/species'
 import type { ObjectSets } from './visibility'
 
 /** Shots by unseen enemies reach a team only this close to one of its living members (metres). */
@@ -37,8 +38,21 @@ export interface TeamPart {
   r?: PropView[]
 }
 
-/** One row per config player (same order): name, bot (0/1), KOs, assists, downs. */
-export type RosterRow = [string, number, number, number, number]
+/** One row per config player (same order): name, bot (0/1), KOs, assists, downs, damage (rounded), species. */
+export type RosterRow = [string, number, number, number, number, number, SpeciesId]
+
+/** The scoreboard row of a player as the public roster carries it. */
+export function rosterRowOf(p: PlayerView): RosterRow {
+  return [p.name, p.bot ? 1 : 0, p.stats.kos, p.stats.assists, p.stats.downs, Math.round(p.stats.damage), p.species]
+}
+
+/** A roster row from the network that has the right shape (a guest must not trust it). */
+function validRow(row: unknown): row is RosterRow {
+  if (!Array.isArray(row) || row.length < 7) return false
+  if (typeof row[0] !== 'string' || row[0].length > 64) return false
+  for (let i = 1; i <= 5; i++) if (typeof row[i] !== 'number' || !Number.isFinite(row[i])) return false
+  return typeof row[6] === 'string' && Object.hasOwn(SPECIES, row[6])
+}
 
 /** The player as one team sees it: `revealed` means revealed to that team; who else revealed it stays out. */
 export function playerForTeam(p: PlayerView, team: TeamId): PlayerView {
@@ -222,9 +236,7 @@ export function splitView(
   const byId = new Map(view.players.map((p) => [p.id, p]))
   const roster: RosterRow[] = config.players.map((c) => {
     const p = byId.get(c.id)
-    return p
-      ? [p.name, p.bot ? 1 : 0, p.stats.kos, p.stats.assists, p.stats.downs]
-      : [c.name, c.bot !== undefined ? 1 : 0, 0, 0, 0]
+    return p ? rosterRowOf(p) : [c.name, c.bot !== undefined ? 1 : 0, 0, 0, 0, 0, c.species]
   })
   const mapProps = mapPropsOf(view, objects)
   const pub: View = {
@@ -345,10 +357,11 @@ export function hiddenPlayer(
   }
   delete out.reviving
   delete out.revealedTo
-  if (row) {
+  if (validRow(row)) {
     out.name = row[0]
     out.bot = row[1] === 1
-    out.stats = { ...base.stats, kos: row[2], assists: row[3], downs: row[4] }
+    out.species = row[6]
+    out.stats = { ...base.stats, kos: row[2], assists: row[3], downs: row[4], damage: row[5] }
   }
   return out
 }

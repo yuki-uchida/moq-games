@@ -267,6 +267,46 @@ test.describe('アニマフロント front-end', () => {
     await page.keyboard.up('Tab')
     await expect(page.locator('.hud-scoreboard.is-on')).toHaveCount(0)
   })
+
+  test('PvP scoreboard: all 12 rows are readable inside the viewport at common sizes', async ({ page }) => {
+    await page.goto('/?hud-demo=pvp')
+    await expect(page.locator('.top-pvp.is-on .pvp-score')).toHaveCount(3, { timeout: 150_000 })
+    for (const [w, h] of [
+      [1920, 1080],
+      [1280, 720],
+      [844, 390],
+      [568, 320]
+    ]) {
+      await page.setViewportSize({ width: w, height: h })
+      await page.keyboard.down('Tab')
+      const board = page.locator('.hud-scoreboard.is-on')
+      await expect(board).toBeVisible()
+      await expect(board.locator('tbody tr')).toHaveCount(12)
+      await expect(board.locator('tbody tr td').first()).toHaveText(/^\d+$/)
+      await page.waitForTimeout(300) // the open transition
+      const fit = await page.evaluate(() => {
+        const b = document.querySelector('.hud-scoreboard')!
+        const rows = [...b.querySelectorAll('tbody tr')].map((r) => r.getBoundingClientRect())
+        return {
+          scrolls: b.scrollHeight > b.clientHeight + 1,
+          top: Math.min(...rows.map((r) => r.top)),
+          bottom: Math.max(...rows.map((r) => r.bottom)),
+          left: Math.min(...rows.map((r) => r.left)),
+          right: Math.max(...rows.map((r) => r.right)),
+          h: window.innerHeight,
+          w: window.innerWidth
+        }
+      })
+      await page.screenshot({ path: test.info().outputPath(`scoreboard-${w}x${h}.png`) })
+      expect(fit.scrolls, `${w}x${h} needs no scrolling`).toBe(false)
+      expect(fit.top).toBeGreaterThanOrEqual(0)
+      expect(fit.bottom).toBeLessThanOrEqual(fit.h)
+      expect(fit.left).toBeGreaterThanOrEqual(0)
+      expect(fit.right).toBeLessThanOrEqual(fit.w)
+      await page.keyboard.up('Tab')
+      await expect(page.locator('.hud-scoreboard.is-on')).toHaveCount(0)
+    }
+  })
 })
 
 /** Reads window.__anima (dev server / ?debug only). */
@@ -391,11 +431,31 @@ test.describe('a real match runs (window.__anima)', () => {
       return null
     })
     await page.keyboard.up('KeyW')
+    const sel = () =>
+      page.evaluate(() => {
+        const a = (
+          window as unknown as {
+            __anima: { view(): { players: { id: string; hands: { sel: number }[] }[] }; match: { me: string } }
+          }
+        ).__anima
+        return a.view().players.find((p) => p.id === a.match.me)!.hands[0].sel
+      })
+    // control: with the board closed the wheel does switch the weapon
+    const first = await sel()
+    await page.mouse.move(640, 360)
+    await page.mouse.wheel(0, 300)
+    await expect.poll(sel).not.toBe(first)
     // holding Tab lists the squad with names and fills the table (header-only before the fix)
     await page.keyboard.down('Tab')
     await expect(page.locator('.hud-scoreboard.is-on')).toBeVisible()
     await expect(page.locator('.hud-scoreboard tbody tr')).toHaveCount(4)
     await expect(page.locator('.hud-scoreboard tbody .sb-name').first()).not.toHaveText('')
+    // the wheel never switches the weapon while the board is open
+    const selBefore = await sel()
+    await page.mouse.wheel(0, 300)
+    await page.mouse.wheel(0, 300)
+    await page.waitForTimeout(500)
+    expect(await sel()).toBe(selBefore)
     await page.keyboard.up('Tab')
     await expect(page.locator('.hud-scoreboard.is-on')).toHaveCount(0)
     expect(hurt).not.toBeNull()

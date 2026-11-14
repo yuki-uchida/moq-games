@@ -51,6 +51,15 @@ export function watchedPlayer(view: View, team: TeamId, index: number): string |
   return list[((index % list.length) + list.length) % list.length].id
 }
 
+/**
+ * The yaw the HUD (radar, damage arcs) is drawn against: the followed animal's when the camera follows someone
+ * (a spectator, or a player waiting to respawn), otherwise the local look.
+ */
+export function hudYaw(view: View, follow: string | undefined, own: number): number {
+  const followed = follow === undefined ? undefined : view.players.find((p) => p.id === follow)
+  return followed ? followed.yaw : own
+}
+
 /** The team `dir` steps away from `team` (wrapping). */
 export const stepTeam = (team: TeamId, dir: 1 | -1): TeamId => ((team + dir + 3) % 3) as TeamId
 

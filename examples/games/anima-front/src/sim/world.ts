@@ -95,6 +95,7 @@ class WorldImpl implements World {
       nextShot: 1,
       nextProp: 1,
       nextShard: 1,
+      departedDowns: 0,
       diff: DIFFICULTIES[diffKey] ?? DIFFICULTIES.normal,
       mode: null as unknown as Sim['mode'],
       foeHash: new SpatialHash<Foe>(6),
@@ -245,6 +246,7 @@ class WorldImpl implements World {
     const p = sim.players.find((q) => q.id === playerId)
     if (!p) return
     const was = { state: p.state, timer: p.timer }
+    sim.departedDowns += p.stats.downs
     // A living body warps out where it stands; a downed / away one keeps its state (no free revive or ticket).
     if (p.state === 'alive') warpAway(sim, p, 0)
     else resetActions(sim, p)

@@ -331,6 +331,34 @@ describe('snapshot split', () => {
     for (const e of base.events.filter((x) => x.type !== 'ko')) expect(isPublicEvent(e, new Set())).toBe(false)
   })
 
+  it('a hidden enemy shows its current damage, species and name to the other team (public roster)', () => {
+    const players = base.players.map((p) =>
+      p.id === 'e'
+        ? { ...p, name: 'newbie', species: 'owl' as const, bot: false, stats: { ...p.stats, kos: 2, damage: 123.4 } }
+        : p
+    )
+    const view: View = { ...base, players, events: [] }
+    const sets = new Map<TeamId, Set<string>>([[0, new Set(['a'])]])
+    const { pub, roster, parts } = splitView(view, sets, {}, config)
+    // a stale bot of another animal is what the start config says
+    const stale = {
+      ...config,
+      players: config.players.map((c) => (c.id === 'e' ? { ...c, species: 'cat' as const } : c))
+    }
+    const m = mergeView(pub, JSON.parse(JSON.stringify(roster)), parts.get(0)!, stale, () => undefined)
+    const e = m.view.players.find((q) => q.id === 'e')!
+    expect(m.hidden.has('e')).toBe(true)
+    expect(e.stats.damage).toBe(123)
+    expect(e.stats.kos).toBe(2)
+    expect(e.species).toBe('owl')
+    expect(e.name).toBe('newbie')
+    expect(e.bot).toBe(false)
+    // a malformed row from the network is ignored, not trusted
+    const bad = mergeView(pub, [['x', 0, 0, 0, 0, 0, 'dragon']] as never, parts.get(0)!, stale, () => undefined)
+    expect(bad.view.players.find((q) => q.id === 'a')!.id).toBe('a')
+    expect(bad.view.players.find((q) => q.id === 'e')!.species).toBe('cat')
+  })
+
   it('player-placed props, resting shards and positional effects reach only the teams that may know them', () => {
     const at = (x: number, z: number): V3 => [x, 1, z]
     const view: View = {

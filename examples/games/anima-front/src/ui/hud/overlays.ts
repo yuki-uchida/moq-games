@@ -167,39 +167,21 @@ export interface Scoreboard {
   setOpen(on: boolean): void
   readonly open: boolean
   update(view: View, me: string): void
+  /** Scrolls the table (wheel / right stick) when it is taller than the screen. */
+  scrollBy(dy: number): void
 }
 
+const SB_COLUMNS = ['撃破', '支援', 'ダウン', '救助', 'ダメージ']
+
 export function createScoreboard(): Scoreboard {
-  const body = h('tbody')
+  const grid = h('div', 'sb-grid')
   const head = h('div', 'sb-head')
-  const el = h(
-    'div',
-    'hud-scoreboard panel',
-    head,
-    h(
-      'table',
-      'sb-table',
-      h(
-        'thead',
-        null,
-        h(
-          'tr',
-          null,
-          h('th', null, '隊員'),
-          h('th', null, '撃破'),
-          h('th', null, '支援'),
-          h('th', null, 'ダウン'),
-          h('th', null, '救助'),
-          h('th', null, 'ダメージ')
-        )
-      ),
-      body
-    )
-  )
+  const el = h('div', 'hud-scoreboard panel', head, grid)
   let open = false
   let acc = 0
   let built = ''
   const rows = new Map<string, HTMLTableCellElement[]>()
+  const trs = new Map<string, HTMLElement>()
   return {
     el,
     get open() {
@@ -210,38 +192,73 @@ export function createScoreboard(): Scoreboard {
       open = on
       setClass(el, 'is-on', on)
       acc = 9 // the next update paints
+      if (!on) el.scrollTop = 0
+    },
+    scrollBy(dy) {
+      if (open) el.scrollTop += dy
     },
     update(view, me) {
       if (!open) return
       acc += 1
       if (acc < 10) return
       acc = 0
+      const pvp = view.mode === 'pvp'
       const order = [...view.players].sort((a, b) => a.team - b.team || b.stats.kos - a.stats.kos)
-      const key = order.map((p) => [p.id, p.name, p.species, p.team, p.bot ? 1 : 0].join(':')).join(',')
+      const key =
+        view.mode + '|' + order.map((p) => [p.id, p.name, p.species, p.team, p.bot ? 1 : 0].join(':')).join(',')
       if (key !== built) {
         built = key
         rows.clear()
-        body.replaceChildren(
-          ...order.map((p) => {
-            const cells = Array.from({ length: 5 }, () => h('td'))
-            rows.set(p.id, cells)
-            return h(
-              'tr',
-              {
-                class: p.id === me ? 'is-me' : '',
-                style: view.mode === 'pvp' ? { '--team': TEAM_COLORS[p.team] } : undefined
-              },
+        trs.clear()
+        const groups = pvp ? [0, 1, 2].map((t) => order.filter((p) => p.team === t)) : [order]
+        grid.dataset.cols = String(groups.length)
+        grid.replaceChildren(
+          ...groups.map((group, gi) =>
+            h(
+              'table',
+              'sb-table',
               h(
-                'th',
+                'thead',
                 null,
-                h('span', 'sb-name', speciesBadge(p.species, 24), p.name, h('small', null, SPECIES[p.species].kind)),
-                p.bot ? h('em', null, 'BOT') : null
+                h(
+                  'tr',
+                  null,
+                  h('th', null, pvp ? TEAM_NAMES[gi] : '隊員'),
+                  SB_COLUMNS.map((c) => h('th', null, c))
+                )
               ),
-              cells
+              h(
+                'tbody',
+                null,
+                group.map((p) => {
+                  const cells = Array.from({ length: 5 }, () => h('td'))
+                  rows.set(p.id, cells)
+                  const tr = h(
+                    'tr',
+                    { style: pvp ? { '--team': TEAM_COLORS[p.team] } : undefined },
+                    h(
+                      'th',
+                      null,
+                      h(
+                        'span',
+                        'sb-name',
+                        speciesBadge(p.species, 24),
+                        p.name,
+                        h('small', null, SPECIES[p.species].kind)
+                      ),
+                      p.bot ? h('em', null, 'BOT') : null
+                    ),
+                    cells
+                  )
+                  trs.set(p.id, tr)
+                  return tr
+                })
+              )
             )
-          })
+          )
         )
       }
+      for (const [id, tr] of trs) setClass(tr, 'is-me', id === me)
       for (const p of order) {
         const c = rows.get(p.id)
         if (!c) continue

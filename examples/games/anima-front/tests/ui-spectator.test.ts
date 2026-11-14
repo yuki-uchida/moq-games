@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { seatButton, stepTeam } from '../src/ui/spectator'
+import { demoView } from '../src/ui/hud/demo-view'
+import { hudYaw, seatButton, stepTeam } from '../src/ui/spectator'
 
 describe('spectator bar', () => {
   it('offers 「空いた席で参加」 only while a seat is free, then waits for it', () => {
@@ -22,5 +23,15 @@ describe('spectator bar', () => {
 
   it('steps through the three teams', () => {
     expect([stepTeam(0, -1), stepTeam(2, 1), stepTeam(1, 1)]).toEqual([2, 0, 2])
+  })
+
+  it('draws the HUD against the followed yaw, else the local look', () => {
+    const v = demoView('pve', 1)
+    const [a, b] = v.players
+    const view = { ...v, players: [{ ...a, yaw: 1.25 }, { ...b, yaw: -2 }, ...v.players.slice(2)] }
+    expect(hudYaw(view, b.id, 0.3)).toBe(-2)
+    expect(hudYaw(view, a.id, 0.3)).toBe(1.25)
+    expect(hudYaw(view, undefined, 0.3)).toBe(0.3)
+    expect(hudYaw(view, 'gone', 0.3)).toBe(0.3)
   })
 })

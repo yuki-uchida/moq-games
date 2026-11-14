@@ -48,6 +48,9 @@ export interface Hud {
   readonly el: HTMLElement
   update(f: HudFrame): void
   setScoreboard(open: boolean): void
+  /** Scrolls the open scoreboard (wheel / right stick). */
+  scrollScoreboard(dy: number): void
+  readonly scoreboardOpen: boolean
   /** Text for the touch interact button, or null (revive available). */
   readonly interactLabel: string | null
   /** Sound hooks for UI-only beats the renderer does not know (radio blip). */
@@ -239,6 +242,12 @@ export function createHud(): Hud {
     },
     setScoreboard(open) {
       scoreboard.setOpen(open)
+    },
+    scrollScoreboard(dy) {
+      scoreboard.scrollBy(dy)
+    },
+    get scoreboardOpen() {
+      return scoreboard.open
     },
     update(f) {
       const { view, dt } = f

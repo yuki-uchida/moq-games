@@ -9,7 +9,7 @@
  *   from the hidden placeholder, so it never slides in from an old position).
  */
 import type { MatchConfig, PlayerView, TeamId, View } from '../sim/types'
-import { hiddenPlayer } from './split'
+import { hiddenPlayer, rosterRowOf } from './split'
 
 export const FADE = 0.35
 
@@ -60,6 +60,7 @@ export class Fog {
           name: p.name,
           bot: p.bot,
           stats: p.stats,
+          species: p.species,
           v: [0, 0, 0],
           move: 'idle',
           revealed: false,
@@ -85,11 +86,7 @@ export function hideUnknown(view: View, team: TeamId, known: ReadonlySet<string>
     if (p.team === team || known.has(p.id)) return p
     changed = true
     const cfg = { id: p.id, name: p.name, team: p.team, species: p.species, bot: p.bot ? 1 : undefined }
-    return hiddenPlayer(
-      cfg as MatchConfig['players'][number],
-      [p.name, p.bot ? 1 : 0, p.stats.kos, p.stats.assists, p.stats.downs],
-      fog.lastOf(p.id)
-    )
+    return hiddenPlayer(cfg as MatchConfig['players'][number], rosterRowOf(p), fog.lastOf(p.id))
   })
   return changed ? { ...view, players } : view
 }
