@@ -1,7 +1,10 @@
 /**
- * Synthesized instruments for the music. Each voice is a short-lived node graph built for one note and
- * connected to `out`; envelopes, filters and (for sustained leads) vibrato make them sound like instruments
- * rather than raw oscillators. Nothing here keeps state, so an OfflineAudioContext renders the same sound.
+ * Synthesized instruments for the music. Each voice is a node graph built for one note and connected to `out`;
+ * envelopes, filters and (for sustained leads) vibrato make them sound like instruments rather than raw
+ * oscillators. Nothing here keeps state, so an OfflineAudioContext renders the same sound.
+ *
+ * A note's sources (oscillators, noise) can sound only once; its gains, filters and panners can be used again.
+ * With a `Rack` in the environment a voice takes those from the rack, so a note makes only its sources.
  */
 import type { InstName } from './notation'
 
@@ -9,6 +12,97 @@ export interface VoiceEnv {
   ctx: BaseAudioContext
   out: AudioNode
   noise: AudioBuffer
+  /** The kept nodes this note is built on; without one every node is made new. */
+  rack?: Rack
+}
+
+/**
+ * The nodes of one voice that outlive its notes. The first note built on a rack makes them; every later note asks
+ * for them again in the same order and gets the same ones back, with the automation of the note before cleared.
+ * The browser then has only a note's sources to collect and to delete afterwards, not its whole graph.
+ *
+ * A rack serves one graph: the same voice (for the drum kit, the same drum) into the same output, because the
+ * nodes stay connected as the first note connected them. It must not be given to a note before the sources of the
+ * note before have stopped (`freeAt`).
+ */
+export class Rack {
+  private readonly gains: GainNode[] = []
+  private readonly filters: BiquadFilterNode[] = []
+  private readonly pans: StereoPannerNode[] = []
+  private readonly mods: GainNode[] = []
+  private g = 0
+  private f = 0
+  private p = 0
+  private m = 0
+  private stop = 0
+  /** Context time from which the next note may be built on this rack; Infinity while one is being built. */
+  freeAt = 0
+
+  /** A note is about to be built: the nodes are handed out from the first again. */
+  begin(): void {
+    this.g = this.f = this.p = this.m = 0
+    this.stop = 0
+    this.freeAt = Infinity
+  }
+
+  /** The note is built: the rack is free `rest` seconds after its last source stops (the filters ring out). */
+  end(rest: number): void {
+    this.freeAt = this.stop + rest
+  }
+
+  /** A source of the note stops at `stop`. */
+  busy(stop: number): void {
+    if (stop > this.stop) this.stop = stop
+  }
+
+  gain(ctx: BaseAudioContext): GainNode {
+    let n = this.gains[this.g]
+    if (n) n.gain.cancelScheduledValues(0)
+    else this.gains.push((n = ctx.createGain()))
+    this.g += 1
+    return n
+  }
+
+  filter(ctx: BaseAudioContext): BiquadFilterNode {
+    let n = this.filters[this.f]
+    if (n) {
+      n.frequency.cancelScheduledValues(0)
+      n.Q.cancelScheduledValues(0)
+      n.gain.cancelScheduledValues(0)
+      n.detune.cancelScheduledValues(0)
+      n.gain.value = 0
+      n.detune.value = 0
+    } else this.filters.push((n = ctx.createBiquadFilter()))
+    this.f += 1
+    return n
+  }
+
+  pan(ctx: BaseAudioContext): StereoPannerNode {
+    let n = this.pans[this.p]
+    if (n) n.pan.cancelScheduledValues(0)
+    else this.pans.push((n = ctx.createStereoPanner()))
+    this.p += 1
+    return n
+  }
+
+  /**
+   * A gain that drives a parameter of one of the note's sources (vibrato, frequency modulation). The source is new
+   * with every note, so the connection to the one before is taken away first.
+   */
+  mod(ctx: BaseAudioContext): GainNode {
+    let n = this.mods[this.m]
+    if (n) {
+      n.gain.cancelScheduledValues(0)
+      n.disconnect()
+    } else this.mods.push((n = ctx.createGain()))
+    this.m += 1
+    return n
+  }
+
+  /** Kept nodes, for the tests and the measuring tools. */
+  get size(): number {
+    return this.gains.length + this.filters.length + this.pans.length + this.mods.length
+  }
 }
 
 export const mtof = (m: number): number => 440 * Math.pow(2, (m - 69) / 12)
@@ -63,17 +157,25 @@ function osc(c: VoiceEnv, type: OscillatorType, freq: number, t: number, stop: n
   if (detune) o.detune.setValueAtTime(detune, t)
   o.start(t)
   o.stop(stop)
+  c.rack?.busy(stop)
   return o
 }
 
 function gain(c: VoiceEnv, v = 0): GainNode {
-  const g = c.ctx.createGain()
+  const g = c.rack ? c.rack.gain(c.ctx) : c.ctx.createGain()
   g.gain.value = v
   return g
 }
 
+/** A gain that feeds a parameter of a source instead of a node (see `Rack.mod`). */
+function modGain(c: VoiceEnv): GainNode {
+  const g = c.rack ? c.rack.mod(c.ctx) : c.ctx.createGain()
+  g.gain.value = 0
+  return g
+}
+
 function filter(c: VoiceEnv, type: BiquadFilterType, freq: number, q = 0.7): BiquadFilterNode {
-  const f = c.ctx.createBiquadFilter()
+  const f = c.rack ? c.rack.filter(c.ctx) : c.ctx.createBiquadFilter()
   f.type = type
   f.frequency.value = freq
   f.Q.value = q
@@ -86,6 +188,7 @@ function noiseSrc(c: VoiceEnv, t: number, stop: number): AudioBufferSourceNode {
   s.loop = true
   s.start(t, Math.random() * (c.noise.duration - 0.5))
   s.stop(stop)
+  c.rack?.busy(stop)
   return s
 }
 
@@ -109,7 +212,7 @@ function vibrato(
   delay: number
 ): void {
   const l = osc(c, 'sine', rate, t, stop)
-  const lg = gain(c)
+  const lg = modGain(c)
   lg.gain.setValueAtTime(0, t)
   lg.gain.setValueAtTime(0, t + delay)
   lg.gain.linearRampToValueAtTime(cents, t + delay + 0.35)
@@ -126,7 +229,7 @@ function freqStart(o: OscillatorNode, t: number, f: number, from?: number): void
 
 /** A stereo panner feeding `c.out`; returns the node to connect a voice into. */
 function panTo(c: VoiceEnv, pan: number, out: AudioNode = c.out): AudioNode {
-  const p = c.ctx.createStereoPanner()
+  const p = c.rack ? c.rack.pan(c.ctx) : c.ctx.createStereoPanner()
   p.pan.value = Math.max(-1, Math.min(1, pan))
   p.connect(out)
   return p
@@ -356,7 +459,7 @@ function fmBell(ratio: number, index: number, decay: number, level: number, hold
     g.gain.setTargetAtTime(0.0001, t + hold + 0.003, decay / 3)
     const car = osc(c, 'sine', f, t, stop)
     const mod = osc(c, 'sine', f * ratio, t, stop)
-    const mg = gain(c)
+    const mg = modGain(c)
     const peak = f * index * (0.5 + 0.5 * v)
     mg.gain.setValueAtTime(peak, t)
     mg.gain.setTargetAtTime(peak * 0.04, t, decay / 5)
@@ -524,6 +627,7 @@ function chip(type: 'square' | 'pulse' | 'tri', level: number): Voice {
     o.frequency.value = f
     o.start(t)
     o.stop(stop)
+    c.rack?.busy(stop)
     o.connect(g)
   }
 }

@@ -1,9 +1,10 @@
 /**
  * The bank of rendered sound effects. Every effect is built once, node by node, in an `OfflineAudioContext` (which
  * renders on its own thread) and kept as a stretch of an AudioBuffer holding its bus signal: the sound before the
- * panner, at volume 1, in mono. Playing an effect is then a buffer source, a gain, a panner and (with a reverb send)
- * one more gain, which is the same graph as a live effect from its bus on. Effects without a buffer yet, and any
- * failure, play live.
+ * panner, at volume 1, in mono. Playing an effect is then a buffer source into a gain, a panner and a reverb send,
+ * which is the same graph as a live effect from its bus on. The gain, the panner and the send are a strip that is
+ * kept and given to the next effect once this one has ended, so an effect makes one node, its source. Effects
+ * without a buffer yet, and any failure, play live.
  *
  * A fresh context builds the wave table of each oscillator type when the type is first used, and that costs more
  * than the nodes of a whole effect. So the effects are rendered in batches: several of them one after another in one
@@ -198,6 +199,18 @@ export interface Take {
   end: number
 }
 
+/** Seconds a strip is left alone after its effect's stretch of the buffer has been played. */
+const STRIP_REST = 0.05
+
+/** What a buffered effect is played through after its source: gain -> panner -> effects bus, panner -> send -> reverb. */
+interface Strip {
+  gain: GainNode
+  pan: StereoPannerNode
+  send: GainNode
+  /** Context time from which the next effect may use the strip. */
+  freeAt: number
+}
+
 /** One effect to render: a name, a pitch and the seed of its random choices. */
 export interface BankJob {
   name: SfxName
@@ -257,6 +270,8 @@ export interface BankOptions {
 
 export class SfxBank {
   private readonly takes = new Map<string, Take[]>()
+  /** The strips made so far, by the mixer they lead into. */
+  private readonly strips = new WeakMap<Mixer, Strip[]>()
   private readonly failed = new Set<string>()
   private readonly queued = new Set<string>()
   private readonly extended = new Set<string>()
@@ -703,6 +718,26 @@ export class SfxBank {
     return null
   }
 
+  /** A strip into this mixer whose last effect is over, or a new one. */
+  private strip(mixer: Mixer, now: number): Strip {
+    let list = this.strips.get(mixer)
+    if (!list) this.strips.set(mixer, (list = []))
+    for (let i = 0; i < list.length; i++) if (list[i].freeAt <= now) return list[i]
+    const ctx = mixer.ctx
+    const strip: Strip = { gain: ctx.createGain(), pan: ctx.createStereoPanner(), send: ctx.createGain(), freeAt: 0 }
+    strip.gain.connect(strip.pan)
+    strip.pan.connect(mixer.sfx)
+    strip.pan.connect(strip.send)
+    strip.send.connect(mixer.sfxReverb)
+    list.push(strip)
+    return strip
+  }
+
+  /** Strips made for a mixer so far, for the tests and the measuring tools. */
+  stripsOf(mixer: Mixer): number {
+    return this.strips.get(mixer)?.length ?? 0
+  }
+
   /**
    * Starts a buffered effect: source -> gain -> panner -> mixer.sfx, and panner -> send -> mixer.sfxReverb. Returns
    * the context time it ends, or undefined when the bank has no buffer for it (the caller plays it live).
@@ -723,23 +758,17 @@ export class SfxBank {
     const src = ctx.createBufferSource()
     src.buffer = take.buffer
     src.playbackRate.value = rate
-    const gain = ctx.createGain()
-    gain.gain.value = def.g * (SFX_TRIM[name] ?? 1) * Math.max(0, Math.min(1, opts.volume ?? 1))
-    const pan = ctx.createStereoPanner()
-    pan.pan.value = Math.max(-1, Math.min(1, opts.pan ?? 0))
-    src.connect(gain)
-    gain.connect(pan)
-    pan.connect(mixer.sfx)
-    const rev = def.rev ?? 0.12
-    if (rev > 0) {
-      const send = ctx.createGain()
-      send.gain.value = rev
-      pan.connect(send)
-      send.connect(mixer.sfxReverb)
-    }
+    // The values of a strip are set now, so it must be one that is silent now, not only by `when`.
+    const strip = this.strip(mixer, ctx.currentTime)
+    strip.gain.gain.value = def.g * (SFX_TRIM[name] ?? 1) * Math.max(0, Math.min(1, opts.volume ?? 1))
+    strip.pan.pan.value = Math.max(-1, Math.min(1, opts.pan ?? 0))
+    // An effect without reverb sends nothing.
+    strip.send.gain.value = Math.max(0, def.rev ?? 0.12)
+    src.connect(strip.gain)
     // Its own stretch of a batch's buffer, or a buffer of its own from the start.
     if (take.start === undefined) src.start(when)
     else src.start(when, take.start, take.length)
+    strip.freeAt = when + (take.length ?? take.buffer.duration) / rate + STRIP_REST
     return when + take.end / rate
   }
 }

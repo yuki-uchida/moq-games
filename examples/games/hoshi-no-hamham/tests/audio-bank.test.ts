@@ -385,16 +385,72 @@ describe('playing from the bank', () => {
     await m.drain()
     const { ctx, created } = fakeContext()
     const engine = new AudioEngine(ctx, false, m.bank)
-    return { bank: m.bank, engine, created }
+    /** Moves the context's clock. */
+    const at = (seconds: number) => void ((ctx as unknown as { currentTime: number }).currentTime = seconds)
+    return { bank: m.bank, engine, created, at }
   }
 
-  test('a buffered effect costs a source, a gain, a panner and a send', async () => {
+  test('the first buffered effect costs a source and a strip: a gain, a panner and a send', async () => {
     const { engine, created } = await ready()
     const before = created.length
     engine.sfx('bite', { pan: 0.4 }, 0)
     expect(created.slice(before)).toEqual(['source', 'gain', 'panner', 'gain'])
     expect(sfxStats.buffered).toBe(1)
     expect(sfxStats.live).toBe(0)
+  })
+
+  test('an effect that starts after another has ended costs its source alone', async () => {
+    const { bank, engine, created, at } = await ready()
+    engine.sfx('bite', {}, 0)
+    const before = created.length
+    // Long after the bite: its strip is free.
+    at(30)
+    engine.sfx('jump', { pan: -0.3, volume: 0.5 }, 30)
+    at(60)
+    engine.sfx('hurt', {}, 60)
+    expect(created.slice(before)).toEqual(['source', 'source'])
+    expect(bank.stripsOf(engine.mixer)).toBe(1)
+    expect(sfxStats.buffered).toBe(3)
+  })
+
+  test('effects that sound at the same time each have a strip of their own', async () => {
+    const { bank, engine, created, at } = await ready()
+    const before = created.length
+    engine.sfx('bite', {}, 0)
+    engine.sfx('jump', {}, 0)
+    // The clock has moved, but not past the end of either.
+    at(0.02)
+    engine.sfx('hurt', {}, 0.02)
+    expect(created.slice(before).filter((kind) => kind === 'source').length).toBe(3)
+    expect(bank.stripsOf(engine.mixer)).toBe(3)
+    // An effect asked for now and due later holds its strip from now on: the strip's values are set at once.
+    at(40)
+    engine.sfx('bite', {}, 45)
+    engine.sfx('jump', {}, 40)
+    at(44)
+    engine.sfx('hurt', {}, 44)
+    // Three strips, all free at 40: the bite (due at 45) and the jump took one each, the hurt the third.
+    expect(bank.stripsOf(engine.mixer)).toBe(3)
+    at(45.01)
+    engine.sfx('pickup', {}, 45.01)
+    // The bite sounds now on its strip; the jump's and the hurt's have long ended.
+    expect(bank.stripsOf(engine.mixer)).toBe(3)
+  })
+
+  test('a strip is not given away before the stretch of its effect has been played, at any speed', async () => {
+    const { bank, engine, at } = await ready()
+    const mixer = engine.mixer
+    const buffer = { length: 96000, sampleRate: 48000, duration: 2 } as unknown as AudioBuffer
+    bank.add('jump', 1, [{ buffer, start: 0.5, length: 1, end: 0.9 }])
+    bank.play(mixer, 'jump', 0, {})
+    // The effect varies its speed by a few percent: at the slowest its second of buffer lasts a little longer.
+    const slowest = 1 / (1 - (SFX_DEFS.jump.vary ?? 0.05))
+    at(0.9)
+    bank.play(mixer, 'jump', 0.9, {})
+    expect(bank.stripsOf(mixer)).toBe(2)
+    at(0.9 + slowest + 0.06)
+    bank.play(mixer, 'jump', 0.9 + slowest + 0.06, {})
+    expect(bank.stripsOf(mixer)).toBe(2)
   })
 
   test('limits, cooldowns and the voice budget still apply', async () => {
@@ -413,7 +469,8 @@ describe('playing from the bank', () => {
     const started: unknown[][] = []
     const node = (): unknown =>
       new Proxy(function () {}, {
-        get: (_t, key) => (key === 'start' ? (...args: unknown[]) => void started.push(args) : node()),
+        get: (_t, key) =>
+          key === 'start' ? (...args: unknown[]) => void started.push(args) : key === 'currentTime' ? 0 : node(),
         set: () => true,
         apply: () => node()
       })
