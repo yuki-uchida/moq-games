@@ -69,6 +69,11 @@ export interface Body extends Rect {
   dropTimer?: number
 }
 
+/** What `World.slide` needs of a body: its box, its velocity and how long it still ignores one-way platforms. */
+interface Mover extends Body {
+  dropTimer: number
+}
+
 export interface Player extends Body {
   facing: 1 | -1
   hp: number
@@ -208,6 +213,10 @@ export class Rng {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
+  /** `next() > p`: one draw, answered as a boolean so that the number never leaves the generator. */
+  above(p: number): boolean {
+    return this.next() > p
+  }
   range(min: number, max: number) {
     return min + this.next() * (max - min)
   }
@@ -247,6 +256,19 @@ export class World {
   private waterTick = 0
   private waterTotal = 0
   private dirtFall: { x: number; y: number; timer: number }[] = []
+  /**
+   * What `slide` found. It is one object that the next call overwrites: every caller reads both fields at once,
+   * before anything else can move a body.
+   */
+  private readonly moved = { grounded: false, hitWall: false }
+  /** The body being moved, copied in and out around `slide`. */
+  private readonly mover: Mover = { x: 0, y: 0, w: 0, h: 0, vx: 0, vy: 0, dropTimer: 0 }
+  /** The charging animal's body, the bite box and a bee's sting box are rewritten before each use; nothing keeps them. */
+  private readonly animalBody: Body = { x: 0, y: 0, w: 48, h: 40, vx: 0, vy: 0 }
+  private readonly biteBox: Rect = { x: 0, y: 0, w: BITE_W, h: BITE_H }
+  private readonly beeBox: Rect = { x: 0, y: 0, w: 16, h: 16 }
+  /** Water cells that fill on this tick, as indexes into the grid (each cell of the grid adds at most one). */
+  private readonly flow: Int32Array
 
   constructor(stage: StageDef, options: WorldOptions = {}) {
     this.stage = stage
@@ -256,6 +278,7 @@ export class World {
     const cols = Math.max(...stage.map.map((row) => row.length))
     this.w = cols
     this.h = rows
+    this.flow = new Int32Array(cols * rows)
     this.tiles = new Uint8Array(cols * rows)
     this.dynamic = new Uint8Array(cols * rows)
     this.water = new Uint8Array(cols * rows)
@@ -607,12 +630,17 @@ export class World {
     this.events.push(event)
   }
 
-  private centre(b: Rect) {
-    return { x: b.x + b.w / 2, y: b.y + b.h / 2 }
+  // The positions that go into events are written out as numbers, so no step allocates a point just to read it.
+  private cx(b: Rect): number {
+    return b.x + b.w / 2
   }
 
-  private feet(b: Rect) {
-    return { x: b.x + b.w / 2, y: b.y + b.h }
+  private cy(b: Rect): number {
+    return b.y + b.h / 2
+  }
+
+  private fy(b: Rect): number {
+    return b.y + b.h
   }
 
   /** Top edge (world px) of the highest water cell in the hero's column around the body. */
@@ -628,10 +656,11 @@ export class World {
     const p = this.player
     if (p.dead) return
     p.animTime += dt
-    p.biteCooldown = Math.max(0, p.biteCooldown - dt)
-    p.biteTimer = Math.max(0, p.biteTimer - dt)
-    p.invuln = Math.max(0, p.invuln - dt)
-    p.dropTimer = Math.max(0, p.dropTimer - dt)
+    // Timers count down to zero: `t > dt ? t - dt : 0` is `Math.max(0, t - dt)` without a call to a built-in.
+    p.biteCooldown = p.biteCooldown > dt ? p.biteCooldown - dt : 0
+    p.biteTimer = p.biteTimer > dt ? p.biteTimer - dt : 0
+    p.invuln = p.invuln > dt ? p.invuln - dt : 0
+    p.dropTimer = p.dropTimer > dt ? p.dropTimer - dt : 0
 
     // Press down on a one-way platform to drop through it.
     if (input.down && p.onGround) {
@@ -641,11 +670,11 @@ export class World {
         p.dropTimer = 0.28
         p.y += 4
         p.onGround = false
-        this.emit({ type: 'drop', ...this.feet(p) })
+        this.emit({ type: 'drop', x: this.cx(p), y: this.fy(p) })
       }
     }
-    p.coyote = Math.max(0, p.coyote - dt)
-    p.jumpBuffer = Math.max(0, p.jumpBuffer - dt)
+    p.coyote = p.coyote > dt ? p.coyote - dt : 0
+    p.jumpBuffer = p.jumpBuffer > dt ? p.jumpBuffer - dt : 0
 
     // water state
     const wasInWater = p.inWater
@@ -696,18 +725,18 @@ export class World {
       p.onGround = false
       p.coyote = 0
       p.jumpBuffer = 0
-      this.emit({ type: 'jump', ...this.feet(p) })
+      this.emit({ type: 'jump', x: this.cx(p), y: this.fy(p) })
     }
 
     const wasGround = p.onGround
     const fallSpeed = p.vy
-    const move = this.moveBody(p, dt)
-    p.onGround = move.grounded
+    this.movePlayer(p, dt)
+    p.onGround = this.moved.grounded
     if (p.onGround) {
       p.coyote = COYOTE
       p.lastSafeX = p.x
       p.lastSafeY = p.y
-      if (!wasGround) this.emit({ type: 'land', ...this.feet(p), speed: Math.max(0, fallSpeed) })
+      if (!wasGround) this.emit({ type: 'land', x: this.cx(p), y: this.fy(p), speed: Math.max(0, fallSpeed) })
     }
 
     // bite
@@ -728,14 +757,15 @@ export class World {
         p.y = p.lastSafeY - 4
         p.vx = 0
         p.vy = 0
-        this.emit({ type: 'respawn', ...this.feet(p) })
+        this.emit({ type: 'respawn', x: this.cx(p), y: this.fy(p) })
       }
     }
 
     // pickups
-    for (const prop of this.props) {
+    for (let i = 0; i < this.props.length; i++) {
+      const prop = this.props[i]
       if (prop.state !== 'idle') continue
-      if (!this.overlaps(p, propRect(prop))) continue
+      if (!this.overlapsProp(p, prop)) continue
       if (prop.kind === 'fruit' || prop.kind === 'twig' || prop.kind === 'berry' || prop.kind === 'star') {
         this.collect(prop)
       }
@@ -758,81 +788,143 @@ export class World {
     return false
   }
 
-  /** Moves a body through the tile grid. Returns whether it touched the ground and whether a wall stopped it. */
-  private moveBody(b: Body, dt: number): { grounded: boolean; hitWall: boolean } {
+  /**
+   * Moves a body through the tile grid and reports through `this.moved`. The body's numbers go through one scratch
+   * object of a fixed shape: the hero, enemies, bosses and a charging animal are objects of different shapes, and
+   * code that reads their double fields in one place makes the engine allocate a heap number for every read.
+   * Each body type has its own small function that copies in and out where its shape is known.
+   */
+  private movePlayer(p: Player, dt: number) {
+    const m = this.mover
+    m.x = p.x
+    m.y = p.y
+    m.w = p.w
+    m.h = p.h
+    m.vx = p.vx
+    m.vy = p.vy
+    m.dropTimer = p.dropTimer
+    this.slide(m, dt)
+    p.x = m.x
+    p.y = m.y
+    p.vx = m.vx
+    p.vy = m.vy
+  }
+
+  private moveBoss(boss: Boss, dt: number) {
+    const m = this.mover
+    m.x = boss.x
+    m.y = boss.y
+    m.w = boss.w
+    m.h = boss.h
+    m.vx = boss.vx
+    m.vy = boss.vy
+    m.dropTimer = 0
+    this.slide(m, dt)
+    boss.x = m.x
+    boss.y = m.y
+    boss.vx = m.vx
+    boss.vy = m.vy
+  }
+
+  private moveAnimal(body: Body, dt: number) {
+    const m = this.mover
+    m.x = body.x
+    m.y = body.y
+    m.w = body.w
+    m.h = body.h
+    m.vx = body.vx
+    m.vy = body.vy
+    m.dropTimer = 0
+    this.slide(m, dt)
+    body.x = m.x
+    body.y = m.y
+    body.vx = m.vx
+    body.vy = m.vy
+  }
+
+  private slide(b: Mover, dt: number): void {
+    const w = b.w
+    const h = b.h
+    let x = b.x
+    let y = b.y
+    let vx = b.vx
+    let vy = b.vy
     // Safety net: a body must never rest inside terrain (guards against respawns and falling props).
-    const midTx = Math.floor((b.x + b.w / 2) / TILE)
-    const midTy = Math.floor((b.y + b.h / 2) / TILE)
+    const midTx = Math.floor((x + w / 2) / TILE)
+    const midTy = Math.floor((y + h / 2) / TILE)
     if (this.solidAt(midTx, midTy)) {
       let row = midTy
       while (row > 0 && this.solidAt(midTx, row - 1)) row--
-      b.y = row * TILE - b.h - 0.01
-      if (b.vy > 0) b.vy = 0
+      y = row * TILE - h - 0.01
+      if (vy > 0) vy = 0
     }
     let hitWall = false
     // X axis
-    b.x += b.vx * dt
-    const top = Math.floor(b.y / TILE)
-    const bottom = Math.floor((b.y + b.h - 0.01) / TILE)
-    if (b.vx > 0) {
-      const tx = Math.floor((b.x + b.w) / TILE)
+    x += vx * dt
+    const top = Math.floor(y / TILE)
+    const bottom = Math.floor((y + h - 0.01) / TILE)
+    if (vx > 0) {
+      const tx = Math.floor((x + w) / TILE)
       for (let ty = top; ty <= bottom; ty++)
         if (this.solidAt(tx, ty)) {
-          b.x = tx * TILE - b.w - 0.01
-          b.vx = 0
+          x = tx * TILE - w - 0.01
+          vx = 0
           hitWall = true
           break
         }
-    } else if (b.vx < 0) {
-      const tx = Math.floor(b.x / TILE)
+    } else if (vx < 0) {
+      const tx = Math.floor(x / TILE)
       for (let ty = top; ty <= bottom; ty++)
         if (this.solidAt(tx, ty)) {
-          b.x = (tx + 1) * TILE + 0.01
-          b.vx = 0
+          x = (tx + 1) * TILE + 0.01
+          vx = 0
           hitWall = true
           break
         }
     }
     // Y axis
-    const prevBottom = b.y + b.h
-    b.y += b.vy * dt
-    const left = Math.floor((b.x + 1) / TILE)
-    const right = Math.floor((b.x + b.w - 1) / TILE)
+    const prevBottom = y + h
+    y += vy * dt
+    const left = Math.floor((x + 1) / TILE)
+    const right = Math.floor((x + w - 1) / TILE)
     let grounded = false
-    if (b.vy >= 0) {
-      const ty = Math.floor((b.y + b.h) / TILE)
+    if (vy >= 0) {
+      const ty = Math.floor((y + h) / TILE)
       for (let tx = left; tx <= right; tx++) {
         const solid = this.solidAt(tx, ty)
         const platform = this.tileAt(tx, ty) === T.PLATFORM && prevBottom <= ty * TILE + 1 && (b.dropTimer ?? 0) <= 0
         if (solid || platform) {
-          b.y = ty * TILE - b.h
-          b.vy = 0
+          y = ty * TILE - h
+          vy = 0
           grounded = true
           break
         }
       }
     } else {
-      const ty = Math.floor(b.y / TILE)
+      const ty = Math.floor(y / TILE)
       for (let tx = left; tx <= right; tx++)
         if (this.solidAt(tx, ty)) {
-          b.y = (ty + 1) * TILE + 0.01
-          b.vy = 0
+          y = (ty + 1) * TILE + 0.01
+          vy = 0
           break
         }
     }
-    return { grounded, hitWall }
+    b.x = x
+    b.y = y
+    b.vx = vx
+    b.vy = vy
+    this.moved.grounded = grounded
+    this.moved.hitWall = hitWall
   }
 
   private doBite() {
     const p = this.player
-    const box: Rect = {
-      x: p.facing > 0 ? p.x + p.w - 4 : p.x - BITE_W + 4,
-      y: p.y + 2,
-      w: BITE_W,
-      h: BITE_H
-    }
+    const box = this.biteBox
+    box.x = p.facing > 0 ? p.x + p.w - 4 : p.x - BITE_W + 4
+    box.y = p.y + 2
     let hit = false
-    for (const enemy of this.enemies) {
+    for (let i = 0; i < this.enemies.length; i++) {
+      const enemy = this.enemies[i]
       if (enemy.dead) continue
       if (this.overlaps(box, enemy)) {
         this.damageEnemy(enemy, 1, p.facing)
@@ -843,9 +935,11 @@ export class World {
       this.damageBoss(1)
       hit = true
     }
-    for (const prop of [...this.props]) {
+    // Biting a rock can drop a fruit; the props that exist now are the ones this bite can reach.
+    for (let i = 0, count = this.props.length; i < count; i++) {
+      const prop = this.props[i]
       if (prop.state !== 'idle') continue
-      if (!this.overlaps(box, propRect(prop))) continue
+      if (!this.overlapsProp(box, prop)) continue
       this.biteProp(prop, p.facing)
       hit = true
     }
@@ -861,7 +955,7 @@ export class World {
           hit = true
         }
       }
-    this.emit({ type: 'bite', ...this.centre(box), dir: p.facing, hit })
+    this.emit({ type: 'bite', x: this.cx(box), y: this.cy(box), dir: p.facing, hit })
   }
 
   private digTile(tx: number, ty: number) {
@@ -1015,7 +1109,8 @@ export class World {
   }
 
   private openDoors(id: number) {
-    for (const prop of this.props) {
+    for (let i = 0; i < this.props.length; i++) {
+      const prop = this.props[i]
       if (prop.kind === 'door' && prop.data === id && prop.state === 'closed') {
         prop.state = 'open'
         for (let ty = 0; ty < prop.h; ty++)
@@ -1059,7 +1154,7 @@ export class World {
   private awakeBoss(boss: Boss) {
     boss.active = true
     this.raiseBossGate()
-    this.emit({ type: 'boss-awake', ...this.centre(boss) })
+    this.emit({ type: 'boss-awake', x: this.cx(boss), y: this.cy(boss) })
   }
 
   collect(prop: Prop) {
@@ -1130,75 +1225,33 @@ export class World {
       invuln: 0
     }
     // The nest stage summoned the boss where the player stands, so seal the arena right away.
-    this.emit({ type: 'boss-awake', ...this.centre(this.boss) })
+    this.emit({ type: 'boss-awake', x: this.cx(this.boss), y: this.cy(this.boss) })
     this.raiseBossGate()
   }
 
   // ------------------------------------------------------------------ enemies
 
   private updateEnemies(dt: number) {
-    for (const enemy of this.enemies) {
+    for (let i = 0; i < this.enemies.length; i++) {
+      const enemy = this.enemies[i]
       if (enemy.dead) continue
       enemy.t += dt
-      enemy.hitFlash = Math.max(0, enemy.hitFlash - dt)
-      const stats = enemyStats(enemy.kind)
-      const dx = this.player.x - enemy.x
-      const dir = dx > 0 ? 1 : -1
-      if (enemy.kind === 'walker' || enemy.kind === 'tough') {
-        const chase = Math.abs(dx) < 260
-        const speed = chase ? stats.speed * 1.35 : stats.speed
-        if (chase) enemy.facing = dir
-        enemy.vx = enemy.facing * speed
-        enemy.vy = Math.min(MAX_FALL, enemy.vy + GRAVITY * dt)
-        const hitWall = this.moveEnemy(enemy, dt)
-        if (hitWall) enemy.facing = (enemy.facing * -1) as 1 | -1
-        if (enemy.onGround && this.aheadIsPit(enemy)) enemy.facing = (enemy.facing * -1) as 1 | -1
-      } else if (enemy.kind === 'jumper') {
-        enemy.vx = Math.abs(dx) > 40 ? dir * stats.speed : 0
-        enemy.facing = dir
-        enemy.vy = Math.min(MAX_FALL, enemy.vy + GRAVITY * dt)
-        if (enemy.onGround) {
-          enemy.vy = -520
-          enemy.vx = dir * stats.speed
-          this.emit({ type: 'hop', id: enemy.id, ...this.feet(enemy) })
-        }
-        this.moveEnemy(enemy, dt)
-      } else if (enemy.kind === 'flyer') {
-        const targetY = this.player.y - 70 + Math.sin(enemy.t * 2.2) * 26
-        enemy.vx += (dir * stats.speed - enemy.vx) * Math.min(1, dt * 3)
-        enemy.vy += (targetY - enemy.y) * dt * 3
-        enemy.vy = Math.max(-170, Math.min(170, enemy.vy))
-        enemy.facing = dir
-        this.moveEnemy(enemy, dt)
-      } else if (enemy.kind === 'spitter') {
-        enemy.facing = dir
-        enemy.vx = 0
-        enemy.vy = Math.min(MAX_FALL, enemy.vy + GRAVITY * dt)
-        this.moveEnemy(enemy, dt)
-        enemy.shootTimer -= dt
-        if (enemy.shootTimer <= 0 && Math.abs(dx) < 420) {
-          enemy.shootTimer = 2.4
-          this.shots.push({
-            kind: 'seed',
-            x: enemy.x + enemy.w / 2,
-            y: enemy.y + enemy.h * 0.4,
-            w: 14,
-            h: 14,
-            vx: dir * 260,
-            vy: -40,
-            hostile: true,
-            life: 4,
-            dead: false,
-            skin: 'seed'
-          })
-          this.emit({
-            type: 'spit',
-            id: enemy.id,
-            x: enemy.x + enemy.w / 2,
-            y: enemy.y + enemy.h * 0.4,
-            dir
-          })
-        }
+      enemy.hitFlash = enemy.hitFlash > dt ? enemy.hitFlash - dt : 0
+      // Each kind has its own function so that the code of one kind is not thrown away when another turns up.
+      switch (enemy.kind) {
+        case 'walker':
+        case 'tough':
+          this.updateWalker(enemy, dt)
+          break
+        case 'jumper':
+          this.updateJumper(enemy, dt)
+          break
+        case 'flyer':
+          this.updateFlyer(enemy, dt)
+          break
+        case 'spitter':
+          this.updateSpitter(enemy, dt)
+          break
       }
       if (enemy.y > this.h * TILE + 120) enemy.dead = true
       if (this.overlaps(this.player, enemy) && !this.player.dead) {
@@ -1206,13 +1259,104 @@ export class World {
       }
       if (enemy.hp <= 0 && !enemy.dead) this.killEnemy(enemy)
     }
-    this.enemies = this.enemies.filter((enemy) => !enemy.dead || enemy.hitFlash > 0)
+    let kept = 0
+    for (let i = 0; i < this.enemies.length; i++) {
+      const enemy = this.enemies[i]
+      if (!enemy.dead || enemy.hitFlash > 0) this.enemies[kept++] = enemy
+    }
+    this.enemies.length = kept
+  }
+
+  private updateWalker(enemy: Enemy, dt: number) {
+    const stats = enemyStats(enemy.kind)
+    const dx = this.player.x - enemy.x
+    const dir = dx > 0 ? 1 : -1
+    const chase = Math.abs(dx) < 260
+    const speed = chase ? stats.speed * 1.35 : stats.speed
+    if (chase) enemy.facing = dir
+    enemy.vx = enemy.facing * speed
+    enemy.vy = enemy.vy + GRAVITY * dt < MAX_FALL ? enemy.vy + GRAVITY * dt : MAX_FALL
+    const hitWall = this.moveEnemy(enemy, dt)
+    if (hitWall) enemy.facing = (enemy.facing * -1) as 1 | -1
+    if (enemy.onGround && this.aheadIsPit(enemy)) enemy.facing = (enemy.facing * -1) as 1 | -1
+  }
+
+  private updateJumper(enemy: Enemy, dt: number) {
+    const stats = enemyStats(enemy.kind)
+    const dx = this.player.x - enemy.x
+    const dir = dx > 0 ? 1 : -1
+    enemy.vx = Math.abs(dx) > 40 ? dir * stats.speed : 0
+    enemy.facing = dir
+    enemy.vy = enemy.vy + GRAVITY * dt < MAX_FALL ? enemy.vy + GRAVITY * dt : MAX_FALL
+    if (enemy.onGround) {
+      enemy.vy = -520
+      enemy.vx = dir * stats.speed
+      this.emit({ type: 'hop', id: enemy.id, x: this.cx(enemy), y: this.fy(enemy) })
+    }
+    this.moveEnemy(enemy, dt)
+  }
+
+  private updateFlyer(enemy: Enemy, dt: number) {
+    const stats = enemyStats(enemy.kind)
+    const dx = this.player.x - enemy.x
+    const dir = dx > 0 ? 1 : -1
+    const targetY = this.player.y - 70 + Math.sin(enemy.t * 2.2) * 26
+    enemy.vx += (dir * stats.speed - enemy.vx) * (dt * 3 < 1 ? dt * 3 : 1)
+    enemy.vy += (targetY - enemy.y) * dt * 3
+    enemy.vy = enemy.vy < 170 ? (enemy.vy > -170 ? enemy.vy : -170) : 170
+    enemy.facing = dir
+    this.moveEnemy(enemy, dt)
+  }
+
+  private updateSpitter(enemy: Enemy, dt: number) {
+    const dx = this.player.x - enemy.x
+    const dir = dx > 0 ? 1 : -1
+    enemy.facing = dir
+    enemy.vx = 0
+    enemy.vy = enemy.vy + GRAVITY * dt < MAX_FALL ? enemy.vy + GRAVITY * dt : MAX_FALL
+    this.moveEnemy(enemy, dt)
+    enemy.shootTimer -= dt
+    if (enemy.shootTimer <= 0 && Math.abs(dx) < 420) {
+      enemy.shootTimer = 2.4
+      this.shots.push({
+        kind: 'seed',
+        x: enemy.x + enemy.w / 2,
+        y: enemy.y + enemy.h * 0.4,
+        w: 14,
+        h: 14,
+        vx: dir * 260,
+        vy: -40,
+        hostile: true,
+        life: 4,
+        dead: false,
+        skin: 'seed'
+      })
+      this.emit({
+        type: 'spit',
+        id: enemy.id,
+        x: enemy.x + enemy.w / 2,
+        y: enemy.y + enemy.h * 0.4,
+        dir
+      })
+    }
   }
 
   private moveEnemy(enemy: Enemy, dt: number): boolean {
-    const result = this.moveBody(enemy, dt)
-    enemy.onGround = result.grounded
-    return result.hitWall
+    const m = this.mover
+    m.x = enemy.x
+    m.y = enemy.y
+    m.w = enemy.w
+    m.h = enemy.h
+    m.vx = enemy.vx
+    m.vy = enemy.vy
+    m.dropTimer = 0
+    this.slide(m, dt)
+    enemy.x = m.x
+    enemy.y = m.y
+    enemy.vx = m.vx
+    enemy.vy = m.vy
+    enemy.onGround = this.moved.grounded
+    return this.moved.hitWall
   }
 
   private aheadIsPit(enemy: Enemy): boolean {
@@ -1231,7 +1375,8 @@ export class World {
         type: 'enemy-hit',
         id: enemy.id,
         kind: enemy.kind,
-        ...this.centre(enemy),
+        x: this.cx(enemy),
+        y: this.cy(enemy),
         dir
       })
     }
@@ -1245,7 +1390,8 @@ export class World {
       type: 'enemy-down',
       id: enemy.id,
       kind: enemy.kind,
-      ...this.centre(enemy),
+      x: this.cx(enemy),
+      y: this.cy(enemy),
       dir: enemy.vx < 0 ? -1 : 1
     })
   }
@@ -1255,8 +1401,8 @@ export class World {
   private updateBoss(dt: number) {
     const boss = this.boss!
     if (boss.dead) return
-    boss.hitFlash = Math.max(0, boss.hitFlash - dt)
-    boss.invuln = Math.max(0, boss.invuln - dt)
+    boss.hitFlash = boss.hitFlash > dt ? boss.hitFlash - dt : 0
+    boss.invuln = boss.invuln > dt ? boss.invuln - dt : 0
     if (!boss.active) {
       // The boss waits inside its arena until the player steps across the line.
       if (this.player.x + this.player.w >= boss.arenaX) this.awakeBoss(boss)
@@ -1264,8 +1410,9 @@ export class World {
         boss.facing = -1
         boss.vx = 0
         if (boss.def.kind !== 'flyer') {
-          boss.vy = Math.min(MAX_FALL, boss.vy + GRAVITY * dt)
-          boss.onGround = this.moveBody(boss, dt).grounded
+          boss.vy = boss.vy + GRAVITY * dt < MAX_FALL ? boss.vy + GRAVITY * dt : MAX_FALL
+          this.moveBoss(boss, dt)
+          boss.onGround = this.moved.grounded
         }
         return
       }
@@ -1290,11 +1437,11 @@ export class World {
       this.updateBruteBoss(boss, dt, dir, distance)
     }
 
-    if (boss.def.kind !== 'flyer') boss.vy = Math.min(MAX_FALL, boss.vy + GRAVITY * dt)
-    const move = this.moveBody(boss, dt)
-    boss.onGround = move.grounded
-    if (move.hitWall && boss.state === 'charge') {
-      this.emit({ type: 'boss-crash', ...this.centre(boss), dir: boss.facing })
+    if (boss.def.kind !== 'flyer') boss.vy = boss.vy + GRAVITY * dt < MAX_FALL ? boss.vy + GRAVITY * dt : MAX_FALL
+    this.moveBoss(boss, dt)
+    boss.onGround = this.moved.grounded
+    if (this.moved.hitWall && boss.state === 'charge') {
+      this.emit({ type: 'boss-crash', x: this.cx(boss), y: this.cy(boss), dir: boss.facing })
       this.setBossState(boss, 'stunned')
     }
     if (boss.y > this.h * TILE + 200) {
@@ -1337,9 +1484,10 @@ export class World {
       if (this.solidAt(aheadTx, footTy - 1)) boss.vy = -620
     }
     // smash through props (this takes a moment, which is exactly what the player needs)
-    for (const prop of this.props) {
+    for (let i = 0; i < this.props.length; i++) {
+      const prop = this.props[i]
       if (prop.state !== 'idle') continue
-      if (!this.overlaps(boss, propRect(prop))) continue
+      if (!this.overlapsProp(boss, prop)) continue
       if (prop.kind === 'tree' || prop.kind === 'pine' || prop.kind === 'rock') {
         this.biteProp(prop, dir)
         this.setBossState(boss, 'stunned')
@@ -1387,7 +1535,7 @@ export class World {
         this.setBossState(boss, 'idle')
         break
     }
-    if (boss.def.shockwave && boss.state === 'charge' && boss.onGround && this.rng.next() > 0.7) {
+    if (boss.def.shockwave && boss.state === 'charge' && boss.onGround && this.rng.above(0.7)) {
       this.spawnShock(boss.x + boss.w / 2, boss.y + boss.h, boss.facing)
     }
     if (boss.def.minions.length && boss.state === 'idle' && boss.stateTime < dt * 2) {
@@ -1405,7 +1553,7 @@ export class World {
     const targetY = this.player.y - 78 + Math.sin(this.time * 2) * 22
     switch (boss.state) {
       case 'idle':
-        boss.vx += (dir * boss.def.speed - boss.vx) * Math.min(1, dt * 2)
+        boss.vx += (dir * boss.def.speed - boss.vx) * (dt * 2 < 1 ? dt * 2 : 1)
         boss.vy += (targetY - boss.y) * dt * 2
         boss.facing = dir
         if (boss.stateTime > 1.4) this.setBossState(boss, 'windup')
@@ -1431,11 +1579,11 @@ export class World {
         this.setBossState(boss, 'idle')
         break
     }
-    boss.vy = Math.max(-220, Math.min(420, boss.vy))
+    boss.vy = boss.vy < 420 ? (boss.vy > -220 ? boss.vy : -220) : 420
     boss.shotTimer -= dt
     if (boss.def.projectiles && boss.shotTimer <= 0 && boss.state === 'idle') {
       boss.shotTimer = 1.7
-      this.emit({ type: 'boss-shoot', ...this.centre(boss), count: boss.def.projectiles })
+      this.emit({ type: 'boss-shoot', x: this.cx(boss), y: this.cy(boss), count: boss.def.projectiles })
       for (let i = 0; i < boss.def.projectiles; i++) {
         const spread = (i - (boss.def.projectiles - 1) / 2) * 0.35
         this.shots.push({
@@ -1453,7 +1601,7 @@ export class World {
         })
       }
     }
-    if (boss.def.minions.length && this.rng.next() > 0.995) this.spawnMinion(boss)
+    if (boss.def.minions.length && this.rng.above(0.995)) this.spawnMinion(boss)
     void distance
   }
 
@@ -1476,7 +1624,7 @@ export class World {
       case 'slam':
         if (boss.onGround && boss.stateTime > 0.2) {
           this.setBossState(boss, 'recover')
-          this.emit({ type: 'boss-slam', ...this.feet(boss) })
+          this.emit({ type: 'boss-slam', x: this.cx(boss), y: this.fy(boss) })
           this.spawnShock(boss.x + boss.w / 2, boss.y + boss.h, -1)
           this.spawnShock(boss.x + boss.w / 2, boss.y + boss.h, 1)
         }
@@ -1532,7 +1680,7 @@ export class World {
     boss.shotTimer -= dt
     if (boss.def.projectiles && boss.shotTimer <= 0) {
       boss.shotTimer = 2.1
-      this.emit({ type: 'boss-shoot', ...this.centre(boss), count: boss.def.projectiles })
+      this.emit({ type: 'boss-shoot', x: this.cx(boss), y: this.cy(boss), count: boss.def.projectiles })
       for (let i = 0; i < boss.def.projectiles; i++) {
         const spread = (i - (boss.def.projectiles - 1) / 2) * 0.4
         this.shots.push({
@@ -1557,7 +1705,7 @@ export class World {
     if (boss.phase === 1 && boss.hp <= boss.maxHp / 2) {
       boss.phase = 2
       boss.stateTime = 0
-      this.emit({ type: 'boss-phase', phase: 2, ...this.centre(boss) })
+      this.emit({ type: 'boss-phase', phase: 2, x: this.cx(boss), y: this.cy(boss) })
     }
     const speed = boss.def.speed * (boss.phase === 2 ? 1.25 : 1)
     switch (boss.state) {
@@ -1592,7 +1740,7 @@ export class World {
         boss.vx *= 0.6
         if (boss.stateTime > 0.5) {
           const count = boss.def.projectiles + boss.phase - 1
-          this.emit({ type: 'boss-shoot', ...this.centre(boss), count })
+          this.emit({ type: 'boss-shoot', x: this.cx(boss), y: this.cy(boss), count })
           for (let i = 0; i < count; i++) {
             const a = Math.PI * (0.15 + (i / Math.max(1, count - 1)) * 0.7)
             const dirX = this.player.x > boss.x ? 1 : -1
@@ -1616,7 +1764,7 @@ export class World {
       case 'slam':
         if (boss.onGround && boss.stateTime > 0.2) {
           this.setBossState(boss, 'recover')
-          this.emit({ type: 'boss-slam', ...this.feet(boss) })
+          this.emit({ type: 'boss-slam', x: this.cx(boss), y: this.fy(boss) })
           this.spawnShock(boss.x + boss.w / 2, boss.y + boss.h, -1)
           this.spawnShock(boss.x + boss.w / 2, boss.y + boss.h, 1)
         }
@@ -1640,18 +1788,18 @@ export class World {
   private setBossState(boss: Boss, state: Boss['state']) {
     boss.state = state
     boss.stateTime = 0
-    this.emit({ type: 'boss-state', state, ...this.centre(boss), dir: boss.facing })
+    this.emit({ type: 'boss-state', state, x: this.cx(boss), y: this.cy(boss), dir: boss.facing })
   }
 
   /** The chasing parent has no stamina left. */
   private setBossTired(boss: Boss) {
     boss.state = 'tired'
-    this.emit({ type: 'boss-state', state: 'tired', ...this.centre(boss), dir: boss.facing })
-    this.emit({ type: 'boss-tired', ...this.centre(boss) })
+    this.emit({ type: 'boss-state', state: 'tired', x: this.cx(boss), y: this.cy(boss), dir: boss.facing })
+    this.emit({ type: 'boss-tired', x: this.cx(boss), y: this.cy(boss) })
   }
 
   private emitBossAttack(boss: Boss, attack: BossAttack) {
-    this.emit({ type: 'boss-attack', attack, ...this.centre(boss), dir: boss.facing })
+    this.emit({ type: 'boss-attack', attack, x: this.cx(boss), y: this.cy(boss), dir: boss.facing })
   }
 
   private bossSkin(boss: Boss): Shot['skin'] {
@@ -1685,7 +1833,8 @@ export class World {
   }
 
   private spawnMinion(boss: Boss) {
-    const alive = this.enemies.filter((enemy) => !enemy.dead).length
+    let alive = 0
+    for (let i = 0; i < this.enemies.length; i++) if (!this.enemies[i].dead) alive++
     if (alive >= 3) return
     const kind = boss.def.minions[this.rng.int(0, boss.def.minions.length - 1)]
     const stats = enemyStats(kind)
@@ -1722,7 +1871,8 @@ export class World {
       boss.hitFlash = 0.18
       this.emit({
         type: 'boss-hit',
-        ...this.centre(boss),
+        x: this.cx(boss),
+        y: this.cy(boss),
         ratio: Math.max(0, Math.min(1, boss.stamina / boss.maxStamina)),
         weak: false
       })
@@ -1735,7 +1885,8 @@ export class World {
     boss.invuln = 0.12
     this.emit({
       type: 'boss-hit',
-      ...this.centre(boss),
+      x: this.cx(boss),
+      y: this.cy(boss),
       ratio: Math.max(0, Math.min(1, boss.hp / boss.maxHp)),
       weak: bonus > 0
     })
@@ -1746,14 +1897,15 @@ export class World {
     const boss = this.boss!
     boss.dead = true
     this.kills += 1
-    this.emit({ type: 'boss-down', ...this.centre(boss) })
+    this.emit({ type: 'boss-down', x: this.cx(boss), y: this.cy(boss) })
     this.lowerBossGate()
     if (this.stage.objective === 'boss' || this.stage.objective === 'collect') {
       this.goalOpen = true
       this.emit({ type: 'goal-open', x: this.goalX + TILE / 2, y: this.goalY + TILE / 2 })
     }
     // Free every caged princess once her captor is down.
-    for (const prop of this.props) {
+    for (let i = 0; i < this.props.length; i++) {
+      const prop = this.props[i]
       if (prop.kind === 'princess' && prop.data === 1) {
         prop.data = 0
         this.emit({ type: 'princess-free', x: prop.x + TILE / 2, y: prop.y + TILE / 2 })
@@ -1764,7 +1916,9 @@ export class World {
   // ------------------------------------------------------------------ props
 
   private updateProps(dt: number) {
-    for (const prop of this.props) {
+    // Landing a tree can add a pickup, and the loop meets it in the same step.
+    for (let i = 0; i < this.props.length; i++) {
+      const prop = this.props[i]
       switch (prop.kind) {
         case 'tree':
         case 'pine':
@@ -1783,12 +1937,17 @@ export class World {
         case 'animal':
           if (prop.state === 'awake' || prop.state === 'charging') {
             prop.timer -= dt
-            const body: Body = { x: prop.x, y: prop.y + TILE - 40, w: 48, h: 40, vx: prop.dir * 300, vy: 0 }
-            body.vy = Math.min(MAX_FALL, body.vy + GRAVITY * dt)
-            this.moveBody(body, dt)
+            const body = this.animalBody
+            body.x = prop.x
+            body.y = prop.y + TILE - 40
+            body.vx = prop.dir * 300
+            body.vy = 0
+            body.vy = body.vy + GRAVITY * dt < MAX_FALL ? body.vy + GRAVITY * dt : MAX_FALL
+            this.moveAnimal(body, dt)
             prop.x = body.x
             prop.y = body.y - (TILE - 40)
-            for (const enemy of this.enemies) {
+            for (let j = 0; j < this.enemies.length; j++) {
+              const enemy = this.enemies[j]
               if (!enemy.dead && this.overlaps(body, enemy)) this.damageEnemy(enemy, 2, prop.dir)
             }
             if (this.boss && !this.boss.dead && this.overlaps(body, this.boss)) this.damageBoss(2)
@@ -1802,9 +1961,13 @@ export class World {
           break
       }
     }
-    this.props = this.props.filter(
-      (prop) => prop.state !== 'broken' || prop.kind === 'pipe' || prop.kind === 'hive' || prop.kind === 'rock'
-    )
+    let kept = 0
+    for (let i = 0; i < this.props.length; i++) {
+      const prop = this.props[i]
+      if (prop.state !== 'broken' || prop.kind === 'pipe' || prop.kind === 'hive' || prop.kind === 'rock')
+        this.props[kept++] = prop
+    }
+    this.props.length = kept
   }
 
   private landTree(prop: Prop) {
@@ -1820,7 +1983,8 @@ export class World {
     }
     const cx = prop.x + TILE / 2 + prop.dir * TILE
     const cy = prop.y + TILE - 40
-    for (const enemy of this.enemies) {
+    for (let i = 0; i < this.enemies.length; i++) {
+      const enemy = this.enemies[i]
       if (!enemy.dead && Math.abs(enemy.x + enemy.w / 2 - cx) < 100 && Math.abs(enemy.y + enemy.h - (cy + 40)) < 80)
         this.damageEnemy(enemy, 2, prop.dir)
     }
@@ -1855,10 +2019,11 @@ export class World {
   // ------------------------------------------------------------------ bees & shots
 
   private updateBees(dt: number) {
-    for (const bee of this.bees) {
+    for (let i = 0; i < this.bees.length; i++) {
+      const bee = this.bees[i]
       bee.life -= dt
       bee.t += dt
-      bee.cooldown = Math.max(0, bee.cooldown - dt)
+      bee.cooldown = bee.cooldown > dt ? bee.cooldown - dt : 0
       const target = this.nearestHostile(bee.x, bee.y)
       if (target) {
         const tx = target.x + target.w / 2
@@ -1874,7 +2039,10 @@ export class World {
       bee.vy += Math.sin(bee.t * 12) * 40 * dt
       bee.x += bee.vx * dt
       bee.y += bee.vy * dt
-      if (target && bee.cooldown <= 0 && this.overlaps({ x: bee.x - 8, y: bee.y - 8, w: 16, h: 16 }, target)) {
+      const box = this.beeBox
+      box.x = bee.x - 8
+      box.y = bee.y - 8
+      if (target && bee.cooldown <= 0 && this.overlaps(box, target)) {
         bee.cooldown = 0.5
         this.emit({ type: 'sting', x: bee.x, y: bee.y })
         if ('def' in target) this.damageBoss(1)
@@ -1882,37 +2050,55 @@ export class World {
       }
       if (bee.life <= 0) continue
       const p = this.player
-      if (!p.dead && this.overlaps({ x: bee.x - 8, y: bee.y - 8, w: 16, h: 16 }, p)) {
+      box.x = bee.x - 8
+      box.y = bee.y - 8
+      if (!p.dead && this.overlaps(box, p)) {
         this.hurtPlayer(1, bee.x, 'bee')
         bee.life = 0
       }
     }
-    this.bees = this.bees.filter((bee) => bee.life > 0)
+    let kept = 0
+    for (let i = 0; i < this.bees.length; i++) {
+      const bee = this.bees[i]
+      if (bee.life > 0) this.bees[kept++] = bee
+    }
+    this.bees.length = kept
   }
 
   private nearestHostile(x: number, y: number): Body | null {
     let best: Body | null = null
     let bestDist = 420
-    for (const enemy of this.enemies) {
+    for (let i = 0; i < this.enemies.length; i++) {
+      const enemy = this.enemies[i]
       if (enemy.dead) continue
-      const d = Math.hypot(enemy.x - x, enemy.y - y)
+      const dx = enemy.x - x
+      const dy = enemy.y - y
+      // The distance is never shorter than the longer leg, so a leg beyond the range (with a margin for rounding)
+      // rules the enemy out without the call to `Math.hypot`.
+      if (dx > bestDist + 1 || dx < -bestDist - 1 || dy > bestDist + 1 || dy < -bestDist - 1) continue
+      const d = Math.hypot(dx, dy)
       if (d < bestDist) {
         bestDist = d
         best = enemy
       }
     }
     if (this.boss && !this.boss.dead && this.boss.active) {
-      const d = Math.hypot(this.boss.x - x, this.boss.y - y)
-      if (d < bestDist) {
-        bestDist = d
-        best = this.boss
+      const dx = this.boss.x - x
+      const dy = this.boss.y - y
+      if (!(dx > bestDist + 1 || dx < -bestDist - 1 || dy > bestDist + 1 || dy < -bestDist - 1)) {
+        const d = Math.hypot(dx, dy)
+        if (d < bestDist) {
+          bestDist = d
+          best = this.boss
+        }
       }
     }
     return best
   }
 
   private updateShots(dt: number) {
-    for (const shot of this.shots) {
+    for (let i = 0; i < this.shots.length; i++) {
+      const shot = this.shots[i]
       if (shot.dead) continue
       shot.life -= dt
       if (shot.kind === 'seed') shot.vy += 500 * dt
@@ -1931,7 +2117,12 @@ export class World {
       }
       if (shot.life <= 0) shot.dead = true
     }
-    this.shots = this.shots.filter((shot) => !shot.dead)
+    let kept = 0
+    for (let i = 0; i < this.shots.length; i++) {
+      const shot = this.shots[i]
+      if (!shot.dead) this.shots[kept++] = shot
+    }
+    this.shots.length = kept
   }
 
   // ------------------------------------------------------------------ water
@@ -1956,29 +2147,30 @@ export class World {
     this.waterTick -= dt
     if (this.waterTick > 0) return
     this.waterTick = 0.07
-    const flow: { x: number; y: number }[] = []
+    const flow = this.flow
+    let flows = 0
     for (let y = this.h - 1; y >= 0; y--) {
       for (let x = 0; x < this.w; x++) {
         if (this.water[y * this.w + x] !== 1) continue
         if (y + 1 < this.h && !this.solidAt(x, y + 1) && !this.water[(y + 1) * this.w + x]) {
-          flow.push({ x, y: y + 1 })
+          flow[flows++] = (y + 1) * this.w + x
           continue
         }
-        const dir = this.rng.next() > 0.5 ? 1 : -1
-        for (const dx of [dir, -dir]) {
-          const nx = x + dx
+        const dir = this.rng.above(0.5) ? 1 : -1
+        for (let side = 0; side < 2; side++) {
+          const nx = x + (side === 0 ? dir : -dir)
           if (nx < 0 || nx >= this.w) continue
           if (!this.solidAt(nx, y) && !this.water[y * this.w + nx] && !this.solidAt(nx, y + 1)) {
-            flow.push({ x: nx, y })
+            flow[flows++] = y * this.w + nx
             break
           }
         }
       }
     }
     let count = this.waterTotal
-    for (const cell of flow) {
+    for (let k = 0; k < flows; k++) {
       if (count >= MAX_WATER) break
-      const i = cell.y * this.w + cell.x
+      const i = flow[k]
       if (!this.water[i]) {
         this.water[i] = 1
         count += 1
@@ -1986,7 +2178,8 @@ export class World {
     }
     this.waterTotal = count
     // standing in water slows and floats
-    for (const enemy of this.enemies) {
+    for (let i = 0; i < this.enemies.length; i++) {
+      const enemy = this.enemies[i]
       if (enemy.dead || enemy.kind === 'flyer') continue
       const tx = Math.floor((enemy.x + enemy.w / 2) / TILE)
       const ty = Math.floor((enemy.y + enemy.h / 2) / TILE)
@@ -2004,9 +2197,16 @@ export class World {
 
   private checkGoal() {
     if (this.state !== 'play') return
-    const goal = this.props.find((prop) => (prop.kind === 'goal' || prop.kind === 'nest') && prop.state === 'idle')
+    let goal: Prop | null = null
+    for (let i = 0; i < this.props.length; i++) {
+      const prop = this.props[i]
+      if ((prop.kind === 'goal' || prop.kind === 'nest') && prop.state === 'idle') {
+        goal = prop
+        break
+      }
+    }
     if (!goal) return
-    if (!this.overlaps(this.player, propRect(goal))) return
+    if (!this.overlapsProp(this.player, goal)) return
     if (!this.goalOpen) return
     this.state = 'clear'
     this.clearTimer = 0
@@ -2024,11 +2224,11 @@ export class World {
     p.knockX = dir * 260
     p.vy = -260
     if (p.hp < 0) p.hp = 0
-    this.emit({ type: 'hurt', ...this.centre(p), dir, hp: p.hp, cause })
+    this.emit({ type: 'hurt', x: this.cx(p), y: this.cy(p), dir, hp: p.hp, cause })
     if (p.hp <= 0) {
       p.dead = true
       this.state = 'dead'
-      this.emit({ type: 'dead', ...this.centre(p) })
+      this.emit({ type: 'dead', x: this.cx(p), y: this.cy(p) })
     }
   }
 
@@ -2036,6 +2236,11 @@ export class World {
 
   private overlaps(a: Rect, b: Rect): boolean {
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
+  }
+
+  /** `overlaps(a, propRect(prop))` without building the rectangle: a prop's size is in tiles. */
+  private overlapsProp(a: Rect, prop: Prop): boolean {
+    return a.x < prop.x + prop.w * TILE && a.x + a.w > prop.x && a.y < prop.y + prop.h * TILE && a.y + a.h > prop.y
   }
 }
 
