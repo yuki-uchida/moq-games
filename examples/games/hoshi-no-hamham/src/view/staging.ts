@@ -5,11 +5,11 @@
  * transformation, which is part of the fight. Under reduced motion the
  * moments keep their information (title card, nameplate, call) and drop pans, slow motion, shake and flashes.
  */
-import { VIEW_H, VIEW_W } from '../art/contract'
+import { HERO_SPEC, VIEW_H, VIEW_W } from '../art/contract'
 import type { SimEvent } from '../game/events'
 import { ZONES } from '../ui/hud-model'
 import type { DirectorHost, Outcome } from './director'
-import { bossSheetSpec, clipLife, specDuration } from './clips'
+import { RUN_THRESHOLD, bossSheetSpec, clipLife, specDuration } from './clips'
 import type { Anchor, BubbleTone } from './overlay'
 import type { PoseTarget } from './actors'
 import { Sequence } from './sequence'
@@ -34,6 +34,8 @@ const GO_LEAD = 0.22
 const CARD_GAP = 0.08
 export const BOSS_INTRO_SECONDS = 2.5
 export const CLEAR_SECONDS = 2.2
+/** ハム姫's rescue lasts this long at least (and as long as the hero's cheer). */
+export const PRINCESS_SECONDS = 0.55
 export const DEATH_SECONDS = 1.8
 /** The boss's roar is posed at least this long (s), and longer when his `intro` clip needs it. */
 export const BOSS_ROAR_SECONDS = 1.25
@@ -44,7 +46,10 @@ export const BOSS_ROAR_SECONDS = 1.25
 export const RAGE_POSE_MARGIN = 0.05
 /** A staged pose that is ended by its moment is given this much (s) more on its own clock, as a backstop. */
 const POSE_SPARE = 1
-/** A boss who is in the air when his intro or his phase 2 is due is waited for this long (s) at most to land. */
+/**
+ * A boss who is in the air when his intro or his phase 2 is due is waited for this long (s) at most to land (the
+ * intro waits for the hero to stand on the ground too, in the same wait).
+ */
 export const LAND_WAIT_SECONDS = 1.5
 const PRINCESS = { who: 'ハム姫', face: 'face_princess' }
 
@@ -75,6 +80,18 @@ export class Staging {
   }
 
   /**
+   * While a moment holds the simulation, the hero on the ground finishes what he is doing (a bite under way plays out
+   * on real time) and then stands (`idle`), facing `face` (0: his own way), until the moment ends (`standStill`).
+   */
+  private standHero(seq: Sequence, seconds: number, face: 0 | 1 | -1 = 0) {
+    const p = this.host.world.player
+    if (!p.onGround || p.dead) return
+    const actors = this.host.view.actors
+    const token = actors.standStill(seconds, face)
+    seq.onStop(() => actors.unposeIf('hero', token))
+  }
+
+  /**
    * Stages a pose that belongs to the moment `seq`: it ends when the moment ends, is skipped or is cancelled (unless a
    * later pose has replaced it), so no pose outlives its moment.
    */
@@ -83,7 +100,7 @@ export class Staging {
     who: PoseTarget,
     clip: string,
     seconds: number,
-    options?: { hop?: number; hopSeconds?: number }
+    options?: { hop?: number; hopSeconds?: number; face?: 1 | -1 }
   ) {
     const actors = this.host.view.actors
     const token = actors.pose(who, clip, seconds, options)
@@ -254,7 +271,10 @@ export class Staging {
 
   // ------------------------------------------------------------------------------------------- bosses
 
-  /** The boss wakes: hold, letterbox, pan to him, his roar, the nameplate, back to the hero, 「ファイト！」. */
+  /**
+   * The boss wakes: hold, letterbox, pan to him, his roar, the nameplate, back to the hero, 「ファイト！」. (The
+   * director begins it once the boss and the hero both stand on the ground: see `StageDirector`.)
+   */
   bossIntro(showBossBar: () => void): Sequence | null {
     const { camera, hud, sound, view, world } = this.host
     const boss = world.boss
@@ -269,6 +289,9 @@ export class Staging {
     const centre = () => ({ x: boss.x + boss.w / 2, y: boss.y + boss.h / 2 })
     seq.at(0, () => {
       const c = centre()
+      // The hero, on the ground (the director waits for that, a while at most), finishes a bite under way and stands
+      // and watches, breathing, for the whole moment; still in the air he is left as he is.
+      this.standHero(seq, length + POSE_SPARE)
       // Frame him with his feet above the nameplate zone (the lower third), whatever his size.
       const lowest = boss.y + boss.h - (ZONES.bossFeet - 0.5) * VIEW_H
       camera.panTo(c.x, Math.max(c.y - 24, lowest), this.reduced ? 0 : pan)
@@ -329,6 +352,8 @@ export class Staging {
     })
     seq.at(0, () => {
       this.posed(seq, 'boss', 'rage', length + (this.reduced ? RAGE_POSE_MARGIN : POSE_SPARE))
+      // The hero too (the director waits for him to land as well): he finishes a bite under way, then stands.
+      this.standHero(seq, length + POSE_SPARE)
       sound.cue('boss-roar')
       this.trauma(0.3)
       const x = boss.x + boss.w / 2
@@ -460,13 +485,20 @@ export class Staging {
   /** ハム姫 is freed: hearts, she cheers and thanks him, the hero cheers; play slows for a moment, never stops. */
   princessFree(event: At<'princess-free'>): Sequence | null {
     const { camera, world } = this.host
-    if (!camera.sees(event.x, event.y, 0) || world.state !== 'play') return null
-    const length = 0.55
+    // In view now, or in the view the camera settles to on the hero (right after a skipped pan it is still on its
+    // way home: she stands beside him all the same).
+    const home = camera.followCentre(world.player)
+    const atHome = Math.abs(event.x - home.x) <= VIEW_W / 2 && Math.abs(event.y - home.y) <= VIEW_H / 2
+    if ((!camera.sees(event.x, event.y, 0) && !atHome) || world.state !== 'play') return null
+    // Long enough for the hero's cheer to play whole.
+    const length = Math.max(PRINCESS_SECONDS, clipLife(HERO_SPEC.cheer))
     const seq = new Sequence('princess-free', length, {
       priority: PRIORITY.princess,
       claims: this.reduced ? {} : { scale: 0.35, lock: true }
     })
     seq.at(0, () => {
+      // Her cheer (held since she was freed) begins with her moment, from its first frame, on real time.
+      this.host.view.props.startCheer(event.x, event.y)
       this.say('ありがとう！', { x: event.x, y: event.y - 40 }, 1.5, PRINCESS)
       this.fx.burst('heart', event.x, event.y - 30, 4, {
         speed: [30, 70],
@@ -476,8 +508,13 @@ export class Staging {
         layer: 'front'
       })
       // The hero cheers only while the input is locked (never over free input; there is no lock under reduced
-      // motion, so no cheer either).
-      if (!this.reduced && world.player.onGround && !world.player.dead) this.posed(seq, 'hero', 'cheer', length)
+      // motion, so no cheer either). Not at a run or in a bite: the play goes on, and his own body would end it on
+      // the next step.
+      const p = world.player
+      // He cheers turned to her.
+      const face: 1 | -1 = event.x >= p.x + p.w / 2 ? 1 : -1
+      if (!this.reduced && p.onGround && !p.dead && Math.abs(p.vx) <= RUN_THRESHOLD && p.biteTimer <= 0)
+        this.posed(seq, 'hero', 'cheer', length, { face })
     })
     return seq
   }

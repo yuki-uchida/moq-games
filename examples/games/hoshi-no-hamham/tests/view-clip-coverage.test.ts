@@ -156,6 +156,8 @@ const ENEMY_STATES: Partial<EnemySnapshot>[] = [
   {},
   { vx: 70 },
   { onGround: false, vy: -300 },
+  // A rat or a mole in the air (no ground within a few px under it).
+  { onGround: false, airborne: true, vy: 300 },
   { landAge: 0.02 },
   { shootTimer: 0.1 },
   { shootTimer: -0.2 },

@@ -8,7 +8,7 @@
  * and the others the hero (with a dead zone), and an action (a bite, a hurt, a flinch, a cast) starts from its first
  * frame only when it can play out, and never comes back once something else has been drawn in its place.
  */
-import type { Anim } from '../art'
+import { anchorOf, type Anim } from '../art'
 import type { SimEvent } from '../game/events'
 import { BITE_TIME, GRAVITY, INVULN, T, type Boss, type BossState, type Enemy, type World } from '../game/sim'
 import { TILE } from '../game/types'
@@ -22,10 +22,12 @@ import {
   WAIT_EVERY,
   BOSS_DEFEAT_GROUND_FRAME,
   DASH_REST_SPEED,
+  ENEMY_AIR_GAP,
   FLINCH_MAX_SPEED,
   ENEMY_DEFEAT_GROUND_FRAME,
   bossClip,
   bossSheetSpec,
+  aimClear,
   castFit,
   castLeadTime,
   castRoom,
@@ -45,7 +47,9 @@ import {
   type ClipChoice,
   type EnemySnapshot
 } from './clips'
+import type { Placed } from './bounds'
 import type { FxPool } from './fx'
+import { summonPuff } from './fx-map'
 import { ENEMY_SPEC, HERO_SPEC, KING_RAGED, MOM_SPEC, bossSpec, type BossArt } from '../art/contract'
 import {
   FACE_HOLD,
@@ -214,6 +218,40 @@ export function knockFlight(
  */
 export const DIE_HOP_SPEED = 260
 export const DIE_GRAVITY = 1300
+/**
+ * Knocked out in water, the body takes the water's pace: a small lift (`DIE_WATER_HOP_SPEED` px/s, about 7 px),
+ * then it sinks as the simulation lets a body sink there (gravity × 0.28, no faster than `WATER_SINK_SPEED`).
+ */
+export const DIE_WATER_HOP_SPEED = 80
+export const WATER_GRAVITY = GRAVITY * 0.28
+export const WATER_SINK_SPEED = 260
+
+/** How a knocked-out body moves: knocked up at `hop` px/s, then falling under `gravity` no faster than `cap`. */
+export interface Toss {
+  hop: number
+  gravity: number
+  cap: number
+}
+export const LAND_TOSS: Toss = { hop: DIE_HOP_SPEED, gravity: DIE_GRAVITY, cap: Infinity }
+export const WATER_TOSS: Toss = { hop: DIE_WATER_HOP_SPEED, gravity: WATER_GRAVITY, cap: WATER_SINK_SPEED }
+
+/** The feet row of a body tossed from feet row `y0`, `age` seconds after the blow (before it lands). */
+export function tossY(toss: Toss, y0: number, age: number) {
+  const capped = (toss.hop + toss.cap) / toss.gravity
+  const t = Math.min(age, capped)
+  const y = y0 - toss.hop * t + 0.5 * toss.gravity * t * t
+  return age > capped ? y + toss.cap * (age - capped) : y
+}
+
+/** Seconds from the blow until a body tossed from feet row `y0` comes down on the ground row `ground` (exact). */
+export function dieLandTime(y0: number, ground: number, toss: Toss = LAND_TOSS) {
+  const { hop, gravity, cap } = toss
+  const drop = Math.max(0, ground - y0)
+  const free = (hop + Math.sqrt(hop * hop + 2 * gravity * drop)) / gravity
+  const capped = (hop + cap) / gravity
+  if (free <= capped) return free
+  return capped + (ground - tossY(toss, y0, capped)) / cap
+}
 
 interface Fall {
   x: number
@@ -225,15 +263,8 @@ interface Fall {
   landAt: number | null
   flip: boolean
   h: number
-}
-
-/** The feet row of a falling body `age` seconds after the hit (before it lands). */
-const fallY = (f: Fall, age: number) => f.y0 - DIE_HOP_SPEED * age + 0.5 * DIE_GRAVITY * age * age
-
-/** Seconds from the hit until a body knocked up from feet row `y0` comes down on the ground row `ground`. */
-export function dieLandTime(y0: number, ground: number) {
-  const drop = Math.max(0, ground - y0)
-  return (DIE_HOP_SPEED + Math.sqrt(DIE_HOP_SPEED * DIE_HOP_SPEED + 2 * DIE_GRAVITY * drop)) / DIE_GRAVITY
+  /** On land or in water. */
+  toss: Toss
 }
 
 /** Seconds of the king's transformation (`rage`). */
@@ -296,6 +327,12 @@ export class PositionTrail {
   }
 }
 
+/**
+ * The side a boss's shot really goes: sim.ts aims it from where the boss was when it left (the `boss-shoot` event's
+ * x, his centre then), against the hero's `x` (the left of his box) after the step.
+ */
+export const shotSide = (heroX: number, shotX: number, bossW: number): 1 | -1 => (heroX > shotX - bossW / 2 ? 1 : -1)
+
 /** Who staging can pose. */
 export type PoseTarget = 'hero' | 'boss'
 
@@ -307,6 +344,18 @@ interface Pose {
   /** Height of an optional hop (px) and its length (s). */
   hop: number
   hopSeconds: number
+  /**
+   * An update has gone by since it was set. The body the update of that same frame reads is the one the step before
+   * the pose left (a moment that holds the simulation from the step that set it), so only a later one can end it.
+   */
+  seen: boolean
+  /**
+   * A clip the pose plays first, on real time from its time `from` for `seconds` (a bite under way when a moment
+   * holds the simulation plays out), or null.
+   */
+  lead: { clip: string; from: number; seconds: number } | null
+  /** The way the actor faces in the pose (0: his own). */
+  face: 0 | 1 | -1
 }
 
 /** A handle on a staged pose, so the moment that set it can end it (and only it). */
@@ -345,7 +394,34 @@ interface EnemyTimers {
   hurtShown: boolean
   /** The simulation time of its last spit (NaN before any). */
   spitAt: number
+  /** A rat or a mole drawn in the air: from when it is `aloft` until it is back on the ground. */
+  air: boolean
+  /** In the air: the furthest point its body has reached the way it faces (it turns once it is well back from it). */
+  airX: number
+  /** It has turned once in this fall: it does not turn again before it lands (a body zigzagging over the hero). */
+  airTurned: boolean
+  /**
+   * A summoned enemy is drawn only once the simulation has settled where it is (see `settleBirth`): its age
+   * (`enemy.t`) and place when the view first saw it, the age at which a step put it somewhere else (NaN: none), and
+   * whether it shows.
+   */
+  bornT: number
+  bornX: number
+  bornY: number
+  pushedT: number
+  shown: boolean
 }
+
+/**
+ * A summoned enemy that a step moves further than this (px) beyond what its own speed carries it was put there (the
+ * simulation pushing it out of the solid it was born in), not carried.
+ */
+export const BIRTH_SLACK_PX = 4
+/** A rat or a mole in the air turns once its body has gone this far (px) the other way. */
+export const AIR_TURN_PX = 4
+/** One simulation step (s), and the steps after its birth a summoned enemy is shown at the latest. */
+const SIM_STEP = 1 / 60
+export const BIRTH_SETTLE_STEPS = 3
 
 /**
  * A hero within this many px of the ground under him and moving up or down no faster than this (px/s) is standing
@@ -404,6 +480,8 @@ const bossSnapshot: BossSnapshot = {
 
 /** The clips a boss travels in (a dash, a skim, a leap): they face the way he goes. */
 const isDashClip = (name: string) => name === 'attack' || name === 'sweep' || name === 'air'
+/** The boss clips timed from the start of the state they show in (see `BossSnapshot.clipFrom`). */
+const STATE_TIMED: readonly string[] = ['windup', 'recover', 'stunned', 'land', 'tired']
 /** The boss kinds that walk at the hero in `idle`. */
 const WALKERS: readonly string[] = ['tank', 'swarm', 'final']
 /** Boss states whose drawn facing follows his travel. */
@@ -418,6 +496,57 @@ export function groundBelow(world: Pick<World, 'solidAt' | 'tileAt' | 'h'>, x: n
     if (world.solidAt(tx, ty) || world.tileAt(tx, ty) === T.PLATFORM) return ty * TILE
   }
   return null
+}
+
+/**
+ * Whether no ground lies within `ENEMY_AIR_GAP` px of a body's feet: under its box (the simulation stands a body on
+ * any ground under its box) or as far beside it (a walker shaken to and fro at the lip of a ledge slips off it by a
+ * pixel or two for a step).
+ */
+export function aloft(
+  world: Pick<World, 'solidAt' | 'tileAt' | 'h'>,
+  body: { x: number; y: number; w: number; h: number }
+) {
+  const feet = body.y + body.h
+  return !(
+    groundNear(world, body.x - ENEMY_AIR_GAP, feet) ||
+    groundNear(world, body.x + body.w / 2, feet) ||
+    groundNear(world, body.x + body.w + ENEMY_AIR_GAP, feet)
+  )
+}
+
+/**
+ * An `air` would last no longer than this (s): a body falling (not thrown upward) on to ground this close under it
+ * walks or stands on at once (a minion summoned a few px above the ground).
+ */
+export const AIR_SHORT_SECONDS = 5 / 60
+
+/** Whether a body falling at `vy` (not thrown upward) comes down on ground under its box within `AIR_SHORT_SECONDS`. */
+export function landsSoon(
+  world: Pick<World, 'solidAt' | 'tileAt' | 'h'>,
+  body: { x: number; y: number; w: number; h: number },
+  vy: number
+) {
+  if (vy < 0) return false
+  const feet = body.y + body.h
+  const gap = Math.min(
+    groundGap(world, body.x - ENEMY_AIR_GAP, feet),
+    groundGap(world, body.x + body.w / 2, feet),
+    groundGap(world, body.x + body.w + ENEMY_AIR_GAP, feet)
+  )
+  if (gap === Infinity) return false
+  const t = (-vy + Math.sqrt(vy * vy + 2 * GRAVITY * Math.max(0, gap))) / GRAVITY
+  return t <= AIR_SHORT_SECONDS
+}
+
+function groundGap(world: Pick<World, 'solidAt' | 'tileAt' | 'h'>, x: number, feet: number) {
+  const ground = groundBelow(world, x, feet, 2)
+  return ground === null ? Infinity : ground - feet
+}
+
+function groundNear(world: Pick<World, 'solidAt' | 'tileAt' | 'h'>, x: number, feet: number) {
+  const ground = groundBelow(world, x, feet, 2)
+  return ground !== null && ground - feet <= ENEMY_AIR_GAP
 }
 
 export class ActorsView {
@@ -453,6 +582,8 @@ export class ActorsView {
   private hurtFace: 1 | -1 = 1
   private landGone = false
   private waitCut = -1
+  /** The first update has run: an enemy seen from then on was summoned during play. */
+  private started = false
   // enemies and bosses
   private enemyTimers = new Map<number, EnemyTimers>()
   private ghosts: Ghost[] = []
@@ -502,6 +633,12 @@ export class ActorsView {
   /** The boss turned to his shot on this step: the step's own facing rule does not undo it. */
   private faceSnapped = false
   private dustTimer = 0
+  /** The state time the clip timed from the state's start took over at, and the clip of the last update. */
+  private clipFrom = 0
+  private clipLast = ''
+  /** The state time the boss last touched down at inside his state (0 with the state), and whether he was grounded. */
+  private bossLandedAt = 0
+  private bossGrounded = true
   /** The king has transformed: once his `rage` is over he is drawn from his raged sheet. */
   private phased = false
   /** The transformation is left to a staged pose that has not begun yet (see `stageRage`). */
@@ -513,6 +650,8 @@ export class ActorsView {
   /** Real seconds (advances while the simulation is held or slowed; staged poses run on it). */
   private realTime = 0
   private poses: Partial<Record<PoseTarget, Pose>> = {}
+  /** What `poseClip` hands back (filled for each call). */
+  private poseNow = { name: '', t: 0 }
   /** The last hero clip, for tests and debugging. */
   heroChoice: ClipChoice = { name: 'idle', t: 0 }
 
@@ -533,13 +672,21 @@ export class ActorsView {
    * over `hopSeconds`. A clip the actor's sheet does not have is ignored when drawing. A staged pose that shows a
    * clip should last at least `clipLife` of it, so none of its frames is cut.
    */
-  pose(who: PoseTarget, clip: string, seconds: number, options: { hop?: number; hopSeconds?: number } = {}): PoseToken {
+  pose(
+    who: PoseTarget,
+    clip: string,
+    seconds: number,
+    options: { hop?: number; hopSeconds?: number; face?: 1 | -1 } = {}
+  ): PoseToken {
     const pose: Pose = {
       clip,
       start: this.realTime,
       until: this.realTime + Math.max(0, seconds),
       hop: options.hop ?? 0,
-      hopSeconds: options.hopSeconds ?? 0.35
+      hopSeconds: options.hopSeconds ?? 0.35,
+      seen: false,
+      lead: null,
+      face: options.face ?? 0
     }
     this.poses[who] = pose
     if (who === 'boss' && clip === 'rage') {
@@ -568,19 +715,63 @@ export class ActorsView {
 
   /** Ends the pose `token` stands for, if it is still up (a later pose is left alone). */
   unposeIf(who: PoseTarget, token: PoseToken) {
-    if (this.poses[who] === token) delete this.poses[who]
+    if (this.poses[who] === token) this.endPose(who)
   }
 
   /** Ends a staged pose early (or every pose). */
   unpose(who?: PoseTarget) {
-    if (who) delete this.poses[who]
-    else this.poses = {}
+    if (who) this.endPose(who)
+    else {
+      this.endPose('hero')
+      this.endPose('boss')
+    }
+  }
+
+  /**
+   * Ends `who`'s pose. A hero posed facing the other way than his own (turned to ハム姫 for his cheer) turns back
+   * as he does when the player turns him on the spot (`turn`), not in one frame.
+   */
+  private endPose(who: PoseTarget) {
+    const pose = this.poses[who]
+    if (!pose) return
+    delete this.poses[who]
+    if (who === 'hero' && pose.face !== 0 && pose.face !== this.world.player.facing) this.turnAge = 0
+  }
+
+  /**
+   * Staging: the hero stands (`idle`) for `seconds` of real time while a moment holds the simulation, facing
+   * `face` (0: his own way), but finishes what he is doing first: a bite that shows plays out from the frame it is
+   * on, at its own speed (the simulation is held: the view carries it). Anything else gives way at once.
+   */
+  standStill(seconds: number, face: 0 | 1 | -1 = 0): PoseToken {
+    const live = this.death || this.world.player.dead || this.dropping() ? null : this.heroSnapshot()
+    const pose = this.pose('hero', 'idle', seconds, face ? { face } : {}) as Pose
+    if (live?.name === 'bite') {
+      const rest = specDuration(HERO_SPEC.bite) - live.t
+      if (rest > 0) pose.lead = { clip: 'bite', from: live.t, seconds: rest }
+    }
+    return pose
+  }
+
+  /** The clip a pose shows now and the time into it (a lead clip first, then its own from its first frame). */
+  private poseClip(pose: Pose) {
+    const age = this.realTime - pose.start
+    const lead = pose.lead
+    const now = this.poseNow
+    if (lead && age < lead.seconds) {
+      now.name = lead.clip
+      now.t = lead.from + age
+    } else {
+      now.name = pose.clip
+      now.t = lead ? age - lead.seconds : age
+    }
+    return now
   }
 
   /** The clip `who` is posed in right now, or null. */
   posing(who: PoseTarget): string | null {
     const pose = this.poses[who]
-    return pose && this.realTime < pose.until ? pose.clip : null
+    return pose && this.realTime < pose.until ? this.poseClip(pose).name : null
   }
 
   /** Advances real time (the stage view calls this with the frame's real dt). */
@@ -590,10 +781,19 @@ export class ActorsView {
     // whether or not a hit-stop holds the simulation in between.
     this.bossFaceAge += dt
     for (const timers of this.enemyTimers.values()) timers.faceAge += dt
+    // A staged hero pose plays on real time, and so does the squash it is drawn with: a moment that holds the
+    // simulation from the step he landed on would otherwise keep him flattened until it ends.
+    if (this.poses.hero) this.relaxSquash(dt)
     for (const who of ['hero', 'boss'] as const) {
       const pose = this.poses[who]
-      if (pose && this.realTime >= pose.until) delete this.poses[who]
+      if (pose && this.realTime >= pose.until) this.endPose(who)
     }
+  }
+
+  /** The hero's squash and stretch eases back to none over `dt` seconds. */
+  private relaxSquash(dt: number) {
+    this.squash *= Math.exp(-dt * 12)
+    if (Math.abs(this.squash) < 0.004) this.squash = 0
   }
 
   /** The centre of the hero's knocked-out body (null while he lives). */
@@ -640,7 +840,7 @@ export class ActorsView {
   /** The feet row of the knocked-out body: on its parabola, then on the ground it landed on. */
   private deathFeet(d: Fall) {
     if (d.landAt !== null && d.ground !== null) return d.ground
-    const y = fallY(d, d.age)
+    const y = tossY(d.toss, d.y0, d.age)
     // A body knocked up from just above its ground row never dips below it on the way down.
     return d.ground !== null ? Math.min(y, Math.max(d.ground, d.y0)) : y
   }
@@ -648,12 +848,13 @@ export class ActorsView {
   private activePose(who: PoseTarget, sheet: string) {
     const pose = this.poses[who]
     if (!pose || this.realTime >= pose.until) return null
-    const anim = clip(sheet, pose.clip)
+    const { name, t } = this.poseClip(pose)
+    const anim = clip(sheet, name)
     if (!anim) return null
     const age = this.realTime - pose.start
     const k = pose.hop > 0 && age < pose.hopSeconds ? age / pose.hopSeconds : -1
     const lift = k >= 0 ? Math.round(4 * pose.hop * k * (1 - k)) : 0
-    return { anim, age, lift }
+    return { anim, age: t, lift, name, face: pose.face }
   }
 
   handle(event: SimEvent) {
@@ -702,7 +903,8 @@ export class ActorsView {
           age: 0,
           landAt: null,
           flip: p.facing < 0,
-          h: p.h
+          h: p.h,
+          toss: p.inWater ? WATER_TOSS : LAND_TOSS
         }
         break
       }
@@ -778,8 +980,7 @@ export class ActorsView {
       case 'boss-shoot': {
         const boss = this.world.boss
         if (!boss) break
-        // The side the shot really goes: sim.ts aims it from where the boss was when it left (the event's x).
-        const side: 1 | -1 = p.x > event.x - boss.w / 2 ? 1 : -1
+        const side = shotSide(p.x, event.x, boss.w)
         if (this.cast === 'lead') {
           this.cast = 'release'
           this.castFresh = true
@@ -824,7 +1025,9 @@ export class ActorsView {
   /** The record of a live enemy (made on first sight). */
   private timersOf(enemy: Enemy): EnemyTimers {
     let timers = this.enemyTimers.get(enemy.id)
-    if (!timers)
+    if (!timers) {
+      // Summoned during play (seen after the view's first update, a few steps old at most), or there from the start.
+      const born = this.started && typeof enemy.t === 'number' && enemy.t < BIRTH_SETTLE_STEPS * SIM_STEP
       this.enemyTimers.set(
         enemy.id,
         (timers = {
@@ -836,10 +1039,54 @@ export class ActorsView {
           gain: 0,
           action: '',
           hurtShown: true,
-          spitAt: NaN
+          spitAt: NaN,
+          air: false,
+          airX: enemy.x + enemy.w / 2,
+          airTurned: false,
+          bornT: born ? enemy.t : NaN,
+          bornX: enemy.x,
+          bornY: enemy.y,
+          pushedT: NaN,
+          shown: !born
         })
       )
+    }
     return timers
+  }
+
+  /**
+   * A summoned enemy is born where `spawnMinion` puts it, which may be inside a solid (the raised gate, a rock): the
+   * next step pushes it out. It is shown from the first frame after a whole step has passed since its birth when
+   * that step carried it no further than its own speed does (born in the open: at once, one step on); a step that
+   * put it elsewhere is waited out, so it shows once a further step has run from where it was put (never in the
+   * solid, never smeared through it between steps); at most `BIRTH_SETTLE_STEPS` steps after its birth. It comes
+   * with its summon's puff, where it shows.
+   */
+  private settleBirth(enemy: Enemy, timers: EnemyTimers) {
+    const age = enemy.t - timers.bornT
+    if (age < SIM_STEP / 2) return
+    let show = age > BIRTH_SETTLE_STEPS * SIM_STEP - SIM_STEP / 2
+    if (Number.isNaN(timers.pushedT)) {
+      const carriedX = BIRTH_SLACK_PX + Math.abs(enemy.vx) * age
+      const carriedY = BIRTH_SLACK_PX + Math.abs(enemy.vy) * age + 0.5 * GRAVITY * age * age
+      const put = Math.abs(enemy.x - timers.bornX) > carriedX || Math.abs(enemy.y - timers.bornY) > carriedY
+      if (put) timers.pushedT = enemy.t
+      else show = true
+    } else if (enemy.t - timers.pushedT > SIM_STEP / 2) show = true
+    if (!show) return
+    timers.shown = true
+    // Whether it shows in the air is decided afresh where it shows (a short drop to the ground is no fall).
+    timers.air = this.goesAloft(enemy, false)
+    summonPuff(this.fx, enemy.x + enemy.w / 2, enemy.y + enemy.h / 2)
+  }
+
+  /**
+   * Whether a live enemy is drawn: a summoned one only once the simulation has settled it (`settleBirth`); every
+   * other enemy always, where it is (one caught in the column of the arena gate as it rises is drawn there for as
+   * long as the simulation has it there, rather than blinking out).
+   */
+  enemyShown(enemy: Enemy): boolean {
+    return this.enemyTimers.get(enemy.id)?.shown ?? true
   }
 
   /** An enemy knocked out: its ghost flies away from the hero, against the tiles, and lies where it comes down. */
@@ -883,9 +1130,8 @@ export class ActorsView {
     if (dt > 0) this.frameDt = dt
     const world = this.world
     const p = world.player
-    // hero timers
-    this.squash *= Math.exp(-dt * 12)
-    if (Math.abs(this.squash) < 0.004) this.squash = 0
+    // hero timers (under a staged pose his squash settles on real time: see `tickReal`)
+    if (!this.poses.hero) this.relaxSquash(dt)
     if (p.onGround) {
       this.airTime = 0
       this.landAge += dt
@@ -922,10 +1168,12 @@ export class ActorsView {
       if (!p.onGround || this.turnAge > 0.5) this.turnAge = null
     }
     this.waterTime = p.inWater ? this.waterTime + dt : 0
-    // While the simulation runs, a staged hero pose ends as soon as his own body does something else.
+    // While the simulation runs, a staged hero pose ends as soon as his own body does something else (not on the
+    // frame that set it: see `Pose.seen`).
     const pose = this.poses.hero
-    if (pose && dt > 0 && world.state === 'play' && (Math.abs(p.vx) > RUN_THRESHOLD || !p.onGround || p.biteTimer > 0))
-      delete this.poses.hero
+    const moves = Math.abs(p.vx) > RUN_THRESHOLD || !p.onGround || p.biteTimer > 0
+    if (pose && !pose.seen) pose.seen = true
+    else if (pose && dt > 0 && world.state === 'play' && moves) delete this.poses.hero
     if (this.clearDrop) this.updateDrop(this.clearDrop, dt)
     this.settleHero()
     // enemies
@@ -935,6 +1183,14 @@ export class ActorsView {
       if (enemy.onGround && !timers.onGround) timers.landAge = 0
       else timers.landAge += dt
       timers.onGround = enemy.onGround
+      const wasAir = timers.air
+      timers.air = this.goesAloft(enemy, timers.air)
+      // In the air its facing follows where its body has gone, measured from here (see `AIR_TURN_PX`).
+      if (timers.air && !wasAir) {
+        timers.airX = enemy.x + enemy.w / 2
+        timers.airTurned = false
+      }
+      if (!timers.shown) this.settleBirth(enemy, timers)
       stepTread(timers.tread, enemy.x + enemy.w / 2, dt, enemy.onGround)
       // Only the walkers' picture is ever held still (they walk on the ground).
       stepPicture(timers.tread, enemy.x + enemy.w / 2, dt, enemy.kind === 'walker' || enemy.kind === 'tough')
@@ -949,6 +1205,18 @@ export class ActorsView {
         if (action) {
           if (began && clipName === 'shoot') face = enemy.facing
           if (enemy.kind === 'walker' || enemy.kind === 'tough') forgetMotion(timers.tread)
+        } else if (timers.air) {
+          // In the air a rat or a mole faces the way its body has really gone: once it is `AIR_TURN_PX` past the
+          // furthest point it reached the way it faces, it turns (the simulation flips its speed on every step while
+          // it is over the hero or pinned against a wall: a body that goes nowhere sideways keeps its facing), once in a
+          // fall at most (one that zigzags over the hero keeps the way it turned to).
+          const x = enemy.x + enemy.w / 2
+          if ((x - timers.airX) * face > 0) timers.airX = x
+          else if (!timers.airTurned && Math.abs(x - timers.airX) > AIR_TURN_PX) {
+            timers.airTurned = true
+            face = x > timers.airX ? 1 : -1
+            timers.airX = x
+          }
         } else face = this.enemyFace(enemy, timers)
         if (face !== timers.face) {
           timers.face = face
@@ -957,6 +1225,7 @@ export class ActorsView {
         timers.gain += drawnGain(timers.tread, timers.face)
       }
     }
+    this.started = true
     this.updateBoss(dt)
     this.updateTrail(dt)
     // ghosts
@@ -988,7 +1257,7 @@ export class ActorsView {
       // The body flies on its parabola (exact, so the landing does not depend on the frame rate) until it reaches
       // the ground below, and stays there.
       if (d.landAt === null && d.ground !== null) {
-        const at = dieLandTime(d.y0, d.ground)
+        const at = dieLandTime(d.y0, d.ground, d.toss)
         // (A hair of tolerance: a sum of frame times that should reach the landing time must not miss it.)
         if (d.age >= at - 1e-6) d.landAt = Math.min(at, d.age)
       }
@@ -1125,8 +1394,11 @@ export class ActorsView {
     else if (p.dead) choice = null
     else if (this.dropping()) choice = { name: 'fall', t: this.clearDrop!.age }
     else {
-      const pose = this.posing('hero')
-      choice = pose ? { name: pose, t: this.realTime - this.poses.hero!.start } : this.heroSnapshot()
+      const pose = this.poses.hero
+      if (pose && this.realTime < pose.until) {
+        const now = this.poseClip(pose)
+        choice = { name: now.name, t: now.t }
+      } else choice = this.heroSnapshot()
     }
     if (choice) this.heroChoice = choice
     return choice
@@ -1146,11 +1418,12 @@ export class ActorsView {
     const y = this.clearDrop ? this.dropFeet(this.clearDrop) : p.y + p.h
     const staged = this.dropping() ? null : this.activePose('hero', 'hero')
     if (staged) {
-      this.heroChoice = { name: this.poses.hero!.clip, t: staged.age }
+      this.heroChoice = { name: staged.name, t: staged.age }
       this.lastRunFrame = -1
       this.drawShadow(ctx, x, y, p.w)
       const { sx, sy } = squashScale(this.squash, squash)
-      blit(ctx, staged.anim, staged.age, x, y - staged.lift, brush(p.facing < 0, undefined, undefined, sx, sy))
+      const flip = staged.face ? staged.face < 0 : p.facing < 0
+      blit(ctx, staged.anim, staged.age, x, y - staged.lift, brush(flip, undefined, undefined, sx, sy))
       return
     }
     const choice = this.selectHero()!
@@ -1172,15 +1445,21 @@ export class ActorsView {
 
   /** The hero's drawn facing while he plays (true: left). */
   heroFlip(): boolean {
-    const choice = this.dropping() ? null : this.activePose('hero', 'hero') ? null : this.selectHero()
+    const staged = this.dropping() ? null : this.activePose('hero', 'hero')
+    if (staged?.face) return staged.face < 0
+    const choice = this.dropping() ? null : staged ? null : this.selectHero()
     return choice ? this.flipFor(choice) : this.world.player.facing < 0
   }
 
-  /** Dust on each contact frame of the run; the footstep once a pass (a pass is one stride of 64 px). */
+  /**
+   * Dust on each contact frame of the run; the footstep once a pass (a pass is one stride of 64 px). Wading on the
+   * floor of a pool raises neither: the water makes its own sound (sound-map.ts).
+   */
   private runContact(anim: Anim, choice: ClipChoice, x: number, y: number) {
     const frame = frameIndex(anim, choice.t)
-    if (frame !== this.lastRunFrame && (RUN_CONTACT_FRAMES as readonly number[]).includes(frame)) {
-      const facing = this.world.player.facing
+    const p = this.world.player
+    if (frame !== this.lastRunFrame && !p.inWater && (RUN_CONTACT_FRAMES as readonly number[]).includes(frame)) {
+      const facing = p.facing
       this.fx.spawn('dust', x - facing * 10, y - 6, { vx: -facing * 24, vy: -8, rate: 1.2 })
       if (frame === RUN_CONTACT_FRAMES[0]) this.onFootstep()
     }
@@ -1260,7 +1539,18 @@ export class ActorsView {
     snapshot.gain = timers?.gain ?? 0
     snapshot.standing = timers ? shownStanding(timers.tread) : false
     snapshot.time = this.time + enemy.id * 0.13
+    snapshot.airborne = timers ? timers.air : this.goesAloft(enemy, false)
     return enemyClip(snapshot)
+  }
+
+  /**
+   * Whether a rat or a mole is drawn in the air: once it is `aloft` (no ground within a few px), until it is back on
+   * the ground (so a body that comes down near the ground keeps its fall to the landing, and never flickers). A fall
+   * that would end within `AIR_SHORT_SECONDS` is not shown at all (`landsSoon`).
+   */
+  private goesAloft(enemy: Enemy, was: boolean) {
+    if (enemy.onGround || (enemy.kind !== 'walker' && enemy.kind !== 'tough')) return false
+    return was || (aloft(this.world, enemy) && !landsSoon(this.world, enemy, enemy.vy))
   }
 
   /** The drawn facing of a live enemy (true: left). */
@@ -1286,6 +1576,7 @@ export class ActorsView {
   }
 
   private drawEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy) {
+    if (!this.enemyShown(enemy)) return
     const choice = this.selectEnemy(enemy)
     const anim = clip(enemy.kind, choice.name)
     if (!anim) return
@@ -1378,6 +1669,10 @@ export class ActorsView {
     s.gain = this.bossGain
     s.standing = shownStanding(this.bossTread)
     s.time = this.time
+    // (Before `update` has seen a new state, what it recorded belongs to the state before: the new one starts clean.)
+    const fresh = boss.state !== this.bossLast
+    s.clipFrom = fresh ? 0 : this.clipFrom
+    s.landedAt = fresh ? 0 : this.bossLandedAt
     s.castAge = null
     if (this.cast === 'lead' && spec.shoot) s.castAge = castLeadTime(s, spec, this.castFrom)
     else if (this.cast === 'release' && spec.shoot) {
@@ -1411,15 +1706,19 @@ export class ActorsView {
       this.bossFaced = true
       this.bossFace = this.world.player.x > boss.x ? 1 : -1
     }
-    if (boss.state !== this.bossLast) {
+    const newState = boss.state !== this.bossLast
+    if (newState) {
       this.bossPrev = this.bossLast
       this.bossLast = boss.state
+      this.clipFrom = 0
+      this.bossLandedAt = 0
       if (boss.state === 'charge' || boss.state === 'dive') {
         this.dashAt = this.time
         this.dashGain = this.bossGain
       }
       if (boss.state === 'shoot') this.volleyCut = false
-    }
+    } else if (boss.onGround && !this.bossGrounded) this.bossLandedAt = boss.stateTime
+    this.bossGrounded = boss.onGround
     stepTread(this.bossTread, boss.x + boss.w / 2, dt, boss.onGround)
     // Only a boss walking on the ground (and ハム代 running) is ever held still; elsewhere the picture is the body.
     const walking = boss.state === 'idle' && (WALKERS.includes(boss.def.kind) || boss.def.kind === 'chaser')
@@ -1434,10 +1733,10 @@ export class ActorsView {
       if (this.cast === 'none') {
         if (until === null || until > lead) this.castRefused = false
         else if (!this.castRefused && !this.flinching()) {
-          // Posed only with the hero clearly to one side (on top of him the simulation's aim flips every step),
-          // and begun facing exactly where it aims.
+          // Posed only with the hero clearly to one side (within a step of the boss's own travel the simulation's
+          // aim flips as he overshoots), and begun facing exactly where it aims.
           const dx = this.world.player.x - boss.x
-          const tail = Math.abs(dx) > FACE_DEAD_ZONE ? castFit(s, spec) : 0
+          const tail = Math.abs(dx) > aimClear(boss.def.speed) ? castFit(s, spec) : 0
           if (tail > 0) {
             this.cast = 'lead'
             this.castFrom = until
@@ -1479,7 +1778,7 @@ export class ActorsView {
       this.bossAction = action ? choice.name : ''
       if (this.faceSnapped) this.faceSnapped = false
       else if (action) {
-        if (began && choice.name === 'shoot' && Math.abs(d) > FACE_DEAD_ZONE) face = d > 0 ? 1 : -1
+        if (began && choice.name === 'shoot' && Math.abs(d) > aimClear(boss.def.speed)) face = d > 0 ? 1 : -1
       } else if (boss.def.kind === 'chaser') face = heldSideFacing(face, d, age)
       else if (this.cast === 'release' && this.castSide !== 0) face = this.castSide
       // Through a cast he keeps the facing he aimed with (the shot turns him to its side if the hero has crossed;
@@ -1528,6 +1827,56 @@ export class ActorsView {
         })
       }
     }
+    // A clip timed from the state's start that takes over from another clip inside the state begins on its first
+    // frame: it is timed from there (`BossSnapshot.clipFrom`).
+    const name = this.bossChoice(boss).name
+    if (!newState && name !== this.clipLast && STATE_TIMED.includes(name)) this.clipFrom = boss.stateTime
+    this.clipLast = name
+  }
+
+  /**
+   * The frame the live boss or a live enemy is drawn with now, placed as `drawLiveBoss` and `drawEnemy` place it (a
+   * staged pose with its lift, the hit jolt), into `out`; false when it is not drawn. (Shots read it: they stay
+   * behind their shooter while they overlap his drawing.)
+   */
+  drawnFrame(body: Boss | Enemy, out: Placed): boolean {
+    let anim: Anim | undefined
+    let index: number
+    if (body === this.world.boss) {
+      const boss = body as Boss
+      if (boss.dead) return false
+      out.y = boss.y + boss.h
+      out.flip = this.bossFlip(boss)
+      const pose = this.poses.boss
+      anim = pose && this.realTime < pose.until ? clip(boss.def.art, pose.clip) : undefined
+      if (anim && pose) {
+        const age = this.realTime - pose.start
+        const k = pose.hop > 0 && age < pose.hopSeconds ? age / pose.hopSeconds : -1
+        out.y -= k >= 0 ? Math.round(4 * pose.hop * k * (1 - k)) : 0
+        out.x = this.bossX(boss)
+        index = frameIndex(anim, age)
+      } else {
+        const choice = this.bossChoice(boss)
+        anim = clip(this.bossSheet(boss), choice.name)
+        if (!anim) return false
+        const jolt = this.reducedMotion || this.joltAt === null ? 0 : bossJolt(this.time - this.joltAt, this.joltDir)
+        out.x = this.bossX(boss) + jolt
+        index = frameIndex(anim, choice.t, choice.frame)
+      }
+    } else {
+      const enemy = body as Enemy
+      if (enemy.dead) return false
+      const choice = this.selectEnemy(enemy)
+      anim = clip(enemy.kind, choice.name)
+      if (!anim) return false
+      out.x = this.enemyX(enemy)
+      out.y = enemy.y + enemy.h
+      out.flip = this.enemyFlip(enemy)
+      index = frameIndex(anim, choice.t, choice.frame)
+    }
+    out.raster = anim.frames[index] ?? null
+    out.anchor = anchorOf(anim)
+    return out.raster !== null
   }
 
   private drawLiveBoss(ctx: CanvasRenderingContext2D, boss: Boss) {

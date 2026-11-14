@@ -103,9 +103,12 @@ describe('story scenes', () => {
     const princess = shot.figures.find((f) => f.sheet === 'princess')!
     expect(weasel.flip).toBe(false)
     expect(weasel.clip).toBe('attack')
-    // She sits on his back (his galloping body is about 40 px high there), not on the ground and not in the air ...
-    expect(princess.lift ?? 0).toBeGreaterThanOrEqual(28)
-    expect(princess.lift ?? 0).toBeLessThanOrEqual(46)
+    // She sits on his back (the diorama puts her feet on his drawing under her, a few px into it), not on a fixed
+    // height ...
+    expect(princess.follow).toBe(shot.figures.indexOf(weasel))
+    expect(princess.seat).toBeGreaterThanOrEqual(1)
+    expect(princess.seat).toBeLessThanOrEqual(8)
+    expect(princess.lift).toBeUndefined()
     // ... behind his shoulders: his head and cap, at the front of his 100 px length, stay clear of her.
     expect(weasel.x - princess.x).toBeGreaterThanOrEqual(12)
     expect(weasel.x - princess.x).toBeLessThan(40)

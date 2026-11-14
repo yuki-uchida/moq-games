@@ -5,6 +5,7 @@
  */
 import type { Neighbour, TileQuery } from '../art/contract'
 import type { StageDef } from '../game/types'
+import { HOP_CLIPS } from './help-moves'
 import { resultShot, shotArt, type ArtList, type ClipRef } from './story-scenes'
 
 /** A sprite the help screen shows as an <img> (its PNG is made ahead) or as a playing canvas. */
@@ -18,8 +19,11 @@ export interface HelpSprite {
   className?: string
 }
 
-/** The hero's moves on the help screen: the clip each one plays. */
+/** The hero's moves on the help screen: the clip each one plays (the jump draws the whole hop: `HOP_CLIPS`). */
 export const HELP_MOVES = ['run', 'jump', 'bite'] as const
+
+/** Every hero clip the help screen's moves draw. */
+export const helpMoveClips = (): string[] => [...new Set<string>([...HELP_MOVES, ...HOP_CLIPS])]
 
 const SOLID: readonly Neighbour[] = ['solid', 'solid', 'solid', 'solid', 'solid', 'solid', 'solid', 'solid']
 
@@ -79,7 +83,7 @@ export const titleArt = (): ArtList => mergeArt(UI, { ...noArt(), clips: [{ shee
 export const helpArt = (): ArtList =>
   mergeArt(UI, {
     clips: [
-      ...HELP_MOVES.map((clip) => ({ sheet: 'hero', clip })),
+      ...helpMoveClips().map((clip) => ({ sheet: 'hero', clip })),
       ...helpSprites().map(({ sheet, clip }) => ({ sheet, clip }))
     ],
     tiles: [HELP_DIRT],

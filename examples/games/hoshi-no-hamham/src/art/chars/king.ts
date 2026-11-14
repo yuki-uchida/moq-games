@@ -407,7 +407,7 @@ const EYE_KEY: Record<string, number> = {
 }
 /** The glow's second state (the pulse): the yellow runs hotter. */
 const EYE_KEY_HOT = { ...EYE_KEY, y: C.white, Y: C.glow, o: GOLD[1] }
-/** The rage's blood red: a colour of its own, used for nothing but his eyes in the rage. */
+/** The rage's blood red: a colour of its own, used for nothing but his eyes in the rage and the heart of his raged cast. */
 export const KING_RAGE_RED = color('#ff2a4a')
 /** The rage: the same eyes, blood red. */
 const EYE_KEY_RED = { ...EYE_KEY, y: CAPE[0], Y: KING_RAGE_RED, o: CAPE[2] }
@@ -893,6 +893,73 @@ const handFire: HamAccessory = ({ g, pose: p, handN, s }) => {
     })
 }
 
+/**
+ * Where the volley is born: a fixed screen point on the anchor column, under his chin, 30 px over the soles. The game
+ * throws its orbs from a 14 px box whose left edge is on his centre column whichever way he faces (27 to 41 px up),
+ * so an orb lands 7 px to one side of this point: in front of it facing right, behind it facing left.
+ */
+const VOLLEY_AT = (p: HamPose, s: number, size: HamSize): Pt => [size.anchor[0] + p.x * s, size.anchor[1] - 30]
+
+/**
+ * The volley's fire on his chest, in front of the arms: the flame cupped between his paws (`acc.cf`, its size
+ * 0..1.2), the burst as it breaks open and flies (`acc.burst` 0..1: a spiked disc with a white heart, its spikes
+ * thrown up in a fan), and the wisps left rising off his chest and both paws (`acc.wisp` 0..1). `acc.fph` is the
+ * flicker. On the raged sheet (`acc.red`) the fire's heart burns his rage red.
+ */
+const volleyFire: HamAccessory = ({ g, pose: p, s, size, handN, handF }) => {
+  const cf = accOf(p, 'cf')
+  const burst = accOf(p, 'burst')
+  const wisp = accOf(p, 'wisp')
+  if (cf <= 0 && burst <= 0 && wisp <= 0) return
+  const raged = accOf(p, 'red') > 0
+  const body = raged ? DARK[2] : DARK[1]
+  const core = raged ? KING_RAGE_RED : DARK[0]
+  const ph = accOf(p, 'fph')
+  const [x, y] = VOLLEY_AT(p, s, size)
+  // the cupped flame and the wisps sit behind the paws (in front of the face), the burst over everything
+  g.add(burst > 0 ? 3.25 : 2.5, (l) => {
+    if (cf > 0) {
+      // a ball of fire held low between the paws, its tongue licking up past his chin
+      const ball = oval(x, y + 1, (3 + cf * 2.6) * s, (2.6 + cf * 2.2) * s)
+      const t = tongue([x, y], (3 + cf * 4) * s, (2 + cf * 1.6) * s, ph, 0)
+      fill(l, ID, union(ball, polygon(t.body)), body)
+      tint(l, ID, union(oval(x, y + 1, (1.6 + cf * 1.4) * s, (1.4 + cf * 1.2) * s), polygon(t.core)), core)
+      if (cf > 0.9) fill(l, ID, oval(x, y + 1.5, 1.2 * s, 1 * s), C.white)
+      smooth(l)
+    }
+    if (burst > 0) {
+      // the heart, and spikes all round, the long ones thrown up in a fan (27°, 69°, 90°, 111°, 153°)
+      // centred on the orbs' middle row (34 px over the soles); spikes all round, the long ones thrown out and up to
+      // both sides in a fan (the volley's 27° and 153°), short over his face so the roar shows
+      const cx = x
+      const cy = y - 4
+      const pts: Pt[] = []
+      const N = 20
+      for (let i = 0; i < N; i++) {
+        const a = (i / N) * TAU
+        const up = Math.max(0, -Math.sin(a)) // 1 straight up, 0 level and below
+        const fan = 4 * up * (1 - up) // 1 halfway up, 0 level or straight up
+        const r = (i % 2 ? 14 : 23 + fan * 10 - up * up * 13) * burst
+        pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.8])
+      }
+      // wide enough that an orb 7 px to either side of the anchor column still sits on bright fire (x 50 to 78)
+      fill(l, ID, union(polygon(pts), oval(cx, cy, 18.5 * burst, 11 * burst)), body)
+      tint(l, ID, oval(cx, cy, 17 * burst, 10 * burst), core)
+      fill(l, ID, oval(cx, cy, 8 * burst, 5 * burst), C.white)
+    }
+    if (wisp > 0) {
+      // thin tongues rising off the chest and, while the arms are still high, off both paws, drifting apart
+      const from: [Pt, number][] = [[[x, y - 2], 0]]
+      if (wisp > 0.6) from.push([handN.pt(0, -1), -0.5], [handF.pt(0, -1), 0.5])
+      from.forEach(([b, lean], i) => {
+        const t = tongue(b, (5 + wisp * 7) * s * (i ? 0.8 : 1), (1 + wisp * 1.2) * s, ph + i * 2.1, lean)
+        fill(l, ID, polygon(t.body), body)
+        tint(l, ID, polygon(t.core), core)
+      })
+    }
+  })
+}
+
 /** Dust puffs and stone chips: thrown out both ways by the slam (`acc.dust`), kicked back by the charge (`acc.kick`). */
 const dust: HamAccessory = ({ g, pose: p, s, size }) => {
   const d = accOf(p, 'dust')
@@ -1095,7 +1162,22 @@ export const KING_LOOK = hamLook({
     headLocks: HEAD_LOCKS
   },
   eyeKeyOf: (p) => (accOf(p, 'red') > 0 ? EYE_KEY_RED : accOf(p, 'hot') > 0 ? EYE_KEY_HOT : EYE_KEY),
-  accessories: [fire, aura, rug, dust, rollArcs, cape, collar, clasp, scar, crown, knuckles, handFire, stars]
+  accessories: [
+    fire,
+    aura,
+    rug,
+    dust,
+    rollArcs,
+    cape,
+    collar,
+    clasp,
+    scar,
+    crown,
+    knuckles,
+    handFire,
+    volleyFire,
+    stars
+  ]
 })
 
 /** His pose: the family pose with his rest (blush off, heavy brows, the sneer, the cape hanging). */
@@ -1627,109 +1709,111 @@ const landPoses = memo((): HamPose[] => [
   })
 ])
 
-/** The cast: dark fire gathers in the drawn-back paw (0–2), thrust forward on frame 3, follow-through, recovery. */
-const shootPoses = memo((): HamPose[] => [
-  P({
-    lean: -4,
-    squash: 0.8,
-    eyes: 'open',
-    brow: 'hard',
-    mouth: 'grit',
-    armN: [-5, 0],
-    armF: [5, 3],
-    open: true,
-    scarf: [90, 22, 0.6, 0],
-    acc: { hf: 0.3, fph: 0, hot: 1 }
-  }),
-  P({
-    x: -1,
-    lean: -9,
-    squash: 1.6,
-    nod: -2,
+/**
+ * The cast, a volley flung upward from his chest (the game's orbs leave his centre line in a fan, 27° to 153°):
+ * he hunches and draws both paws in to his chest, cupping a flame that grows between them under his chin, each
+ * frame winding him tighter and the cape gathering round him (0–2); on frame 3 he throws both arms up and out in a
+ * wide V, chest out and head back in a roar, the cape snapped open behind him, and the flame breaks open on his
+ * chest in a burst (where the orbs are born); the arms stay high and begin to come down as the burst thins to
+ * wisps rising off his chest and paws, and the cape settles (4–5), leading back to his stance.
+ */
+const shootPoses = memo((): HamPose[] => {
+  // the gathering: shoulders hunched up, both paws cradling the flame under his chin, wound tighter each frame
+  const gather = (k: number): Partial<HamPose> => ({
+    y: 0.3 * k,
+    lean: -2 - k,
+    squash: 1.2 + k * 0.8,
+    headSquash: 0.2 * k,
+    head: [1, 2 + Math.min(1, k * 0.5)],
+    nod: 6 + k * 2,
     eyes: 'squint',
     brow: 'hard',
     mouth: 'grit',
-    armN: [-9, -2],
-    armF: [5, 2],
+    farFront: true,
+    armN: [0.5 - k * 0.25, 1.5 - k * 0.25],
+    armF: [-1 - k * 0.25, 1 - k * 0.25],
     open: true,
-    footN: [-3, 0, 0],
-    footF: [3, 0, 0],
-    scarf: [96, 22, 0.7, 1],
-    acc: { hf: 0.7, fph: 1.4, collar: 0.4 }
-  }),
-  P({
-    x: -2,
-    y: 0.8,
-    lean: -11,
-    squash: 2.2,
-    nod: -4,
-    eyes: 'squint',
-    brow: 'hard',
-    mouth: 'smile',
-    armN: [-10, -5],
-    armF: [5, 1],
-    open: true,
-    footN: [-4, 0, 0],
-    footF: [4, 0, -6],
-    scarf: [100, 22, 0.9, 2],
-    acc: { hf: 1.1, fph: 2.6, collar: 0.7, hot: 1 }
-  }),
-  // the volley leaves: an open palm thrust forward, a flash, the cape snapping back
-  P({
-    x: 4,
-    lean: 18,
-    squash: -1.2,
-    nod: 6,
-    reach: 1.5,
-    paw: 0.8,
-    open: true,
-    jaw: 0.8,
-    eyes: 'wide',
-    brow: 'hard',
-    mouth: 'wide',
-    armN: [15, -1],
-    armF: [-4, 4],
-    footN: [-5, 0, 0],
-    footF: [5, 0, 0],
-    earN: 22,
-    earF: 18,
-    scarf: [20, 24, 1.6, 3],
-    acc: { flash: 1, spread: 1.1, billow: 1.4, lining: 0.6, gl: 0.4 }
-  }),
-  P({
-    x: 2,
-    lean: 10,
-    squash: 0.4,
-    nod: 6,
-    reach: 1.3,
-    open: true,
-    eyes: 'open',
-    brow: 'hard',
-    mouth: 'smile',
-    armN: [13, 0],
-    armF: [1, 4],
-    footN: [-4, 0, 0],
-    footF: [4, 0, 0],
-    earN: 10,
-    earF: 8,
-    scarf: [50, 23, 1.4, 4.2],
-    acc: { hf: 0.25, fph: 4, billow: 1.2, lining: 0.3, gl: 0.8 }
-  }),
-  P({
-    x: 1,
-    lean: 4,
-    squash: 0.8,
-    eyes: 'open',
-    brow: 'angry',
-    mouth: 'smile',
-    armN: [9, 3],
-    armF: [4, 3],
-    earN: 4,
-    earF: 3,
-    scarf: [76, 22, 1, 5.4],
-    acc: { billow: 1 }
+    earN: 10 + k * 8,
+    earF: 8 + k * 7,
+    footN: [-1.5 - k * 0.5, 0, 0],
+    footF: [1.5 + k * 0.5, 0, 0],
+    // the rump sinks with him: the tail nub tucks up clear of the floor
+    tail: -1.5 * k
   })
-])
+  return [
+    P({ ...gather(0), scarf: [90, 22, 0.6, 0], acc: { cf: 0.4, fph: 0, hot: 1, spread: 0.85, billow: 0.7 } }),
+    P({ ...gather(1), scarf: [94, 21, 0.7, 1.2], acc: { cf: 0.8, fph: 1.4, collar: 0.4, spread: 0.75, billow: 0.55 } }),
+    P({
+      ...gather(2),
+      scarf: [98, 20, 0.8, 2.4],
+      acc: { cf: 1.2, fph: 2.6, collar: 0.7, hot: 1, spread: 0.65, billow: 0.45 }
+    }),
+    // the release: arms flung up and out in a V, head back in a roar, the flame bursting on his chest
+    P({
+      y: 1,
+      lean: -8,
+      squash: -2,
+      headSquash: -0.4,
+      nod: -14,
+      head: [0, 7],
+      reach: 1.5,
+      paw: 0.8,
+      open: true,
+      jaw: 1.1,
+      eyes: 'wide',
+      brow: 'hard',
+      mouth: 'wide',
+      armN: [-12, -16],
+      armF: [12, -17],
+      footN: [-2, 0, 6],
+      footF: [2, 0, 6],
+      earN: -14,
+      earF: -10,
+      earLift: 1.5,
+      scarf: [30, 24, 1.6, 3.6],
+      acc: { burst: 1, fph: 3.6, spread: 1.5, billow: 2.1, lining: 0.9, collar: 1.2, gl: 0.4 }
+    }),
+    // the follow-through: the arms still high, starting down, wisps rising off his chest and paws
+    P({
+      y: 0.4,
+      lean: -5,
+      squash: -1,
+      nod: -8,
+      head: [0, 2],
+      reach: 1.4,
+      paw: 0.5,
+      open: true,
+      jaw: 0.6,
+      eyes: 'open',
+      brow: 'hard',
+      mouth: 'wide',
+      armN: [-11, -12],
+      armF: [11, -13],
+      footN: [-1.5, 0, 0],
+      footF: [1.5, 0, 0],
+      earN: -6,
+      earF: -4,
+      scarf: [56, 23, 1.3, 4.8],
+      acc: { wisp: 1, fph: 4.8, spread: 1.25, billow: 1.6, lining: 0.5, collar: 0.8, gl: 0.8 }
+    }),
+    // settling back towards his stance
+    P({
+      squash: 0.4,
+      head: [0, 1],
+      nod: 0,
+      reach: 1.15,
+      eyes: 'open',
+      brow: 'angry',
+      mouth: 'smile',
+      armN: [3, 1],
+      armF: [6, 1],
+      earN: 2,
+      earF: 2,
+      scarf: [80, 22, 0.9, 6],
+      acc: { wisp: 0.4, fph: 6, billow: 1.1 }
+    })
+  ]
+})
 
 /** Out of breath: hunched, the near paw on his knee, panting, the crown askew. */
 const recoverPoses = memo((): HamPose[] =>
@@ -2055,8 +2139,8 @@ const AURA: Record<string, (i: number, n: number) => AuraSet> = {
   air: (i) => ({ ph: step(i), h: [0.95, 1.15, 1][i], sp: [0.7, 1.1, 0.4][i], ly: [-0.2, 0, 0.3][i] }),
   // the slam: flattened and thrown outward, then rising back
   land: (i) => ({ ph: step(i), h: [1.25, 1.1, 0.95, 1][i], ly: [-0.7, -0.55, -0.2, 0][i], sp: [1.5, 1.2, 0.5, 0][i] }),
-  // the cast: blown back by the thrust on the release
-  shoot: (i) => ({ ph: step(i), lx: [0, 0.1, 0.15, -0.9, -0.45, -0.1][i], h: [1, 1, 1, 0.9, 0.95, 1][i] }),
+  // the cast: drawn in tight round him as he gathers, flung wide and high on the release, settling
+  shoot: (i) => ({ ph: step(i), h: [0.9, 0.85, 0.8, 1.15, 1.05, 1][i], sp: [-0.2, -0.3, -0.4, 0.9, 0.5, 0.1][i] }),
   // out of breath: low and guttering
   recover: (i, n) => ({ ph: turn(i, n), h: 0.55, gut: 1 })
 }

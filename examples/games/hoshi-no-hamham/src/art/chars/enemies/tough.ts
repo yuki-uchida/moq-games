@@ -704,9 +704,73 @@ const defeat = memo(() => {
   ]
 })
 
+/**
+ * Off the ground, one frame per phase (the view picks it by vertical speed): 0 tossed upward, the barrel stretched,
+ * the short legs trailing, the big paws flung out; 1 the top, hanging, paws and feet spread, the "uh-oh"; 2 dropping
+ * like a sack, the feet reaching down, the paws up, the bandana tails flying up and the helmet left a pixel or two
+ * above his brow. Surprised, not hit: wide eyes, no spin. The lowest pixel stays a few px above the ground row.
+ */
+export const MOLE_AIR: readonly MolePose[] = [
+  molePose({
+    x: 1,
+    y: 6,
+    planted: false,
+    lean: -4,
+    squash: -1.8,
+    head: [-0.5, 0.5],
+    nod: -6,
+    helmet: [0, -0.5, 6],
+    pawN: [-6, 8, 120, 0.8],
+    pawF: [14, 6, 40, 0.8],
+    footN: [-2, 3, 30],
+    footF: [3, 4, 30],
+    scarf: [70, 7, 0.8, 0],
+    eyes: 'wide',
+    brow: 'up',
+    look: 0.6,
+    mouth: 'grim'
+  }),
+  molePose({
+    x: 1,
+    y: 7,
+    planted: false,
+    lean: 2,
+    squash: 0.8,
+    helmet: [0, 1, 2],
+    pawN: [-11, 2, 170, 1],
+    pawF: [10.5, 1, -14, 1],
+    footN: [-3, 2, -20],
+    footF: [6, 2.5, 22],
+    scarf: [10, 7, 1.4, 1.2],
+    eyes: 'wide',
+    brow: 'up',
+    look: -0.4,
+    mouth: 'grit'
+  }),
+  molePose({
+    y: 6,
+    planted: false,
+    lean: 2,
+    squash: -0.6,
+    nod: 4,
+    helmet: [0, 2.6, -6],
+    pawN: [-9, -12, -130, 1],
+    pawF: [12, -13, -60, 1],
+    footN: [-1, 0, 12],
+    footF: [4, 0.5, 18],
+    scarf: [-66, 8, 1.6, 2.6],
+    eyes: 'wide',
+    brow: 'up',
+    look: 1,
+    mouth: 'open'
+  })
+]
+const air = memo(() => MOLE_AIR.map(drawMole))
+
 export const toughSheet = () => ({
   idle: lazyAnim(idle, 8, true),
   move: lazyAnim(move, 10, true),
+  air: lazyAnim(air, 8, false),
   hurt: lazyAnim(hurt, 12, false),
   defeat: lazyAnim(defeat, 12, false)
 })

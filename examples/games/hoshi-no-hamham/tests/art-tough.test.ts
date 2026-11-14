@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { drawMole, molePose, toughSheet } from '../src/art/chars/enemies/tough'
+import { MOLE_AIR, drawMole, molePose, toughSheet } from '../src/art/chars/enemies/tough'
 import { walkerSheet } from '../src/art/chars/enemies/walker'
 import { ENEMY_SPEC } from '../src/art/contract'
 import { C, R } from '../src/art/palette'
@@ -24,6 +24,20 @@ const helmetTop = (f: Raster) => Math.min(...pixels(f, STEEL).map(([, y]) => y))
 function steelCentre(f: Raster): [number, number] {
   const p = pixels(f, STEEL)
   return [p.reduce((s, [x]) => s + x, 0) / p.length, p.reduce((s, [, y]) => s + y, 0) / p.length]
+}
+
+/** Pixels painted in one frame and not the other (the silhouettes compared). */
+function silhouetteDiff(a: Raster, b: Raster) {
+  let n = 0
+  for (let y = 0; y < a.h; y++) for (let x = 0; x < a.w; x++) if (!a.get(x, y) !== !b.get(x, y)) n++
+  return n
+}
+
+const COAT = new Set<number>(R.moleBrown.slice(0, 4))
+/** Middle column of the barrel: the mean x of the brown coat in rows 34..52. */
+function bodyMid(f: Raster) {
+  const p = pixels(f, COAT).filter(([, y]) => y >= 34 && y <= 52)
+  return p.reduce((s, [x]) => s + x, 0) / p.length
 }
 
 describe('tough (モグラ隊長) on the rig', () => {
@@ -120,6 +134,56 @@ describe('tough (モグラ隊長) on the rig', () => {
               `defeat ${i} isolated pixel at ${x},${y}`
             ).toBe(true)
     }
+  })
+
+  test('air: every frame floats 4 to 10 px above the anchor row, over the anchor column, inside the cell', () => {
+    expect(sheet.air.frames.length).toBe(3)
+    const idle = sheet.idle.frames.map(bodyMid)
+    const centre = idle.reduce((s, m) => s + m, 0) / idle.length
+    for (const [i, f] of sheet.air.frames.entries()) {
+      const b = f.bounds()!
+      const lowest = b.y + b.h - 1
+      expect(60 - lowest, `air ${i} air under the feet`).toBeGreaterThanOrEqual(4)
+      expect(60 - lowest, `air ${i} air under the feet`).toBeLessThanOrEqual(10)
+      expect(b.x, `air ${i} left`).toBeGreaterThanOrEqual(1)
+      expect(b.y, `air ${i} top`).toBeGreaterThanOrEqual(1)
+      expect(b.x + b.w, `air ${i} right`).toBeLessThanOrEqual(f.w - 1)
+      // the barrel stays where it is in idle (the hit box is centred on the anchor column): measured with the paws
+      // held as in idle, so the flung paws and their cuffs do not count
+      const m = bodyMid(drawMole({ ...MOLE_AIR[i], pawN: [4, 6, 30, 0.3], pawF: [12, 3, 12, 0.3] }))
+      expect(Math.abs(m - centre), `air ${i} barrel at ${m}`).toBeLessThanOrEqual(2)
+      // and so does the head: the helmet over the same column as in idle
+      const hx = steelCentre(f)[0]
+      expect(Math.abs(hx - steelCentre(sheet.idle.frames[0])[0]), `air ${i} helmet at ${hx}`).toBeLessThanOrEqual(3)
+    }
+  })
+
+  test('air: falling (frame 2) he drops feet first, the paws up and the helmet lifted off his brow', () => {
+    const fall = MOLE_AIR[2]
+    const f = sheet.air.frames[2]
+    // the pixels the paws add: the same pose with the paws held low as in idle
+    const rest = drawMole({ ...fall, pawN: [4, 6, 30, 0.3], pawF: [12, 3, 12, 0.3] })
+    const paws: number[] = []
+    for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) if (f.get(x, y) && !rest.get(x, y)) paws.push(y)
+    expect(paws.length).toBeGreaterThanOrEqual(20)
+    const b = f.bounds()!
+    // the lowest paw pixel is far above the feet; the paws reach up to the helmet
+    expect(b.y + b.h - 1 - Math.max(...paws)).toBeGreaterThanOrEqual(14)
+    expect(Math.min(...paws)).toBeLessThanOrEqual(helmetTop(f) + 6)
+    // the helmet rides higher on his head than when he stands
+    const seated = drawMole({ ...fall, helmet: [0, 0, 4] })
+    expect(helmetTop(seated) - helmetTop(f)).toBeGreaterThanOrEqual(2)
+  })
+
+  test('air: the three frames differ from each other and from every idle and hurt frame', () => {
+    const air = sheet.air.frames
+    for (let i = 0; i < air.length; i++)
+      for (let j = i + 1; j < air.length; j++)
+        expect(silhouetteDiff(air[i], air[j]), `air ${i} vs air ${j}`).toBeGreaterThanOrEqual(60)
+    for (const [i, f] of air.entries())
+      for (const name of ['idle', 'hurt'] as const)
+        for (const [j, g] of sheet[name].frames.entries())
+          expect(silhouetteDiff(f, g), `air ${i} vs ${name} ${j}`).toBeGreaterThanOrEqual(80)
   })
 
   test('a frame draws fast enough for the browser', () => {

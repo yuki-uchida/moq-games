@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { SimEvent } from '../src/game/events'
 import type { Input } from '../src/game/input'
-import { emptyInput, type InputState } from '../src/game/sim'
+import { BITE_TIME, INVULN, emptyInput, type InputState, type Prop } from '../src/game/sim'
 import { STAGES } from '../src/game/stages'
 import type { Hud, HudApi } from '../src/ui/hud'
 import { PlaySession, STEP } from '../src/app/play'
@@ -16,12 +16,16 @@ import {
   BOSS_ROAR_SECONDS,
   CLEAR_SECONDS,
   DEATH_SECONDS,
+  LAND_WAIT_SECONDS,
   RAGE_POSE_MARGIN,
   STAGE_START_SECONDS
 } from '../src/view/staging'
-import { bossSpec, type BossArt } from '../src/art/contract'
+import { HERO_SPEC, allSheetSpecs, bossSpec, type BossArt } from '../src/art/contract'
+import { groundBelow } from '../src/view/actors'
+import { frameOf } from './play-audit'
 import { frameAt, type Anim } from '../src/art/sheet'
-import { clipLife, specDuration } from '../src/view/clips'
+import { RUN_THRESHOLD, clipLife, frameStart, specDuration } from '../src/view/clips'
+import { TILE } from '../src/game/types'
 
 // ------------------------------------------------------------------------------------------------- stubs
 
@@ -159,7 +163,10 @@ function started(no: number, options: { reducedMotion?: boolean } = {}) {
   return rig
 }
 
-/** Walks the hero across the arena line so the boss wakes. */
+/**
+ * Walks the hero across the arena line so the boss wakes, and runs until his entrance begins (level with a flier
+ * the hero is in the air: the entrance waits for him to land).
+ */
 function wakeBoss(rig: Rig) {
   const { world } = rig
   const boss = world.boss!
@@ -168,7 +175,7 @@ function wakeBoss(rig: Rig) {
   world.player.vx = 0
   world.player.vy = 0
   world.player.invuln = 999
-  rig.run(0.2, () => rig.director.current === 'boss-intro')
+  rig.run(LAND_WAIT_SECONDS + 0.2, () => rig.director.current === 'boss-intro')
 }
 
 // ------------------------------------------------------------------------------------------------- tests
@@ -385,6 +392,67 @@ describe('bosses', () => {
     expect(rig.hud.texts('showNameplate')).toHaveLength(1)
     expect(rig.hud.texts('showBoss')).toContain(STAGES[4].boss.name)
     expectReleased(rig)
+  })
+
+  for (const side of [1, -1] as const)
+    it(`a boss's throw smokes at the edge of his body on the hero's side (the hero to the ${side > 0 ? 'right' : 'left'})`, () => {
+      const rig = started(8)
+      wakeBoss(rig)
+      rig.director.skip()
+      const boss = rig.world.boss!
+      const p = rig.world.player
+      p.x = boss.x + boss.w / 2 + side * 200
+      const seen: { name: string; x: number; y: number }[] = []
+      const spawn = rig.view.fx.spawn.bind(rig.view.fx)
+      rig.view.fx.spawn = (name, x, y, o) => {
+        seen.push({ name, x, y })
+        spawn(name, x, y, o)
+      }
+      const cx = boss.x + boss.w / 2
+      emit(rig, { type: 'boss-shoot', x: cx, y: boss.y + boss.h / 2, count: 3 })
+      expect(seen.filter((f) => f.name === 'smoke').map((f) => f.x)).toEqual([cx + (side * boss.w) / 2])
+    })
+
+  it('stage 4: landing on the floor of the pool stirs bubbles, landing on the bank raises dust', () => {
+    const rig = started(4)
+    const names: string[] = []
+    const fx = rig.view.fx
+    const spawn = fx.spawn.bind(fx)
+    const burst = fx.burst.bind(fx)
+    fx.spawn = (name, x, y, o) => {
+      names.push(name)
+      spawn(name, x, y, o)
+    }
+    fx.burst = (name, x, y, count, o) => {
+      names.push(name)
+      burst(name, x, y, count, o)
+    }
+    // The pool: columns 60–61, water in rows 15–16, its floor at row 17; the bank at row 15.
+    expect(rig.world.waterAt(60, 16)).toBe(true)
+    rig.view.handle({ type: 'land', x: 60.5 * TILE, y: 17 * TILE, speed: 260 })
+    rig.view.handle({ type: 'jump', x: 60.5 * TILE, y: 17 * TILE })
+    // (A burst spawns its particles one by one.)
+    expect([...new Set(names)]).toEqual(['bubble'])
+    names.length = 0
+    rig.view.handle({ type: 'land', x: 57.5 * TILE, y: 15 * TILE, speed: 300 })
+    expect([...new Set(names)]).toEqual(['dust'])
+  })
+
+  it("the king's volley smokes on his centre, where it bursts out of his chest", () => {
+    const rig = started(10)
+    wakeBoss(rig)
+    rig.director.skip()
+    const boss = rig.world.boss!
+    rig.world.player.x = boss.x + boss.w / 2 + 200
+    const seen: { name: string; x: number; y: number }[] = []
+    const spawn = rig.view.fx.spawn.bind(rig.view.fx)
+    rig.view.fx.spawn = (name, x, y, o) => {
+      seen.push({ name, x, y })
+      spawn(name, x, y, o)
+    }
+    const cx = boss.x + boss.w / 2
+    emit(rig, { type: 'boss-shoot', x: cx, y: boss.y + boss.h / 2, count: 3 })
+    expect(seen.filter((f) => f.name === 'smoke').map((f) => f.x)).toEqual([cx])
   })
 
   for (const no of [3, 5, 8, 10])
@@ -735,6 +803,265 @@ describe('sound', () => {
   })
 })
 
+describe("the boss's entrance waits for the hero to stand, and poses him standing", () => {
+  /** Puts the hero just across the arena line, `above` px over the boss's floor, moving at `vx`. */
+  const crossLine = (rig: Rig, above = 0, vx = 0) => {
+    const boss = rig.world.boss!
+    const p = rig.world.player
+    p.x = boss.arenaX + 4
+    p.y = boss.y + boss.h - p.h - above
+    p.vx = vx
+    p.vy = 0
+    p.invuln = 999
+  }
+  const begun = (rig: Rig) => rig.run(0.5, () => rig.director.current === 'boss-intro')
+
+  it('waits for a hero in the air and begins on the frame he lands', () => {
+    const rig = started(5)
+    const { world, view, director } = rig
+    const p = world.player
+    crossLine(rig, TILE)
+    let frames = 0
+    let landedAt = -1
+    let begunAt = -1
+    while (begunAt < 0 && frames < 120) {
+      rig.frame()
+      frames++
+      if (landedAt < 0 && p.onGround) landedAt = frames
+      if (director.current === 'boss-intro') begunAt = frames
+      else {
+        expect(world.boss!.active).toBe(true)
+        expect(view.actors.posing('hero')).toBeNull()
+      }
+    }
+    expect(world.boss!.onGround).toBe(true)
+    // He was in the air for a while (the simulation ran meanwhile), and the moment began the frame he landed.
+    expect(landedAt).toBeGreaterThan(5)
+    expect(begunAt).toBe(landedAt)
+    expect(view.actors.posing('hero')).toBe('idle')
+  })
+
+  it('the squash of his landing settles while the moment holds the simulation', () => {
+    const rig = started(5)
+    const { view, director } = rig
+    crossLine(rig, TILE)
+    for (let n = 0; director.current !== 'boss-intro' && n < 120; n++) rig.frame()
+    expect(director.current).toBe('boss-intro')
+    const squash = () => (view.actors as unknown as { squash: number }).squash
+    // He has just landed: flattened. The pose is drawn with it, on real time, so it eases out although no step runs.
+    expect(squash()).toBeLessThan(-0.05)
+    rig.run(0.5)
+    expect(director.current).toBe('boss-intro')
+    expect(squash()).toBe(0)
+  })
+
+  it('begins after LAND_WAIT_SECONDS when he never lands, and leaves him as he is', () => {
+    const rig = started(5)
+    const { world, view, director } = rig
+    const p = world.player
+    crossLine(rig, 3 * TILE)
+    const high = p.y
+    const t0 = world.time
+    for (let n = 0; director.current !== 'boss-intro' && n < 200; n++) {
+      // The script keeps him up there.
+      p.y = high
+      p.vy = 0
+      rig.frame()
+    }
+    expect(director.current).toBe('boss-intro')
+    expect(p.onGround).toBe(false)
+    expect(world.time - t0).toBeGreaterThan(LAND_WAIT_SECONDS - 2 * STEP)
+    expect(world.time - t0).toBeLessThan(LAND_WAIT_SECONDS + 2 * STEP)
+    expect(view.actors.posing('hero')).toBeNull()
+  })
+
+  it('poses a hero who crossed at a run standing, from the first frame of the moment to its last, and not after', () => {
+    const rig = started(5)
+    const { world, view, director } = rig
+    crossLine(rig, 0, 215)
+    begun(rig)
+    expect(director.current).toBe('boss-intro')
+    // He was still running when it began: without the pose he would hang in a frame of his run.
+    expect(Math.abs(world.player.vx)).toBeGreaterThan(RUN_THRESHOLD)
+    let frames = 0
+    while (director.current === 'boss-intro' && frames < 400) {
+      expect(view.actors.posing('hero')).toBe('idle')
+      expect(view.actors.selectHero()!.name).toBe('idle')
+      rig.frame()
+      frames++
+    }
+    expect(frames * STEP).toBeGreaterThan(BOSS_INTRO_SECONDS - 0.1)
+    expect(view.actors.posing('hero')).toBeNull()
+  })
+
+  it('a skip ends the pose with the moment', () => {
+    const rig = started(5)
+    crossLine(rig)
+    begun(rig)
+    expect(rig.view.actors.posing('hero')).toBe('idle')
+    rig.run(0.3)
+    rig.input.press()
+    rig.frame()
+    expect(rig.director.current).toBeNull()
+    expect(rig.view.actors.posing('hero')).toBeNull()
+  })
+
+  for (const what of ['bite', 'hurt'] as const)
+    it(`a ${what} the pose covers does not come back after the moment`, () => {
+      const rig = started(5)
+      const { world, view, director } = rig
+      const p = world.player
+      crossLine(rig)
+      // Under way as he crosses the line (the moment holds it, unfinished, until it ends).
+      if (what === 'bite') p.biteTimer = BITE_TIME
+      else p.invuln = INVULN - 0.02
+      begun(rig)
+      // (A bite under way plays out first, then he stands.)
+      expect(view.actors.selectHero()!.name).toBe(what === 'bite' ? 'bite' : 'idle')
+      rig.run(BOSS_INTRO_SECONDS + 0.5, () => director.current === null)
+      expect(director.current).toBeNull()
+      // Still due by the simulation's clock when the fight resumes, and never drawn again.
+      expect(what === 'bite' ? p.biteTimer : INVULN - p.invuln < 0.3).toBeTruthy()
+      for (let n = 0; n < 30; n++) {
+        rig.frame()
+        expect(view.actors.selectHero()!.name).not.toBe(what)
+      }
+    })
+
+  /** Stage 10, the king awake and fighting, on the ground; the hero next to him. */
+  const kingAwake = () => {
+    const rig = started(10)
+    wakeBoss(rig)
+    rig.director.skip()
+    rig.run(3, () => rig.world.boss!.onGround && rig.world.boss!.state === 'idle')
+    expect(rig.world.boss!.onGround).toBe(true)
+    return rig
+  }
+  const phase = (rig: Rig) => {
+    const boss = rig.world.boss!
+    emit(rig, { type: 'boss-phase', phase: 2, x: boss.x, y: boss.y })
+  }
+
+  it('phase 2 waits for a hero in the air too, and begins once both stand on the ground', () => {
+    const rig = kingAwake()
+    const { world, view, director } = rig
+    const boss = world.boss!
+    const p = world.player
+    p.y -= TILE
+    p.vy = 0
+    p.onGround = false
+    phase(rig)
+    expect(director.current).toBeNull()
+    let frames = 0
+    while (director.current !== 'boss-phase' && frames < 120) {
+      expect(view.actors.posing('hero')).toBeNull()
+      rig.frame()
+      frames++
+    }
+    expect(frames).toBeGreaterThan(5)
+    // It began on the frame the last of the two stood.
+    expect(p.onGround && boss.onGround).toBe(true)
+    expect(view.actors.posing('hero')).toBe('idle')
+    expect(view.actors.posing('boss')).toBe('rage')
+  })
+
+  it('phase 2 begins after LAND_WAIT_SECONDS when the hero never lands, and leaves him as he is', () => {
+    const rig = kingAwake()
+    const { world, view, director } = rig
+    const p = world.player
+    p.y -= 3 * TILE
+    p.onGround = false
+    const high = p.y
+    const t0 = world.time
+    phase(rig)
+    for (let n = 0; director.current !== 'boss-phase' && n < 200; n++) {
+      p.y = high
+      p.vy = 0
+      rig.frame()
+    }
+    expect(director.current).toBe('boss-phase')
+    expect(world.time - t0).toBeGreaterThan(LAND_WAIT_SECONDS - 2 * STEP)
+    expect(world.time - t0).toBeLessThan(LAND_WAIT_SECONDS + 2 * STEP)
+    expect(view.actors.posing('hero')).toBeNull()
+  })
+
+  /**
+   * A moment begun with a bite of the hero's under way: the frames shown during it, until the moment ends, and
+   * whether the simulation stood still all along.
+   */
+  const heldBite = (rig: Rig, name: string) => {
+    const { world, view, director } = rig
+    const shown: { name: string; frame: number }[] = []
+    const t0 = world.time
+    while (director.current === name && shown.length < 400) {
+      const choice = view.actors.selectHero()!
+      shown.push({ name: choice.name, frame: frameOf(HERO_SPEC[choice.name], choice) })
+      rig.frame()
+    }
+    return { shown, held: world.time === t0 }
+  }
+  /** A bite's frames from `from` to its last, each shown and in order, on its own time, then only `idle`. */
+  const playsOutThenStands = (shown: { name: string; frame: number }[], from: number) => {
+    const bite = shown.filter((s) => s.name === 'bite')
+    const last = HERO_SPEC.bite.frames - 1
+    expect([...new Set(bite.map((s) => s.frame))]).toEqual(Array.from({ length: last - from + 1 }, (_, i) => from + i))
+    for (let i = 1; i < bite.length; i++) expect(bite[i].frame).toBeGreaterThanOrEqual(bite[i - 1].frame)
+    // On real time at the clip's own speed (the hold does not stop it): about its remaining length.
+    const remaining = specDuration(HERO_SPEC.bite) - frameStart(HERO_SPEC.bite, from)
+    expect(bite.length * STEP).toBeGreaterThan(remaining - 3 * STEP)
+    expect(bite.length * STEP).toBeLessThan(remaining + 3 * STEP)
+    // The bite first, then he stands.
+    expect(shown.slice(0, bite.length)).toEqual(bite)
+    for (const s of shown.slice(bite.length)) expect(s.name).toBe('idle')
+    expect(shown.length).toBeGreaterThan(bite.length + 10)
+  }
+
+  it('phase 2 begun in the middle of a bite: the bite plays out on real time during the hold, then he stands', () => {
+    const rig = kingAwake()
+    const { world, view } = rig
+    const p = world.player
+    // The bite that hit him, a few frames in (sim.ts: its timer runs down from BITE_TIME).
+    p.biteTimer = BITE_TIME - 0.05
+    rig.view.update(0)
+    const from = frameOf(HERO_SPEC.bite, view.actors.selectHero()!)
+    expect(view.actors.selectHero()!.name).toBe('bite')
+    phase(rig)
+    const { shown, held } = heldBite(rig, 'boss-phase')
+    expect(held).toBe(true)
+    playsOutThenStands(shown, from)
+    // Nothing of it after the moment, though the simulation's bite is still due.
+    expect(p.biteTimer).toBeGreaterThan(0)
+    for (let n = 0; n < 30; n++) {
+      rig.frame()
+      expect(view.actors.selectHero()!.name).not.toBe('bite')
+    }
+  })
+
+  it('the entrance begun in the middle of a bite: the same', () => {
+    const rig = started(5)
+    const { world, view } = rig
+    const boss = world.boss!
+    const p = world.player
+    p.x = boss.arenaX - p.w - 2
+    p.y = boss.y + boss.h - p.h
+    p.invuln = 999
+    rig.run(0.3)
+    // Crossing the line with a bite under way.
+    p.x = boss.arenaX + 4
+    p.biteTimer = BITE_TIME
+    rig.frame()
+    expect(rig.director.current).toBe('boss-intro')
+    const from = frameOf(HERO_SPEC.bite, view.actors.selectHero()!)
+    const { shown, held } = heldBite(rig, 'boss-intro')
+    expect(held).toBe(true)
+    playsOutThenStands(shown, from)
+    for (let n = 0; n < 30; n++) {
+      rig.frame()
+      expect(view.actors.selectHero()!.name).not.toBe('bite')
+    }
+  })
+})
+
 describe('a boss is posed only on the ground, and only while the fight is held', () => {
   /** Runs `seconds`, checking every frame that a staged boss pose up before and after it held the simulation. */
   const watch = (rig: Rig, seconds: number, each?: () => void) => {
@@ -807,4 +1134,143 @@ describe('a boss is posed only on the ground, and only while the fight is held',
         expect(rig.director.log).toContain('boss-phase')
       }
     })
+})
+
+describe('ハム姫 waits standing for her moment, and cheers with it', () => {
+  const SPECS = allSheetSpecs()
+  /** A stage's caged ハム姫 with the hero standing two tiles to her left (the stage's enemies gone). */
+  const nextToCage = (no: number) => {
+    const rig = started(no)
+    const { world } = rig
+    for (const enemy of world.enemies) enemy.dead = true
+    const cage = world.props.find((p) => p.kind === 'princess' && p.data === 1)!
+    const p = world.player
+    p.x = cage.x - 2 * TILE
+    p.y = groundBelow(world, p.x + p.w / 2, cage.y, world.h)! - p.h
+    p.vx = 0
+    p.vy = 0
+    p.facing = 1
+    p.invuln = 999
+    // His crossing wakes the boss: let the entrance play.
+    rig.run(LAND_WAIT_SECONDS + 0.5, () => rig.director.current === 'boss-intro')
+    rig.run(BOSS_INTRO_SECONDS + 0.5, () => rig.director.current === null)
+    rig.run(0.3)
+    return { rig, cage }
+  }
+  const her = (rig: Rig, cage: Prop) => {
+    const choice = rig.view.props.selectPrincess(cage)
+    return { name: choice.name, frame: frameOf(SPECS.princess[choice.name], choice) }
+  }
+
+  for (const no of [3, 10])
+    it(`stage ${no}: freed by the boss's fall, she stands until her moment, then cheers from frame 0 on real time`, () => {
+      const { rig, cage } = nextToCage(no)
+      const { world, director, view } = rig
+      const boss = world.boss!
+      boss.hp = 1
+      boss.invuln = 0
+      world.damageBoss(1)
+      let begun = -1
+      const during: number[] = []
+      const hero: number[] = []
+      for (let n = 0; n < 600 && !(begun >= 0 && director.current !== 'princess-free'); n++) {
+        rig.frame()
+        const now = her(rig, cage)
+        if (director.current === 'princess-free') {
+          if (begun < 0) {
+            begun = n
+            // The first frame of her moment is the first frame of her cheer.
+            expect(now).toEqual({ name: 'cheer', frame: 0 })
+          }
+          expect(now.name).toBe('cheer')
+          during.push(now.frame)
+          const pose = view.actors.selectHero()!
+          if (pose.name === 'cheer') hero.push(frameOf(HERO_SPEC.cheer, pose))
+        } else if (begun < 0) expect(now.name, `${director.current} at frame ${n}`).not.toBe('cheer')
+      }
+      expect(begun).toBeGreaterThan(0)
+      expect(director.log).toEqual(expect.arrayContaining(['boss-defeat', 'goal-reveal', 'princess-free']))
+      // Her cheer runs on while the moment slows the play down (its frames advance in order) ...
+      expect(new Set(during).size).toBeGreaterThan(4)
+      for (let i = 1; i < during.length; i++) expect(during[i]).toBeGreaterThanOrEqual(during[i - 1])
+      // ... and the hero's cheer plays whole, its last frame included.
+      expect(hero[0]).toBe(0)
+      expect(hero).toContain(HERO_SPEC.cheer.frames - 1)
+      // After it, she goes on cheering for the rest of her two seconds, then waves at the open exit.
+      rig.run(2.5)
+      expect(her(rig, cage).name).toBe('wave')
+    })
+
+  it('stage 3: the goal reveal skipped, her moment still plays (she is in the view the camera settles to)', () => {
+    const { rig, cage } = nextToCage(3)
+    const { world, director, input } = rig
+    const boss = world.boss!
+    boss.hp = 1
+    boss.invuln = 0
+    world.damageBoss(1)
+    rig.run(6, () => director.current === 'goal-reveal')
+    expect(director.current).toBe('goal-reveal')
+    rig.run(0.2)
+    input.press()
+    rig.frame()
+    rig.run(1, () => director.current === 'princess-free')
+    expect(director.log).toContain('princess-free')
+    expect(her(rig, cage).name).toBe('cheer')
+  })
+
+  it('stage 3: the hero cheers turned to her, whichever way he faced', () => {
+    const { rig, cage } = nextToCage(3)
+    const { world, director, view } = rig
+    // He stands left of her cage, facing away from it.
+    world.player.facing = -1
+    rig.run(0.1)
+    world.biteProp(cage, -1)
+    rig.frame()
+    expect(director.current).toBe('princess-free')
+    let posed = 0
+    while (director.current === 'princess-free' && posed < 200) {
+      if (view.actors.posing('hero') === 'cheer') {
+        posed++
+        expect(view.actors.heroFlip()).toBe(false)
+      }
+      rig.frame()
+    }
+    expect(posed).toBeGreaterThan(10)
+  })
+
+  it('freed out of view: no moment, and she does not wait for one', () => {
+    const rig = started(10)
+    const { world, director } = rig
+    const cage = world.props.find((p) => p.kind === 'princess' && p.data === 1)!
+    world.goalOpen = true
+    cage.data = 0
+    emit(rig, { type: 'princess-free', x: cage.x + TILE / 2, y: cage.y + TILE / 2 })
+    rig.frame()
+    expect(director.log).not.toContain('princess-free')
+    // What she shows after a cheer: the open exit, so she waves.
+    expect(her(rig, cage).name).toBe('wave')
+  })
+
+  for (const no of [4, 8])
+    it(`stage ${no}: freed by a bite at her cage, her moment begins at once`, () => {
+      const { rig, cage } = nextToCage(no)
+      expect(rig.director.current).toBeNull()
+      rig.world.biteProp(cage, 1)
+      rig.frame()
+      expect(rig.director.current).toBe('princess-free')
+      expect(her(rig, cage)).toEqual({ name: 'cheer', frame: 0 })
+    })
+
+  it('without a director she cheers at the event, on real time', () => {
+    const rig = started(10)
+    const cage = rig.world.props.find((p) => p.kind === 'princess' && p.data === 1)!
+    cage.data = 0
+    // The props view alone (the director never hears of it).
+    rig.view.props.handle({ type: 'princess-free', x: cage.x + TILE / 2, y: cage.y + TILE / 2 })
+    expect(her(rig, cage)).toEqual({ name: 'cheer', frame: 0 })
+    // Real time moves it on even while the play is held.
+    rig.view.update(0.3, 0)
+    expect(her(rig, cage).name).toBe('cheer')
+    expect(her(rig, cage).frame).toBeGreaterThan(0)
+  })
 })

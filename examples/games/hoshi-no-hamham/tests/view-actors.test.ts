@@ -56,17 +56,25 @@ import {
   knockFlight,
   SKID_TAIL,
   bossJolt,
-  dieLandTime
+  dieLandTime,
+  AIR_TURN_PX,
+  AIR_SHORT_SECONDS,
+  landsSoon,
+  DIE_WATER_HOP_SPEED,
+  WATER_TOSS
 } from '../src/view/actors'
 import {
   BOSS_DEFEAT_GROUND_FRAME,
   ENEMY_DEFEAT_GROUND_FRAME,
+  ENEMY_HURT_SECONDS,
+  WALKER_APEX_SPEED,
   BRUTE_IDLE_SECONDS,
   FIT_MIN,
   LUNGE_FRAMES,
   RUN_CONTACT_FRAMES,
   SWARM_IDLE_SECONDS,
   SKID_SPEED,
+  aimClear,
   clipLife,
   frameStart,
   heroClip,
@@ -505,6 +513,66 @@ describe("the hero's knock-out", () => {
     view.update(0.5)
     expect(at()).toBe(start)
   })
+
+  describe('in water the body takes the water’s pace', () => {
+    /** The body's feet row and frame shown, frame by frame at `hz`, knocked out in water with its feet on `feet`. */
+    const inWater = (feet: number, hz = 60, seconds = 3) => {
+      const { world, view } = grounded(5)
+      Object.assign(world.player, {
+        y: feet - world.player.h,
+        onGround: feet === GROUND,
+        inWater: true,
+        dead: true
+      })
+      view.handle({ type: 'dead', x: 0, y: 0 } as never)
+      const out: { frame: number; feet: number; t: number }[] = []
+      for (let t = 0; t < seconds; t += 1 / hz) {
+        view.update(1 / hz)
+        const choice = view.selectHero()!
+        out.push({
+          frame: choice.frame ?? frameAt(dieAnim(), choice.t),
+          feet: view.deathPoint()!.y + 20,
+          t: t + 1 / hz
+        })
+      }
+      return out
+    }
+
+    it('swimming 100 px over the floor: a small lift, then it sinks no faster than 260 px/s, and lies on the floor', () => {
+      expect(WATER_TOSS).toEqual({ hop: DIE_WATER_HOP_SPEED, gravity: 1600 * 0.28, cap: 260 })
+      const run = inWater(GROUND - 100)
+      const top = Math.min(...run.map((r) => r.feet))
+      expect(top).toBeLessThan(GROUND - 100)
+      expect(top).toBeGreaterThan(GROUND - 100 - 10)
+      for (let i = 1; i < run.length; i++) expect(run[i].feet - run[i - 1].feet).toBeLessThanOrEqual(260 / 60 + 1e-6)
+      const landed = run.findIndex((r) => r.feet === GROUND)
+      expect(landed).toBeGreaterThan(0)
+      for (const r of run.slice(landed)) expect(r.feet).toBe(GROUND)
+      // The bounce frame begins on the frame it touches down, and the tumble plays until then.
+      expect(run[landed].frame).toBe(4)
+      for (const r of run.slice(0, landed)) expect(r.frame).toBeLessThan(4)
+    })
+
+    it('the landing is exact at any display rate (the bounce on the frame it touches down)', () => {
+      const at = dieLandTime(GROUND - 100, GROUND, WATER_TOSS)
+      // Lift, then the sink speeds up to 260 px/s and keeps it: longer than a free fall at that gravity.
+      expect(at).toBeGreaterThan((DIE_WATER_HOP_SPEED + 260) / (1600 * 0.28))
+      for (const hz of [30, 60, 120, 144]) {
+        const run = inWater(GROUND - 100, hz)
+        const landed = run.findIndex((r) => r.feet === GROUND)
+        expect(run[landed].t, `${hz} Hz`).toBeGreaterThanOrEqual(at - 1e-6)
+        expect(run[landed].t - at, `${hz} Hz`).toBeLessThan(1 / hz + 1e-6)
+        expect(run[landed].frame, `${hz} Hz`).toBe(4)
+      }
+    })
+
+    it('on the floor of the pool: a small lift and back down onto the floor', () => {
+      const run = inWater(GROUND)
+      expect(Math.min(...run.map((r) => r.feet))).toBeGreaterThan(GROUND - 10)
+      expect(run.at(-1)!.feet).toBe(GROUND)
+      expect(dieLandTime(GROUND, GROUND, WATER_TOSS)).toBeCloseTo((2 * DIE_WATER_HOP_SPEED) / (1600 * 0.28))
+    })
+  })
 })
 
 describe('a boss knocked out in the air comes down', () => {
@@ -873,6 +941,20 @@ describe('a staged hero pose gives way to his own body while the simulation runs
     expect(view.posing('hero')).toBeNull()
   })
 
+  it('the update of the frame that set it does not end it (that body is from the step before the pose)', () => {
+    const { world, view } = setup()
+    // He crossed the boss's line at a run: the entrance poses him standing and holds the simulation from then on.
+    world.player.vx = 215
+    view.pose('hero', 'idle', 2)
+    view.update(1 / 60)
+    expect(view.posing('hero')).toBe('idle')
+    view.update(0)
+    expect(view.posing('hero')).toBe('idle')
+    // A step that runs later with him still running ends it.
+    view.update(1 / 60)
+    expect(view.posing('hero')).toBeNull()
+  })
+
   it('a moment ends only its own pose', () => {
     const { view } = setup()
     const first = view.pose('hero', 'idle', 2)
@@ -1165,6 +1247,35 @@ describe('the run cycle: dust on both contact frames, the footstep once a pass',
     }
     expect(RUN_CONTACT_FRAMES).toEqual([0, 4])
     expect(steps).toBe(2)
+  })
+
+  it('wading on the floor of a pool he runs, with neither dust nor a footstep (the water has its own sound)', () => {
+    let steps = 0
+    const spawned: string[] = []
+    const { world } = setup()
+    const view = new ActorsView(
+      world as never,
+      { rand: () => 0.5, spawn: (name: string) => spawned.push(name), burst: () => {} } as never,
+      () => steps++
+    )
+    Object.assign(world.player, { vx: 215, onGround: true, inWater: true })
+    const shown = new Set<string>()
+    for (let i = 0; i < 35; i++) {
+      view.update(1 / 60)
+      view.drawHero(ctx)
+      shown.add(view.heroChoice.name)
+    }
+    expect([...shown]).toEqual(['run'])
+    expect(spawned).toEqual([])
+    expect(steps).toBe(0)
+    // Back on land the same run raises both again.
+    world.player.inWater = false
+    for (let i = 0; i < 35; i++) {
+      view.update(1 / 60)
+      view.drawHero(ctx)
+    }
+    expect(spawned).toContain('dust')
+    expect(steps).toBeGreaterThan(0)
   })
 })
 
@@ -1682,13 +1793,16 @@ describe('C: an action keeps the facing it began with', () => {
     a.world.boss = fox({ shotTimer: 0.5 })
     for (let i = 0; i < 12; i++) frame(a.view)
     expect(a.view.bossFlip(a.world.boss as never)).toBe(true)
-    a.world.player.x = 300 + FACE_DEAD_ZONE + 2
+    // Clear of his own step (175 px/s: 2.9 px) and the margin: posed, though within the facing's 12 px dead zone.
+    const zone = aimClear(175)
+    expect(zone).toBeLessThan(FACE_DEAD_ZONE)
+    a.world.player.x = 300 + zone + 1
     const run = castRun(a.view, a.world, 40)
     const first = run.find((r) => r.name === 'shoot')!
     expect(first.left).toBe(false)
-    // Within the dead zone (where sim.ts's aim flips with every step he takes) the shot leaves without a pose.
+    // Within a step of his own travel (where sim.ts's aim flips as he overshoots) the shot leaves without a pose.
     const b = setup()
-    b.world.player.x = 300 + FACE_DEAD_ZONE - 1
+    b.world.player.x = 300 + zone - 1
     b.world.boss = fox({ shotTimer: 0.5 })
     for (let i = 0; i < 12; i++) frame(b.view)
     const unposed = castRun(b.view, b.world, 30)
@@ -1829,5 +1943,275 @@ describe('before the first step of a stage', () => {
     expect(view.selectHero()!.name).toBe('fall')
     Object.assign(world.player, { y: 4 * 64 - 40 - 20, vy: 0 })
     expect(['apex', 'jump', 'fall']).toContain(view.selectHero()!.name)
+  })
+})
+
+describe('a rat or a mole in the air is drawn in the air', () => {
+  const GROUND = 5 * TILE
+  /** A world with flat ground on row 5 and one enemy of `kind` whose feet are `above` px over it. */
+  const minion = (kind: 'walker' | 'tough', above: number) => {
+    const rig = grounded(5)
+    const body = {
+      id: 1,
+      kind,
+      x: 300,
+      y: GROUND - 40 - above,
+      w: 44,
+      h: 40,
+      vx: 0,
+      vy: 0,
+      facing: 1 as const,
+      onGround: false,
+      hitFlash: 0,
+      shootTimer: 0,
+      dead: false
+    }
+    ;(rig.world as unknown as { enemies: unknown[] }).enemies = [body]
+    const shown = () => rig.view.selectEnemy(body as never)
+    return { ...rig, body, shown }
+  }
+
+  for (const kind of ['walker', 'tough'] as const) {
+    it(`${kind}: summoned 160 px up, its fall shows from the first frame, by vertical speed; on landing it walks`, () => {
+      const { view, body, shown } = minion(kind, 160)
+      frame(view)
+      expect(shown()).toMatchObject({ name: 'air', frame: 1 })
+      // Falling (sim.ts gravity) until it lands.
+      while (body.y + body.h < GROUND) {
+        body.vy = Math.min(900, body.vy + 1600 / 60)
+        body.y = Math.min(GROUND - body.h, body.y + body.vy / 60)
+        frame(view)
+        if (body.y + body.h < GROUND) {
+          expect(shown().name).toBe('air')
+          expect(shown().frame).toBe(body.vy > WALKER_APEX_SPEED ? 2 : 1)
+        }
+      }
+      // Within a few px of the ground but still falling, it keeps its fall to the landing.
+      body.onGround = false
+      expect(shown().name).toBe('air')
+      body.onGround = true
+      body.vy = 0
+      body.vx = 74
+      frame(view)
+      expect(shown().name).toBe('move')
+    })
+
+    it(`${kind}: summoned at ground level (off the ground for its first step) it never flashes an air frame`, () => {
+      const { view, body, shown } = minion(kind, 0)
+      frame(view)
+      expect(shown().name).not.toBe('air')
+      body.onGround = true
+      frame(view)
+      expect(shown().name).not.toBe('air')
+    })
+  }
+
+  /** A rat in the air moved by `dx` px a step for `steps` steps (falling): its drawn facing (true: left) each step. */
+  const fall = (view: ActorsView, body: { x: number; y: number; vx: number; vy: number }, dxs: number[], up = false) =>
+    dxs.map((dx) => {
+      body.x += dx
+      body.vx = dx * 60
+      // (Held up in the air by hand, or falling.)
+      if (!up) {
+        body.vy += 1600 / 60
+        body.y += body.vy / 60
+      }
+      frame(view)
+      return view.enemyFlip(body as never)
+    })
+
+  it('in the air it turns to the way its body goes within a few px (summoned facing one way, going the other)', () => {
+    const { world, view, body } = minion('walker', 160)
+    // Born facing the hero's side (left), it travels right at 100 px/s (1.7 px a step).
+    world.player.x = 0
+    ;(body as { facing: number }).facing = -1
+    frame(view)
+    expect(view.enemyFlip(body as never)).toBe(true)
+    const flips = fall(view, body, Array(12).fill(100 / 60))
+    const turned = flips.indexOf(false)
+    expect(turned).toBeGreaterThan(0)
+    // Within AIR_TURN_PX (4 px) of travel, and for good.
+    expect((turned + 1) * (100 / 60)).toBeLessThanOrEqual(AIR_TURN_PX + 100 / 60)
+    expect(flips.slice(turned).every((f) => !f)).toBe(true)
+  })
+
+  it('in the air a body the simulation shakes to and fro (over the hero, against a wall) keeps its facing', () => {
+    const { view, body } = minion('tough', 160)
+    frame(view)
+    const before = view.enemyFlip(body as never)
+    // The simulation flips its speed every step: 1.4 px one way, 1.4 px back.
+    const flips = fall(
+      view,
+      body,
+      Array.from({ length: 30 }, (_, i) => (i % 2 ? -1.4 : 1.4)),
+      true
+    )
+    expect(flips.every((f) => f === before)).toBe(true)
+    // At 30 Hz (two steps a frame) and in slow motion (a third of a step a frame) the same.
+    for (const dxs of [Array(30).fill(0), Array.from({ length: 90 }, (_, i) => (i % 6 < 3 ? 0.47 : -0.47))])
+      expect(fall(view, body, dxs, true).every((f) => f === before)).toBe(true)
+  })
+
+  it('bitten in the air: its hurt plays, then its fall if it is still up', () => {
+    const { view, body, shown } = minion('walker', 120)
+    frame(view)
+    expect(shown().name).toBe('air')
+    body.hitFlash = ENEMY_HURT_SECONDS
+    view.handle({ type: 'enemy-hit', id: 1, kind: 'walker', x: 0, y: 0, dir: 1 } as never)
+    expect(shown().name).toBe('hurt')
+    body.hitFlash = 0
+    body.vy = 200
+    frame(view)
+    expect(shown()).toMatchObject({ name: 'air', frame: 2 })
+  })
+
+  it('a rat shaken at the lip of a ledge (a pixel off it for a step) is not drawn in the air', () => {
+    const { world, view, body, shown } = minion('walker', 0)
+    // Ground only up to column 4 (its edge at x 320); the rat's box has just slipped past it.
+    ;(world as unknown as { solidAt: (tx: number, ty: number) => boolean }).solidAt = (tx, ty) => ty >= 5 && tx <= 4
+    body.x = 5 * TILE + 2
+    body.y = GROUND - body.h + 0.4
+    frame(view)
+    expect(shown().name).not.toBe('air')
+    // A real fall off it: clear of the ledge, it is in the air.
+    body.x = 5 * TILE + 20
+    body.y = GROUND - body.h + 6
+    frame(view)
+    expect(shown().name).toBe('air')
+  })
+})
+
+describe('a summoned enemy shows once the simulation has settled where it is', () => {
+  const shadowCtx = { fillRect() {}, globalAlpha: 1, fillStyle: '' } as unknown as CanvasRenderingContext2D
+  const GROUND = 5 * TILE
+  const STEP = 1 / 60
+  const summon = (y: number) => {
+    const rig = grounded(5)
+    const spawned: { name: string; x: number; y: number }[] = []
+    ;(rig.view as unknown as { fx: unknown }).fx = {
+      rand: () => 0.5,
+      spawn: (name: string, x: number, y: number) => spawned.push({ name, x, y }),
+      burst: (name: string, x: number, y: number) => spawned.push({ name, x, y })
+    }
+    // The stage has been running.
+    frame(rig.view)
+    const body = {
+      id: 9,
+      kind: 'walker',
+      x: 300,
+      y,
+      w: 44,
+      h: 40,
+      vx: 0,
+      vy: 0,
+      facing: 1 as const,
+      onGround: false,
+      hitFlash: 0,
+      shootTimer: 0,
+      dead: false,
+      t: STEP
+    }
+    ;(rig.world as unknown as { enemies: unknown[] }).enemies = [body]
+    const step = (dy = 0) => {
+      body.t += STEP
+      body.y += dy
+      frame(rig.view)
+    }
+    const drawn = () => {
+      blits.length = 0
+      rig.view.drawEnemies(shadowCtx)
+      return blits.some((b) => b.anim.startsWith('walker#'))
+    }
+    return { ...rig, body, spawned, step, drawn }
+  }
+
+  it('born inside a solid and pushed out on the next step: never drawn there, shown a step after the push', () => {
+    // Born with its feet 64 px into the ground (inside the raised gate, say), pushed on to its top by the next step.
+    const { view, body, spawned, step, drawn } = summon(GROUND + 64 - 40)
+    frame(view)
+    expect(view.enemyShown(body as never)).toBe(false)
+    expect(drawn()).toBe(false)
+    step(-64)
+    expect(drawn()).toBe(false)
+    expect(spawned).toEqual([])
+    body.onGround = true
+    step()
+    expect(drawn()).toBe(true)
+    // Its puff is where it shows, not in the solid.
+    expect(spawned[0]).toEqual({ name: 'puff', x: 322, y: GROUND - 20 })
+  })
+
+  it('born in the open (in mid-air beside the crow): shown with its puff one step on', () => {
+    const { view, body, spawned, step, drawn } = summon(GROUND - 200)
+    frame(view)
+    expect(drawn()).toBe(false)
+    step(0.4)
+    expect(drawn()).toBe(true)
+    expect(spawned.map((s) => s.name)).toEqual(['puff', 'sparkle'])
+    expect(spawned[0].y).toBeCloseTo(GROUND - 200 + 0.4 + 20)
+  })
+
+  it('on a 30 Hz display (two steps a frame) the same, and an enemy there from the start is shown at once', () => {
+    const { view, body, step, drawn } = summon(GROUND + 64 - 40)
+    frame(view)
+    // The push and a step more in one frame: still the frame of the push.
+    body.t += STEP
+    step(-64)
+    expect(drawn()).toBe(false)
+    body.t += STEP
+    step()
+    expect(drawn()).toBe(true)
+    // A stage's own enemy (seen on the view's first update).
+    const rig = grounded(5)
+    const rat = { ...body, id: 1, t: 0, y: GROUND - 40 }
+    ;(rig.world as unknown as { enemies: unknown[] }).enemies = [rat]
+    frame(rig.view)
+    expect(rig.view.enemyShown(rat as never)).toBe(true)
+  })
+})
+
+describe('round 5d: a staged pose that faced the other way, and a drop too short to show', () => {
+  it('a hero posed facing the other way (his cheer turned to her) turns back with his turn clip when it ends', () => {
+    const { world, view } = setup()
+    world.player.facing = -1
+    const token = view.pose('hero', 'cheer', 1, { face: 1 })
+    frame(view)
+    expect(view.heroFlip()).toBe(false)
+    view.unposeIf('hero', token)
+    expect(view.selectHero()!.name).toBe('turn')
+    // Posed facing his own way, he goes straight on.
+    const own = view.pose('hero', 'cheer', 1, { face: -1 })
+    frame(view)
+    view.unposeIf('hero', own)
+    view.update(1)
+    expect(view.selectHero()!.name).not.toBe('turn')
+  })
+
+  it('a rat a few px above the ground, falling on to it within a frame or two, walks at once', () => {
+    const rig = grounded(5)
+    const rat = {
+      id: 3,
+      kind: 'walker',
+      x: 300,
+      y: 5 * TILE - 40 - 6,
+      w: 44,
+      h: 40,
+      vx: 74,
+      vy: 30,
+      facing: 1,
+      onGround: false,
+      hitFlash: 0,
+      shootTimer: 0,
+      dead: false
+    }
+    ;(rig.world as unknown as { enemies: unknown[] }).enemies = [rat]
+    frame(rig.view)
+    expect(rig.view.selectEnemy(rat as never).name).toBe('move')
+    expect(landsSoon(rig.world as never, rat, 30)).toBe(true)
+    // Thrown upward it is a hop, whatever the ground under it.
+    expect(landsSoon(rig.world as never, rat, -200)).toBe(false)
+    // Higher up it is a fall.
+    expect(landsSoon(rig.world as never, { ...rat, y: rat.y - 60 }, 30)).toBe(false)
+    expect(AIR_SHORT_SECONDS).toBeLessThanOrEqual(6 / 60)
   })
 })

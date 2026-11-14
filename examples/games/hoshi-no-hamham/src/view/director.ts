@@ -73,11 +73,17 @@ const TOASTS: Partial<Record<SimEvent['type'], string>> = {
 interface Pending {
   priority: number
   make: () => Sequence | null
+  /** Called when the moment is dropped from the queue without being made. */
+  drop?: () => void
 }
 
-/** A moment that waits for the boss to land before it is requested (for at most `LAND_WAIT_SECONDS`). */
+/**
+ * A moment that waits for the boss (and, with `hero`, the hero too) to land before it is requested (for at most
+ * `LAND_WAIT_SECONDS`).
+ */
 interface Landing extends Pending {
   waited: number
+  hero: boolean
 }
 
 export class StageDirector implements Director {
@@ -138,13 +144,15 @@ export class StageDirector implements Director {
     if (toast) hud.showToast(toast)
     switch (event.type) {
       case 'boss-awake':
+        // The entrance waits for the hero too: he is posed standing through it, not frozen in a run or a jump.
         if (world.boss && world.boss.def.kind !== 'chaser')
-          this.whenLanded(PRIORITY.intro, () => this.staging.bossIntro(() => this.showBossBar()))
+          this.whenLanded(PRIORITY.intro, () => this.staging.bossIntro(() => this.showBossBar()), true)
         break
       case 'boss-phase':
-        // (The view leaves his transformation to the moment: it is not played on the simulation's time.)
+        // (The view leaves his transformation to the moment: it is not played on the simulation's time.) Like the
+        // entrance it waits for the hero to land too: he is not held in mid-air or in the first frame of a bite.
         this.host.view.actors.stageRage()
-        this.whenLanded(PRIORITY.phase, () => this.staging.bossPhase())
+        this.whenLanded(PRIORITY.phase, () => this.staging.bossPhase(), true)
         break
       case 'boss-down':
         this.hideBossBar()
@@ -154,9 +162,22 @@ export class StageDirector implements Director {
         this.goalArrow = true
         this.request(PRIORITY.goal, () => this.staging.goalReveal(event))
         break
-      case 'princess-free':
-        this.request(PRIORITY.princess, () => this.staging.princessFree(event))
+      case 'princess-free': {
+        // Her cheer waits for her moment (she stands meanwhile); a moment that will not play lets her go on.
+        const props = this.host.view.props
+        props.holdCheer(event.x, event.y)
+        const drop = () => props.dropCheer(event.x, event.y)
+        this.request(
+          PRIORITY.princess,
+          () => {
+            const seq = this.staging.princessFree(event)
+            if (!seq) drop()
+            return seq
+          },
+          drop
+        )
         break
+      }
       case 'boss-tired':
         this.staging.momTired()
         break
@@ -211,10 +232,15 @@ export class StageDirector implements Director {
 
   // ------------------------------------------------------------------------------------------- moments
 
-  private request(priority: number, make: () => Sequence | null) {
-    if (this.ended) return
+  /** Requests a moment; `drop` is called when it is dropped without ever being made (the stage ended first). */
+  private request(priority: number, make: () => Sequence | null, drop?: () => void) {
+    if (this.ended) {
+      drop?.()
+      return
+    }
     if (priority >= PRIORITY.end) {
       this.ended = true
+      for (const pending of this.queue) pending.drop?.()
       this.queue = []
     }
     const main = this.main?.running ? this.main : null
@@ -229,7 +255,7 @@ export class StageDirector implements Director {
     } else {
       // Stable: equal priorities keep their order.
       const at = this.queue.findIndex((p) => p.priority < priority)
-      this.queue.splice(at < 0 ? this.queue.length : at, 0, { priority, make })
+      this.queue.splice(at < 0 ? this.queue.length : at, 0, { priority, make, drop })
     }
     this.refresh()
   }
@@ -237,27 +263,28 @@ export class StageDirector implements Director {
   /**
    * Requests a boss's moment once he stands on the ground: one that holds him in a planted pose (his roar, his
    * transformation) is not begun while he is in the air (the simulation runs on meanwhile). A flier hovers, and one
-   * that never lands is posed after `LAND_WAIT_SECONDS`.
+   * that never lands is posed after `LAND_WAIT_SECONDS`. With `hero` it also waits (in the same wait) for the hero
+   * to stand on the ground (the boss's entrance poses him standing; swimming he is off the ground).
    */
-  private whenLanded(priority: number, make: () => Sequence | null) {
+  private whenLanded(priority: number, make: () => Sequence | null, hero = false) {
     if (this.ended) return
-    if (this.landed()) this.request(priority, make)
-    else this.landings.push({ priority, make, waited: 0 })
+    if (this.landed(hero)) this.request(priority, make)
+    else this.landings.push({ priority, make, waited: 0, hero })
   }
 
-  private landed() {
-    const boss = this.host.world.boss
-    return !boss || boss.dead || boss.onGround || boss.def.kind === 'flyer'
+  private landed(hero: boolean) {
+    const { boss, player } = this.host.world
+    const bossDown = !boss || boss.dead || boss.onGround || boss.def.kind === 'flyer'
+    return bossDown && (!hero || player.onGround || player.dead)
   }
 
   private advanceLandings(dt: number) {
     if (!this.landings.length) return
-    const landed = this.landed()
     for (let i = 0; i < this.landings.length; ) {
       const l = this.landings[i]
       l.waited += dt * this.claimed.scale
       if (this.ended) this.landings.splice(i, 1)
-      else if (landed || l.waited >= LAND_WAIT_SECONDS - 1e-9) {
+      else if (this.landed(l.hero) || l.waited >= LAND_WAIT_SECONDS - 1e-9) {
         this.landings.splice(i, 1)
         this.request(l.priority, l.make)
       } else i++

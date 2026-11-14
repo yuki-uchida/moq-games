@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { RAT_FUR, drawRat, ratPose, walkerSheet } from '../src/art/chars/enemies/walker'
+import { RAT_AIR, RAT_FUR, drawRat, ratPose, walkerSheet } from '../src/art/chars/enemies/walker'
 import { ENEMY_SPEC } from '../src/art/contract'
 import { C, R } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
@@ -46,6 +46,26 @@ function footSpread(f: Raster, rows = 3) {
 function tailTip(f: Raster): [number, number] {
   for (let x = 0; x < f.w; x++) for (let y = 0; y < f.h; y++) if (f.get(x, y)) return [x, y]
   return [-1, -1]
+}
+
+/** Pixels painted in one frame and not the other (the silhouettes compared). */
+function silhouetteDiff(a: Raster, b: Raster) {
+  let n = 0
+  for (let y = 0; y < a.h; y++) for (let x = 0; x < a.w; x++) if (!a.get(x, y) !== !b.get(x, y)) n++
+  return n
+}
+
+/** Middle column of the body: the mean x of the grey fur in rows 34..52 (the trunk; the pink tail left out). */
+function bodyMid(f: Raster) {
+  let s = 0
+  let n = 0
+  for (let y = 34; y <= 52; y++)
+    for (let x = 0; x < f.w; x++)
+      if (FUR.has(f.get(x, y))) {
+        s += x
+        n++
+      }
+  return s / n
 }
 
 describe('walker (ネズミ団員) on the rig', () => {
@@ -163,6 +183,50 @@ describe('walker (ネズミ団員) on the rig', () => {
         expect(b.y + b.h - 1, `${name} ${i}`).toBeGreaterThanOrEqual(name === 'move' ? 57 : 59)
         expect(b.y + b.h - 1, `${name} ${i}`).toBeLessThanOrEqual(61)
       }
+  })
+
+  test('air: every frame floats 4 to 10 px above the anchor row, over the anchor column, inside the cell', () => {
+    expect(sheet.air.frames.length).toBe(3)
+    const mids: number[] = []
+    for (const [i, f] of sheet.air.frames.entries()) {
+      const b = f.bounds()!
+      const lowest = b.y + b.h - 1
+      expect(60 - lowest, `air ${i} air under the feet`).toBeGreaterThanOrEqual(4)
+      expect(60 - lowest, `air ${i} air under the feet`).toBeLessThanOrEqual(10)
+      expect(b.x, `air ${i} left`).toBeGreaterThanOrEqual(1)
+      expect(b.y, `air ${i} top`).toBeGreaterThanOrEqual(1)
+      expect(b.x + b.w, `air ${i} right`).toBeLessThanOrEqual(f.w - 1)
+      mids.push(bodyMid(f))
+    }
+    // the trunk stays where it is in idle (the hit box is centred on the anchor column)
+    const idle = sheet.idle.frames.map(bodyMid)
+    const centre = idle.reduce((s, m) => s + m, 0) / idle.length
+    for (const [i, m] of mids.entries()) expect(Math.abs(m - centre), `air ${i} trunk at ${m}`).toBeLessThanOrEqual(2)
+  })
+
+  test('air: falling (frame 2) he reaches down with the feet and up with the paws', () => {
+    const fall = RAT_AIR[2]
+    const f = sheet.air.frames[2]
+    // the pixels the paws and arms add: the same pose with the paws held at the chest
+    const rest = drawRat({ ...fall, armN: [4.4, 3.4], armF: [4.2, 2.4] })
+    const arms: number[] = []
+    for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) if (f.get(x, y) && !rest.get(x, y)) arms.push(y)
+    expect(arms.length).toBeGreaterThanOrEqual(12)
+    const b = f.bounds()!
+    // the lowest arm pixel is far above the feet, and the paws reach above the middle of the head
+    expect(b.y + b.h - 1 - Math.max(...arms)).toBeGreaterThanOrEqual(20)
+    expect(Math.min(...arms)).toBeLessThanOrEqual(b.y + 8)
+  })
+
+  test('air: the three frames differ from each other and from every idle and hurt frame', () => {
+    const air = sheet.air.frames
+    for (let i = 0; i < air.length; i++)
+      for (let j = i + 1; j < air.length; j++)
+        expect(silhouetteDiff(air[i], air[j]), `air ${i} vs air ${j}`).toBeGreaterThanOrEqual(60)
+    for (const [i, f] of air.entries())
+      for (const name of ['idle', 'hurt'] as const)
+        for (const [j, g] of sheet[name].frames.entries())
+          expect(silhouetteDiff(f, g), `air ${i} vs ${name} ${j}`).toBeGreaterThanOrEqual(80)
   })
 
   test('a frame draws fast enough for the browser', () => {
