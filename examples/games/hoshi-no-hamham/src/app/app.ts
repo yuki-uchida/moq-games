@@ -106,6 +106,8 @@ export class App {
   /** The bot plays the stages instead of the player (test hook for the performance checks). */
   private autopilot = false
   private frames = 0
+  /** How many milliseconds after its own timestamp the last frame's work ended. */
+  private frameBusy = 0
   private resolveFirstFrame: () => void = () => {}
   /** Resolves once the first frame of the loop (the title's first picture) has been drawn. */
   readonly firstFrame = new Promise<void>((resolve) => (this.resolveFirstFrame = resolve))
@@ -374,11 +376,14 @@ export class App {
     this.screens.showDead({ stage, hero, goal })
   }
 
-  /** Feeds the frame to the adaptive backing scale; a staged sequence that holds the simulation never rescales. */
+  /**
+   * Feeds the frame to the adaptive backing scale, with how long the frame before it kept the main thread; a
+   * staged sequence that holds the simulation never rescales.
+   */
   private watchFrameRate(time: number, session: PlaySession) {
     const { director, view } = session
     const held = director.timeScale !== 1 || director.inputLocked || view.frozen
-    this.renderer.observeFrame(time, true, held)
+    this.renderer.observeFrame(time, true, held, this.frameBusy)
   }
 
   private loop = (time: number) => {
@@ -413,5 +418,6 @@ export class App {
       // The title is on screen: build the audio engine and render the sound effects before the first tap asks.
       this.audio.prepare()
     }
+    this.frameBusy = performance.now() - time
   }
 }
