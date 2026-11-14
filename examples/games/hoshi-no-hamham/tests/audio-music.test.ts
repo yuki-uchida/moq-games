@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { VOICES } from '../src/audio/instruments'
-import { MusicPlayer } from '../src/audio/music'
+import { compileSongsAhead, compiledSong, MusicPlayer } from '../src/audio/music'
+import { compileSong, type SongDef } from '../src/audio/notation'
 import { SONGS } from '../src/audio/songs'
 
 /** A stand-in for any Web Audio object: every property is a function/param that returns another stand-in. */
@@ -106,5 +107,91 @@ describe('the music scheduler', () => {
     expect(jingle.finished).toBe(false)
     jingle.pump(60, 3, true)
     expect(jingle.finished).toBe(true)
+  })
+})
+
+describe('compiling songs ahead', () => {
+  /** Copies of real songs, so that the module's cache has not seen them. */
+  const fresh = (...themes: Array<keyof typeof SONGS>): SongDef[] => themes.map((theme) => ({ ...SONGS[theme] }))
+
+  /** Idle moments and timers handed out by the test. */
+  function harness() {
+    const moments: Array<() => void> = []
+    const timers: Array<{ run: () => void; ms: number }> = []
+    return {
+      moments,
+      timers,
+      idle: ((run: (room: () => number) => void) => void moments.push(() => run(() => 50))) as never,
+      later: (run: () => void, ms: number) => void timers.push({ run, ms })
+    }
+  }
+
+  test('one song per idle moment, in the order given', () => {
+    const defs = fresh('clear', 'gameover', 'boss')
+    const h = harness()
+    const seen: SongDef[] = []
+    compileSongsAhead(defs, h.idle, () => false, h.later)
+    expect(h.moments.length).toBe(1)
+    for (let i = 0; i < defs.length; i++) {
+      h.moments.shift()!()
+      seen.push(defs[i])
+      // Compiled now: asking again gives the very same object, and it equals a compile from scratch.
+      const c = compiledSong(defs[i])
+      expect(compiledSong(defs[i])).toBe(c)
+      expect(c.events.length).toBe(compileSong(defs[i]).events.length)
+      expect(h.moments.length).toBe(i < defs.length - 1 ? 1 : 0)
+    }
+    expect(seen).toEqual(defs)
+    expect(h.timers.length).toBe(0)
+  })
+
+  test('waits while a stage is played and goes on afterwards', () => {
+    const defs = fresh('story', 'select')
+    const h = harness()
+    let playing = true
+    compileSongsAhead(defs, h.idle, () => playing, h.later)
+    // Nothing is asked of the page while the stage runs; it looks again a second later.
+    expect(h.moments.length).toBe(0)
+    expect(h.timers.map((t) => t.ms)).toEqual([1000])
+    h.timers.shift()!.run()
+    expect(h.moments.length).toBe(0)
+    expect(h.timers.length).toBe(1)
+    playing = false
+    h.timers.shift()!.run()
+    expect(h.moments.length).toBe(1)
+    // A stage that starts while a moment is awaited: the song stays for later.
+    playing = true
+    h.moments.shift()!()
+    expect(h.moments.length).toBe(0)
+    expect(h.timers.length).toBe(1)
+    playing = false
+    h.timers.shift()!.run()
+    h.moments.shift()!()
+    h.moments.shift()!()
+    expect(h.moments.length).toBe(0)
+    expect(h.timers.length).toBe(0)
+  })
+
+  test('skips songs that are compiled already and stops when told to', () => {
+    const [known, other, last] = fresh('ending', 'cave', 'star')
+    compiledSong(known)
+    const h = harness()
+    const made: SongDef[] = []
+    const stop = compileSongsAhead(
+      [known, other, last],
+      h.idle,
+      () => false,
+      h.later,
+      (def) => made.push(def)
+    )
+    // The one that is compiled already is not asked for again.
+    h.moments.shift()!()
+    expect(made).toEqual([other])
+    expect(h.moments.length).toBe(1)
+    stop()
+    h.moments.shift()!()
+    expect(made).toEqual([other])
+    expect(h.moments.length).toBe(0)
+    expect(h.timers.length).toBe(0)
   })
 })

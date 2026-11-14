@@ -5,15 +5,38 @@
  * environments without Web Audio every call is a harmless no-op. Nothing here ever throws.
  */
 import type { GameAudio, LoopName, SfxName, SfxOptions, ThemeName } from './api'
-import { SfxBank } from './bank'
+import { SfxBank, whenIdle } from './bank'
 import { AudioEngine } from './engine'
 import { makeNoise } from './instruments'
 import { createMixer, impulseSteps, MUSIC_IMPULSE, SFX_IMPULSE } from './mixer'
+import { compileSongsAhead } from './music'
+import { SONGS } from './songs'
 
 export * from './api'
 
 /** The most main-thread time one slice of the preparation may take, in milliseconds. */
 const PREPARE_SLICE_MS = 4
+/**
+ * The order the songs are compiled ahead in: the menus' first, then the ones that start in the middle of play (a
+ * stage's end, a boss's entrance), then the stages' own.
+ */
+const SONGS_AHEAD: readonly ThemeName[] = [
+  'title',
+  'select',
+  'story',
+  'clear',
+  'gameover',
+  'boss',
+  'finalBoss',
+  'meadow',
+  'night',
+  'cave',
+  'forest',
+  'fortress',
+  'castle',
+  'star',
+  'ending'
+]
 
 class WebAudio implements GameAudio {
   muted = false
@@ -29,6 +52,10 @@ class WebAudio implements GameAudio {
   private duck = 0
   private readonly volumes = { master: 1, music: 0.7, sfx: 0.9 }
   private disposed = false
+  /** True while a stage is played. */
+  private inPlay = false
+  /** Stops the compiling of songs ahead. */
+  private stopSongs: (() => void) | null = null
 
   private safe(fn: () => void): void {
     try {
@@ -131,6 +158,11 @@ class WebAudio implements GameAudio {
     engine.setDuck(this.duck)
     if (this.theme) engine.setMusic(this.theme, this.layer)
     this.bank?.start()
+    this.stopSongs ??= compileSongsAhead(
+      SONGS_AHEAD.map((theme) => SONGS[theme]),
+      whenIdle,
+      () => this.inPlay
+    )
   }
 
   unlock(): void {
@@ -173,6 +205,7 @@ class WebAudio implements GameAudio {
   }
 
   playing(on: boolean): void {
+    this.inPlay = on
     this.safe(() => this.bank?.setPlaying(on))
   }
 
@@ -197,6 +230,7 @@ class WebAudio implements GameAudio {
     this.prepTimer = undefined
     this.steps = null
     this.bank?.stop()
+    this.stopSongs?.()
     this.safe(() => {
       this.engine?.dispose()
       void this.ctx?.close().catch(() => undefined)
