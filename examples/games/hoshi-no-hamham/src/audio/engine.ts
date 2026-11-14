@@ -3,13 +3,23 @@
  * BaseAudioContext, so the same code runs live (AudioContext) and in the offline render check.
  */
 import type { LoopName, SfxName, SfxOptions, ThemeName } from './api'
+import type { SfxBank } from './bank'
 import { makeNoise } from './instruments'
 import { createMixer, type Mixer } from './mixer'
 import { MusicPlayer } from './music'
 import { SFX_DEFS, playSfx, startLoop, type LoopHandle } from './sfx'
 import { SONGS } from './songs'
+import { sfxStats } from './stats'
 
 const MAX_SFX_VOICES = 36
+/** Seconds of music scheduled ahead of the clock; a budgeted pump may finish a bar a little after it began. */
+const LOOKAHEAD = 0.5
+/** Hidden tabs throttle timers, so they look further ahead. */
+const LOOKAHEAD_HIDDEN = 1.6
+/** The most main-thread time one scheduling pass may spend on the music, in milliseconds. */
+const TICK_BUDGET_MS = 3
+/** A new song schedules only what sounds within this many seconds at once; the timer does the rest. */
+const FIRST_PUMP = 0.1
 
 export class AudioEngine {
   readonly mixer: Mixer
@@ -19,20 +29,29 @@ export class AudioEngine {
   private layer = 0
   private readonly fading = new Set<MusicPlayer>()
   private timer: ReturnType<typeof setInterval> | undefined
+  /** The pending continuation of a pass that ran out of budget. */
+  private soon: ReturnType<typeof setTimeout> | undefined
   private readonly active = new Map<SfxName, number[]>()
   private readonly lastStart = new Map<SfxName, number>()
   private readonly loops = new Map<string, { name: LoopName; handle: LoopHandle }>()
   private muted = false
   private volumes = { master: 1, music: 0.7, sfx: 0.9 }
   /** Scheduling horizon; hidden tabs throttle timers so they get a longer one. */
-  private lookahead = 0.3
+  private lookahead = LOOKAHEAD
 
+  /**
+   * `live` engines run the music timer; offline ones (the audio tool) are driven by `pumpMusic`. `bank` plays
+   * effects from rendered buffers; without one every effect is built live. `parts` hands in a mixer and a noise
+   * buffer that were built ahead of time.
+   */
   constructor(
     readonly ctx: BaseAudioContext,
-    private readonly live = true
+    private readonly live = true,
+    private readonly bank: SfxBank | null = null,
+    parts: { mixer?: Mixer; noise?: AudioBuffer } = {}
   ) {
-    this.mixer = createMixer(ctx)
-    this.noise = makeNoise(ctx)
+    this.mixer = parts.mixer ?? createMixer(ctx)
+    this.noise = parts.noise ?? makeNoise(ctx)
     this.applyVolumes()
     if (live) this.timer = setInterval(() => this.tick(), 40)
   }
@@ -62,15 +81,36 @@ export class AudioEngine {
     this.mixer.muffle.frequency.setTargetAtTime(20000 * Math.pow(0.05, a), t, 0.12)
   }
 
+  /** Whether any of the music can be heard; when not, the players walk through their notes without building them. */
+  private audible(): boolean {
+    return !this.muted && this.volumes.master > 0 && this.volumes.music > 0
+  }
+
   private tick(): void {
     try {
-      if (typeof document !== 'undefined') this.lookahead = document.hidden ? 1.6 : 0.3
-      const until = this.ctx.currentTime + this.lookahead
-      this.player?.pump(until)
-      for (const p of this.fading) p.pump(until)
+      if (typeof document !== 'undefined') this.lookahead = document.hidden ? LOOKAHEAD_HIDDEN : LOOKAHEAD
+      const now = this.ctx.currentTime
+      const silent = !this.audible()
+      // Silent players only keep pace with the clock, so that when sound comes back the song is where it should be.
+      const until = silent ? now : now + this.lookahead
+      const start = performance.now()
+      let more = false
+      if (this.player?.pump(until, TICK_BUDGET_MS, silent)) more = true
+      for (const p of this.fading)
+        if (p.pump(until, Math.max(0, TICK_BUDGET_MS - (performance.now() - start)), silent)) more = true
+      if (more) this.continueSoon()
     } catch {
       // Never throw out of a timer.
     }
+  }
+
+  /** A pass that ran out of budget goes on in the next task instead of waiting for the next timer tick. */
+  private continueSoon(): void {
+    if (!this.live || this.soon !== undefined) return
+    this.soon = setTimeout(() => {
+      this.soon = undefined
+      this.tick()
+    }, 0)
   }
 
   /** Starts, changes or stops the music. `startAt` is a context time (offline use). */
@@ -97,7 +137,10 @@ export class AudioEngine {
     const p = new MusicPlayer(this.mixer, this.noise, song, l, startAt, this.live)
     if (old) p.fadeIn(jingle ? 0.05 : 1.2)
     this.player = p
-    p.pump(startAt + this.lookahead)
+    if (this.live) {
+      p.pump(this.audible() ? startAt + FIRST_PUMP : this.ctx.currentTime, TICK_BUDGET_MS, !this.audible())
+      this.continueSoon()
+    } else p.pump(startAt + this.lookahead)
   }
 
   /** Synchronously schedules a whole stretch of the current music (offline rendering). */
@@ -108,21 +151,32 @@ export class AudioEngine {
   sfx(name: SfxName, options: SfxOptions = {}, when = this.ctx.currentTime): void {
     const def = SFX_DEFS[name]
     if (!def) return
-    const list = (this.active.get(name) ?? []).filter((end) => end > when)
-    if (list.length >= def.limit) {
-      this.active.set(name, list)
-      return
-    }
+    let list = this.active.get(name)
+    if (!list) this.active.set(name, (list = []))
+    // Forget the voices that have ended (in place: this runs for every effect the game asks for).
+    let kept = 0
+    for (let i = 0; i < list.length; i++) if (list[i] > when) list[kept++] = list[i]
+    list.length = kept
+    if (kept >= def.limit) return
     const last = this.lastStart.get(name)
     if (last !== undefined && when >= last && when - last < def.cd) return
     let total = 0
-    for (const l of this.active.values()) total += l.filter((e) => e > when).length
+    for (const l of this.active.values()) {
+      if (l === list) total += kept
+      else for (let i = 0; i < l.length; i++) if (l[i] > when) total += 1
+    }
     if (total >= MAX_SFX_VOICES) return
-    const end = playSfx(this.mixer, this.noise, name, when, options)
-    if (end === undefined) return
+    const bank = this.bank
+    let end = bank?.play(this.mixer, name, when, options)
+    if (end !== undefined) sfxStats.buffered += 1
+    else {
+      end = playSfx(this.mixer, this.noise, name, when, options)
+      if (end === undefined) return
+      sfxStats.live += 1
+      bank?.want(name, options.pitch)
+    }
     this.lastStart.set(name, when)
     list.push(end)
-    this.active.set(name, list)
     if (def.duck) this.duck(def.duck[0], def.duck[1], when)
   }
 
@@ -158,6 +212,8 @@ export class AudioEngine {
   dispose(): void {
     if (this.timer) clearInterval(this.timer)
     this.timer = undefined
+    if (this.soon !== undefined) clearTimeout(this.soon)
+    this.soon = undefined
     for (const l of this.loops.values()) l.handle.stop()
     this.loops.clear()
     this.player = null

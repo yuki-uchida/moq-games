@@ -10,6 +10,7 @@ import { fxModules } from './fx'
 import type { SheetModule } from './module'
 import { flash, type Raster } from './raster'
 import { deferAnim, type Anim, type Sheet } from './sheet'
+import { counted } from './stats'
 import { uiModules } from './ui'
 import { backdrops, propModules, terrains, type Backdrop, type Decor } from './world'
 
@@ -122,7 +123,7 @@ export function backdrop(theme: ThemeId): Backdrop {
   if (cached) return cached
   const build = backdrops[theme]
   if (!build) throw new Error(`Backdrop "${theme}" is not drawn`)
-  const built = build()
+  const built = counted('backdrops', build)
   backdropCache.set(theme, built)
   return built
 }

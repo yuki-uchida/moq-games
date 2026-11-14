@@ -1,4 +1,5 @@
 import type { Raster } from './raster'
+import { counted } from './stats'
 
 /** A frame sequence. `hold` lists per-frame durations in ticks of 1/fps (default 1 each). */
 export interface Anim {
@@ -86,7 +87,7 @@ export function memo<T>(build: () => T): () => T {
  * nothing is drawn while the module is imported or while the registry assembles a sheet.
  */
 export function lazyAnim(build: () => Raster[], fps: number, loop: boolean, extra: Partial<Anim> = {}): Anim {
-  const frames = memo(build)
+  const frames = memo(() => counted('clips', build))
   return {
     get frames() {
       return frames()
@@ -102,7 +103,7 @@ export function lazyAnim(build: () => Raster[], fps: number, loop: boolean, extr
  * share intermediate results between frames. Like `lazyAnim`, nothing is drawn until a reader touches it.
  */
 export function deferAnim(build: () => Anim): Anim {
-  const built = memo(build)
+  const built = memo(() => counted('clips', build))
   return {
     get frames() {
       return built().frames

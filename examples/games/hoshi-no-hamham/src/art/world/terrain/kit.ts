@@ -32,6 +32,7 @@ import type { Neighbour, TileKind, TileQuery } from '../../contract'
 import type { Ramp } from '../../palette'
 import { Raster, ball, hash, outline, rng } from '../../raster'
 import { memo } from '../../sheet'
+import { counted } from '../../stats'
 import type { Decor } from '../types'
 
 export const TILE = 64
@@ -173,7 +174,7 @@ export function memoTile(build: (q: TileQuery) => Raster) {
         : `${q.kind}:${mask}:${wrap(q.tx, WRAP_X)}:${wrap(q.ty, WRAP_Y)}`
     let tile = cache.get(key)
     if (!tile) {
-      tile = build(q)
+      tile = counted('tiles', () => build(q))
       cache.set(key, tile)
     }
     return tile
@@ -741,21 +742,23 @@ export function decor(
   draw: (r: Raster) => void,
   options: { outline?: boolean; sink?: number } = {}
 ): Decor {
-  const built = memo(() => {
-    const pad = 2
-    const canvas = new Raster(w + pad * 2, h + pad * 2)
-    draw(canvas)
-    if (options.outline !== false) outline(canvas)
-    const b = canvas.bounds()
-    if (!b) throw new Error('decoration is empty')
-    const image = canvas.crop(b.x, b.y, b.w, b.h)
-    if (image.w > 32) throw new Error(`decoration is ${image.w}px wide`)
-    const sink = options.sink ?? 1
-    // Anchor: horizontal centre of the painted pixels; vertical is the standing edge.
-    const ax = Math.floor(image.w / 2)
-    const anchor: readonly [number, number] = where === 'top' ? [ax, image.h - sink] : [ax, sink - 1]
-    return { image, anchor }
-  })
+  const built = memo(() =>
+    counted('decor', () => {
+      const pad = 2
+      const canvas = new Raster(w + pad * 2, h + pad * 2)
+      draw(canvas)
+      if (options.outline !== false) outline(canvas)
+      const b = canvas.bounds()
+      if (!b) throw new Error('decoration is empty')
+      const image = canvas.crop(b.x, b.y, b.w, b.h)
+      if (image.w > 32) throw new Error(`decoration is ${image.w}px wide`)
+      const sink = options.sink ?? 1
+      // Anchor: horizontal centre of the painted pixels; vertical is the standing edge.
+      const ax = Math.floor(image.w / 2)
+      const anchor: readonly [number, number] = where === 'top' ? [ax, image.h - sink] : [ax, sink - 1]
+      return { image, anchor }
+    })
+  )
   // Drawn when the view first reads the picture, not when the world's module is imported.
   return {
     where,

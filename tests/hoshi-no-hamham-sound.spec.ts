@@ -112,10 +112,11 @@ test('any key unlocks the audio, and the title demo stays silent', async ({ page
   const errors = collectErrors(page)
   await openGame(page)
   await expect(page.getByRole('heading', { name: '星のハムハム' })).toBeVisible()
-  // Nothing may create the audio context before a gesture — not even the title's own `title-start` cue, which
-  // plays when the logo lands (well within this wait).
+  // The engine is built ahead of the first gesture, but its context stays suspended until one comes, also in a
+  // browser that would let it run: nothing sounds before the player does something, not even the title's own
+  // `title-start` cue, which plays when the logo lands (well within this wait).
   await page.waitForTimeout(700)
-  expect(await page.evaluate(() => window.__hamham?.app.audio.ctx ?? null)).toBeNull()
+  expect(await page.evaluate(() => window.__hamham?.app.audio.ctx?.state ?? null)).not.toBe('running')
   await page.keyboard.press('ArrowDown')
   await page.waitForFunction(() => window.__hamham?.app.audio.ctx?.state === 'running')
   await countEffects(page)
