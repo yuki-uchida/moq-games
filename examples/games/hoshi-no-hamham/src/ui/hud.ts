@@ -22,14 +22,17 @@ import {
   settleHeart,
   ZONES,
   stepBossBar,
+  stageText,
   stepMeterClock,
   type BossBarState,
   type HeartState
 } from './hud-model'
-import { clipRaster, drawRaster, makeSprite, plateUrl, rasterUrl, type Tone } from './hud-sprites'
+import type { Raster } from '../art/raster'
+import { clipRaster, drawRaster, drawRasterRows, makeSprite, plateUrl, rasterUrl, type Tone } from './hud-sprites'
 import { Deck } from './deck'
 import { HudPrimer, type PrimeTarget } from './hud-prime'
 import { removeClass, replay } from './replay'
+import { AHEAD_CHUNK, AHEAD_CHUNK_IN_PLAY, KANA, TextAhead } from './text-ahead'
 import { buildTouchControls } from './touch'
 
 /** What staging (the director) may show on the HUD. */
@@ -85,6 +88,15 @@ const DIM_TONE: Tone = { brightness: 0.38, saturate: 0.6 }
 /** The tooth's flash when the gauge is full again: the lit tooth at twice its brightness. */
 const FLASH_TONE: Tone = { brightness: 2 }
 
+/** The words staging calls out in the upper third (view/staging.ts); their characters are laid out ahead. */
+const CALLS = 'スタート！ファイト！クリア！'
+
+/** The font an element's text is set in, as a CSS shorthand (without the line's height, which no glyph depends on). */
+function fontOf(node: HTMLElement): string {
+  const style = getComputedStyle(node)
+  return `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+}
+
 /** `value` (0..1) on a grid of `steps`; 0 and 1 stay exactly 0 and 1. */
 const snap = (value: number, steps: number) => Math.round(value * steps) / steps
 
@@ -100,7 +112,8 @@ export class Hud implements HudApi, PrimeTarget {
   private collectEl: HTMLElement
   private collectText: HTMLElement
   private biteEl: HTMLElement
-  private biteMask: HTMLElement
+  /** The lit tooth, of which the gauge shows the lowest rows, and the canvas it shows them on. */
+  private toothRaster: Raster
   private biteLit: HTMLCanvasElement
   private bossBar: HTMLElement
   private bossFace: HTMLCanvasElement
@@ -120,6 +133,10 @@ export class Hud implements HudApi, PrimeTarget {
   private toast: HTMLElement
   /** The control deck under a portrait stage; it holds the touch controls. */
   readonly deck: Deck
+  /** Lays the characters of the texts to come out ahead, in a box nobody sees (text-ahead.ts). */
+  private ahead: TextAhead
+  /** The stages wished for besides the one that is on. */
+  private aheadStages: readonly StageDef[] = []
 
   private stage: StageDef | null = null
   private hp = -1
@@ -205,14 +222,13 @@ export class Hud implements HudApi, PrimeTarget {
     this.biteLit = makeSprite('is-lit')
     const flash = makeSprite('is-flash')
     const toothRaster = clipRaster('ui', 'tooth')
+    this.toothRaster = toothRaster
     drawRaster(dim, toothRaster, DIM_TONE)
     drawRaster(this.biteLit, toothRaster)
     drawRaster(flash, toothRaster, FLASH_TONE)
-    // The lit tooth shows through a window that rises row by row (`--bite` rows are lit): the window and the tooth
-    // in it move by `transform`, so the page paints nothing when the gauge moves.
-    this.biteMask = el('div', 'hudx-lit')
-    this.biteMask.append(this.biteLit)
-    tooth.append(dim, this.biteMask, flash)
+    // The lit tooth lies over the dim one and is drawn up to the row the gauge has reached: when the gauge moves
+    // only that canvas changes, and the page has no style to work out for it.
+    tooth.append(dim, this.biteLit, flash)
     this.biteEl.append(tooth)
     row.append(this.collectEl, this.biteEl)
     left.append(this.heartsEl, tag, row)
@@ -290,7 +306,10 @@ export class Hud implements HudApi, PrimeTarget {
     buildTouchControls(touch)
     this.deck = new Deck(touch)
 
-    root.replaceChildren(top, center, this.banner, this.call, this.plate, this.toast, this.deck.root)
+    const aheadBox = el('div', 'hudx-ahead')
+    aheadBox.setAttribute('aria-hidden', 'true')
+    this.ahead = new TextAhead(() => aheadBox.appendChild(document.createElement('span')))
+    root.replaceChildren(top, center, this.banner, this.call, this.plate, this.toast, this.deck.root, aheadBox)
     for (const node of [this.banner, this.call, this.plate, this.toast])
       node.addEventListener('animationend', () => node.classList.remove('is-show'))
     this.bossBar.addEventListener('animationend', (event) => {
@@ -324,6 +343,62 @@ export class Hud implements HudApi, PrimeTarget {
     this.root.style.setProperty('--bk', s >= 2 ? '3' : '2')
     this.root.classList.toggle('is-narrow', width < 520)
     this.placeButtons()
+    // The fonts of the texts follow the stage's size: what is laid out ahead is laid out in the new ones.
+    this.wishAhead()
+  }
+
+  /**
+   * Says what is to be laid out ahead (text-ahead.ts), each text in the font of the place it is shown in. First,
+   * and also in the stage's own frames, what the stage that is on will show, in the order it shows it: its name and
+   * subtitle (the banner of the opening), the calls, the counters, its hints, its boss. When there is time (the
+   * walk of the priming, in the menus): every kana where any text may come (the toast, the deck's lines; staging's
+   * spoken lines and the aims are kana), and the texts of the stages wished for. A wish is kept by its font: asked
+   * again in the same font it is nothing new, and when a place has another font (the stage has another size, the
+   * phone was turned) its text is laid out in that one too.
+   */
+  private wishAhead() {
+    const ahead = this.ahead
+    const free = [this.toast, ...this.deck.textHosts.free]
+    const names = [this.tagName, this.bannerTitle, this.deck.textHosts.name]
+    const bossNames = [this.bossName, this.plateName, this.deck.textHosts.who]
+    const bossTitles = [this.bossTitle, this.plateTitle]
+    const counters = [this.collectText, this.deck.textHosts.count]
+    const fonts = new Map<HTMLElement, string>()
+    for (const host of [...free, ...names, ...bossNames, ...bossTitles, ...counters, this.bannerSub, this.call])
+      fonts.set(host, fontOf(host))
+    const want = (hosts: HTMLElement[], text: string, first: boolean) => {
+      for (const host of hosts) ahead.want(fonts.get(host)!, text, first)
+    }
+    const wishStage = (stage: StageDef, first: boolean) => {
+      want(names, `${stage.no}. ${stage.name}`, first)
+      want([this.bannerSub], stage.subtitle, first)
+      if (first) {
+        want([this.call], CALLS, true)
+        want(counters, '0123456789/', true)
+      }
+      want(free, stageText(stage), first)
+      want(bossNames, stage.boss.name, first)
+      want(bossTitles, stage.boss.title, first)
+    }
+    if (this.stage) wishStage(this.stage, true)
+    want([this.call], CALLS, false)
+    want(counters, '0123456789/', false)
+    want(free, KANA, false)
+    for (const stage of this.aheadStages) wishStage(stage, false)
+  }
+
+  /** These stages may be played next: their texts are laid out ahead when there is time (the title's walk asks). */
+  wantStages(stages: readonly StageDef[]) {
+    this.aheadStages = stages
+    this.wishAhead()
+  }
+
+  /**
+   * Lays out a few more of the characters wanted, of any kind (the walk of the priming calls it in its frames; the
+   * frames of a stage lay out only what that stage will show). True while there is more.
+   */
+  layAhead(): boolean {
+    return this.ahead.step(AHEAD_CHUNK, true)
   }
 
   /** The buttons live on the deck while it is on screen (portrait), else in the stage's top-right corner. */
@@ -401,6 +476,7 @@ export class Hud implements HudApi, PrimeTarget {
     this.drawEmblem(this.tagEmblem)
     this.drawEmblem(this.bannerEmblem)
     this.deck.setStage(stage)
+    this.wishAhead()
   }
 
   private drawEmblem(canvas: HTMLCanvasElement) {
@@ -475,6 +551,8 @@ export class Hud implements HudApi, PrimeTarget {
 
   /** What `update` does; the priming calls it so that whatever wraps `update` from outside does not see the walk. */
   step(world: World, dt: number) {
+    // What this stage will show is laid out in its first frames (the opening staging), a few characters in each.
+    if (!this.ahead.idle()) this.ahead.step(AHEAD_CHUNK_IN_PLAY)
     const p = world.player
     this.updateHearts(p.hp, p.maxHp, dt)
     // The meters that move continuously are written together, a few times a second; events show in their own frame.
@@ -603,8 +681,8 @@ export class Hud implements HudApi, PrimeTarget {
   private setBiteRows(rows: number) {
     if (rows === this.biteRows) return
     this.biteRows = rows
-    if (rows >= BITE_ROWS) this.tooth.style.removeProperty('--bite')
-    else this.tooth.style.setProperty('--bite', String(rows))
+    const raster = this.toothRaster
+    drawRasterRows(this.biteLit, raster, ((BITE_ROWS - Math.min(BITE_ROWS, rows)) / BITE_ROWS) * raster.h)
   }
 
   // ------------------------------------------------------------------------------------------------ boss bar

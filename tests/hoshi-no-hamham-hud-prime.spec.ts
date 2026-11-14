@@ -138,3 +138,59 @@ test('a walk that a stage cut short is made again back in the menus', async ({ b
   expect(errors).toEqual([])
   await context.close()
 })
+
+test('the walk lays the characters of the stages’ texts out in the fonts of the HUD’s texts, in a box nobody sees', async ({
+  browser
+}) => {
+  test.setTimeout(90_000)
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    baseURL: `http://127.0.0.1:${process.env.E2E_PORT || 5196}`
+  })
+  const page = await context.newPage()
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  page.on('console', (message) => message.type() === 'error' && errors.push(message.text()))
+  await openGame(page)
+  await expect.poll(() => priming(page), { timeout: WALK_TIMEOUT, intervals: [50] }).toBe(true)
+  await expect.poll(() => priming(page), { timeout: WALK_TIMEOUT, intervals: [100] }).toBe(false)
+  const after = await page.evaluate(() => {
+    interface AheadHud {
+      ahead: { idle(all?: boolean): boolean }
+      toast: HTMLElement
+      call: HTMLElement
+      bannerTitle: HTMLElement
+      plateName: HTMLElement
+      deck: { hintText: HTMLElement; aimText: HTMLElement }
+    }
+    const hud = (window as unknown as { __hamham: { app: { hud: AheadHud } } }).__hamham.app.hud
+    const box = document.querySelector<HTMLElement>('.hudx-ahead')!
+    const fontOf = (node: HTMLElement) => {
+      const style = getComputedStyle(node)
+      return `${style.fontWeight} ${style.fontSize}`
+    }
+    const lines = [...box.querySelectorAll<HTMLElement>('span')]
+    return {
+      everything: hud.ahead.idle(true),
+      lines: lines.length,
+      // The fonts the lines are set in, as the page works them out.
+      fonts: lines.map(fontOf),
+      places: [hud.toast, hud.call, hud.bannerTitle, hud.plateName, hud.deck.hintText, hud.deck.aimText].map(fontOf),
+      inBox: box.parentElement?.id,
+      ariaHidden: box.getAttribute('aria-hidden'),
+      size: [box.offsetWidth, box.offsetHeight],
+      visibility: getComputedStyle(box).visibility
+    }
+  })
+  // Everything wished for was laid out before the walk ended.
+  expect(after.everything).toBe(true)
+  expect(after.lines).toBeGreaterThanOrEqual(5)
+  // Every place a text shows in has a line in its own font.
+  for (const font of after.places) expect(after.fonts, font).toContain(font)
+  expect(after.inBox).toBe('hud')
+  expect(after.ariaHidden).toBe('true')
+  expect(after.size).toEqual([0, 0])
+  expect(after.visibility).toBe('hidden')
+  expect(errors).toEqual([])
+  await context.close()
+})

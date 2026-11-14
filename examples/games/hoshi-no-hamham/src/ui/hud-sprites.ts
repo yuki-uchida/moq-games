@@ -64,15 +64,43 @@ function toned(source: HTMLCanvasElement, tone: Tone): HTMLCanvasElement {
   return canvas
 }
 
-/** Replaces the canvas content with the raster (resizing the backing store to the art size), in `tone` if given. */
-export function drawRaster(canvas: HTMLCanvasElement, raster: Raster, tone?: Tone) {
+/** The art size last written to a canvas's style, as `w x h`. */
+const sized = new WeakMap<HTMLCanvasElement, string>()
+
+/**
+ * Makes the canvas the size of the raster: its backing store, and `--w` / `--h` for the CSS that scales it up. A
+ * canvas that has the size already is left alone (a write to its style would cost the page a style pass).
+ */
+function fit(canvas: HTMLCanvasElement, raster: Raster) {
   if (canvas.width !== raster.w) canvas.width = raster.w
   if (canvas.height !== raster.h) canvas.height = raster.h
+  const size = `${raster.w}x${raster.h}`
+  if (sized.get(canvas) === size) return
+  sized.set(canvas, size)
+  canvas.style.setProperty('--w', String(raster.w))
+  canvas.style.setProperty('--h', String(raster.h))
+}
+
+/** Replaces the canvas content with the raster (resizing the backing store to the art size), in `tone` if given. */
+export function drawRaster(canvas: HTMLCanvasElement, raster: Raster, tone?: Tone) {
+  fit(canvas, raster)
   const ctx = canvas.getContext('2d')!
   ctx.clearRect(0, 0, raster.w, raster.h)
   ctx.drawImage(tone ? toned(bake(raster), tone) : bake(raster), 0, 0)
-  canvas.style.setProperty('--w', String(raster.w))
-  canvas.style.setProperty('--h', String(raster.h))
+}
+
+/**
+ * Replaces the canvas content with the rows of the raster from `top` down, each where it lies in the raster; the
+ * rows above stay clear. A gauge that fills from the bottom is drawn like this, row by row, and nothing but the
+ * canvas changes.
+ */
+export function drawRasterRows(canvas: HTMLCanvasElement, raster: Raster, top: number) {
+  fit(canvas, raster)
+  const ctx = canvas.getContext('2d')!
+  ctx.clearRect(0, 0, raster.w, raster.h)
+  const from = Math.max(0, Math.min(raster.h, Math.round(top)))
+  if (from < raster.h)
+    ctx.drawImage(bake(raster), 0, from, raster.w, raster.h - from, 0, from, raster.w, raster.h - from)
 }
 
 // ---------------------------------------------------------------------------------------------- button plates

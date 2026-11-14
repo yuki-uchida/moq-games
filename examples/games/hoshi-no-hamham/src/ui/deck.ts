@@ -29,6 +29,7 @@ import {
 import { clipRaster, drawRaster, makeSprite, rasterUrl, type Tone } from './hud-sprites'
 import { replay } from './replay'
 import { formatClock } from './rules'
+import { TextFace } from './text-face'
 import type { Raster } from '../art/raster'
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string): HTMLElementTagNameMap[K] {
@@ -157,6 +158,9 @@ const reducedMotion = () => {
 
 const portrait = () => typeof matchMedia === 'function' && matchMedia('(orientation: portrait)').matches
 
+/** A clock text with every digit the font's widest: at least as wide as any time of as many digits. */
+const clockShape = (text: string, digit = '0') => text.replace(/[0-9]/g, digit)
+
 function cap(content: string | Raster, wide = false): HTMLElement {
   const node = el('kbd', wide ? 'hudd-cap is-wide' : 'hudd-cap')
   if (typeof content === 'string') node.textContent = content
@@ -192,14 +196,24 @@ export class Deck {
   private bossFace: HTMLCanvasElement
   private goal: HTMLCanvasElement
   private trackFill: HTMLElement
-  private clock: HTMLElement
+  /**
+   * The run's clock. It changes ten times a second, so it is drawn on a canvas (`clock`) that lies over an unseen
+   * copy of its text (`clockSize`, which keeps the box `clockBox` as wide as the text): the page's own text does
+   * not change while the clock runs. `clockLine` stands on the baseline of the copy and `clockDigits` are two
+   * digits set as the page sets them, from which the canvas learns where to put the text.
+   */
+  private clock: TextFace
+  private clockBox: HTMLElement
+  private clockSize: HTMLElement
+  private clockLine: HTMLElement
+  private clockDigits: [HTMLElement, HTMLElement]
+  private clockShape = ''
   private kills: HTMLElement
   private clockTenths = -1
   private killCount = -1
-  /** The progress track, its width in CSS px and the device pixel ratio, for placing the markers on it. */
+  /** The progress track and its width in CSS px, for placing the markers on it. */
   private track: HTMLElement
   private trackWidth = 0
-  private dpr = 1
   /** Where the markers are along the track (0..1; NaN: not known yet) and where they were last written (px). */
   private heroAt = Number.NaN
   private goalAt = Number.NaN
@@ -300,9 +314,17 @@ export class Deck {
       box.append(value)
       return box
     }
-    this.clock = el('b', '', formatClock(0))
+    this.clockBox = el('b', 'hudd-clock')
+    this.clockShape = clockShape(formatClock(0))
+    this.clockSize = el('span', 'hudd-clock-size', this.clockShape)
+    const face = makeSprite('hudd-clock-face')
+    this.clock = new TextFace(face)
+    this.clock.set(formatClock(0))
+    this.clockLine = el('span', 'hudd-clock-line')
+    this.clockDigits = [el('span', 'hudd-clock-digit', '0'), el('span', 'hudd-clock-digit', '1')]
+    this.clockBox.append(this.clockSize, this.clockLine, ...this.clockDigits, face)
     this.kills = el('b', '', '0')
-    stats.append(stat('clock', this.clock), stat('tooth', this.kills, 'たおした'))
+    stats.append(stat('clock', this.clockBox), stat('tooth', this.kills, 'たおした'))
     const track = el('div', 'hudd-track')
     this.track = track
     const groove = el('div', 'hudd-groove')
@@ -355,7 +377,49 @@ export class Deck {
     const screws = ['tl', 'tr', 'bl', 'br'].map((corner) => el('i', `hudd-screw is-${corner}`))
     root.append(info, mid, base, touch, ...screws)
 
-    if (typeof ResizeObserver === 'function') new ResizeObserver(() => this.measure()).observe(track)
+    if (typeof ResizeObserver === 'function') {
+      new ResizeObserver(() => this.measure()).observe(track)
+      new ResizeObserver((entries) => {
+        const entry = entries[0]
+        const device = entry.devicePixelContentBoxSize?.[0]
+        this.fitClock(entry.contentRect, device && { width: device.inlineSize, height: device.blockSize })
+      }).observe(this.clockBox)
+    }
+  }
+
+  /** Makes the unseen copy as wide as the widest time of as many digits as the clock shows. */
+  private shapeClock() {
+    const shape = clockShape(this.clock.shown, this.clock.wide)
+    if (shape === this.clockShape) return
+    this.clockShape = shape
+    this.clockSize.textContent = shape
+  }
+
+  /**
+   * The clock's box has a size (or a new one): the canvas takes it, with the font, the colour, the baseline and the
+   * width of a digit that the unseen copy has in the page. Called when the box changes (the deck comes on screen,
+   * the phone is turned) and the page has just been laid out, never while a frame is made.
+   */
+  private fitClock(box: { width: number; height: number }, device?: { width: number; height: number }) {
+    if (box.width <= 0 || box.height <= 0) {
+      this.clock.fit(0, 0, null, 1)
+      return
+    }
+    const style = getComputedStyle(this.clockBox)
+    const font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+    const baseline = this.clockLine.getBoundingClientRect().bottom - this.clockBox.getBoundingClientRect().top
+    const [zero, one] = this.clockDigits.map((digit) => digit.getBoundingClientRect().width)
+    // A font whose 0 and 1 are as wide as each other in the page has all its digits at one width there.
+    const digit = Math.abs(zero - one) < 0.01 ? zero : null
+    this.clock.fit(
+      box.width,
+      box.height,
+      { font, color: style.color, baseline, digit },
+      window.devicePixelRatio || 1,
+      device
+    )
+    // The font is known now: the copy takes its widest digit. (A copy that changes is laid out and comes back here.)
+    this.shapeClock()
   }
 
   /**
@@ -364,18 +428,18 @@ export class Deck {
    */
   private measure() {
     this.trackWidth = this.track.clientWidth
-    this.dpr = window.devicePixelRatio || 1
     this.heroPx = this.goalPx = this.bossPx = Number.NaN
     this.place()
   }
 
   /**
    * Moves the markers and the groove's fill to where the hero, the goal and the boss are. A marker is moved by
-   * `translate` (its share of the track's width, on a device pixel), never by `left`, so a moving marker costs no
-   * layout; it is written only when it has moved by a device pixel.
+   * `translate` (its share of the track's width), never by `left`, so a moving marker costs no layout. It stands on
+   * a whole pixel of the deck's art (a CSS pixel here, where the sprites are drawn at their own size) and is written
+   * only when it has moved by one: a few times a second while the hero runs, whatever the display's density.
    */
   private place() {
-    const px = (at: number) => Math.round(at * this.trackWidth * this.dpr) / this.dpr
+    const px = (at: number) => Math.round(at * this.trackWidth)
     if (!Number.isNaN(this.heroAt)) {
       const hero = px(this.heroAt)
       if (hero !== this.heroPx) {
@@ -397,6 +461,19 @@ export class Deck {
         this.bossPx = boss
         this.bossFace.style.translate = `${boss}px`
       }
+    }
+  }
+
+  /**
+   * The elements whose text changes while a stage is played, by what they show: any text (the hint line with its
+   * toasts, the aim, a speech line), the stage's name, who speaks, and a count.
+   */
+  get textHosts(): { free: HTMLElement[]; name: HTMLElement; who: HTMLElement; count: HTMLElement } {
+    return {
+      free: [this.hintText, this.aimText, this.sayText],
+      name: this.stageName,
+      who: this.sayWho,
+      count: this.kills
     }
   }
 
@@ -523,7 +600,10 @@ export class Deck {
     const tenths = Math.floor(world.time * 10)
     if (tick && tenths !== this.clockTenths) {
       this.clockTenths = tenths
-      this.clock.textContent = formatClock(tenths / 10)
+      const text = formatClock(tenths / 10)
+      this.clock.set(text)
+      // The box grows only when the clock gains a digit (at ten minutes): then the unseen copy is written.
+      if (text.length !== this.clockShape.length) this.shapeClock()
     }
     if (world.kills !== this.killCount) {
       if (this.killCount >= 0) replay(this.kills, 'is-pop')

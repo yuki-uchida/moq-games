@@ -4,8 +4,8 @@ import { openGame, pageThroughStory, reloadGame } from './hoshi-no-hamham-helper
 /**
  * What the HUD costs the browser while a stage is played: the DOM entry points that write, force style or layout, or
  * draw are counted while `hud.update` runs. A frame in which nothing on the HUD changed must make no such call, a
- * stage must be played without a forced style or layout from the HUD, and the boss bar flashes on a bite, not on the
- * chase's slow drain.
+ * stage must be played without a forced style or layout from the HUD, the run's clock and the bite gauge are drawn
+ * on canvases and change nothing of the page, and the boss bar flashes on a bite, not on the chase's slow drain.
  */
 
 interface CostWorld {
@@ -51,13 +51,18 @@ const hook = () => (window as unknown as { __hamham: CostHook }).__hamham
 function installProbe() {
   const cost: CostProbe & { inside: boolean } = { updates: 0, busy: 0, calls: [], inside: false }
   ;(window as unknown as { __cost: unknown }).__cost = cost
-  const ticking = (target: unknown) =>
-    target instanceof Element && Boolean(target.closest('.hudd-hint, .hudd-stat, .hudd-say, .hudd-shoot'))
+  /** What a call is made on: an element, or for a drawing the canvas of its context. */
+  const nodeOf = (target: unknown) => (target instanceof CanvasRenderingContext2D ? target.canvas : target)
+  const ticking = (target: unknown) => {
+    const node = nodeOf(target)
+    return node instanceof Element && Boolean(node.closest('.hudd-hint, .hudd-stat, .hudd-say, .hudd-shoot'))
+  }
   const record = (name: string, target?: unknown) => {
+    const node = nodeOf(target)
     if (cost.inside)
       cost.calls.push({
         name,
-        on: target instanceof Element ? `${target.tagName}#${target.id}.${target.className}` : '',
+        on: node instanceof Element ? `${node.tagName}#${node.id}.${node.className}` : '',
         ticking: ticking(target)
       })
   }
@@ -110,7 +115,7 @@ function installProbe() {
   }
   for (const name of ['appendChild', 'removeChild', 'insertBefore']) method(Node.prototype, name, name)
   for (const name of ['add', 'remove', 'toggle', 'replace']) method(DOMTokenList.prototype, name, `classList.${name}`)
-  for (const name of ['drawImage', 'putImageData', 'fillRect', 'clearRect']) {
+  for (const name of ['drawImage', 'putImageData', 'fillRect', 'clearRect', 'fillText']) {
     method(CanvasRenderingContext2D.prototype, name, `ctx.${name}`)
   }
 
@@ -278,6 +283,35 @@ for (const profile of PROFILES) {
       for (const name of ['left', 'top', 'width', 'height', 'right', 'bottom']) {
         expect(counts[`style.${name}`] ?? 0).toBe(0)
       }
+      expect(errors).toEqual([])
+      await context.close()
+    })
+
+    test('ten seconds of the bot playing: the clock and the bite gauge are drawn, and write nothing to the page', async ({
+      browser
+    }) => {
+      const { page, context, errors } = await open(browser, profile.width, profile.height, 1)
+      await page.evaluate(() => hook().autopilot(true))
+      await page.waitForTimeout(500)
+      await resetProbe(page)
+      await page.waitForTimeout(10_000)
+      const run = await page.evaluate(() => (window as unknown as { __cost: CostProbe }).__cost)
+      expect(run.updates).toBeGreaterThan(300)
+      const counts = tally(run.calls)
+      // The clock: a hundred changes of its text in ten seconds, none of them a text of the page.
+      const onClock = run.calls.filter((call) => call.on.includes('hudd-clock'))
+      expect(onClock.filter((call) => !call.name.startsWith('ctx.')).map((call) => `${call.name} ${call.on}`)).toEqual(
+        []
+      )
+      const drawn = onClock.filter((call) => call.name === 'ctx.fillText').length
+      // Only an upright phone shows the deck; where it is not shown, nothing is drawn for it either.
+      if (profile.name === 'portrait') expect(drawn).toBeGreaterThan(60)
+      else expect(drawn).toBe(0)
+      // The gauge: the bot bites all the time. Its rows are drawn on the lit tooth's canvas...
+      const onLit = run.calls.filter((call) => call.on.includes('is-lit') && call.name === 'ctx.drawImage')
+      expect(onLit.length).toBeGreaterThan(20)
+      // ... and no custom property is written for it (nor for a sprite that keeps its size).
+      expect((counts['style.setProperty'] ?? 0) + (counts['style.removeProperty'] ?? 0)).toBeLessThan(10)
       expect(errors).toEqual([])
       await context.close()
     })
