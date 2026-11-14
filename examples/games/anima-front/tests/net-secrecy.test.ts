@@ -1,7 +1,8 @@
 /**
- * The PvP information boundary (DESIGN §18): sealing round trips, team keys (rotation on leave and team change,
- * spectators), the bytes a team-1 guest can read never holding hidden team-2 players, and the snapshot size and
- * host time per snapshot with 12 players.
+ * The PvP information boundary (DESIGN §18): sealing round trips, team keys (rotation on leave and per match,
+ * spectators switching teams within a generation), the bytes a team-1 guest can read never holding hidden team-2
+ * players, guest → host messages (sealed inputs and reconnection secret, replays, key and follow churn), and the
+ * snapshot size and host time per snapshot with 12 players.
  */
 import { deflateRawSync } from 'node:zlib'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -9,13 +10,42 @@ import { buildSeats, matchConfig } from '../src/app/match'
 import type { GuestMatch } from '../src/net/guest-match'
 import { GuestRoom } from '../src/net/guest-room'
 import { HostRoom } from '../src/net/host-room'
-import { partAad, type RoomMsg, type SnapMsg, type TransportFactory } from '../src/net/protocol'
-import { fromB64, newEcdh, randomBytes, sealJson, teamKey, toB64, unsealJson, wrapKey } from '../src/net/seal'
+import type { MatchSelection } from '../src/app/match'
+import {
+  inputAad,
+  partAad,
+  type InputMsg,
+  type ProfileMsg,
+  type RoomMsg,
+  type SnapMsg,
+  type TransportFactory
+} from '../src/net/protocol'
+import {
+  fromB64,
+  newEcdh,
+  randomBytes,
+  seal,
+  sealJson,
+  teamKey,
+  toB64,
+  unseal,
+  unsealJson,
+  wrapKey,
+  type EcdhPair
+} from '../src/net/seal'
 import { Fog, FADE } from '../src/net/fog'
 import { hiddenPlayer, mergeView, splitView, type TeamPart } from '../src/net/split'
 import { TeamVisibility } from '../src/net/visibility'
 import { createWorld, type World } from '../src/sim/api'
-import type { MatchConfig, PlayerView, SimEvent, TeamId, V3, View } from '../src/sim/types'
+import {
+  neutralPlayerInput,
+  type MatchConfig,
+  type PlayerView,
+  type SimEvent,
+  type TeamId,
+  type V3,
+  type View
+} from '../src/sim/types'
 import { simOf } from '../src/sim/world'
 import { choice, FakeHub, run, settle } from './net-helpers'
 
@@ -51,6 +81,22 @@ describe('sealing', () => {
     const d = await wrapKey(guest.priv, host.pub, 'room-1', 'g2')
     await expect(unsealJson(d, sealed, 'x')).rejects.toThrow()
   })
+
+  it('the guest-to-host key is another key from the same ECDH secret; the default purpose is unchanged', async () => {
+    const host = await newEcdh()
+    const guest = await newEcdh()
+    const wrap = await wrapKey(host.priv, guest.pub, 'room-1', 'g1')
+    const wrapExplicit = await wrapKey(guest.priv, host.pub, 'room-1', 'g1', 'team-key-wrap')
+    const g2h = await wrapKey(guest.priv, host.pub, 'room-1', 'g1', 'guest-to-host')
+    const g2hHost = await wrapKey(host.priv, guest.pub, 'room-1', 'g1', 'guest-to-host')
+    const data = new TextEncoder().encode('secret')
+    const a = await seal(wrap, data, 'x')
+    expect(new TextDecoder().decode(await unseal(wrapExplicit, a, 'x'))).toBe('secret')
+    await expect(unseal(g2h, a, 'x')).rejects.toThrow()
+    const b = await seal(g2h, data, 'x')
+    expect(new TextDecoder().decode(await unseal(g2hHost, b, 'x'))).toBe('secret')
+    await expect(unseal(wrap, b, 'x')).rejects.toThrow()
+  })
 })
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -58,17 +104,37 @@ describe('sealing', () => {
 
 const now = () => performance.now() / 1000
 
-/** Records every raw host message each guest receives (what the guest's machine can read). */
-function recording(hub: FakeHub, log: Map<string, unknown[]>): TransportFactory {
-  return (o) =>
-    hub.transport({
+/**
+ * Records every raw host message each guest receives (what the guest's machine can read) and, in `sent`, every
+ * message each guest sends (what anyone reading that guest's track can read). `drop`: guests (by network id) that
+ * never receive host messages.
+ */
+function recording(
+  hub: FakeHub,
+  log: Map<string, unknown[]>,
+  sent?: Map<string, unknown[]>,
+  drop?: Set<string>
+): TransportFactory {
+  return (o) => {
+    const t = hub.transport({
       ...o,
       onSnapshot: (raw) => {
+        if (drop?.has(o.playerId)) return
         if (!log.has(o.playerId)) log.set(o.playerId, [])
         log.get(o.playerId)!.push(raw)
         o.onSnapshot(raw)
       }
     })
+    if (!sent) return t
+    return {
+      ...t,
+      sendInput(input: unknown) {
+        if (!sent.has(o.playerId)) sent.set(o.playerId, [])
+        sent.get(o.playerId)!.push(JSON.parse(JSON.stringify(input)))
+        return t.sendInput(input)
+      }
+    }
+  }
 }
 
 interface Pins {
@@ -99,14 +165,20 @@ function pinnedWorld(pins: Pins) {
   }
 }
 
-async function pvpRoom(code: string, pins: Pins, guests: { name: string; team: TeamId }[]) {
+async function pvpRoom(
+  code: string,
+  pins: Pins,
+  guests: { name: string; team: TeamId }[],
+  selection: MatchSelection = { mode: 'pvp' }
+) {
   const hub = new FakeHub()
   const log = new Map<string, unknown[]>()
-  const transport = recording(hub, log)
+  const sent = new Map<string, unknown[]>()
+  const transport = recording(hub, log, sent)
   const host = new HostRoom({
     code,
     relayUrl: 'https://relay.test/anon',
-    selection: { mode: 'pvp' },
+    selection,
     me: choice('ホスト', 'shiba', 0),
     transport,
     peerId: 'hostpeer',
@@ -129,7 +201,7 @@ async function pvpRoom(code: string, pins: Pins, guests: { name: string; team: T
     rooms.push(room)
   }
   await run(1500)
-  return { hub, log, host, rooms }
+  return { hub, log, sent, host, rooms }
 }
 
 const keysOf = (room: GuestRoom) =>
@@ -387,7 +459,7 @@ describe('PvP snapshots between teams', () => {
     for (const r of rooms) r.close()
   }, 120_000)
 
-  it('team keys rotate per match, when a holder leaves and when a spectator changes team', async () => {
+  it('team keys rotate per match and when a holder leaves; a spectator switches team within a generation', async () => {
     vi.useFakeTimers()
     const { host, rooms } = await pvpRoom('rotate-1234', { at: new Map() }, [
       { name: 'アオ', team: 1 },
@@ -416,9 +488,11 @@ describe('PvP snapshots between teams', () => {
     const before = gen()!
     watcher.setFollowTeam(2)
     await run(1500)
-    expect(gen()).toBeGreaterThan(before)
+    // the spectator gets team 2's key in the same generation; nobody else's key changes
+    expect(gen()).toBe(before)
     expect(watcher.keyTeam).toBe(2)
     expect(blue.keyTeam).toBe(1)
+    expect(yellow.keyTeam).toBe(2)
 
     // a holder leaves: new keys that the leaver never gets
     const beforeLeave = gen()!
@@ -438,6 +512,275 @@ describe('PvP snapshots between teams', () => {
     host.start()
     await run(1500)
     expect(gen()).toBeGreaterThan(last)
+    host.close()
+    for (const r of rooms) r.close()
+  }, 60_000)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// Guest → host: what a guest's track shows to anyone reading it
+
+const hostOf = (hub: FakeHub, code: string) => hub.rooms.get(code)!.host!.o.onInput
+const ecdhOf = (room: GuestRoom) => (room as unknown as { ecdh: Promise<EcdhPair | null> }).ecdh
+const grantsOf = (host: HostRoom) =>
+  (host as unknown as { keySet: { grants: Map<string, TeamId> } | null }).keySet?.grants ?? new Map<string, TeamId>()
+const profilesOf = (sent: Map<string, unknown[]>, id: string) =>
+  (sent.get(id) ?? []).filter((m) => (m as ProfileMsg).k === 'profile') as ProfileMsg[]
+const inputsOf = (sent: Map<string, unknown[]>, id: string) =>
+  (sent.get(id) ?? []).filter((m) => (m as InputMsg).k === 'input') as InputMsg[]
+const walk = () => ({ ...neutralPlayerInput(), mz: 1, yaw: 0.5 })
+
+describe('guest → host messages', () => {
+  for (const mode of ['pve', 'pvp'] as const) {
+    it(`${mode}: a guest never sends its reconnection secret in clear${mode === 'pvp' ? ' nor its inputs' : ''}`, async () => {
+      vi.useFakeTimers()
+      const selection: MatchSelection =
+        mode === 'pvp' ? { mode: 'pvp' } : { mode: 'pve', mission: 'sakura', difficulty: 'easy' }
+      const code = `clear-${mode}-1234`
+      const { host, rooms, sent } = await pvpRoom(code, { at: new Map() }, [{ name: 'アオ', team: 1 }], selection)
+      const [guest] = rooms
+      const start = host.start()
+      await run(1000)
+      const hs = start.connect()
+      const gs = guest.matchStart()!.connect()
+      gs.setInput(walk())
+      await run(7000, () => {
+        hs.update(1 / 60)
+        gs.update(1 / 60)
+      })
+      const all = sent.get(guest.myId)!
+      const text = JSON.stringify(all)
+      expect(text).not.toContain(guest.key)
+      expect(text).not.toContain('"key"')
+      // the secret goes sealed once the host's key is known
+      expect(profilesOf(sent, guest.myId).some((p) => typeof p.kx === 'string')).toBe(true)
+      const inputs = inputsOf(sent, guest.myId)
+      expect(inputs.length).toBeGreaterThan(50)
+      if (mode === 'pvp') {
+        for (const i of inputs) {
+          expect(i.i).toBeUndefined()
+          expect(typeof i.x).toBe('string')
+        }
+        expect(text).not.toContain('"yaw"')
+        expect(text).not.toContain('"presses"')
+      } else for (const i of inputs) expect(i.i?.mz).toBe(1)
+      // the host played the guest's player from those inputs
+      const seat = host.matchSeatOf.get(guest.myId)!
+      expect(host.members.get(guest.myId)!.input?.latest.mz).toBe(1)
+      expect(seat).toBeTruthy()
+      hs.dispose()
+      host.close()
+      guest.close()
+    }, 60_000)
+  }
+
+  it('a replayed sealed secret from another network id does not take over the member', async () => {
+    vi.useFakeTimers()
+    const code = 'replay-1234'
+    const { hub, host, rooms, sent } = await pvpRoom(code, { at: new Map() }, [
+      { name: 'アオ', team: 1 },
+      { name: 'キイ', team: 2 }
+    ])
+    const [blue] = rooms
+    // the host learnt blue's secret from its sealed profile
+    expect(host.members.get(blue.myId)?.key).toBe(blue.key)
+    const start = host.start()
+    await run(1500)
+    const hs = start.connect()
+    await run(1000, () => hs.update(1 / 60))
+    const seat = host.matchSeatOf.get(blue.myId)!
+    expect(seat).toBeTruthy()
+    const recorded = profilesOf(sent, blue.myId).filter((p) => p.kx && p.ek)
+    const last = recorded[recorded.length - 1]
+    expect(last).toBeDefined()
+    const gen = host.roomMsg().keys!.g
+    // someone who read blue's track sends its profile (kx, ek) from another id, as is and asking for team 2
+    for (const [id, team] of [
+      ['intruder1', 1],
+      ['intruder2', 2]
+    ] as const) {
+      hostOf(hub, code)(id, { ...last, p: { ...last.p, team } })
+      await run(1200, () => hs.update(1 / 60))
+      hostOf(hub, code)(id, { ...last, p: { ...last.p, team } })
+      await run(1200, () => hs.update(1 / 60))
+      expect(host.members.get(id)?.key).toBeUndefined()
+      expect(host.matchSeatOf.get(id)).not.toBe(seat)
+    }
+    // blue keeps its member, seat and key; the intruder asking for team 2 holds no team-1 key
+    expect(host.members.get(blue.myId)?.key).toBe(blue.key)
+    expect(host.matchSeatOf.get(blue.myId)).toBe(seat)
+    expect(grantsOf(host).get(blue.myId)).toBe(1)
+    expect(grantsOf(host).get('intruder2')).not.toBe(1)
+    expect(blue.keyTeam).toBe(1)
+    // nothing was revoked from blue: same generation unless a grant went away
+    expect(host.roomMsg().keys!.g).toBe(gen)
+    hs.dispose()
+    host.close()
+    for (const r of rooms) r.close()
+  }, 60_000)
+
+  it("a kicked guest's automatic reconnection (new id, sealed secret) is refused", async () => {
+    vi.useFakeTimers()
+    const hub = new FakeHub()
+    const log = new Map<string, unknown[]>()
+    const sent = new Map<string, unknown[]>()
+    const drop = new Set<string>()
+    const transport = recording(hub, log, sent, drop)
+    const code = 'kicked-1234'
+    const host = new HostRoom({
+      code,
+      relayUrl: 'https://relay.test/anon',
+      selection: { mode: 'pve', mission: 'sakura', difficulty: 'easy' },
+      me: choice('ホスト'),
+      transport,
+      peerId: 'hostpeer',
+      now
+    })
+    await settle(host.open())
+    hub.loseNextAdmission = true
+    const guest = new GuestRoom({
+      code,
+      relayUrl: 'https://relay.test/anon',
+      me: choice('A'),
+      transport,
+      peerId: 'kick0',
+      newPeerId: () => 'kick1',
+      now
+    })
+    await settle(guest.open())
+    await run(1500)
+    expect(host.members.get('kick0')?.key).toBe(guest.key)
+    // the guest never hears it was kicked (its lobby state is lost) and reconnects when its admission times out
+    drop.add('kick0')
+    host.kick('kick0')
+    await run(18_000, undefined, 100)
+    expect(guest.myId).toBe('kick1')
+    expect(profilesOf(sent, 'kick1').some((p) => typeof p.kx === 'string')).toBe(true)
+    expect(host.members.has('kick1')).toBe(false)
+    expect([...host.members.keys()]).toEqual(['hostpeer'])
+    host.close()
+    guest.close()
+  }, 60_000)
+
+  it('PvP: the host takes only sealed inputs bound to the member and the tick', async () => {
+    vi.useFakeTimers()
+    const code = 'sealed-1234'
+    const { hub, host, rooms } = await pvpRoom(code, { at: new Map() }, [
+      { name: 'アオ', team: 1 },
+      { name: 'キイ', team: 2 }
+    ])
+    const [blue, yellow] = rooms
+    host.matchArrivalGrace = 1e9
+    const start = host.start()
+    await run(1500)
+    const hs = start.connect()
+    // blue's own game screen never opens: the test speaks for it
+    const frame = () => hs.update(1 / 60)
+    await run(6500, frame)
+    const seat = host.matchSeatOf.get(blue.myId)!
+    // the world itself (the host's own screen keeps to its team's view)
+    const where = () => [...simOf(host.match!.world).players.find((p) => p.id === seat)!.p]
+    const p0 = where()
+    const pair = (await ecdhOf(blue))!
+    const hk = host.roomMsg().hk!
+    const key = await wrapKey(pair.priv, hk, code, blue.myId, 'guest-to-host')
+    const m = host.matchId
+    let g = 10
+    const send = async (make: (g: number) => Promise<Partial<InputMsg>>, ms: number) => {
+      for (let t = 0; t < ms; t += 1000 / 30) {
+        g += 2
+        hostOf(hub, code)(blue.myId, { v: 1, k: 'input', m, n: 1, g, ...(await make(g)) })
+        await run(1000 / 30, frame)
+      }
+    }
+    const sealed = (aadId: string, aadG: (g: number) => number) => async (g: number) => ({
+      x: await seal(key, new TextEncoder().encode(JSON.stringify(walk())), inputAad(aadId, m, 1, aadG(g)))
+    })
+    // in clear: ignored
+    await send(async () => ({ i: walk() }), 800)
+    // sealed for another member or another tick: ignored
+    await send(
+      sealed(yellow.myId, (g) => g),
+      400
+    )
+    await send(
+      sealed(blue.myId, (g) => g + 1),
+      400
+    )
+    expect(host.members.get(blue.myId)!.input).toBeUndefined()
+    const p1 = where()
+    expect(Math.hypot(p1[0] - p0[0], p1[2] - p0[2])).toBeLessThan(0.05)
+    // sealed right: the player walks
+    await send(
+      sealed(blue.myId, (g) => g),
+      1500
+    )
+    expect(host.members.get(blue.myId)!.input?.latest.mz).toBe(1)
+    const p2 = where()
+    expect(Math.hypot(p2[0] - p1[0], p2[2] - p1[2])).toBeGreaterThan(3)
+    hs.dispose()
+    host.close()
+    for (const r of rooms) r.close()
+  }, 60_000)
+
+  it('ek churn and follow churn do not rotate the keys; other guests keep opening every snapshot', async () => {
+    vi.useFakeTimers()
+    const code = 'churn-1234'
+    const { hub, host, rooms, log, sent } = await pvpRoom(code, { at: new Map() }, [
+      { name: 'アオ', team: 1 },
+      { name: 'キイ', team: 2 },
+      { name: 'ミル', team: 0 }
+    ])
+    const [blue, yellow, watcher] = rooms
+    const start = host.start()
+    await run(1500)
+    const hs = start.connect()
+    const frame = () => hs.update(1 / 60)
+    host.matchSeatOf.set(watcher.myId, null)
+    host.changed()
+    await run(1500, frame)
+    const gen = host.roomMsg().keys!.g
+    expect(watcher.keyTeam).toBe(0)
+    expect(blue.keyTeam).toBe(1)
+
+    // a member sends a new ECDH key with every profile
+    const yellowEk = host.members.get(yellow.myId)!.ek
+    const profile = profilesOf(sent, yellow.myId).at(-1)!
+    for (let i = 0; i < 20; i++) {
+      hostOf(hub, code)(yellow.myId, { ...profile, ek: (await newEcdh()).pub })
+      await run(100, frame)
+    }
+    expect(host.members.get(yellow.myId)!.ek).toBe(yellowEk)
+    expect(host.roomMsg().keys!.g).toBe(gen)
+    expect(yellow.keyTeam).toBe(2)
+
+    // a spectator flips the team it follows every 100 ms
+    log.get(blue.myId)!.splice(0)
+    const accepted: number[] = []
+    let last: TeamId = 0
+    const t0 = now()
+    for (let i = 0; i < 30; i++) {
+      last = i % 2 ? 2 : 1
+      watcher.setFollowTeam(last)
+      await run(100, frame)
+      const at = host.members.get(watcher.myId)!.followAt
+      if (at !== undefined && at !== accepted.at(-1)) accepted.push(at)
+      expect(host.roomMsg().keys!.g).toBe(gen)
+    }
+    const flipping = now() - t0
+    expect(accepted.length).toBeGreaterThan(0)
+    expect(accepted.length).toBeLessThanOrEqual(Math.ceil(flipping) + 1)
+    for (let i = 1; i < accepted.length; i++) expect(accepted[i] - accepted[i - 1]).toBeGreaterThanOrEqual(1 - 1e-9)
+    // its last choice lands with the next heartbeat; still the same generation
+    await run(2500, frame)
+    expect(host.members.get(watcher.myId)!.follow).toBe(last)
+    expect(watcher.keyTeam).toBe(last)
+    expect(host.roomMsg().keys!.g).toBe(gen)
+    // blue could open every snapshot it received meanwhile
+    const snaps = log.get(blue.myId)!.filter((r) => (r as SnapMsg).k === 'snap') as SnapMsg[]
+    expect(snaps.length).toBeGreaterThan(50)
+    for (const snap of snaps) expect(await readable(blue, snap)).not.toBeNull()
+    hs.dispose()
     host.close()
     for (const r of rooms) r.close()
   }, 60_000)

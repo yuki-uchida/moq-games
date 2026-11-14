@@ -461,9 +461,14 @@ Screens (every change uses a transition, never a hard cut):
   hysteresis), when that team's sonar reveals it, when it fired or used an antique in the last 1.5 s within 45 m,
   when it stands in that team's base or was hit by that team in the last second; everyone in the results. Team
   keys reach guests wrapped with an ECDH P-256 + HKDF key (guest key in its profile, host key in the lobby state)
-  and are replaced every match and whenever a holder leaves or changes team; a spectator holds only the key of
-  the team it follows. Guests draw unknown enemies as off the field and fade enemies out of / into sight
-  (`fog.ts`); the host's own screen keeps to the same boundary. PvE snapshots stay whole and unsealed.
+  and are replaced every match and whenever a holder leaves, is removed or a seated player changes team. A
+  spectator may switch the team it follows (at most once a second) inside a generation and then gets that team's
+  key: spectators are room members the host admitted and can remove, like observers in a custom match. Anyone who
+  knows a guest's id can read that guest's track too, so guest → host messages are sealed with a guest-to-host
+  key from the same ECDH secret (another HKDF purpose): PvP inputs, and the reconnection secret in every mode
+  (bound to the member id, so a replay from another id gets no seat). A guest's ECDH key is fixed once the host
+  knows it. Guests draw unknown enemies as off the field and fade enemies out of / into sight (`fog.ts`); the
+  host's own screen keeps to the same boundary. PvE snapshots and inputs stay whole and unsealed.
 
 ## 19. Performance budget
 

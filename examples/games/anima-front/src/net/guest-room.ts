@@ -5,7 +5,8 @@
  * A host that goes quiet is waited for; a host that leaves, a kick or a lost relay closes the room.
  *
  * PvP (DESIGN §18): the guest sends an ECDH public key in its profile, unwraps the team key the host wraps for it
- * (RoomMsg.keys) and opens only its team's part of each snapshot; spectators choose the team they follow.
+ * (RoomMsg.keys) and opens only its team's part of each snapshot; spectators choose the team they follow. Its
+ * inputs travel sealed for the host with the guest-to-host key; so does its reconnection secret in every mode.
  */
 import type { LocalChoice, MatchStart } from '../app/lobby'
 import type { Seat } from '../app/match'
@@ -24,6 +25,8 @@ import {
   randomPeerId,
   translateError,
   partAad,
+  inputAad,
+  rejoinAad,
   wrapAad,
   type InputMsg,
   type NetTransport,
@@ -34,18 +37,23 @@ import {
   type TransportFactory,
   type WireMember
 } from './protocol'
-import { isB64, isEcdhPub, newEcdh, teamKey, unseal, unsealJson, wrapKey, type EcdhPair } from './seal'
+import { isB64, isEcdhPub, newEcdh, seal, teamKey, unseal, unsealJson, wrapKey, type EcdhPair } from './seal'
 import type { TeamPart } from './split'
 import { cleanName, validateConfig, validateSeat, validateSelection, validId, type Profile } from './validate'
 
 /** How often a guest whose admission never arrived reconnects (see reconnect). */
 const MAX_RETRIES = 3
 
+/** 24 characters of [a-z0-9] from the system's random source (unbiased: bytes from 252 up are drawn again). */
 function randomKey(): string {
   let s = ''
-  for (let i = 0; i < 24; i++) s += Math.floor(Math.random() * 36).toString(36)
+  while (s.length < 24) {
+    for (const b of crypto.getRandomValues(new Uint8Array(32))) if (b < 252 && s.length < 24) s += (b % 36).toString(36)
+  }
   return s
 }
+
+const utf8 = (text: string) => new TextEncoder().encode(text)
 
 export interface GuestRoomOptions {
   /** Network ids for reconnections (default random). */
@@ -135,7 +143,7 @@ export class GuestRoom {
   /** Increments with every connection; callbacks of an older one are ignored. */
   private generation = 0
   private retries = 0
-  /** Secret that lets the host recognise this player across connections (never broadcast). */
+  /** Secret that lets the host recognise this player across connections (only ever sent sealed: ProfileMsg.kx). */
   readonly key = randomKey()
   private readonly now: () => number
   private lastHeard: number
@@ -153,8 +161,20 @@ export class GuestRoom {
   /** Unwrapped team keys by generation (the newest few). */
   private readonly teamKeys = new Map<number, { team: TeamId; key: CryptoKey }>()
   private readonly unwrapping = new Set<string>()
+  /** Per generation, the wrapped blob its team key came from (a spectator may get another team's key). */
+  private readonly unwrapped = new Map<number, string>()
+  /** Per generation, the newest blob being unwrapped (an older job finishing later is discarded). */
+  private readonly unwrapWanted = new Map<number, string>()
   /** Sealed snapshots are opened one after the other. */
   private opening: Promise<void> = Promise.resolve()
+  /** `${myId}:${hk}` the guest-to-host key and the sealed secret below belong to (set when their job starts). */
+  private hostKeyFor?: string
+  /** The guest-to-host key (seal.ts) for `hostKeyFor`, once derived. */
+  private hostKey?: CryptoKey
+  /** The reconnection secret sealed for the host (ProfileMsg.kx) for `hostKeyFor`, once sealed. */
+  private kx?: string
+  /** The job for `hostKeyFor` finished (with or without a key: ECDH may be unavailable or fail). */
+  private hostKeySettled = false
 
   constructor(private readonly opts: GuestRoomOptions) {
     this.code = opts.code
@@ -375,14 +395,88 @@ export class GuestRoom {
       this.flushProfile()
       return false
     }
+    if (this.room?.selection.mode === 'pvp' || this.room?.config?.mode === 'pvp') {
+      // PvP: the input goes sealed for the host (anyone who knows this guest's id can read its track).
+      const key = this.readyHostKey()
+      if (!key) {
+        this.prepareHostKey()
+        return false
+      }
+      this.sending = true
+      const gen = this.generation
+      const { m, n, g } = msg
+      seal(key, utf8(JSON.stringify(msg.i)), inputAad(this.myId, m, n, g)).then(
+        (x) => {
+          // A reconnection in between reset `sending` and owns the slot now.
+          if (gen !== this.generation) return
+          if (this.status.kind === 'closed') {
+            this.sending = false
+            return
+          }
+          this.send({ v: PROTOCOL, k: 'input', m, n, g, x })
+        },
+        (err) => {
+          if (gen === this.generation) this.sending = false
+          netLog(`guest could not seal an input: ${String(err)}`)
+        }
+      )
+      return true
+    }
     this.send(msg)
     return true
   }
 
+  /** The guest-to-host key for the current connection and host key, when it is ready. */
+  private readyHostKey(): CryptoKey | undefined {
+    const hk = this.room?.hk
+    return hk && this.hostKeyFor === `${this.myId}:${hk}` ? this.hostKey : undefined
+  }
+
+  /**
+   * Derives the guest-to-host key for the current network id and host key, then seals the reconnection secret
+   * with it (once per id/host key); the profile goes out again once that is done.
+   */
+  private prepareHostKey() {
+    const hk = this.room?.hk
+    if (!hk) return
+    const id = this.myId
+    const tag = `${id}:${hk}`
+    if (this.hostKeyFor === tag) return
+    this.hostKeyFor = tag
+    this.hostKey = undefined
+    this.kx = undefined
+    this.hostKeySettled = false
+    void (async () => {
+      const pair = await this.ecdh
+      if (!pair) return
+      const key = await wrapKey(pair.priv, hk, this.code, id, 'guest-to-host')
+      if (this.hostKeyFor !== tag) return
+      this.hostKey = key
+      const kx = await seal(key, utf8(this.key), rejoinAad(id))
+      if (this.hostKeyFor === tag) this.kx = kx
+    })()
+      .catch((err) => netLog(`guest could not derive the guest-to-host key: ${String(err)}`))
+      .finally(() => {
+        if (this.hostKeyFor !== tag) return
+        this.hostKeySettled = true
+        this.profileDirty = true
+        this.flushProfile()
+      })
+  }
+
   private flushProfile() {
     if (!this.profileDirty || this.sending || this.status.kind === 'closed') return
+    // Once the host's key is known the profile waits for the sealed secret, so a reconnection always introduces
+    // itself with its proof (and gets its seat back). Without ECDH or after a failure it goes without one.
+    const hk = this.room?.hk
+    const tag = hk ? `${this.myId}:${hk}` : undefined
+    if (tag) {
+      this.prepareHostKey()
+      if (!this.hostKeySettled) return
+    }
     this.profileDirty = false
-    const msg: ProfileMsg = { v: PROTOCOL, k: 'profile', p: this.profile, key: this.key }
+    const msg: ProfileMsg = { v: PROTOCOL, k: 'profile', p: this.profile }
+    if (tag && this.kx && this.hostKeyFor === tag) msg.kx = this.kx
     if (this.ek) msg.ek = this.ek
     if (this.follow) msg.f = this.follow
     this.send(msg, () => {
@@ -430,6 +524,7 @@ export class GuestRoom {
       return
     }
     this.room = room
+    this.prepareHostKey()
     this.unwrapKey(room)
     if (this.status.kind === 'connecting') this.status = { kind: 'online', text: 'オンライン' }
     this.found?.()
@@ -442,18 +537,27 @@ export class GuestRoom {
     const hk = room.hk
     const id = this.myId
     const blob = keys?.w[id]
-    if (!keys || !hk || !blob || this.teamKeys.has(keys.g)) return
+    // Once per generation, and again when the host wraps another team's key (a spectator switched teams).
+    if (!keys || !hk || !blob || this.unwrapped.get(keys.g) === blob) return
     const job = `${keys.g}:${id}:${blob}`
     if (this.unwrapping.has(job)) return
     this.unwrapping.add(job)
+    this.unwrapWanted.set(keys.g, blob)
     void (async () => {
       const pair = await this.ecdh
       if (!pair) return
       const wk = await wrapKey(pair.priv, hk, this.code, id)
       const raw = await unseal(wk, blob, wrapAad(keys.g, id))
       if (raw.length !== 33 || raw[0] > 2) throw new Error('bad team key')
-      this.teamKeys.set(keys.g, { team: raw[0] as TeamId, key: await teamKey(raw.subarray(1)) })
-      for (const g of [...this.teamKeys.keys()].sort((a, b) => a - b).slice(0, -4)) this.teamKeys.delete(g)
+      const key = await teamKey(raw.subarray(1))
+      if (this.unwrapWanted.get(keys.g) !== blob) return
+      this.teamKeys.set(keys.g, { team: raw[0] as TeamId, key })
+      this.unwrapped.set(keys.g, blob)
+      const kept = [...this.teamKeys.keys()].sort((a, b) => a - b)
+      for (const g of kept.slice(0, -4)) this.teamKeys.delete(g)
+      const oldest = kept.slice(-4)[0]
+      for (const map of [this.unwrapped, this.unwrapWanted])
+        for (const g of [...map.keys()]) if (g < oldest) map.delete(g)
       netLog(`guest ${id} team key generation ${keys.g} (team ${raw[0]})`)
     })().catch((err) => netLog(`guest could not unwrap the team key: ${String(err)}`))
   }

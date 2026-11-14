@@ -9,6 +9,10 @@
  *   bound to the room code and the guest's network id);
  * - team parts are JSON, deflated, then sealed (AES-GCM, random 96-bit IV, the snapshot's match/generation/team/
  *   tick as additional data so a part cannot be replayed in another slot).
+ *
+ * The other direction: anyone who knows the room code and a guest's network id can read that guest's track too, so
+ * a guest seals what only the host may read (its PvP inputs, its reconnection secret) with a second key from the
+ * same ECDH secret (purpose `guest-to-host`), with the member id and the message's slot as additional data.
  */
 
 const subtle = () => {
@@ -81,14 +85,29 @@ async function makeEcdh(): Promise<EcdhPair> {
 /** A public key from the network: 65 bytes, uncompressed point (rejects anything else). */
 export const isEcdhPub = (v: unknown): v is string => isB64(v, 120) && fromB64(v).length === 65
 
-/**
- * The AES-GCM key that wraps team keys for one guest: HKDF over the ECDH secret between `priv` and `peerPub`,
- * salted with the room code and bound to the guest's network id. Host and guest derive the same key.
- */
-export const wrapKey = (priv: CryptoKey, peerPub: string, room: string, memberId: string): Promise<CryptoKey> =>
-  tracked(deriveWrapKey(priv, peerPub, room, memberId))
+/** What a key derived from one guest's ECDH secret is for (HKDF info, so the keys differ). */
+export type KeyPurpose = 'team-key-wrap' | 'guest-to-host'
 
-async function deriveWrapKey(priv: CryptoKey, peerPub: string, room: string, memberId: string): Promise<CryptoKey> {
+/**
+ * An AES-GCM key between the host and one guest: HKDF over the ECDH secret between `priv` and `peerPub`, salted
+ * with the room code and bound to the purpose and the guest's network id. Host and guest derive the same key.
+ * `team-key-wrap` wraps team keys for the guest; `guest-to-host` seals guest messages only the host may read.
+ */
+export const wrapKey = (
+  priv: CryptoKey,
+  peerPub: string,
+  room: string,
+  memberId: string,
+  purpose: KeyPurpose = 'team-key-wrap'
+): Promise<CryptoKey> => tracked(deriveWrapKey(priv, peerPub, room, memberId, purpose))
+
+async function deriveWrapKey(
+  priv: CryptoKey,
+  peerPub: string,
+  room: string,
+  memberId: string,
+  purpose: KeyPurpose
+): Promise<CryptoKey> {
   const s = subtle()
   const pub = await s.importKey(
     'raw',
@@ -104,7 +123,7 @@ async function deriveWrapKey(priv: CryptoKey, peerPub: string, room: string, mem
       name: 'HKDF',
       hash: 'SHA-256',
       salt: utf8(`anima-front-v1:${room}`) as BufferSource,
-      info: utf8(`team-key-wrap:${memberId}`) as BufferSource
+      info: utf8(`${purpose}:${memberId}`) as BufferSource
     },
     ikm,
     { name: 'AES-GCM', length: 256 },
