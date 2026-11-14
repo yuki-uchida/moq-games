@@ -4,7 +4,8 @@
  *
  * Usage: node scripts/hoshi-no-hamham-perf.mjs [--only boot,menus,play,boss,pacing] [--stages 1,3,5 | all]
  *                                             [--seconds 30] [--profiles landscape,portrait] [--throttle 4]
- *                                             [--dev] [--gpu] [--check] [--raw] [--tries 3] [--out DIR]
+ *                                             [--dev] [--gpu] [--check] [--raw] [--tries 3] [--every 2]
+ *                                             [--out DIR]
  *   --only      sections to run (default: all five). A section that fails is reported and the others still run.
  *   --stages    stages of the play section (default 1,3,5; `all` is 1 to 10)
  *   --seconds   seconds recorded per stage and profile in the play section (default 30)
@@ -19,6 +20,9 @@
  *   --tries     how often a recorded run may be made (default 1). A run in which the game's thread was kept from
  *               running from outside (the machine was busy with something else; see `held` below) is set aside and
  *               made again, up to this many times; the report says how many were set aside
+ *   --every     the page gets only every nth frame of the display (default 1: all of them). The monitor of the
+ *               machine sets the display's rate; on a 120 Hz monitor `--every 2` gives the page the 60 frames a
+ *               second of most phones, each with 16.7 ms to do its work in
  *   --out       output folder (default .build/hoshi-no-hamham-perf/, ignored by Git)
  *
  * Output: report.md (command, environment, the budget summary, one part per section) and report.json (the same
@@ -83,6 +87,8 @@ const raw = flag('--raw')
 const trace = flag('--trace')
 const tries = Number(valueOf('--tries') ?? 1)
 if (!Number.isInteger(tries) || tries < 1) usage('--tries must be a whole number, 1 or more')
+const every = Number(valueOf('--every') ?? 1)
+if (!Number.isInteger(every) || every < 1) usage('--every must be a whole number, 1 or more')
 /**
  * A slice of the game's thread counts as kept from running from outside when this many milliseconds of its clock
  * time, and this share of it, are not explained by the thread's own running time under the throttle.
@@ -258,7 +264,51 @@ const slug = (text) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
-const throttleText = `CPU throttle ${throttle}x`
+const throttleText = `CPU throttle ${throttle}x${every > 1 ? `, one display frame in ${every}` : ''}`
+
+/**
+ * Runs in the page before anything else: animation-frame callbacks are called on every nth frame of the display
+ * only, all of one round together, so the page runs at the display's rate divided by n.
+ *
+ * The frames kept are the ones on a fixed beat of the display (slots 0, n, 2n, ... counted in display frames), as
+ * on a slower display: when the browser leaves a display frame out, the page waits for the next slot of the beat
+ * (a missed frame costs a whole one), not for "the nth frame it happened to get".
+ */
+function holdFrames(n) {
+  const request = window.requestAnimationFrame.bind(window)
+  let queue = new Map()
+  let handle = 0
+  /** The display's own interval (ms), learned from the first frames; 0 until then. */
+  let period = 0
+  const first = []
+  let last = -1
+  /** The display frame this one is, counted from the first. */
+  let slot = 0
+  const pump = (time) => {
+    request(pump)
+    if (last >= 0) {
+      const waited = time - last
+      if (!period) {
+        first.push(waited)
+        if (first.length >= 40) period = [...first].sort((a, b) => a - b)[first.length >> 1]
+      }
+      slot += period ? Math.max(1, Math.round(waited / period)) : 1
+    }
+    last = time
+    // Off the beat: wait. A display frame the browser left out can carry the count past a slot of the beat; the
+    // page then gets the next one.
+    if (slot % n) return
+    const round = queue
+    queue = new Map()
+    for (const callback of round.values()) callback(time)
+  }
+  request(pump)
+  window.requestAnimationFrame = (callback) => {
+    queue.set(++handle, callback)
+    return handle
+  }
+  window.cancelAnimationFrame = (id) => void queue.delete(id)
+}
 
 function freePort() {
   return new Promise((resolvePort, reject) => {
@@ -966,6 +1016,7 @@ async function newRun(label, { width, height, dpr, rate = throttle, save = true 
   page.on('requestfailed', (request) => {
     if (!closing) problems.push(`${label}: request failed: ${request.url()} ${request.failure()?.errorText ?? ''}`)
   })
+  if (every > 1) await page.addInitScript(holdFrames, every)
   await page.addInitScript(installPerf)
   if (save)
     await page.addInitScript(
