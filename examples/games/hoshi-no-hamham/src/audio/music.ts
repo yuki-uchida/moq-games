@@ -3,6 +3,7 @@
  * AudioContext clock (so the beat holds when frames stutter), wraps at the loop point, and gates parts by
  * intensity layer. Parts have their own gain, pan, reverb and chorus sends.
  */
+import type { Idle } from './bank'
 import { LEGATO, VOICES, type VoiceEnv } from './instruments'
 import type { Mixer } from './mixer'
 import { compileSong, type CompiledSong, type InstName, type SongDef } from './notation'
@@ -15,6 +16,42 @@ export function compiledSong(def: SongDef): CompiledSong {
     compiled.set(def, c)
   }
   return c
+}
+
+/** How long the compiling ahead waits before it looks again while a stage is played (ms). */
+const AHEAD_RETRY_MS = 1000
+
+/**
+ * Compiles songs before they are first played, one per idle moment and never while a stage is played, so that a
+ * change of music (the boss's entrance, the stage's end) only has to build its player. Returns a function that
+ * stops it.
+ */
+export function compileSongsAhead(
+  defs: readonly SongDef[],
+  idle: Idle,
+  playing: () => boolean,
+  later: (run: () => void, ms: number) => unknown = setTimeout,
+  compile: (def: SongDef) => unknown = compiledSong
+): () => void {
+  const left = defs.filter((def) => !compiled.has(def))
+  let stopped = false
+  const next = () => {
+    if (stopped || !left.length) return
+    if (playing()) {
+      later(next, AHEAD_RETRY_MS)
+      return
+    }
+    idle(() => {
+      if (stopped) return
+      // A stage may have started while this waited for its moment.
+      if (!playing()) compile(left.shift()!)
+      next()
+    }, playing)
+  }
+  next()
+  return () => {
+    stopped = true
+  }
 }
 
 /** Extra stereo width per instrument: a pan multiplier and a default chorus send for parts that set none. */

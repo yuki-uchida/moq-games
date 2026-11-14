@@ -1,19 +1,25 @@
 /** The app: the frame loop, save data and switching between the screens and play. */
 import { createAudio } from '../audio'
+import type { ThemeName } from '../audio/api'
 import { Input } from '../game/input'
 import type { World } from '../game/sim'
 import { ENDING_PAGES, OPENING_PAGES, STAGES, stageByNo } from '../game/stages'
 import { loadSave, storeSave, TILE, type SaveData, type StageDef, type VolumeKind } from '../game/types'
+import { sheet } from '../art'
 import { Hud } from '../ui/hud'
 import { trackRatio } from '../ui/hud-model'
-import { spriteImg } from '../ui/pixel'
-import { DomScreens, type Screens } from '../ui/screens'
+import { HUD_PLATES, plateUrl } from '../ui/hud-sprites'
+import { nightHillsUrl, nightMoonUrl, nightSkyUrl, prepareTileUrl, prepareUrl, spriteImg } from '../ui/pixel'
+import { deadArt, helpArt, HELP_DIRT, helpSprites, resultArt, selectArt, titleArt } from '../ui/screen-art'
+import { DomScreens, type Prepare, type Screens, type StoryInfo } from '../ui/screens'
+import { shotArt, STORY_SCENES, ENDING_SCENES, type SceneKey } from '../ui/story-scenes'
 import { installZoomGuard } from '../ui/zoom-guard'
 import { Renderer } from '../view/renderer'
 import { SoundBoard, type SoundCue } from '../view/sound-map'
 import type { StageView } from '../view/stage-view'
+import { fetchArt, screenArtStats } from './art-fetch'
 import { PlaySession, STEP } from './play'
-import { isWarm, warmStage } from './warm'
+import { isWarm, runSteps, warmStage, type WarmStep } from './warm'
 
 type ScreenName = 'title' | 'select' | 'story' | 'play' | 'result' | 'dead' | 'ending'
 
@@ -70,6 +76,61 @@ const SOUND_WAIT_MS = 3000
 export const DEMO_STAGES = [1, 5, 3, 7, 9, 4]
 /** Under reduced motion the demo is one still frame, taken after this many simulated seconds. */
 const DEMO_STILL_SECONDS = 2.5
+/** A screen's own first frames go before the work done ahead for the next one (ms). */
+const AHEAD_DELAY_MS = 500
+
+/** The prologue. */
+const OPENING_STORY: StoryInfo = { kicker: 'プロローグ', title: '星のハムハム', pages: OPENING_PAGES, scene: 'opening' }
+/** A stage's intro. */
+const storyOf = (stage: StageDef): StoryInfo => ({
+  kicker: `第${stage.no}話`,
+  title: stage.name,
+  pages: stage.intro,
+  scene: stage.no
+})
+
+/** Asks for the art of a story's shots `from` up to `to`, in order, in the background. */
+function fetchShots(scene: SceneKey | 'ending', from = 0, to = Infinity): Promise<unknown> {
+  const shots = scene === 'ending' ? ENDING_SCENES : (STORY_SCENES[String(scene)] ?? [])
+  return Promise.all(shots.slice(from, to).map((shot, i) => fetchArt(`story:${scene}:${from + i}`, shotArt(shot))))
+}
+
+/** A slice that makes a data URL (a PNG encoded on the page) ahead. */
+const urlStep = (label: string, make: () => unknown): WarmStep => ({
+  label: `url:${label}`,
+  weight: 1,
+  run: () => void make()
+})
+
+/** Runs slices without progress reports, the first one a task after the caller's. */
+const runAhead = (steps: WarmStep[]) =>
+  runSteps(steps, undefined, undefined, undefined, undefined, undefined, undefined, true)
+
+/**
+ * The data URLs the App's construction would otherwise encode in one go: every `ui` frame shown as an image, the
+ * HUD's and the touch controls' plates and the pieces of the night. The boot runs them in slices before it builds
+ * the App (art that is not here yet is left for later: nothing is painted for it).
+ */
+export function appUrlSteps(): WarmStep[] {
+  return [
+    ...Object.keys(sheet('ui')).map((clip) => urlStep(`ui.${clip}`, () => prepareUrl('ui', clip))),
+    ...HUD_PLATES.map(([name, n, shape]) => urlStep(`plate:${name}:${n}`, () => plateUrl(name, n, shape))),
+    urlStep('night:sky', () => nightSkyUrl(0)),
+    urlStep('night:sky2', () => nightSkyUrl(1)),
+    urlStep('night:hills', () => nightHillsUrl()),
+    urlStep('night:moon', () => nightMoonUrl())
+  ]
+}
+
+/** The help screen's still pictures as data URLs, made once their art is here. */
+const helpUrlSteps = (): WarmStep[] => [
+  ...helpSprites()
+    .filter((sprite) => !sprite.play)
+    .map((sprite) =>
+      urlStep(`${sprite.sheet}.${sprite.clip}`, () => prepareUrl(sprite.sheet, sprite.clip, 0, sprite.crop))
+    ),
+  urlStep('help:dirt', () => prepareTileUrl(HELP_DIRT))
+]
 
 export function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60)
@@ -108,6 +169,11 @@ export class App {
   private frames = 0
   /** How many milliseconds after its own timestamp the last frame's work ended. */
   private frameBusy = 0
+  /** A music change waiting for the task after the screen change (see `music`). */
+  private musicTimer = 0
+  /** Bumped by every new plan of work ahead, so an older plan stops (see `planAhead`). */
+  private aheadRun = 0
+  private started = false
   private resolveFirstFrame: () => void = () => {}
   /** Resolves once the first frame of the loop (the title's first picture) has been drawn. */
   readonly firstFrame = new Promise<void>((resolve) => (this.resolveFirstFrame = resolve))
@@ -151,8 +217,68 @@ export class App {
     })
     this.input.bindTouch(document)
     installZoomGuard()
+  }
+
+  /** Opens the title and starts the frame loop (the boot calls it in a task of its own, after building the App). */
+  start() {
+    if (this.started) return
+    this.started = true
     this.openTitle()
     requestAnimationFrame(this.loop)
+  }
+
+  /** How often a screen had to wait for its art (test hook: the browser checks expect none). */
+  get screenArt() {
+    return { ...screenArtStats }
+  }
+
+  /**
+   * Work done ahead for the screens the player may open next. Their art is asked for at once by the caller (in the
+   * background, behind every stage warm-up and every dig); the jobs here (data URLs, screens built and laid out
+   * ahead) run one after another in idle slices once the screen that opened has had its first frames. A job that
+   * reports `false` was cut short (the help opened over the screen being laid out) and is tried again later. A new
+   * plan replaces the old one, and nothing runs during play.
+   */
+  private planAhead(jobs: (() => unknown)[]) {
+    const run = (this.aheadRun += 1)
+    this.screens.stopPreparing?.()
+    if (!jobs.length) return
+    const queue = jobs.map((job) => ({ job, tries: 0 }))
+    const pause = () => new Promise((resolve) => setTimeout(resolve, AHEAD_DELAY_MS))
+    void (async () => {
+      await pause()
+      while (queue.length) {
+        if (run !== this.aheadRun || this.screen === 'play') return
+        const entry = queue.shift()!
+        let done: unknown = true
+        try {
+          done = await entry.job()
+        } catch {
+          // Work ahead only saves time later: the screen still builds itself when it opens.
+        }
+        if (done === false && (entry.tries += 1) < 3) {
+          queue.push(entry)
+          await pause()
+        }
+      }
+    })()
+  }
+
+  /** A job of `planAhead` that has the screens build and lay out `what`. */
+  private prepare = (what: Prepare) => () => this.screens.prepare?.(what)
+
+  /**
+   * Switches the music in the task after the one that changes the screen: building the new music's player is work of
+   * its own, and the tap's task then only shows the screen. The latest change wins.
+   */
+  private music(theme: ThemeName) {
+    window.clearTimeout(this.musicTimer)
+    this.musicTimer = window.setTimeout(() => this.audio.setMusic(theme), 0)
+  }
+
+  /** The newest stage the save has opened. */
+  private newestStage() {
+    return stageByNo(Math.max(1, Math.min(STAGES.length, this.save.unlocked)))
   }
 
   /** The live world, or null outside play (test hook). */
@@ -192,9 +318,22 @@ export class App {
   openTitle() {
     this.leavePlay()
     this.screen = 'title'
-    this.audio.setMusic('title')
+    this.music('title')
     const hasSave = this.save.cleared.length > 0 || this.save.unlocked > 1
     this.screens.showTitle(hasSave, this.save.cleared.length, STAGES.length)
+    // What the title's buttons open: the help, the select and the newest stage's story, or the prologue. Asked for
+    // before the demo's next stage, so it comes first among the background requests.
+    const next = hasSave ? storyOf(this.newestStage()) : OPENING_STORY
+    const help = fetchArt('help', helpArt())
+    void fetchArt('title', titleArt())
+    void fetchArt('select', selectArt())
+    void fetchShots(next.scene, 0, 1)
+    this.planAhead([
+      () => help.then(() => runAhead(helpUrlSteps())),
+      this.prepare({ screen: 'help' }),
+      this.prepare({ screen: 'select', stages: STAGES, save: this.save }),
+      this.prepare({ screen: 'story', story: next })
+    ])
     this.startDemo()
   }
 
@@ -210,7 +349,8 @@ export class App {
     else this.demoTurn += 1
     this.demoStage = stage
     const upcoming = stageByNo(DEMO_STAGES[this.demoTurn % DEMO_STAGES.length])
-    if (!isWarm(upcoming)) void warmStage(upcoming, undefined, true).catch(() => {})
+    // A task later: listing a stage's art builds its world, which is no work for the task that opens the title.
+    if (!isWarm(upcoming)) setTimeout(() => void warmStage(upcoming, undefined, true).catch(() => {}), 0)
     const reduced = reducedMotion()
     const demo = new PlaySession(
       stage,
@@ -229,19 +369,25 @@ export class App {
   openSelect() {
     this.leavePlay()
     this.screen = 'select'
-    this.audio.setMusic('select')
+    this.music('select')
     this.screens.showSelect(STAGES, this.save)
+    // The first picture of every story the select can open, newest first, and the newest one's screen.
+    for (const stage of [...STAGES].reverse()) if (stage.no <= this.save.unlocked) void fetchShots(stage.no, 0, 1)
+    this.planAhead([this.prepare({ screen: 'story', story: storyOf(this.newestStage()) })])
   }
 
   private openOpening() {
     this.screen = 'story'
     this.storyStage = null
     this.demo = null
-    this.audio.setMusic('story')
+    this.music('story')
     this.renderer.clear()
-    this.screens.showStory({ kicker: 'プロローグ', title: '星のハムハム', pages: OPENING_PAGES, scene: 'opening' })
-    // The first stage is next in line; build its art while the prologue is read.
-    void warmStage(STAGES[0]).catch(() => {})
+    this.screens.showStory(OPENING_STORY)
+    void fetchShots('opening', 1)
+    // The first stage is next in line; build its art while the prologue is read (a task later: listing a stage's
+    // art builds its world).
+    setTimeout(() => void warmStage(STAGES[0]).catch(() => {}), 0)
+    this.planAhead([this.prepare({ screen: 'select', stages: STAGES, save: this.save })])
   }
 
   private openStory(stage: StageDef) {
@@ -249,16 +395,29 @@ export class App {
     this.screen = 'story'
     this.stage = stage
     this.storyStage = stage
-    this.audio.setMusic('story')
-    this.screens.showStory({ kicker: `第${stage.no}話`, title: stage.name, pages: stage.intro, scene: stage.no })
-    // The player reads for a few seconds anyway: build the stage's art meanwhile.
-    void warmStage(stage).catch(() => {})
+    this.music('story')
+    this.screens.showStory(storyOf(stage))
+    // The rest of the story's pictures in order, then what the end of the stage shows.
+    void fetchShots(stage.no, 1)
+    void fetchArt(`result:${stage.no}`, resultArt(stage))
+    void fetchArt('dead', deadArt())
+    // The player reads for a few seconds anyway: build the stage's art meanwhile (a task later: listing a stage's
+    // art builds its world). Once it is built, lay out what play and the stage's end will show.
+    const warm = new Promise<void>((resolve) => setTimeout(() => warmStage(stage).then(resolve, resolve), 0))
+    this.planAhead([
+      () => warm,
+      this.prepare({ screen: 'hud' }),
+      this.prepare({ screen: 'result', stage, last: stage.no >= STAGES.length }),
+      this.prepare({ screen: 'dead', stage })
+    ])
   }
 
   openEnding() {
     this.leavePlay()
     this.screen = 'ending'
-    this.audio.setMusic('ending')
+    this.music('ending')
+    void fetchShots('ending')
+    this.planAhead([])
     const total = Object.values(this.save.best).reduce((sum, value) => sum + value, 0)
     this.screens.showEnding(ENDING_PAGES, [
       `クリア ${this.save.cleared.length}/${STAGES.length}`,
@@ -298,6 +457,9 @@ export class App {
     this.leavePlay()
     this.stage = stage
     this.screen = 'play'
+    this.planAhead([])
+    // The stage starts its own music.
+    window.clearTimeout(this.musicTimer)
     this.screens.showPlay()
     if (this.touch) this.screens.setTouch(true)
     this.session = new PlaySession(stage, {
@@ -343,7 +505,7 @@ export class App {
     const { stage, world } = session
     this.leavePlay()
     this.screen = 'result'
-    this.audio.setMusic('clear')
+    this.music('clear')
     if (!this.save.cleared.includes(stage.no)) this.save.cleared.push(stage.no)
     this.save.unlocked = Math.max(this.save.unlocked, Math.min(STAGES.length, stage.no + 1))
     const best = this.save.best[stage.id]
@@ -362,6 +524,9 @@ export class App {
       damage: session.damage,
       collected: stage.objective === 'collect' ? world.collected : null
     })
+    // Next: the next story (or the ending), or the select.
+    void fetchShots(stage.no >= STAGES.length ? 'ending' : stage.no + 1, 0, 1)
+    this.planAhead([this.prepare({ screen: 'select', stages: STAGES, save: this.save })])
   }
 
   private openDead(session: PlaySession) {
@@ -372,8 +537,9 @@ export class App {
     const goal = trackRatio(world.goalX + TILE / 2, width)
     this.leavePlay()
     this.screen = 'dead'
-    this.audio.setMusic('gameover')
+    this.music('gameover')
     this.screens.showDead({ stage, hero, goal })
+    this.planAhead([this.prepare({ screen: 'select', stages: STAGES, save: this.save })])
   }
 
   /**

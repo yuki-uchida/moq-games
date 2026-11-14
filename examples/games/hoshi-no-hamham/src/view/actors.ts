@@ -7,7 +7,7 @@ import type { Anim } from '../art'
 import type { SimEvent } from '../game/events'
 import { BITE_TIME, INVULN, T, type Boss, type BossState, type Enemy, type World } from '../game/sim'
 import { TILE } from '../game/types'
-import { blit, clip, flashClip, frameIndex } from './bake'
+import { blit, brush, clip, flashClip, frameIndex } from './bake'
 import {
   HARD_LANDING,
   RUN_CONTACT_FRAMES,
@@ -21,7 +21,8 @@ import {
   enemyClip,
   heroClip,
   isSkidding,
-  type ClipChoice
+  type ClipChoice,
+  type EnemySnapshot
 } from './clips'
 import type { FxPool } from './fx'
 import { ENEMY_SPEC, MOM_SPEC, bossSpec, type BossArt } from '../art/contract'
@@ -151,10 +152,26 @@ interface EnemyTimers {
 }
 
 /** Squash/stretch scale factors for a value s in [−MAX, MAX] (s > 0 stretches); volume preserving. */
-export function squashScale(s: number) {
+export function squashScale(s: number, out = { sx: 1, sy: 1 }) {
   const c = Math.max(-MAX_SQUASH, Math.min(MAX_SQUASH, s))
-  return { sx: 1 / (1 + c), sy: 1 + c }
+  out.sx = 1 / (1 + c)
+  out.sy = 1 + c
+  return out
 }
+
+/** What the enemies' clip choice reads, refilled for each enemy drawn. */
+const enemySnapshot: EnemySnapshot = {
+  kind: 'walker',
+  vx: 0,
+  vy: 0,
+  onGround: true,
+  hitFlash: 0,
+  shootTimer: 0,
+  landAge: 99,
+  stillTime: 0,
+  time: 0
+}
+const squash: { sx: number; sy: number } = { sx: 1, sy: 1 }
 
 /** The y of the ground under (x, feetY), looking down at most `maxTiles`; null over a pit. */
 export function groundBelow(world: Pick<World, 'solidAt' | 'tileAt' | 'h'>, x: number, feetY: number, maxTiles = 6) {
@@ -468,7 +485,9 @@ export class ActorsView {
         }
       }
     }
-    this.ghosts = this.ghosts.filter((g) => g.age < g.life)
+    let kept = 0
+    for (const g of this.ghosts) if (g.age < g.life) this.ghosts[kept++] = g
+    this.ghosts.length = kept
     if (this.death) {
       const d = this.death
       d.age += dt
@@ -553,7 +572,7 @@ export class ActorsView {
       const d = this.death
       const choice = this.selectHero()!
       const anim = clip('hero', 'die')
-      if (anim) blit(ctx, anim, choice.t, d.x, this.deathFeet(d), { flip: d.flip, frame: choice.frame })
+      if (anim) blit(ctx, anim, choice.t, d.x, this.deathFeet(d), brush(d.flip, undefined, choice.frame))
       return
     }
     if (p.dead) return
@@ -564,8 +583,8 @@ export class ActorsView {
       this.heroChoice = { name: this.poses.hero!.clip, t: staged.age }
       this.lastRunFrame = -1
       this.drawShadow(ctx, x, y, p.w)
-      const { sx, sy } = squashScale(this.squash)
-      blit(ctx, staged.anim, staged.age, x, y - staged.lift, { flip: p.facing < 0, sx, sy })
+      const { sx, sy } = squashScale(this.squash, squash)
+      blit(ctx, staged.anim, staged.age, x, y - staged.lift, brush(p.facing < 0, undefined, undefined, sx, sy))
       return
     }
     const choice = this.selectHero()!
@@ -576,8 +595,8 @@ export class ActorsView {
     this.drawShadow(ctx, x, y, p.w)
     // Flicker while invulnerable, after the hurt reaction.
     if (p.invuln > 0 && choice.name !== 'hurt' && Math.floor(this.time * 20) % 2 === 0) return
-    const { sx, sy } = squashScale(this.squash)
-    blit(ctx, anim, choice.t, x, y, { flip: p.facing < 0, sx, sy, frame: choice.frame })
+    const { sx, sy } = squashScale(this.squash, squash)
+    blit(ctx, anim, choice.t, x, y, brush(p.facing < 0, undefined, choice.frame, sx, sy))
   }
 
   private runContact(anim: Anim, choice: ClipChoice, x: number, y: number) {
@@ -600,24 +619,24 @@ export class ActorsView {
     for (const g of this.ghosts) {
       if (g.end === 'boom') continue
       const anim = clip(g.sheet, g.clip)
-      if (anim) blit(ctx, anim, g.age, g.x, g.y, { flip: g.flip, alpha: Math.min(1, (g.life - g.age) * 8 + 0.2) })
+      if (anim) blit(ctx, anim, g.age, g.x, g.y, brush(g.flip, Math.min(1, (g.life - g.age) * 8 + 0.2)))
     }
   }
 
   /** The clip a live enemy is drawn with now (without drawing). */
   selectEnemy(enemy: Enemy): ClipChoice {
     const timers = this.enemyTimers.get(enemy.id)
-    return enemyClip({
-      kind: enemy.kind,
-      vx: enemy.vx,
-      vy: enemy.vy,
-      onGround: enemy.onGround,
-      hitFlash: enemy.hitFlash,
-      shootTimer: enemy.shootTimer,
-      landAge: timers?.landAge ?? 99,
-      stillTime: timers?.stillTime ?? 0,
-      time: this.time + enemy.id * 0.13
-    })
+    const snapshot = enemySnapshot
+    snapshot.kind = enemy.kind
+    snapshot.vx = enemy.vx
+    snapshot.vy = enemy.vy
+    snapshot.onGround = enemy.onGround
+    snapshot.hitFlash = enemy.hitFlash
+    snapshot.shootTimer = enemy.shootTimer
+    snapshot.landAge = timers?.landAge ?? 99
+    snapshot.stillTime = timers?.stillTime ?? 0
+    snapshot.time = this.time + enemy.id * 0.13
+    return enemyClip(snapshot)
   }
 
   private drawEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy) {
@@ -628,10 +647,10 @@ export class ActorsView {
     const y = enemy.y + enemy.h
     this.drawShadow(ctx, x, y, enemy.w)
     const flip = enemy.facing < 0
-    blit(ctx, anim, choice.t, x, y, { flip, frame: choice.frame })
+    blit(ctx, anim, choice.t, x, y, brush(flip, undefined, choice.frame))
     if (enemy.hitFlash > 0) {
       const white = flashClip(enemy.kind, choice.name)
-      if (white) blit(ctx, white, choice.t, x, y, { flip, frame: choice.frame, alpha: Math.min(1, enemy.hitFlash * 7) })
+      if (white) blit(ctx, white, choice.t, x, y, brush(flip, Math.min(1, enemy.hitFlash * 7), choice.frame))
     }
   }
 
@@ -643,7 +662,7 @@ export class ActorsView {
     for (const g of this.ghosts) {
       if (g.end !== 'boom') continue
       const anim = clip(g.sheet, g.clip)
-      if (anim) blit(ctx, anim, g.age, g.x, g.y, { flip: g.flip })
+      if (anim) blit(ctx, anim, g.age, g.x, g.y, brush(g.flip))
     }
   }
 
@@ -681,7 +700,7 @@ export class ActorsView {
     const staged = this.activePose('boss', sheet)
     if (staged) {
       this.drawShadow(ctx, centre, y, boss.w * 1.1)
-      blit(ctx, staged.anim, staged.age, centre, y - staged.lift, { flip })
+      blit(ctx, staged.anim, staged.age, centre, y - staged.lift, brush(flip))
       return
     }
     const anim = clip(sheet, choice.name)
@@ -692,17 +711,15 @@ export class ActorsView {
       this.reducedMotion || this.bossHitAt === null ? 0 : bossJolt(this.time - this.bossHitAt, this.bossHitDir)
     const x = centre + jolt
     if (!this.held && !this.reducedMotion)
-      for (const [i, age] of TRAIL_AGES.entries())
+      for (let i = 0; i < TRAIL_AGES.length; i++) {
+        const age = TRAIL_AGES[i]
         if (this.trail.has(age))
-          blit(ctx, anim, choice.t, this.trail.x(age), this.trail.y(age), {
-            flip,
-            frame: choice.frame,
-            alpha: TRAIL_ALPHAS[i]
-          })
-    blit(ctx, anim, choice.t, x, y, { flip, frame: choice.frame })
+          blit(ctx, anim, choice.t, this.trail.x(age), this.trail.y(age), brush(flip, TRAIL_ALPHAS[i], choice.frame))
+      }
+    blit(ctx, anim, choice.t, x, y, brush(flip, undefined, choice.frame))
     if (boss.hitFlash > 0) {
       const white = flashClip(sheet, choice.name)
-      if (white) blit(ctx, white, choice.t, x, y, { flip, frame: choice.frame, alpha: Math.min(1, boss.hitFlash * 7) })
+      if (white) blit(ctx, white, choice.t, x, y, brush(flip, Math.min(1, boss.hitFlash * 7), choice.frame))
     }
     if (boss.state === 'stunned' || boss.state === 'tired') {
       const dizzy = clip('fx', 'dizzy')

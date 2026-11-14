@@ -60,7 +60,7 @@ type RequestIdle = (run: (deadline: IdleDeadline) => void, options: { timeout: n
  */
 export type Idle = (run: (room: () => number) => void, playing: () => boolean) => void
 
-const whenIdle: Idle = (run, playing) => {
+export const whenIdle: Idle = (run, playing) => {
   const g = globalThis as {
     requestIdleCallback?: RequestIdle
     requestAnimationFrame?: (callback: () => void) => unknown

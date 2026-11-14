@@ -41,9 +41,22 @@ const FILL_RATE = 12
 const TRAIL_HOLD = 0.45
 const TRAIL_SPEED = 0.7
 
-/** Advances the boss bar by `dt` seconds toward `target`. Returns true on the step the target dropped (a hit). */
+/**
+ * The most a chasing boss's bar drains by itself, as a share of the bar per second (her stamina falls 4 a second out
+ * of 100, 7 when the hero is close).
+ */
+export const BOSS_DRAIN_PER_SECOND = 0.07
+
+/**
+ * How far the target must fall in one step, beyond the slow drain, to count as a hit. A bite takes 9 % of a stamina
+ * bar or more at once and a point of a boss's hit points is 1/18 of the bar at the least (5.5 %), so a drop of 3 %
+ * is a hit and the drain, which is well under 1 % in a frame, never is.
+ */
+export const BOSS_HIT_DROP = 0.03
+
+/** Advances the boss bar by `dt` seconds toward `target`. Returns true on the step the target dropped suddenly (a hit). */
 export function stepBossBar(bar: BossBarState, target: number, dt: number): boolean {
-  const hit = target < bar.target - 1e-6
+  const hit = bar.target - target > BOSS_DRAIN_PER_SECOND * dt + BOSS_HIT_DROP
   if (hit) bar.hold = TRAIL_HOLD
   bar.target = target
   // The fill eases toward the target (exponential, frame-rate independent); it never overshoots.

@@ -7,6 +7,24 @@ vi.mock('../src/view/bake', () => ({
   clip: (sheet: string, name: string) => ({ id: `${sheet}#${name}` }),
   flashClip: () => undefined,
   frameIndex: () => 0,
+  // The options of a blit, as the real `brush` hands them over (there in one shared object).
+  brush: (
+    flip?: boolean,
+    alpha?: number,
+    frame?: number,
+    sx?: number,
+    sy?: number,
+    angle?: number,
+    pivotX?: number
+  ) => ({
+    flip,
+    alpha,
+    frame,
+    sx,
+    sy,
+    angle,
+    pivotX
+  }),
   blit: (
     _ctx: unknown,
     anim: { id: string },

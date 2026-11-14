@@ -132,15 +132,15 @@ export class StageView {
   }
 
   /** The drawn view position (snapped to 1/k). */
-  viewPosition() {
-    return this.camera.view(this.renderer.k)
+  viewPosition(out?: { x: number; y: number }) {
+    return this.camera.view(this.renderer.k, out)
   }
 
   draw() {
     const r = this.renderer
     const ctx = r.ctx
-    const v = this.viewPosition()
-    this.lastView = v
+    const v = this.viewPosition(this.lastView)
+    const k = r.k
     r.clear()
     r.screen()
     this.backdrop.drawBack(ctx, v.x, v.y)
@@ -159,7 +159,7 @@ export class StageView {
     this.fx.draw(ctx, 'front')
     r.screen()
     this.backdrop.drawFront(ctx, v.x, v.y)
-    this.overlay.drawPopups(ctx, v.x, v.y)
+    this.overlay.drawPopups(ctx, v.x, v.y, k)
     this.overlay.drawScreen(ctx)
   }
 

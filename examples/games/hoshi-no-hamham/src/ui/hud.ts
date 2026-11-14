@@ -23,6 +23,7 @@ import {
 } from './hud-model'
 import { clipRaster, drawRaster, makeSprite, plateUrl, rasterUrl } from './hud-sprites'
 import { Deck } from './deck'
+import { removeClass, replay } from './replay'
 import { buildTouchControls } from './touch'
 
 /** What staging (the director) may show on the HUD. */
@@ -52,6 +53,8 @@ interface HeartSlot {
   el: HTMLCanvasElement
   state: HeartState
   t: number
+  /** The clip and frame on show, so a frame that looks the same is not drawn again. */
+  shown: string
 }
 
 const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -63,12 +66,14 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, te
   return node
 }
 
-/** Restarts a CSS animation class on an element. Reading a computed style flushes styles only, never a layout. */
-function replay(node: HTMLElement, className: string) {
-  node.classList.remove(className)
-  void getComputedStyle(node).animationName
-  node.classList.add(className)
-}
+/** The boss bar's fill and trail are drawn in steps of this fraction of the bar (finer than a pixel of it). */
+const BAR_STEPS = 512
+
+/** The bite gauge's steps before the tooth has been measured. */
+const BITE_STEPS = 64
+
+/** `value` (0..1) on a grid of `steps`; 0 and 1 stay exactly 0 and 1. */
+const snap = (value: number, steps: number) => Math.round(value * steps) / steps
 
 export class Hud implements HudApi {
   private root = document.querySelector<HTMLElement>('#hud')!
@@ -109,6 +114,13 @@ export class Hud implements HudApi {
   private bossShown = false
   private bossFaceArt = ''
   private biteReady = true
+  /** The gauge's fill as last written (NaN: nothing written yet) and its steps (one per device pixel of its height). */
+  private biteFill = Number.NaN
+  private biteSteps = BITE_STEPS
+  /** Last written bar fills, and whether the bar carries `is-stamina` (null: not set yet). */
+  private fillShown = 1
+  private trailShown = 1
+  private staminaShown: boolean | null = null
   private timers: { left: number; run: () => void }[] = []
   private observer: ResizeObserver | null = null
   private right: HTMLElement
@@ -271,6 +283,9 @@ export class Hud implements HudApi {
     this.root.style.setProperty('--s', String(s))
     this.root.style.setProperty('--bk', s >= 2 ? '3' : '2')
     this.root.classList.toggle('is-narrow', width < 520)
+    const tooth = this.biteLit.getBoundingClientRect().height
+    if (tooth > 0) this.biteSteps = Math.max(1, Math.round(tooth * (window.devicePixelRatio || 1)))
+    this.biteFill = Number.NaN
     this.placeButtons()
   }
 
@@ -298,8 +313,8 @@ export class Hud implements HudApi {
     this.timers = []
     this.bossShown = false
     this.bossBar.hidden = true
-    this.bossBar.classList.remove('is-breaking', 'is-hit')
-    for (const node of [this.banner, this.call, this.plate, this.toast]) node.classList.remove('is-show')
+    removeClass(this.bossBar, 'is-breaking', 'is-hit')
+    for (const node of [this.banner, this.call, this.plate, this.toast]) removeClass(node, 'is-show')
     this.root.classList.remove('is-cinematic', 'is-dark')
   }
 
@@ -312,6 +327,7 @@ export class Hud implements HudApi {
     this.lastCollected = -1
     this.bossBarState = null
     this.biteReady = true
+    this.biteFill = Number.NaN
     this.root.classList.remove('is-dark')
     this.tagNo.textContent = String(stage.no)
     this.tagName.textContent = stage.name
@@ -332,7 +348,7 @@ export class Hud implements HudApi {
     this.heartSlots = []
     this.heartsEl.replaceChildren()
     for (let i = 0; i < count; i++) {
-      const slot: HeartSlot = { el: makeSprite('heart'), state: 'empty', t: 0 }
+      const slot: HeartSlot = { el: makeSprite('heart'), state: 'empty', t: 0, shown: '' }
       this.heartSlots.push(slot)
       this.heartsEl.append(slot.el)
     }
@@ -348,8 +364,11 @@ export class Hud implements HudApi {
             ? 'heartGain'
             : 'heartLose'
     const anim = sheet('ui')[clipName]
-    const frame = anim.frames[slot.state === 'gain' || slot.state === 'lose' ? frameAt(anim, slot.t) : 0]
-    drawRaster(slot.el, frame)
+    const index = slot.state === 'gain' || slot.state === 'lose' ? frameAt(anim, slot.t) : 0
+    const shown = `${clipName}:${index}`
+    if (shown === slot.shown) return
+    slot.shown = shown
+    drawRaster(slot.el, anim.frames[index])
     slot.el.dataset.sprite = clipName
     slot.el.classList.toggle('is-full', settleHeart(slot.state) === 'full')
   }
@@ -395,7 +414,12 @@ export class Hud implements HudApi {
     }
 
     const bite = Math.max(0, Math.min(1, 1 - p.biteCooldown / BITE_COOLDOWN))
-    this.biteLit.style.setProperty('--fill', bite.toFixed(3))
+    // Written only when the lit part moves by a device pixel; a full gauge is written once, when it fills.
+    const lit = bite >= 1 ? 1 : snap(bite, this.biteSteps)
+    if (lit !== this.biteFill) {
+      this.biteFill = lit
+      this.biteLit.style.setProperty('--fill', String(lit))
+    }
     const ready = bite >= 1
     if (ready !== this.biteReady) {
       this.biteEl.classList.toggle('is-ready', ready)
@@ -412,11 +436,23 @@ export class Hud implements HudApi {
       }
       if (this.bossShown) {
         const target = boss.def.stamina ? bossRatio(boss.stamina, boss.maxStamina) : bossRatio(boss.hp, boss.maxHp)
-        this.bossBar.classList.toggle('is-stamina', Boolean(boss.def.stamina))
+        const stamina = Boolean(boss.def.stamina)
+        if (stamina !== this.staminaShown) {
+          this.staminaShown = stamina
+          this.bossBar.classList.toggle('is-stamina', stamina)
+        }
         if (!this.bossBarState) this.bossBarState = newBossBar(target)
         else if (stepBossBar(this.bossBarState, target, dt) && !reducedMotion()) replay(this.bossBar, 'is-hit')
-        this.bossFill.style.transform = `scaleX(${this.bossBarState.fill.toFixed(4)})`
-        this.bossTrail.style.transform = `scaleX(${this.bossBarState.trail.toFixed(4)})`
+        const fill = snap(this.bossBarState.fill, BAR_STEPS)
+        const trail = snap(this.bossBarState.trail, BAR_STEPS)
+        if (fill !== this.fillShown) {
+          this.fillShown = fill
+          this.bossFill.style.transform = `scaleX(${fill})`
+        }
+        if (trail !== this.trailShown) {
+          this.trailShown = trail
+          this.bossTrail.style.transform = `scaleX(${trail})`
+        }
       }
     }
 
@@ -436,17 +472,19 @@ export class Hud implements HudApi {
     this.bossBarState = null
     this.bossShown = true
     this.timers = this.timers.filter((timer) => timer.run !== this.finishBreak)
-    this.bossBar.classList.remove('is-breaking', 'is-hit')
+    removeClass(this.bossBar, 'is-breaking', 'is-hit')
     this.bossBar.hidden = false
     replay(this.bossBar, 'is-in')
     // A fresh bar must not flash a stale fill for one frame.
+    this.fillShown = 1
+    this.trailShown = 1
     this.bossFill.style.transform = 'scaleX(1)'
     this.bossTrail.style.transform = 'scaleX(1)'
   }
 
   private finishBreak = () => {
     this.bossBar.hidden = true
-    this.bossBar.classList.remove('is-breaking')
+    removeClass(this.bossBar, 'is-breaking')
   }
 
   hideBoss() {
@@ -468,14 +506,14 @@ export class Hud implements HudApi {
     this.bannerSub.hidden = !sub
     this.drawEmblem(this.bannerEmblem)
     this.banner.style.setProperty('--dur', `${Math.max(0.6, seconds)}s`)
-    this.call.classList.remove('is-show')
+    removeClass(this.call, 'is-show')
     replay(this.banner, 'is-show')
   }
 
   showToast(text: string) {
     // In portrait the stage is small: the toast goes to the deck's hint line instead.
     if (this.deck.active) {
-      this.toast.classList.remove('is-show')
+      removeClass(this.toast, 'is-show')
       this.deck.toast(text)
       return
     }
@@ -487,7 +525,7 @@ export class Hud implements HudApi {
   showCall(text: string, tone: 'gold' | 'pink' | 'red' = 'gold') {
     this.call.textContent = text
     this.call.dataset.tone = tone
-    this.banner.classList.remove('is-show')
+    removeClass(this.banner, 'is-show')
     replay(this.call, 'is-show')
   }
 
@@ -507,7 +545,7 @@ export class Hud implements HudApi {
 
   speak(text: string, who: string, face: string, seconds: number, tone: 'say' | 'yell' = 'say'): boolean {
     if (!this.deck.active || this.root.hidden) return false
-    this.toast.classList.remove('is-show')
+    removeClass(this.toast, 'is-show')
     this.deck.speak(text, who, face, seconds, tone)
     return true
   }
