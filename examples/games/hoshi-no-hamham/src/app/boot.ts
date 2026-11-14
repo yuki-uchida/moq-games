@@ -58,6 +58,7 @@ export async function boot(canvas: HTMLCanvasElement): Promise<App> {
       APP_SHEETS,
       clipSteps,
       mark,
+      overlayTextSteps,
       runSteps,
       warmStage,
       yieldToBrowser: slice,
@@ -65,21 +66,29 @@ export async function boot(canvas: HTMLCanvasElement): Promise<App> {
     } = await import('./warm')
     const { artSource } = await import('../art/remote')
     const { stageByNo } = await import('../game/stages')
-    const { App, DEMO_STAGES } = await import('./app')
+    const { App, appUrlSteps, DEMO_STAGES } = await import('./app')
     setProgress(LOAD_SHARE)
     await yieldToBrowser()
     // The workers paint from here on; the page adopts and bakes.
     const source = artSource()
-    // The demo behind the title plays DEMO_STAGES[0] first: that stage's art is what the title needs.
+    // The demo behind the title plays DEMO_STAGES[0] first: that stage's art is what the title needs. Meanwhile, one
+    // size per slice, the overlay's fonts: the stage's own text slice then only finds them.
+    const fonts = runSteps(overlayTextSteps(), undefined, slice, SLICE_BUDGET_MS)
     await warmStage(stageByNo(DEMO_STAGES[0]), (fraction) =>
       setProgress(LOAD_SHARE + fraction * (ART_SHARE - LOAD_SHARE))
     )
-    // And what the App draws as soon as it is built, beyond the stage.
+    await fonts
+    // And what the App draws as soon as it is built, beyond the stage; then, one piece per slice, the images the App
+    // shows (each a PNG encoded on the page), so that building it only looks them up.
     await runSteps(clipSteps(APP_SHEETS), undefined, slice, SLICE_BUDGET_MS, () => performance.now(), source)
+    await runSteps(appUrlSteps(), undefined, slice, SLICE_BUDGET_MS)
     mark('hamham:app-start')
     const app = new App(canvas)
     mark('hamham:app-built')
     setProgress(0.95)
+    // The title and its demo start in a task of their own.
+    await yieldToBrowser()
+    app.start()
     await app.firstFrame
     mark('hamham:first-frame')
     setProgress(1)

@@ -10,12 +10,13 @@
  * together and remembers a finished or running warm-up per stage.
  */
 import { backdrop, backdropReady, clipReady, decor, flashReady, hasTile, sheet, tile, type ThemeId } from '../art'
+import type { TileQuery } from '../art/contract'
 import { themedProp } from '../art/contract'
 import { adopt, sharedArtSource, type ArtHurry, type ArtReply, type ArtRequest, type ArtSource } from '../art/remote'
 import { TILE, World } from '../game/sim'
 import type { StageDef } from '../game/types'
 import { bake, bakeBackdrop, warmClip } from '../view/bake'
-import { warmOverlayText } from '../view/overlay'
+import { POPUP_TEXTS, ROUNDED_FONT, STAGED_LINES, warmOverlayText } from '../view/overlay'
 import { stageTileQueries } from '../view/terrain'
 
 /** What a stage draws: sheet ids, which of them also need hit-flash silhouettes, and the world's backdrop. */
@@ -111,20 +112,77 @@ export const TILES_PER_STEP = 32
 /** A batch of tiles costs about as much as a few small clips (a dirt tile 4–5 ms, a solid one about 1 ms). */
 const TILES_WEIGHT = 6
 
+/** One slice for one clip of a sheet (with its hit-flash silhouettes when `flash` is set). */
+export function clipStep(id: string, name: string, flash = false): WarmStep {
+  return {
+    label: `${id}.${name}`,
+    weight: clipWeight(id),
+    run: () => void warmClip(id, name, flash),
+    request: { kind: 'clip', sheet: id, clip: name, flash },
+    ready: () => clipReady(id, name) && (!flash || flashReady(id, name))
+  }
+}
+
 /** One slice per clip of the sheets (with hit-flash silhouettes for those in `flash`). */
 export function clipSteps(sheets: readonly string[], flash: readonly string[] = []): WarmStep[] {
-  return sheets.flatMap((id) =>
-    Object.keys(sheet(id)).map((name) => {
-      const withFlash = flash.includes(id)
-      return {
-        label: `${id}.${name}`,
-        weight: clipWeight(id),
-        run: () => void warmClip(id, name, withFlash),
-        request: { kind: 'clip', sheet: id, clip: name, flash: withFlash } as const,
-        ready: () => clipReady(id, name) && (!withFlash || flashReady(id, name))
-      }
+  return sheets.flatMap((id) => Object.keys(sheet(id)).map((name) => clipStep(id, name, flash.includes(id))))
+}
+
+/** One slice for a world's backdrop. */
+export function backdropStep(theme: ThemeId): WarmStep {
+  return {
+    label: `backdrop:${theme}`,
+    weight: 3,
+    run: () => void bakeBackdrop(backdrop(theme)),
+    request: { kind: 'backdrop', theme },
+    ready: () => backdropReady(theme)
+  }
+}
+
+/** Slices of up to `TILES_PER_STEP` terrain tiles each, labelled `${prefix}:0`, `${prefix}:1`, … */
+export function tileSteps(queries: readonly TileQuery[], prefix: string): WarmStep[] {
+  const steps: WarmStep[] = []
+  for (let from = 0; from < queries.length; from += TILES_PER_STEP) {
+    const batch = queries.slice(from, from + TILES_PER_STEP)
+    steps.push({
+      label: `${prefix}:${from / TILES_PER_STEP}`,
+      weight: TILES_WEIGHT,
+      run: () => {
+        for (const q of batch) bake(tile(q))
+      },
+      request: { kind: 'tiles', queries: batch },
+      ready: () => batch.every(hasTile)
     })
-  )
+  }
+  return steps
+}
+
+/** The sizes the overlay draws its popups and its speech bubbles at (see `warmOverlayText`). */
+const POPUP_SIZES = [9, 10, 11, 12, 13, 14, 15]
+const BUBBLE_SIZES = [13, 15]
+
+/**
+ * The overlay's fonts and glyphs, resolved one size per slice: the first measurement of a font is what costs (a
+ * tenth of a second on a slow phone for all of them at once), and a stage's own `text` slice is cheap afterwards.
+ */
+export function overlayTextSteps(): WarmStep[] {
+  let ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null | undefined
+  const measure = (size: number, texts: readonly string[]) => {
+    if (ctx === undefined) {
+      try {
+        ctx = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(8, 8).getContext('2d') : null
+      } catch {
+        ctx = null
+      }
+    }
+    if (!ctx) return
+    ctx.font = `800 ${size}px ${ROUNDED_FONT}`
+    for (const text of texts) ctx.measureText(text)
+  }
+  return [
+    ...POPUP_SIZES.map((size) => ({ label: `font:popup:${size}`, weight: 1, run: () => measure(size, POPUP_TEXTS) })),
+    ...BUBBLE_SIZES.map((size) => ({ label: `font:bubble:${size}`, weight: 1, run: () => measure(size, STAGED_LINES) }))
+  ]
 }
 
 /**
@@ -135,13 +193,7 @@ export function stageWarmSteps(stage: StageDef): WarmStep[] {
   const art = stageArt(stage)
   const theme = art.backdrop
   const steps = clipSteps(art.sheets, art.flash)
-  steps.push({
-    label: `backdrop:${theme}`,
-    weight: 3,
-    run: () => void bakeBackdrop(backdrop(theme)),
-    request: { kind: 'backdrop', theme },
-    ready: () => backdropReady(theme)
-  })
+  steps.push(backdropStep(theme))
   steps.push({
     label: `decor:${theme}`,
     weight: 1,
@@ -157,19 +209,7 @@ export function stageWarmSteps(stage: StageDef): WarmStep[] {
     run: () => void warmOverlayText()
   })
   const world = new World(stage, { seed: stage.no * 7919 + 101 })
-  const queries = stageTileQueries(world, Math.floor(world.player.x / TILE))
-  for (let from = 0; from < queries.length; from += TILES_PER_STEP) {
-    const batch = queries.slice(from, from + TILES_PER_STEP)
-    steps.push({
-      label: `tiles:${theme}:${from / TILES_PER_STEP}`,
-      weight: TILES_WEIGHT,
-      run: () => {
-        for (const q of batch) bake(tile(q))
-      },
-      request: { kind: 'tiles', queries: batch },
-      ready: () => batch.every(hasTile)
-    })
-  }
+  steps.push(...tileSteps(stageTileQueries(world, Math.floor(world.player.x / TILE)), `tiles:${theme}`))
   return steps
 }
 
@@ -211,7 +251,8 @@ interface Asked {
  *
  * With a `source`, every request goes out at once (the workers work through them meanwhile) and each answer is
  * adopted and baked here in order as it arrives. A step whose art is already here asks for nothing; one whose
- * request fails is painted here by its `run`.
+ * request fails is painted here by its `run`. `yieldFirst` sends the requests and then hands the browser a turn
+ * before the first slice, so the caller's task bakes and paints nothing.
  */
 export async function runSteps(
   steps: readonly WarmStep[],
@@ -220,7 +261,8 @@ export async function runSteps(
   budgetMs = SLICE_BUDGET_MS,
   now: () => number = () => performance.now(),
   source?: ArtSource,
-  hurry?: ArtHurry
+  hurry?: ArtHurry,
+  yieldFirst = false
 ): Promise<void> {
   const total = steps.reduce((sum, step) => sum + step.weight, 0) || 1
   const asked = steps.map((step): Asked | undefined => {
@@ -230,6 +272,7 @@ export async function runSteps(
     entry.promise.then(settle, settle)
     return entry
   })
+  if (yieldFirst) await yielder()
   let done = 0
   let sliceStart = now()
   onProgress?.(0)

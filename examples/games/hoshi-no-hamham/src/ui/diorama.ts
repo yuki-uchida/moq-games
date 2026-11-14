@@ -4,21 +4,34 @@
  * logical picture through one whole-number transform, smoothing off. The picture is the part of the scene that
  * suits the canvas box's shape (`frameFor`, story-frame.ts): the classic `SCENE_W × SCENE_H` at 2:1, taller and
  * narrower around the characters on an upright phone, so the backing store always has the box's aspect.
+ *
+ * A shot is drawn only once its art is here (see `shotArt`): the app asks the art workers for it ahead of time,
+ * and a shot whose art is still on its way keeps the picture before it (the night colour for a first shot) and fades
+ * in when it arrives. Nothing is painted on the page.
  */
 import { tile, type ThemeId } from '../art'
-import type { Neighbour } from '../art/contract'
+import { whenArt } from '../app/art-fetch'
 import { BackdropView } from '../view/backdrop'
 import { bake, blit, clip } from '../view/bake'
 import { backingScale } from './rules'
 import { CLASSIC_FRAME, frameFor, type Frame } from './story-frame'
-import { GROUND, SCENE_H, SCENE_W, type Figure, type Shot } from './story-scenes'
+import { GROUND, groundTiles, SCENE_H, SCENE_W, shotArt, type Figure, type Shot } from './story-scenes'
 
 /** Where the game's backdrops expect the main ground (view pixels), lined up with the scene's ground row. */
 const BACKDROP_GROUND = 296
-/** Top of a solid tile with open sky above and ground on both sides. */
-const TOP: readonly Neighbour[] = ['empty', 'empty', 'solid', 'solid', 'solid', 'solid', 'solid', 'empty']
 /** A shot change fades through the night colour for this long. */
 const CUT = 0.28
+const NIGHT = '#120a26'
+
+/** Shots whose art has been seen to be here (it stays: the registry never drops what it adopted). */
+const readyShots = new WeakSet<Shot>()
+const shotKeys = new WeakMap<Shot, string>()
+let shotCount = 0
+const keyOf = (shot: Shot) => {
+  let key = shotKeys.get(shot)
+  if (!key) shotKeys.set(shot, (key = `shot:${(shotCount += 1)}`))
+  return key
+}
 
 export class Diorama {
   private shot: Shot | null = null
@@ -34,6 +47,10 @@ export class Diorama {
   /** The part of the scene on the canvas now (scene pixels). */
   private view: Frame = { ...CLASSIC_FRAME }
   private observer: ResizeObserver | null = null
+  /** The shot on the canvas now (null: the canvas holds no picture yet, or was cleared by a resize). */
+  private shown: Shot | null = null
+  /** Shots whose art this diorama is waiting for. */
+  private waiting = new WeakSet<Shot>()
 
   /**
    * `fit` draws the part of the scene that suits the box's shape; without it the canvas always holds the classic
@@ -73,6 +90,8 @@ export class Diorama {
     this.canvas.height = view.h * k
     // Tools and browser tests read the chosen frame here.
     this.canvas.dataset.frame = `${view.x} ${view.y} ${view.w} ${view.h}`
+    // A new backing store is blank.
+    this.shown = null
     this.draw()
   }
 
@@ -118,6 +137,28 @@ export class Diorama {
     return view
   }
 
+  /**
+   * True when the shot's art is here. Otherwise it is asked for (once per shot) and the shot fades in when it
+   * arrives, as after a cut.
+   */
+  private ready(shot: Shot): boolean {
+    if (readyShots.has(shot)) return true
+    if (this.waiting.has(shot)) return false
+    this.waiting.add(shot)
+    const now = whenArt(keyOf(shot), shotArt(shot), () => {
+      this.waiting.delete(shot)
+      readyShots.add(shot)
+      if (this.shot !== shot) return
+      this.since = 0
+      this.draw()
+    })
+    if (now) {
+      this.waiting.delete(shot)
+      readyShots.add(shot)
+    }
+    return now
+  }
+
   /** Draws the current picture. */
   draw() {
     const shot = this.shot
@@ -127,11 +168,20 @@ export class Diorama {
     const { x, y, w, h } = this.view
     ctx.setTransform(this.k, 0, 0, this.k, -x * this.k, -y * this.k)
     ctx.imageSmoothingEnabled = false
+    if (!this.ready(shot)) {
+      // Keep the picture before it; a blank canvas shows the night colour until the art arrives.
+      if (!this.shown) {
+        ctx.fillStyle = NIGHT
+        ctx.fillRect(x, y, w, h)
+      }
+      return
+    }
     this.paint(ctx, shot)
+    this.shown = shot
     if (this.since < CUT && !this.reducedMotion()) {
       // Fade in from the night colour after a cut (it also hides the frame changing with the shot).
       ctx.globalAlpha = 1 - this.since / CUT
-      ctx.fillStyle = '#120a26'
+      ctx.fillStyle = NIGHT
       ctx.fillRect(x, y, w, h)
       ctx.globalAlpha = 1
     }
@@ -146,11 +196,7 @@ export class Diorama {
     view.drawBack(ctx, scroll, BACKDROP_GROUND)
     ctx.restore()
     // The ground strip, under the whole width of any frame.
-    for (let i = 0; i * 64 < SCENE_W + 64; i++) {
-      const tx = i + Math.floor(scroll / 64)
-      const image = tile({ theme: shot.theme, kind: 'solid', around: TOP, tx, ty: 9 })
-      ctx.drawImage(bake(image), Math.round(i * 64 - (scroll % 64)), GROUND)
-    }
+    groundTiles(shot).forEach((q, i) => ctx.drawImage(bake(tile(q)), Math.round(i * 64 - (scroll % 64)), GROUND))
     const still = this.reducedMotion()
     const figures = [...shot.figures.filter((f) => !f.front), ...shot.figures.filter((f) => f.front)]
     for (const figure of figures) this.drawFigure(ctx, figure, still)

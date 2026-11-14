@@ -5,14 +5,15 @@
 import { frameAt, sheet } from '../art'
 import type { Raster } from '../art/raster'
 import { bake } from '../view/bake'
+import { rasterDataUrl } from './pixel'
 
 const urls = new WeakMap<Raster, string>()
 
-/** The raster as a `url(...)` value for CSS. */
+/** The raster as a `url(...)` value for CSS (the PNG is made once per raster, shared with the screens' sprites). */
 export function rasterUrl(raster: Raster): string {
   let url = urls.get(raster)
   if (!url) {
-    url = `url(${bake(raster).toDataURL()})`
+    url = `url(${rasterDataUrl(raster)})`
     urls.set(raster, url)
   }
   return url
@@ -69,6 +70,21 @@ const PLATES = {
 export type PlateName = keyof typeof PLATES
 
 const plateUrls = new Map<string, string>()
+
+/**
+ * The plates the HUD and the touch controls draw (`hud.ts`, `touch.ts`): made ahead by the boot, one per slice,
+ * so that building the HUD only looks them up. A plate missing here is still made when it is first asked for.
+ */
+export const HUD_PLATES: readonly (readonly [PlateName, number, 'disc' | 'square'])[] = [
+  ['night', 22, 'square'],
+  ['nightDown', 22, 'square'],
+  ['pad', 22, 'disc'],
+  ['padDown', 22, 'disc'],
+  ['jump', 22, 'disc'],
+  ['jumpDown', 22, 'disc'],
+  ['bite', 26, 'disc'],
+  ['biteDown', 26, 'disc']
+]
 
 /** A pixel plate (rounded square or disc) of `n`×`n` art pixels as a CSS `url(...)`. */
 export function plateUrl(name: PlateName, n: number, shape: 'disc' | 'square'): string {

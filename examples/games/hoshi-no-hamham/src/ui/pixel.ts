@@ -1,27 +1,43 @@
 /**
  * Sprites for the DOM: sheet frames as data URLs and <img> elements scaled by whole numbers (CSS
  * `image-rendering: pixelated`), animated sprite canvases, and the nine-slice `panel` / `paper` borders.
+ *
+ * Nothing here paints art: a sprite whose clip is not on the page yet is built as an empty frame of the right size,
+ * the art is asked for (see `whenArt`) and the frame is filled in when it arrives. The app asks for every screen's
+ * art ahead of time, so normally the art is already here. A data URL is a PNG encoded on the page: `prepareUrl`
+ * makes them ahead, in the slices that adopt the art, and the screens only look them up.
  */
-import { anchorOf, frameAt, sheet, type Anim } from '../art'
+import { anchorOf, clipReady, frameAt, hasTile, sheet, tile, type Anim } from '../art'
+import { allSheetSpecs, type AnimSpec, type TileQuery } from '../art/contract'
 import type { Raster } from '../art/raster'
+import { defaultAnchor } from '../art/sheet'
+import { whenArt } from '../app/art-fetch'
 import { bake } from '../view/bake'
 import { nineSlice } from './rules'
 
 const urls = new Map<string, string>()
+const rasterUrls = new WeakMap<Raster, string>()
+
+/** The raster as a PNG data URL (made once per raster, shared with the HUD's sprites). */
+export function rasterDataUrl(r: Raster): string {
+  let url = rasterUrls.get(r)
+  if (!url) {
+    url = bake(r).toDataURL()
+    rasterUrls.set(r, url)
+  }
+  return url
+}
 
 function rasterUrl(key: string, r: Raster, crop?: readonly [number, number, number, number]): string {
+  if (!crop) return rasterDataUrl(r)
   const cached = urls.get(key)
   if (cached) return cached
-  const source = bake(r)
-  let url: string
-  if (crop) {
-    const [x, y, w, h] = crop
-    const canvas = document.createElement('canvas')
-    canvas.width = w
-    canvas.height = h
-    canvas.getContext('2d')!.drawImage(source, x, y, w, h, 0, 0, w, h)
-    url = canvas.toDataURL()
-  } else url = source.toDataURL()
+  const [x, y, w, h] = crop
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  canvas.getContext('2d')!.drawImage(bake(r), x, y, w, h, 0, 0, w, h)
+  const url = canvas.toDataURL()
   urls.set(key, url)
   return url
 }
@@ -32,11 +48,34 @@ export function anim(id: string, clip: string): Anim {
   return found
 }
 
+let specs: Record<string, Record<string, AnimSpec>> | null = null
+/** What the art contract says about a clip (its size and anchor), known before the clip is drawn. */
+const specOf = (id: string, clip: string): AnimSpec | undefined => (specs ??= allSheetSpecs())[id]?.[clip]
+
+/** Calls `fill` now when the clip is here, else once it has arrived. */
+function withClip(id: string, clip: string, fill: () => void) {
+  if (whenArt(`clip:${id}/${clip}`, { clips: [{ sheet: id, clip }], tiles: [], backdrops: [] }, fill)) fill()
+}
+
+const cropKey = (id: string, clip: string, f: number, crop: readonly number[]) => `${id}/${clip}/${f}/${crop.join(',')}`
+
 /** A frame of a sheet as a PNG data URL at 1×. */
 export function spriteUrl(id: string, clip: string, frame = 0): string {
   const a = anim(id, clip)
   const f = Math.max(0, Math.min(a.frames.length - 1, frame))
-  return rasterUrl(`${id}/${clip}/${f}`, a.frames[f])
+  return rasterDataUrl(a.frames[f])
+}
+
+/**
+ * Makes the data URL of a frame (or of part of it) ahead of time, if its clip is here; false when it is not (the
+ * sprite then makes it once the art has arrived).
+ */
+export function prepareUrl(id: string, clip: string, frame = 0, crop?: readonly [number, number, number, number]) {
+  if (!clipReady(id, clip)) return false
+  const a = anim(id, clip)
+  const f = Math.max(0, Math.min(a.frames.length - 1, frame))
+  rasterUrl(crop ? cropKey(id, clip, f, crop) : '', a.frames[f], crop)
+  return true
 }
 
 export interface SpriteOptions {
@@ -54,35 +93,62 @@ export interface SpriteOptions {
  * and breakpoint, default `scale`), so sprites always land on whole-number scales.
  */
 export function spriteImg(id: string, clip: string, options: SpriteOptions = {}): HTMLImageElement {
-  const a = anim(id, clip)
-  const f = Math.max(0, Math.min(a.frames.length - 1, options.frame ?? 0))
-  const r = a.frames[f]
   const crop = options.crop
   const img = document.createElement('img')
-  img.src = crop ? rasterUrl(`${id}/${clip}/${f}/${crop.join(',')}`, r, crop) : spriteUrl(id, clip, f)
   img.alt = options.alt ?? ''
   if (!options.alt) img.setAttribute('aria-hidden', 'true')
   img.decoding = 'sync'
   img.draggable = false
   img.className = `px ${options.className ?? ''}`.trim()
-  img.style.setProperty('--w', String(crop ? crop[2] : r.w))
-  img.style.setProperty('--h', String(crop ? crop[3] : r.h))
+  const size = (w: number, h: number) => {
+    img.style.setProperty('--w', String(crop ? crop[2] : w))
+    img.style.setProperty('--h', String(crop ? crop[3] : h))
+  }
+  const fill = () => {
+    const a = anim(id, clip)
+    const f = Math.max(0, Math.min(a.frames.length - 1, options.frame ?? 0))
+    const r = a.frames[f]
+    img.src = crop ? rasterUrl(cropKey(id, clip, f, crop), r, crop) : rasterDataUrl(r)
+    size(r.w, r.h)
+  }
+  if (clipReady(id, clip)) fill()
+  else {
+    // An empty frame of the contract's size until the art arrives.
+    const spec = specOf(id, clip)
+    if (spec) size(spec.w, spec.h)
+    withClip(id, clip, fill)
+  }
   if (options.scale) img.style.setProperty('--s', String(options.scale))
   return img
 }
 
-/** Any raster (a terrain tile, …) as an <img>, cached under `key`. */
-export function rasterImg(key: string, r: Raster, options: { scale?: number; className?: string } = {}) {
+/** An <img> of `w × h` art pixels without a picture yet. */
+function bareImg(w: number, h: number, options: { scale?: number; className?: string }) {
   const img = document.createElement('img')
-  img.src = rasterUrl(`raster/${key}`, r)
   img.alt = ''
   img.setAttribute('aria-hidden', 'true')
   img.draggable = false
   img.className = `px ${options.className ?? ''}`.trim()
-  img.style.setProperty('--w', String(r.w))
-  img.style.setProperty('--h', String(r.h))
+  img.style.setProperty('--w', String(w))
+  img.style.setProperty('--h', String(h))
   if (options.scale) img.style.setProperty('--s', String(options.scale))
   return img
+}
+
+/** A terrain tile as an <img>: an empty 64×64 frame until the tile has arrived (see `spriteImg`). */
+export function tileImg(q: TileQuery, options: { scale?: number; className?: string } = {}) {
+  const img = bareImg(64, 64, options)
+  const fill = () => void (img.src = rasterDataUrl(tile(q)))
+  const list = { clips: [], tiles: [q], backdrops: [] }
+  if (whenArt(`tile:${q.theme}/${q.kind}/${q.tx},${q.ty}`, list, fill)) fill()
+  return img
+}
+
+/** Makes a terrain tile's data URL ahead of time, if the tile is here. */
+export function prepareTileUrl(q: TileQuery) {
+  if (!hasTile(q)) return false
+  rasterDataUrl(tile(q))
+  return true
 }
 
 /** A `ui` sheet icon (16×16) as an <img>. */
@@ -93,7 +159,8 @@ export const icon = (name: string, options: SpriteOptions = {}) =>
 
 interface Player {
   canvas: HTMLCanvasElement
-  anim: Anim
+  /** The clip, once it is here (the canvas stays empty until then). */
+  anim: Anim | null
   start: number
   /** Restart the clip after it ends (for one-shot clips shown on a loop). */
   repeatEvery?: number
@@ -132,6 +199,7 @@ const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-r
 
 function drawPlayer(player: Player, now: number) {
   const { canvas, anim: a } = player
+  if (!a) return
   // A frame callback's timestamp can precede the moment a player restarted, hence the clamp.
   let t = Math.max(0, now - player.start) / 1000
   if (player.repeatEvery) t %= player.repeatEvery
@@ -163,9 +231,25 @@ function tick(now: number) {
   else ticking = false
 }
 
+/** Gives the canvas the clip's frame size and anchor. */
+function shape(canvas: HTMLCanvasElement, w: number, h: number, anchor: readonly [number, number]) {
+  if (canvas.width !== w) canvas.width = w
+  if (canvas.height !== h) canvas.height = h
+  canvas.dataset.ax = String(anchor[0])
+  canvas.dataset.ay = String(anchor[1])
+  canvas.style.setProperty('--w', String(w))
+  canvas.style.setProperty('--h', String(h))
+}
+
+/** A frame number, or one worked out from the clip's frame count. */
+type ByCount<T> = T | ((count: number) => T)
+const byCount = <T>(value: ByCount<T>, count: number): T =>
+  typeof value === 'function' ? (value as (count: number) => T)(count) : value
+
 /**
  * A canvas that plays a clip. The canvas is the clip's frame size; the stylesheet scales it by `--s`.
- * Under reduced motion it shows `stillFrame` (default: the middle frame) instead.
+ * Under reduced motion it shows `stillFrame` (default: the middle frame) instead. `stillFrame` and `cycle` may
+ * be worked out from the clip's frame count, which is known once the clip is here.
  */
 export function spritePlayer(
   id: string,
@@ -174,43 +258,45 @@ export function spritePlayer(
     scale?: number
     className?: string
     repeatEvery?: number
-    stillFrame?: number
+    stillFrame?: ByCount<number>
     label?: string
     /** Hold a pose by alternating between these frames, `every` seconds each. */
-    cycle?: { frames: readonly number[]; every: number }
+    cycle?: ByCount<{ frames: readonly number[]; every: number }>
   } = {}
 ): HTMLCanvasElement {
-  const a = anim(id, clip)
-  const { w, h } = a.frames[0]
   const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
-  const [ax, ay] = anchorOf(a)
-  canvas.dataset.ax = String(ax)
-  canvas.dataset.ay = String(ay)
   canvas.className = `px ${options.className ?? ''}`.trim()
-  canvas.style.setProperty('--w', String(w))
-  canvas.style.setProperty('--h', String(h))
+  const spec = specOf(id, clip)
+  if (spec) shape(canvas, spec.w, spec.h, spec.anchor ?? defaultAnchor(spec.w, spec.h))
   if (options.scale) canvas.style.setProperty('--s', String(options.scale))
   if (options.label) {
     canvas.setAttribute('role', 'img')
     canvas.setAttribute('aria-label', options.label)
   } else canvas.setAttribute('aria-hidden', 'true')
+  const still = reduced()
   const player: Player = {
     canvas,
-    anim: a,
+    anim: null,
     start: performance.now(),
     repeatEvery: options.repeatEvery,
-    cycle: options.cycle,
     visible: true
   }
-  if (reduced()) {
-    const still = options.stillFrame ?? Math.floor(a.frames.length / 2)
-    const frame = a.frames[Math.min(a.frames.length - 1, still)]
-    canvas.getContext('2d')!.drawImage(bake(frame), 0, 0)
-    return canvas
+  const fill = () => {
+    const a = anim(id, clip)
+    const { w, h } = a.frames[0]
+    shape(canvas, w, h, anchorOf(a))
+    const count = a.frames.length
+    if (still) {
+      const frame = a.frames[Math.min(count - 1, byCount(options.stillFrame ?? Math.floor(count / 2), count))]
+      canvas.getContext('2d')!.drawImage(bake(frame), 0, 0)
+      return
+    }
+    player.anim = a
+    if (options.cycle) player.cycle = byCount(options.cycle, count)
+    drawPlayer(player, performance.now())
   }
-  drawPlayer(player, player.start)
+  withClip(id, clip, fill)
+  if (still) return canvas
   players.add(player)
   byCanvas.set(canvas, player)
   watcher?.observe(canvas)

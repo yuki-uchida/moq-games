@@ -2,23 +2,26 @@
  * The DOM screens around play: title, stage select, story, result, game over, ending, pause and help.
  * `Screens` is the seam the app talks to; `DomScreens` implements it over the markup in index.html, drawn with
  * the game's own sprites (pixel.ts), illustrated story panels (diorama.ts) and keyboard, mouse and touch input.
+ *
+ * A screen's first layout is expensive (fonts, glyphs and styles met for the first time), so the app has the
+ * screens built and laid out ahead in idle slices (`prepare`, see prelayout.ts); a tap then only shows them.
  */
-import { tile } from '../art'
 import type { SaveData, StageDef, VolumeKind, Volumes } from '../game/types'
 import { Diorama } from './diorama'
 import {
-  anim,
   icon,
   installPixelStyles,
   nightHillsUrl,
   nightMoonUrl,
   nightSkyUrl,
-  rasterImg,
   restartPlayers,
   spriteImg,
   spritePlayer,
-  spriteUrl
+  spriteUrl,
+  tileImg
 } from './pixel'
+import { LayoutAhead } from './prelayout'
+import { HELP_DIRT, HELP_GIMMICKS, HELP_MOVES } from './screen-art'
 import { countValue, fitScale, formatClock, goalProgress, starRating, starTrail, STAR_RULES } from './rules'
 import type { SoundCue } from '../view/cues'
 import { moveFocus, focusables, type Direction } from './spatial'
@@ -76,6 +79,18 @@ export interface ResultInfo {
   collected: number | null
 }
 
+/**
+ * What to build and lay out ahead (`Screens.prepare`): a screen the player is likely to open next, filled the way
+ * it will be shown (the result and the game over with the stage's own texts and zero counts).
+ */
+export type Prepare =
+  | { screen: 'help' }
+  | { screen: 'select'; stages: readonly StageDef[]; save: SaveData }
+  | { screen: 'story'; story: StoryInfo }
+  | { screen: 'result'; stage: StageDef; last: boolean }
+  | { screen: 'dead'; stage: StageDef }
+  | { screen: 'hud' }
+
 /** Where the run ended, for the game-over card. */
 export interface DeadInfo {
   stage: StageDef
@@ -104,6 +119,13 @@ export interface Screens {
   setTouch(visible: boolean): void
   /** Enter/Space on a screen: next story or ending page, or closes the help. */
   confirm(): void
+  /**
+   * Builds a screen and lays it out ahead, invisibly and in idle slices; resolves true when done, false when it was
+   * stopped (another `prepare`, `stopPreparing`, a screen opening). Optional: test doubles leave it out.
+   */
+  prepare?(what: Prepare): Promise<boolean>
+  /** Stops a `prepare` at once (play is about to start). */
+  stopPreparing?(): void
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<T>(selector)!
@@ -231,6 +253,13 @@ export class DomScreens implements Screens {
   /** Ends the credits now and shows the card (null when they are not up). */
   private endCredits: (() => void) | null = null
   private creditsAnimation: Animation | null = null
+  /** Lays screens out ahead (see `prepare`). */
+  private ahead = new LayoutAhead()
+  /** What a part held when it was last laid out ahead, for parts whose content rarely changes. */
+  private laidOut = new WeakMap<HTMLElement, string>()
+  /** What the stage select's cards were built from, so an unchanged select is shown as it is. */
+  private selectKey = ''
+  private selectFocus: HTMLButtonElement | null = null
 
   bind(actions: ScreenActions) {
     this.actions = actions
@@ -448,6 +477,7 @@ export class DomScreens implements Screens {
 
   /** Leaves the current screen with a short fade of a frozen copy, then shows `id` with its enter animation. */
   private show(id: string | null, focus?: HTMLElement | null) {
+    this.ahead.stop()
     this.helpOpen = false
     $('#help-screen').hidden = true
     if (this.paused) this.hidePause(false)
@@ -570,6 +600,25 @@ export class DomScreens implements Screens {
   // -------------------------------------------------------------------------------------- stage select
 
   showSelect(stages: readonly StageDef[], save: SaveData) {
+    const focus = this.buildSelect(stages, save)
+    const newest = Math.max(1, Math.min(stages.length, save.unlocked))
+    this.show('select-screen', focus)
+    ;(focus as HTMLButtonElement | null)?.scrollIntoView?.({ block: 'nearest' })
+    // A stage that has just opened (not the very first one) is highlighted: chime once for it.
+    const fresh = stages.find((stage) => stage.no === newest && stage.no > 1 && !save.cleared.includes(stage.no))
+    if (fresh && fresh.no !== this.announcedUnlock) {
+      this.announcedUnlock = fresh.no
+      this.cueLater('unlock', UNLOCK_DELAY_MS)
+    }
+  }
+
+  /**
+   * The stage cards and the progress line; cards built from the same save before are kept as they are. Returns the
+   * card that takes the focus.
+   */
+  private buildSelect(stages: readonly StageDef[], save: SaveData): HTMLButtonElement | null {
+    const key = JSON.stringify([stages.map((stage) => stage.id), save.unlocked, save.cleared, save.best])
+    if (key === this.selectKey) return this.selectFocus
     const grid = $('#stage-grid')
     grid.replaceChildren()
     const newest = Math.max(1, Math.min(stages.length, save.unlocked))
@@ -636,14 +685,9 @@ export class DomScreens implements Screens {
       el('span', 'of', `/ ${stages.length}`),
       el('span', 'progress-label', 'クリア')
     )
-    this.show('select-screen', focus)
-    ;(focus as HTMLButtonElement | null)?.scrollIntoView?.({ block: 'nearest' })
-    // A stage that has just opened (not the very first one) is highlighted: chime once for it.
-    const fresh = stages.find((stage) => stage.no === newest && stage.no > 1 && !save.cleared.includes(stage.no))
-    if (fresh && fresh.no !== this.announcedUnlock) {
-      this.announcedUnlock = fresh.no
-      this.cueLater('unlock', UNLOCK_DELAY_MS)
-    }
+    this.selectKey = key
+    this.selectFocus = focus
+    return focus
   }
 
   // ------------------------------------------------------------------------------------------- story
@@ -720,6 +764,16 @@ export class DomScreens implements Screens {
   // ------------------------------------------------------------------------------------------ result
 
   showResult(info: ResultInfo) {
+    const { lines, starNodes } = this.fillResult(info)
+    // A quiet backdrop of the stage's own world (dimmed by the stylesheet) instead of the black canvas behind.
+    this.resultArt!.setShot(resultShot(info.stage.theme, info.stage.no), false)
+    this.show('result-screen', $('#result-next'))
+    this.resultArt!.start()
+    this.runTally(lines, starNodes)
+  }
+
+  /** The result card's texts, its tally rows (at zero) and its stars. */
+  private fillResult(info: ResultInfo): { lines: TallyLine[]; starNodes: HTMLElement[] } {
     const { stage } = info
     $('#result-kicker').textContent = `ステージ ${stage.no}`
     $('#result-title').textContent = 'ステージクリア！'
@@ -783,12 +837,7 @@ export class DomScreens implements Screens {
     })
     stars.setAttribute('aria-label', `ほし ${earned} / 3`)
     stars.setAttribute('role', 'img')
-
-    // A quiet backdrop of the stage's own world (dimmed by the stylesheet) instead of the black canvas behind.
-    this.resultArt!.setShot(resultShot(stage.theme, stage.no), false)
-    this.show('result-screen', $('#result-next'))
-    this.resultArt!.start()
-    this.runTally(lines, starNodes)
+    return { lines, starNodes }
   }
 
   private runTally(lines: TallyLine[], stars: HTMLElement[]) {
@@ -863,6 +912,13 @@ export class DomScreens implements Screens {
   // --------------------------------------------------------------------------------------- game over
 
   showDead(info?: DeadInfo) {
+    const art = this.fillDead(info)
+    this.show('dead-screen', $('#dead-retry'))
+    restartPlayers(art)
+  }
+
+  /** The game-over card's stage header, progress track, dazed hero and line; returns the hero's box. */
+  private fillDead(info?: DeadInfo): HTMLElement {
     const head = $('#dead-head')
     const track = $('#dead-track')
     head.hidden = !info
@@ -882,17 +938,15 @@ export class DomScreens implements Screens {
     }
     const art = $('#dead-art')
     // The hero lies dazed: the last two frames of the fall (flat on his back, then eyes swirling), swapping gently.
-    const last = anim('hero', 'die').frames.length - 1
     art.replaceChildren(
       spritePlayer('hero', 'die', {
         className: 'dead-hero',
-        stillFrame: last,
-        cycle: { frames: [last - 1, last], every: 0.6 }
+        stillFrame: (count) => count - 1,
+        cycle: (count) => ({ frames: [count - 2, count - 1], every: 0.6 })
       })
     )
     $('#dead-text').textContent = DEAD_LINES[Math.floor(Math.random() * DEAD_LINES.length)]
-    this.show('dead-screen', $('#dead-retry'))
-    restartPlayers(art)
+    return art
   }
 
   // ------------------------------------------------------------------------------------------ ending
@@ -1181,6 +1235,7 @@ export class DomScreens implements Screens {
   setPaused(paused: boolean) {
     if (paused === this.paused) return
     if (paused) {
+      this.ahead.stop()
       this.paused = true
       this.returnFocus = document.activeElement as HTMLElement | null
       const screen = $('#pause-screen')
@@ -1215,6 +1270,66 @@ export class DomScreens implements Screens {
     setZoomLock(visible)
   }
 
+  // ------------------------------------------------------------------------------------ built ahead
+
+  async prepare(what: Prepare): Promise<boolean> {
+    switch (what.screen) {
+      case 'help':
+        this.buildHelp()
+        return this.layOutAhead($('#help-screen'), 'help')
+      case 'select':
+        if (this.current === 'select-screen') return true
+        this.buildSelect(what.stages, what.save)
+        return this.layOutAhead($('#select-screen'), this.selectKey)
+      case 'story': {
+        if (this.current === 'story-screen') return true
+        const { story } = what
+        $('#story-kicker').textContent = story.kicker
+        $('#story-title').textContent = story.title
+        // The first page in full, so its glyphs are laid out once; the story replaces it when it opens.
+        $('#story-pages').replaceChildren(el('p', 'page-text', story.pages[0] ?? ''))
+        return this.layOutAhead($('#story-screen'))
+      }
+      case 'result':
+        if (this.current === 'result-screen') return true
+        this.fillResult({
+          stage: what.stage,
+          last: what.last,
+          time: formatClock(0),
+          seconds: 0,
+          previousBest: null,
+          newRecord: false,
+          kills: 0,
+          damage: 0,
+          collected: what.stage.objective === 'collect' ? 0 : null
+        })
+        return this.layOutAhead($('#result-screen'))
+      case 'dead':
+        if (this.current === 'dead-screen') return true
+        this.fillDead({ stage: what.stage, hero: 0, goal: 1 })
+        return this.layOutAhead($('#dead-screen'))
+      case 'hud': {
+        const hud = document.querySelector<HTMLElement>('#hud')
+        return hud ? this.layOutAhead(hud) : true
+      }
+    }
+  }
+
+  stopPreparing() {
+    this.ahead.stop()
+  }
+
+  /**
+   * Lays a hidden part out ahead (nothing to do when it is on screen, or when it was laid out with the same
+   * `content` before); false when it was stopped.
+   */
+  private async layOutAhead(root: HTMLElement, content?: string): Promise<boolean> {
+    if (!root.hidden || (content !== undefined && this.laidOut.get(root) === content)) return true
+    const done = await this.ahead.layOut(root)
+    if (done && content !== undefined) this.laidOut.set(root, content)
+    return done
+  }
+
   // -------------------------------------------------------------------------------------------- help
 
   private buildHelp() {
@@ -1231,7 +1346,7 @@ export class DomScreens implements Screens {
       }
       return box
     }
-    const move = (clip: string, title: string, keys: HTMLElement, touch: string, note: string) => {
+    const move = (clip: (typeof HELP_MOVES)[number], title: string, keys: HTMLElement, touch: string, note: string) => {
       const li = el('li', 'move')
       const stage = el('span', 'move-sprite')
       stage.append(
@@ -1274,33 +1389,23 @@ export class DomScreens implements Screens {
       li.append(box, el('b', '', name), el('span', '', text))
       return li
     }
-    const dirt = tile({
-      theme: 'meadow',
-      kind: 'dirt',
-      around: ['solid', 'solid', 'solid', 'solid', 'solid', 'solid', 'solid', 'solid'],
-      tx: 3,
-      ty: 5
-    })
     gimmicks.replaceChildren(
-      gimmick(
-        [spriteImg('prop:tree', 'idle', { crop: [16, 28, 96, 96], className: 'g-big' })],
-        '木',
-        '2かいかじるとたおれて、橋になる'
-      ),
-      gimmick([rasterImg('dirt-meadow', dirt)], '土', 'かじると穴があく。道がかわる'),
-      gimmick([spritePlayer('prop:pipe', 'burst')], '配管', 'かじると水がふきだす'),
-      gimmick([spritePlayer('prop:hive', 'idle')], '蜂の巣', '怒った蜂が、近くの敵をさしにいく'),
-      gimmick([spritePlayer('prop:animal', 'sleep')], '眠る動物', '起こすと、まっすぐ突進する'),
-      gimmick(
-        [spritePlayer('prop:switch1', 'off'), spriteImg('prop:door1', 'mid')],
-        'スイッチと門',
-        '同じしるしの門がひらく'
-      ),
-      gimmick([spriteImg('prop:rock', 'idle')], '岩', 'かじってくだく')
+      ...HELP_GIMMICKS.map(({ art, name, text }) =>
+        gimmick(
+          art.map((sprite) => {
+            if (sprite === 'dirt') return tileImg(HELP_DIRT)
+            const { sheet, clip, crop, className } = sprite
+            return sprite.play ? spritePlayer(sheet, clip) : spriteImg(sheet, clip, { crop, className })
+          }),
+          name,
+          text
+        )
+      )
     )
   }
 
   private openHelp() {
+    if (this.ahead.busy($('#help-screen'))) this.ahead.stop()
     this.buildHelp()
     this.helpOpen = true
     this.returnFocus = document.activeElement as HTMLElement | null
