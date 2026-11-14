@@ -303,7 +303,10 @@ const BUDGETS = [
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms))
 /**
  * Measures how busy the machine is while a run is recorded: twice a second, how many of its processors' worth of
- * work was done since the last look (the kit's own browser included). `stop()` returns the mean and the peak.
+ * work was done since the last look (the kit's own browser included). `stop()` returns the mean, the peak and
+ * the stretches of the run in which the machine was busy (`busy`: from and to in seconds since the meter started,
+ * each half second of too much work with half a second around it), so that what happened in them can be told from
+ * what happened while the machine was the page's alone.
  */
 function loadMeter() {
   const look = () => {
@@ -318,18 +321,32 @@ function loadMeter() {
   const processors = cpus().length
   const limit = busyLimit(processors)
   const samples = []
+  const busy = []
+  const started = Date.now()
   let last = look()
   const timer = setInterval(() => {
     const now = look()
     const all = now.all - last.all
-    if (all > 0) samples.push((1 - (now.idle - last.idle) / all) * processors)
+    const idle = now.idle - last.idle
     last = now
+    if (all <= 0) return
+    const value = (1 - idle / all) * processors
+    samples.push(value)
+    if (value <= limit) return
+    // The half second just measured, and half a second before and after it.
+    const to = (Date.now() - started) / 1000 + 0.5
+    const from = Math.max(0, to - 1.5)
+    const span = busy.at(-1)
+    if (span && from <= span[1]) span[1] = to
+    else busy.push([from, to])
   }, 500)
   return {
     stop() {
       clearInterval(timer)
       const over = samples.filter((value) => value > limit).length
       return {
+        busy,
+        seconds: (Date.now() - started) / 1000,
         processors,
         /** How many processors at work make the machine busy. */
         limit,
@@ -933,6 +950,23 @@ function analyze(data, { gpuRun = gpu } = {}) {
 
   const ticks = sortedAsc(data.ticks.map((t) => t.d))
   const lafs = data.lafs
+  // The part of the run recorded while the machine was not busy with something else: the frame intervals and the
+  // late frames of which neither end lies in a busy stretch. (The meter starts with the recording.)
+  const busySpans = data.machine?.busy ?? []
+  const inBusy = (at) => busySpans.some(([from, to]) => at >= from && at <= to)
+  const sinceStart = (ts) => (ts - data.t0) / 1000
+  const quiet = { seconds: 0, over25: 0, over42: 0, over58: 0, over100: 0, page: 0, drawing: 0, unexplained: 0 }
+  for (let i = 1; i < frames.length; i++) {
+    if (inBusy(sinceStart(frames[i].ts)) || inBusy(sinceStart(frames[i - 1].ts))) continue
+    const gap = frames[i].ts - frames[i - 1].ts
+    quiet.seconds += gap / 1000
+    if (gap > 25) quiet.over25 += 1
+    if (gap > 42) quiet.over42 += 1
+    if (gap > 58) quiet.over58 += 1
+    if (gap > 100) quiet.over100 += 1
+  }
+  for (const late of data.trace?.late?.frames ?? [])
+    if (!inBusy(late.at) && !inBusy(late.at - late.waited / 1000)) quiet[late.by] += 1
   return {
     ended: data.screen,
     frames: frames.length,
@@ -980,6 +1014,7 @@ function analyze(data, { gpuRun = gpu } = {}) {
     sfx,
     audio: { ...nodes, perSecond: recorded ? (nodes.sources + nodes.others) / recorded : 0 },
     machine: data.machine ?? null,
+    quiet,
     ticks: { n: ticks.length, p95: percentile(ticks, 0.95), max: ticks.at(-1) ?? 0 },
     cadence: {
       eligible,
@@ -1037,6 +1072,10 @@ function runMarkdown(name, m, notes = []) {
   if (m.machine)
     lines.push(
       `- the machine while this was recorded: ${f1(m.machine.mean)} of its ${m.machine.processors} processors at work on average, ${f1(m.machine.peak)} at the most; more than ${f1(m.machine.limit)} for ${f0(m.machine.over * 100)} % of the time${busyMachine(m) ? `. **That is more than ${f0(BUSY_SHARE * 100)} %: something else was running beside the kit, and this run's durations are the machine's as much as the page's**` : ` (the kit's own browser is between one and two of them)`}`
+    )
+  if (m.machine?.busy.length)
+    lines.push(
+      `- while the machine was not busy (${f1(m.quiet.seconds)} s of the run's ${f1(m.seconds)} s; the busy stretches and half a second around them left out): frame intervals over 25 ms ${m.quiet.over25}, over 42 ms ${m.quiet.over42}, over 58 ms ${m.quiet.over58}, over 100 ms ${m.quiet.over100}${m.trace ? `; late frames: ${m.quiet.page} the page's doing, ${m.quiet.drawing} with a drawing thread busy, ${m.quiet.unexplained} not explained` : ''}`
     )
   for (const p of m.painted.slice(0, 4))
     lines.push(
