@@ -24,6 +24,7 @@ import {
   type AimTone
 } from './hud-model'
 import { clipRaster, drawRaster, makeSprite, rasterUrl } from './hud-sprites'
+import { replay } from './replay'
 import { formatClock } from './rules'
 import type { Raster } from '../art/raster'
 
@@ -32,13 +33,6 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, te
   node.className = className
   if (text !== undefined) node.textContent = text
   return node
-}
-
-/** Restarts a CSS animation class on an element (a style flush, no layout). */
-function replay(node: HTMLElement, className: string) {
-  node.classList.remove(className)
-  void getComputedStyle(node).animationName
-  node.classList.add(className)
 }
 
 const AIM_ICONS: Record<AimTone, string> = {
@@ -160,6 +154,15 @@ function cap(content: string | Raster, wide = false): HTMLElement {
   return node
 }
 
+interface AimSeen {
+  collected: number
+  goalOpen: boolean
+  state: string
+  boss: unknown
+  active: boolean
+  dead: boolean
+}
+
 export class Deck {
   /** The deck element; in landscape it is `display: contents`. */
   readonly root: HTMLElement
@@ -179,6 +182,21 @@ export class Deck {
   private kills: HTMLElement
   private clockTenths = -1
   private killCount = -1
+  /** The progress track, its width in CSS px and the device pixel ratio, for placing the markers on it. */
+  private track: HTMLElement
+  private trackWidth = 0
+  private dpr = 1
+  /** Where the markers are along the track (0..1; NaN: not known yet) and where they were last written (px). */
+  private heroAt = Number.NaN
+  private goalAt = Number.NaN
+  private bossAt = Number.NaN
+  private heroPx = Number.NaN
+  private goalPx = Number.NaN
+  private bossPx = Number.NaN
+  private bossHidden: boolean | null = null
+  private bossAsleep: boolean | null = null
+  /** What the aim line was last worked out from; it is worked out again only when one of these changes. */
+  private aimSeen: AimSeen | null = null
 
   private stage: StageDef | null = null
   private aimKey = ''
@@ -263,6 +281,7 @@ export class Deck {
     this.kills = el('b', '', '0')
     stats.append(stat('clock', this.clock), stat('tooth', this.kills, 'たおした'))
     const track = el('div', 'hudd-track')
+    this.track = track
     const groove = el('div', 'hudd-groove')
     this.trackFill = el('i', 'hudd-groove-fill')
     groove.append(this.trackFill)
@@ -311,6 +330,50 @@ export class Deck {
 
     const screws = ['tl', 'tr', 'bl', 'br'].map((corner) => el('i', `hudd-screw is-${corner}`))
     root.append(info, mid, base, touch, ...screws)
+
+    if (typeof ResizeObserver === 'function') new ResizeObserver(() => this.measure()).observe(track)
+  }
+
+  /**
+   * Reads the track's width (it changes with the stage's size and orientation, never while a stage is played) and
+   * puts the markers on it again.
+   */
+  private measure() {
+    this.trackWidth = this.track.clientWidth
+    this.dpr = window.devicePixelRatio || 1
+    this.heroPx = this.goalPx = this.bossPx = Number.NaN
+    this.place()
+  }
+
+  /**
+   * Moves the markers and the groove's fill to where the hero, the goal and the boss are. A marker is moved by
+   * `translate` (its share of the track's width, on a device pixel), never by `left`, so a moving marker costs no
+   * layout; it is written only on the step where it moves by a device pixel.
+   */
+  private place() {
+    const px = (at: number) => Math.round(at * this.trackWidth * this.dpr) / this.dpr
+    if (!Number.isNaN(this.heroAt)) {
+      const hero = px(this.heroAt)
+      if (hero !== this.heroPx) {
+        this.heroPx = hero
+        this.hero.style.translate = `${hero}px`
+        this.trackFill.style.transform = `scaleX(${this.trackWidth > 0 ? (hero / this.trackWidth).toFixed(4) : '0'})`
+      }
+    }
+    if (!Number.isNaN(this.goalAt)) {
+      const goal = px(this.goalAt)
+      if (goal !== this.goalPx) {
+        this.goalPx = goal
+        this.goal.style.translate = `${goal}px`
+      }
+    }
+    if (!Number.isNaN(this.bossAt)) {
+      const boss = px(this.bossAt)
+      if (boss !== this.bossPx) {
+        this.bossPx = boss
+        this.bossFace.style.translate = `${boss}px`
+      }
+    }
   }
 
   /** True while the deck is on screen (portrait). */
@@ -333,6 +396,10 @@ export class Deck {
     this.goalOpen = null
     this.clockTenths = -1
     this.killCount = -1
+    this.aimSeen = null
+    this.heroAt = this.goalAt = this.bossAt = Number.NaN
+    this.bossHidden = null
+    this.bossAsleep = null
     this.showHint(0)
   }
 
@@ -385,24 +452,27 @@ export class Deck {
     if (!stage) return
 
     const boss = world.boss
-    const line = aimLine({
-      objective: stage.objective,
-      collected: world.collected,
-      need: stage.collect ?? 0,
-      goalOpen: world.goalOpen,
-      state: world.state,
-      boss: boss
-        ? { name: boss.def.name, active: boss.active, dead: boss.dead, stamina: Boolean(boss.def.stamina) }
-        : null
-    })
-    const key = `${line.tone}|${line.text}`
-    if (key !== this.aimKey) {
-      const toneChanged = !this.aimKey.startsWith(`${line.tone}|`)
-      this.aimKey = key
-      this.aimText.textContent = line.text
-      this.aim.dataset.tone = line.tone
-      if (toneChanged) drawRaster(this.aimIcon, clipRaster('ui', AIM_ICONS[line.tone]))
-      replay(this.aim, 'is-pop')
+    const seen = this.aimSeen
+    const active = Boolean(boss?.active)
+    const dead = Boolean(boss?.dead)
+    if (
+      !seen ||
+      seen.collected !== world.collected ||
+      seen.goalOpen !== world.goalOpen ||
+      seen.state !== world.state ||
+      seen.boss !== boss?.def ||
+      seen.active !== active ||
+      seen.dead !== dead
+    ) {
+      this.aimSeen = {
+        collected: world.collected,
+        goalOpen: world.goalOpen,
+        state: world.state,
+        boss: boss?.def,
+        active,
+        dead
+      }
+      this.updateAim(world, stage)
     }
 
     // The hint line: a toast or a speech line holds it for a moment, then the stage's hints cycle.
@@ -437,26 +507,54 @@ export class Deck {
 
     // The progress track.
     const width = world.w * TILE
-    const hero = trackRatio(world.player.x + world.player.w / 2, width)
-    this.hero.style.left = `${(hero * 100).toFixed(2)}%`
-    this.trackFill.style.transform = `scaleX(${hero.toFixed(4)})`
+    this.heroAt = trackRatio(world.player.x + world.player.w / 2, width)
     if (world.goalOpen !== this.goalOpen) {
       this.goalOpen = world.goalOpen
       drawRaster(this.goal, clipRaster('ui', world.goalOpen ? 'starOn' : 'lock'))
       this.goal.classList.toggle('is-open', world.goalOpen)
     }
-    this.goal.style.left = `${(trackRatio(world.goalX + TILE / 2, width) * 100).toFixed(2)}%`
-    const showBoss = Boolean(boss && !boss.dead)
-    this.bossFace.hidden = !showBoss
-    if (boss && showBoss) {
+    this.goalAt = trackRatio(world.goalX + TILE / 2, width)
+    const hideBoss = !boss || boss.dead
+    if (hideBoss !== this.bossHidden) {
+      this.bossHidden = hideBoss
+      this.bossFace.hidden = hideBoss
+    }
+    if (boss && !hideBoss) {
       if (boss.def.art !== this.bossArt) {
         this.bossArt = boss.def.art
         const face = sheet('ui')[`face_${boss.def.art}`]
         if (face) drawRaster(this.bossFace, face.frames[0])
       }
-      this.bossFace.classList.toggle('is-asleep', !boss.active)
-      this.bossFace.style.left = `${(trackRatio(boss.x + boss.w / 2, width) * 100).toFixed(2)}%`
+      if (!boss.active !== this.bossAsleep) {
+        this.bossAsleep = !boss.active
+        this.bossFace.classList.toggle('is-asleep', !boss.active)
+      }
+      this.bossAt = trackRatio(boss.x + boss.w / 2, width)
     }
+    this.place()
+  }
+
+  /** Words the aim line again and, if it now says something else, shows it. */
+  private updateAim(world: World, stage: StageDef) {
+    const boss = world.boss
+    const line = aimLine({
+      objective: stage.objective,
+      collected: world.collected,
+      need: stage.collect ?? 0,
+      goalOpen: world.goalOpen,
+      state: world.state,
+      boss: boss
+        ? { name: boss.def.name, active: boss.active, dead: boss.dead, stamina: Boolean(boss.def.stamina) }
+        : null
+    })
+    const key = `${line.tone}|${line.text}`
+    if (key === this.aimKey) return
+    const toneChanged = !this.aimKey.startsWith(`${line.tone}|`)
+    this.aimKey = key
+    this.aimText.textContent = line.text
+    this.aim.dataset.tone = line.tone
+    if (toneChanged) drawRaster(this.aimIcon, clipRaster('ui', AIM_ICONS[line.tone]))
+    replay(this.aim, 'is-pop')
   }
 
   private touchShown() {
