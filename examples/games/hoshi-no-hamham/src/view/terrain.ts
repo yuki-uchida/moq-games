@@ -11,7 +11,7 @@ import { VIEW_H, VIEW_W } from '../art/contract'
 import { adopt, type ArtRequest, type ArtSource } from '../art/remote'
 import { T } from '../game/sim'
 import { TILE } from '../game/types'
-import { blitRaster, bake } from './bake'
+import { blitRaster, bake, brush } from './bake'
 
 /** The part of `World` the terrain reads. */
 export interface TileGrid {
@@ -239,13 +239,16 @@ export class TerrainView {
     return picks
   }
 
+  private readonly cells = { x0: 0, x1: 0, y0: 0, y1: 0 }
+
+  /** The cells the view shows (one object, refilled on every call). */
   private range(viewX: number, viewY: number) {
-    return {
-      x0: Math.max(0, Math.floor(viewX / TILE)),
-      x1: Math.min(this.grid.w - 1, Math.floor((viewX + VIEW_W) / TILE)),
-      y0: Math.max(0, Math.floor(viewY / TILE)),
-      y1: Math.min(this.grid.h - 1, Math.floor((viewY + VIEW_H) / TILE))
-    }
+    const r = this.cells
+    r.x0 = Math.max(0, Math.floor(viewX / TILE))
+    r.x1 = Math.min(this.grid.w - 1, Math.floor((viewX + VIEW_W) / TILE))
+    r.y0 = Math.max(0, Math.floor(viewY / TILE))
+    r.y1 = Math.min(this.grid.h - 1, Math.floor((viewY + VIEW_H) / TILE))
+    return r
   }
 
   drawTiles(ctx: CanvasRenderingContext2D, viewX: number, viewY: number) {
@@ -270,7 +273,7 @@ export class TerrainView {
           const dx = (cellHash(tx, ty, 3) % 33) - 16
           const x = tx * TILE + TILE / 2 + dx
           const y = pick.where === 'top' ? ty * TILE : (ty + 1) * TILE
-          blitRaster(ctx, d.image, d.anchor, x, y, { flip: cellHash(tx, ty, 5) % 2 === 1 })
+          blitRaster(ctx, d.image, d.anchor, x, y, brush(cellHash(tx, ty, 5) % 2 === 1))
         }
       }
   }

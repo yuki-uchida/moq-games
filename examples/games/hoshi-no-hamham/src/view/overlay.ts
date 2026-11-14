@@ -5,7 +5,7 @@
  */
 import { VIEW_H, VIEW_W } from '../art/contract'
 import { ZONES } from '../ui/hud-model'
-import { blit, clip } from './bake'
+import { blit, brush, clip } from './bake'
 
 /** The rounded system gothic stack the game uses for all text. */
 export const ROUNDED_FONT =
@@ -166,6 +166,13 @@ function popupPicture(p: Popup, k: number): TextPicture | null {
 }
 
 const ease = (t: number) => 1 - (1 - t) ** 3
+/** Radius and strength of the spotlight's two rings of darkness. */
+const SPOTLIGHT_RINGS = [
+  [96, 0.38],
+  [76, 0.4]
+] as const
+/** Either side of a shouting bubble. */
+const SHOUT_SIDES = [-1, 1] as const
 
 /** Removes, in place, the items for which `gone` is true; returns whether any went (no array is built). */
 function dropWhere<T>(items: T[], gone: (item: T) => boolean): boolean {
@@ -404,15 +411,24 @@ export class Overlay {
   }
 
   /** Popups and speech bubbles, drawn in screen space (k× transform) relative to the view at (viewX, viewY). */
-  drawPopups(ctx: CanvasRenderingContext2D, viewX: number, viewY: number) {
+  drawPopups(ctx: CanvasRenderingContext2D, viewX: number, viewY: number, scale?: number) {
     this.drawBubbles(ctx, viewX, viewY)
     if (!this.popups.length) return
-    ctx.save()
+    // The few properties the popups change are put back by hand: saving the whole state allocates in the browser.
+    const was = ctx.textAlign
+    const wasBaseline = ctx.textBaseline
+    const wasJoin = ctx.lineJoin
+    const wasSmoothing = ctx.imageSmoothingEnabled
+    const wasFont = ctx.font
+    const wasLine = ctx.lineWidth
+    const wasStroke = ctx.strokeStyle
+    const wasFill = ctx.fillStyle
+    const wasAlpha = ctx.globalAlpha
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.lineJoin = 'round'
     // Device pixels per view pixel, for the pictures of the texts (1 where the context cannot say).
-    const k = typeof ctx.getTransform === 'function' ? ctx.getTransform().a || 1 : 1
+    const k = scale ?? (typeof ctx.getTransform === 'function' ? ctx.getTransform().a || 1 : 1)
     for (const p of this.popups) {
       const t = p.age / p.life
       const rise = ease(Math.min(1, t * 1.6)) * 22
@@ -437,7 +453,15 @@ export class Overlay {
       ctx.fillStyle = p.color
       ctx.fillText(p.text, x, y)
     }
-    ctx.restore()
+    ctx.textAlign = was
+    ctx.textBaseline = wasBaseline
+    ctx.lineJoin = wasJoin
+    ctx.imageSmoothingEnabled = wasSmoothing
+    ctx.font = wasFont
+    ctx.lineWidth = wasLine
+    ctx.strokeStyle = wasStroke
+    ctx.fillStyle = wasFill
+    ctx.globalAlpha = wasAlpha
   }
 
   private drawBubbles(ctx: CanvasRenderingContext2D, viewX: number, viewY: number) {
@@ -508,7 +532,7 @@ export class Overlay {
         ctx.lineWidth = 2
         ctx.lineCap = 'round'
         ctx.beginPath()
-        for (const side of [-1, 1]) {
+        for (const side of SHOUT_SIDES) {
           const ex = bx + side * (w / 2 + 5)
           ctx.moveTo(ex, by - 7)
           ctx.lineTo(ex + side * 7, by - 12)
@@ -589,10 +613,7 @@ export class Overlay {
   private drawSpotlight(ctx: CanvasRenderingContext2D) {
     if (this.spot <= 0.001) return
     // Two rings of darkness give the edge a stepped, pixel-art softness.
-    for (const [radius, alpha] of [
-      [96, 0.38],
-      [76, 0.4]
-    ] as const) {
+    for (const [radius, alpha] of SPOTLIGHT_RINGS) {
       ctx.fillStyle = `rgba(11,6,24,${(alpha * this.spot).toFixed(3)})`
       ctx.beginPath()
       ctx.rect(0, 0, VIEW_W, VIEW_H)
@@ -607,7 +628,14 @@ export class Overlay {
     const anim = clip('fx', 'arrow')
     if (!anim) return
     const bob = this.reducedMotion ? 0 : Math.sin(this.time * 6) * 3
-    blit(ctx, anim, this.time, p.x + Math.cos(p.angle) * bob, p.y + Math.sin(p.angle) * bob, { angle: p.angle })
+    blit(
+      ctx,
+      anim,
+      this.time,
+      p.x + Math.cos(p.angle) * bob,
+      p.y + Math.sin(p.angle) * bob,
+      brush(undefined, undefined, undefined, undefined, undefined, p.angle)
+    )
   }
 
   /** The two screen gradients for a context that has no pictures of them, made once (they never change). */

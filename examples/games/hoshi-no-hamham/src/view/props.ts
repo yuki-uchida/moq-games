@@ -7,7 +7,7 @@
 import type { SimEvent } from '../game/events'
 import { T, type Prop, type World } from '../game/sim'
 import { TILE } from '../game/types'
-import { blit, clip, type BlitOptions } from './bake'
+import { blit, brush, clip, type BlitCall } from './bake'
 import { princessClip, specDuration } from './clips'
 import { PROP_SPEC, themedProp } from '../art/contract'
 import type { FxPool } from './fx'
@@ -79,12 +79,25 @@ const TREE_FALL = 0.45
 
 const duration = (sheet: string, name: string) => specDuration(PROP_SPEC[sheet][name])
 
+const sheetIds = new Map<string, string>()
+/** The id of the `prop:<key>` sheet, built once per key (drawing a frame joins no strings). */
+function propSheet(key: string): string {
+  let id = sheetIds.get(key)
+  if (id === undefined) sheetIds.set(key, (id = `prop:${key}`))
+  return id
+}
+
 export class PropsView {
   private time = 0
   private marks = new Map<number, Record<string, number>>()
   private logs: LogRecord[] = []
   private gate: { tx: number; top: number; bottom: number; at: number; down: number | null } | null = null
   private sparkleTimer = 0
+  /** The closed door's pictures, by prop id (a door never moves until it opens). */
+  private doorCells = new Map<number, Piece[]>()
+  private gateCells: Piece[] = []
+  private gateOf: object | null = null
+  private themedSheets = new Map<string, string>()
 
   constructor(
     private world: World,
@@ -178,20 +191,37 @@ export class PropsView {
     t: number,
     x: number,
     y: number,
-    o: BlitOptions & { frame?: number } = {}
+    o?: BlitCall
   ) {
     const anim = clip(sheet, name)
     if (anim) blit(ctx, anim, t, x, y, o)
   }
 
+  /** The sheet a prop kind uses in this world's theme. */
+  private themed(id: string) {
+    let sheet = this.themedSheets.get(id)
+    if (sheet === undefined) this.themedSheets.set(id, (sheet = themedProp(id, this.world.theme)))
+    return sheet
+  }
+
   /** Gimmicks, logs, doors and the gate (everything but pickups, ハム姫 and projectiles). */
   drawProps(ctx: CanvasRenderingContext2D) {
     const time = this.time
-    const logSheet = themedProp('prop:log', this.world.theme)
+    const logSheet = this.themed('prop:log')
     for (const log of this.logs) {
-      const at = logPieces(log, this.isGround)
-      for (const cell of at.under) this.draw(ctx, logSheet, 'under', 0, cell.x, cell.y)
-      this.draw(ctx, logSheet, log.kind, 0, at.x, at.y, { flip: at.flip, pivotX: (log.length * TILE) / 2 })
+      // The trunk, and a post piece in each cell of the row below it that is not ground (see `logPieces`).
+      for (let i = 0; i < log.length; i++)
+        if (!this.isGround(log.tx + i, log.ty + 1))
+          this.draw(ctx, logSheet, 'under', 0, (log.tx + i) * TILE, (log.ty + 1) * TILE)
+      this.draw(
+        ctx,
+        logSheet,
+        log.kind,
+        0,
+        log.tx * TILE,
+        log.ty * TILE,
+        brush(log.dir < 0, undefined, undefined, undefined, undefined, undefined, (log.length * TILE) / 2)
+      )
     }
     for (const prop of this.world.props) {
       switch (prop.kind) {
@@ -207,8 +237,13 @@ export class PropsView {
         }
         case 'hive': {
           const tx = prop.x / TILE
-          const rows = hivePostRows((ty) => ty < this.world.h && this.world.tileAt(tx, ty) === T.EMPTY, prop.y / TILE)
-          for (const ty of rows) this.draw(ctx, 'prop:hive', 'post', 0, prop.x, ty * TILE)
+          // The post: every empty cell below the hive down to the first ground or platform (see `hivePostRows`).
+          for (
+            let ty = prop.y / TILE + 1, n = 0;
+            n < 5 && ty < this.world.h && this.world.tileAt(tx, ty) === T.EMPTY;
+            ty++, n++
+          )
+            this.draw(ctx, 'prop:hive', 'post', 0, prop.x, ty * TILE)
           this.draw(ctx, 'prop:hive', 'arm', 0, prop.x, prop.y)
           this.draw(ctx, 'prop:hive', prop.state === 'broken' ? 'broken' : 'idle', time + prop.id * 0.3, prop.x, prop.y)
           break
@@ -220,7 +255,7 @@ export class PropsView {
           if (prop.state !== 'broken') this.draw(ctx, 'prop:rock', prop.hp >= 2 ? 'idle' : 'cracked', 0, prop.x, prop.y)
           break
         case 'switch': {
-          const sheet = `prop:switch${prop.data === 2 ? 2 : 1}`
+          const sheet = propSheet(prop.data === 2 ? 'switch2' : 'switch1')
           const flipped = this.since(prop, 'flip')
           if (prop.state !== 'done') this.draw(ctx, sheet, 'off', time, prop.x, prop.y)
           else if (flipped !== null && flipped < duration(sheet, 'flip'))
@@ -244,13 +279,21 @@ export class PropsView {
 
   private drawTree(ctx: CanvasRenderingContext2D, prop: Prop) {
     if (prop.state === 'fallen') return
-    const sheet = themedProp(`prop:${prop.kind}`, this.world.theme)
+    const sheet = this.themed(propSheet(prop.kind))
     const x = prop.x + TILE / 2
     const y = prop.y + TILE
     if (prop.state === 'falling') {
       const age = this.since(prop, 'fall') ?? TREE_FALL - prop.timer
       const k = Math.min(1, age / TREE_FALL)
-      this.draw(ctx, sheet, 'cut', 0, x, y, { frame: 0, angle: prop.dir * (Math.PI / 2) * k * k })
+      this.draw(
+        ctx,
+        sheet,
+        'cut',
+        0,
+        x,
+        y,
+        brush(undefined, undefined, 0, undefined, undefined, prop.dir * (Math.PI / 2) * k * k)
+      )
       return
     }
     const shaking = this.since(prop, 'shake')
@@ -267,13 +310,21 @@ export class PropsView {
     }
     if (prop.state !== 'awake' && prop.state !== 'charging') return
     const woke = this.since(prop, 'wake') ?? 99
-    const flip = { flip: prop.dir < 0, pivotX: TILE / 2 }
-    if (woke < duration('prop:animal', 'wake')) this.draw(ctx, 'prop:animal', 'wake', woke, prop.x, prop.y, flip)
-    else this.draw(ctx, 'prop:animal', 'run', woke, prop.x, prop.y, flip)
+    const flip = prop.dir < 0
+    const name = woke < duration('prop:animal', 'wake') ? 'wake' : 'run'
+    this.draw(
+      ctx,
+      'prop:animal',
+      name,
+      woke,
+      prop.x,
+      prop.y,
+      brush(flip, undefined, undefined, undefined, undefined, undefined, TILE / 2)
+    )
   }
 
   private drawDoor(ctx: CanvasRenderingContext2D, prop: Prop) {
-    const sheet = `prop:door${prop.data === 2 ? 2 : 1}`
+    const sheet = propSheet(prop.data === 2 ? 'door2' : 'door1')
     let lift = 0
     if (prop.state !== 'closed') {
       const opened = this.since(prop, 'open')
@@ -287,7 +338,9 @@ export class PropsView {
       ctx.rect(prop.x, prop.y, prop.w * TILE, prop.h * TILE)
       ctx.clip()
     }
-    for (const piece of doorPieces(prop)) this.draw(ctx, sheet, piece.clip, 0, piece.x, piece.y - lift)
+    let pieces = this.doorCells.get(prop.id)
+    if (!pieces) this.doorCells.set(prop.id, (pieces = doorPieces(prop)))
+    for (const piece of pieces) this.draw(ctx, sheet, piece.clip, 0, piece.x, piece.y - lift)
     if (lift) ctx.restore()
   }
 
@@ -295,23 +348,28 @@ export class PropsView {
     const gate = this.gate
     if (!gate) return
     const height = (gate.bottom - gate.top + 1) * TILE
+    if (gate !== this.gateOf) {
+      this.gateOf = gate
+      this.gateCells = gatePieces(gate)
+    }
     const sink = Math.round((1 - ease((this.time - gate.at) / GATE_RISE)) * height)
     const alpha = gate.down === null ? 1 : Math.max(0, 1 - (this.time - gate.down) / GATE_FADE)
     ctx.save()
     ctx.beginPath()
     ctx.rect(gate.tx * TILE, gate.top * TILE, TILE, height)
     ctx.clip()
-    for (const piece of gatePieces(gate))
-      this.draw(ctx, 'prop:gate', piece.clip, this.time, piece.x, piece.y + sink, { alpha })
+    for (const piece of this.gateCells)
+      this.draw(ctx, 'prop:gate', piece.clip, this.time, piece.x, piece.y + sink, brush(undefined, alpha))
     ctx.restore()
   }
 
   private drawGoal(ctx: CanvasRenderingContext2D, prop: Prop) {
-    const sheet = `prop:${prop.kind}`
+    const sheet = propSheet(prop.kind)
     const open = this.world.goalOpen
     if (open) {
       const glow = clip('fx', 'glow')
-      if (glow) blit(ctx, glow, 0, prop.x + TILE / 2, prop.y + 8, { alpha: 0.45 + 0.2 * Math.sin(this.time * 3) })
+      if (glow)
+        blit(ctx, glow, 0, prop.x + TILE / 2, prop.y + 8, brush(undefined, 0.45 + 0.2 * Math.sin(this.time * 3)))
     }
     this.draw(ctx, sheet, open ? 'open' : 'locked', this.time, prop.x, prop.y)
   }
@@ -325,9 +383,9 @@ export class PropsView {
       const y = prop.y + (prop.h * TILE) / 2 + Math.round(Math.sin(this.time * 3 + prop.id) * 3)
       if (prop.kind === 'star') {
         const glow = clip('fx', 'glow')
-        if (glow) blit(ctx, glow, 0, x, y, { alpha: 0.4 + 0.15 * Math.sin(this.time * 4 + prop.id) })
+        if (glow) blit(ctx, glow, 0, x, y, brush(undefined, 0.4 + 0.15 * Math.sin(this.time * 4 + prop.id)))
       }
-      this.draw(ctx, `prop:${prop.kind}`, 'idle', this.time + prop.id * 0.21, x, y)
+      this.draw(ctx, propSheet(prop.kind), 'idle', this.time + prop.id * 0.21, x, y)
     }
   }
 
@@ -343,7 +401,7 @@ export class PropsView {
       const choice = princessClip(caged, freed, this.world.goalOpen, this.time + prop.id * 0.4)
       const anim = clip('princess', choice.name)
       const flip = hero.x + hero.w / 2 < prop.x + TILE / 2
-      if (anim) blit(ctx, anim, choice.t, prop.x + TILE / 2, prop.y + TILE, { flip })
+      if (anim) blit(ctx, anim, choice.t, prop.x + TILE / 2, prop.y + TILE, brush(flip))
       if (caged) this.draw(ctx, 'prop:cage', 'front', 0, prop.x, prop.y)
       else if (cageBreak) this.draw(ctx, 'prop:cage', 'break', freed, prop.x, prop.y)
     }
@@ -356,14 +414,13 @@ export class PropsView {
       if (shot.dead) continue
       const flip = shot.vx < 0
       if (shot.kind === 'shock') {
-        this.draw(ctx, 'prop:shock', 'roll', time, shot.x + shot.w / 2, shot.y + shot.h, { flip })
+        this.draw(ctx, 'prop:shock', 'roll', time, shot.x + shot.w / 2, shot.y + shot.h, brush(flip))
         continue
       }
       const skin = shot.skin ?? 'seed'
       const name = skin === 'stinger' ? 'fly' : skin === 'orb' ? 'pulse' : 'spin'
-      this.draw(ctx, `prop:${skin}`, name, time, shot.x + shot.w / 2, shot.y + shot.h / 2, { flip })
+      this.draw(ctx, propSheet(skin), name, time, shot.x + shot.w / 2, shot.y + shot.h / 2, brush(flip))
     }
-    for (const bee of this.world.bees)
-      this.draw(ctx, 'prop:bee', 'fly', time + bee.t, bee.x, bee.y, { flip: bee.vx < 0 })
+    for (const bee of this.world.bees) this.draw(ctx, 'prop:bee', 'fly', time + bee.t, bee.x, bee.y, brush(bee.vx < 0))
   }
 }

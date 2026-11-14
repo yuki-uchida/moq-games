@@ -12,6 +12,7 @@
  * back up otherwise until the window is resized or the page is reloaded.
  */
 import { VIEW_H, VIEW_W } from '../art/contract'
+import { setBaseTransform } from './bake'
 
 export { VIEW_H, VIEW_W }
 
@@ -256,9 +257,13 @@ export class Renderer {
     return true
   }
 
-  /** Screen space: logical pixels, origin top-left. */
+  /**
+   * Screen space: logical pixels, origin top-left. This and `world` are the only places the frame's transform is
+   * set, and each tells the sprite drawing what it set, so a sprite's own transform can be undone exactly.
+   */
   screen() {
     this.ctx.setTransform(this.k, 0, 0, this.k, 0, 0)
+    setBaseTransform(this.ctx, this.k, 0, 0)
     this.ctx.imageSmoothingEnabled = false
     this.ctx.globalAlpha = 1
   }
@@ -266,7 +271,10 @@ export class Renderer {
   /** World space for a view at (x, y); x and y must be multiples of 1/k. */
   world(x: number, y: number) {
     const k = this.k
-    this.ctx.setTransform(k, 0, 0, k, Math.round(-x * k), Math.round(-y * k))
+    const e = Math.round(-x * k)
+    const f = Math.round(-y * k)
+    this.ctx.setTransform(k, 0, 0, k, e, f)
+    setBaseTransform(this.ctx, k, e, f)
     this.ctx.imageSmoothingEnabled = false
     this.ctx.globalAlpha = 1
   }
