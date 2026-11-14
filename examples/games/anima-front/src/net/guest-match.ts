@@ -221,7 +221,9 @@ export class GuestMatch implements Session {
   dispose() {
     if (this.disposed) return
     this.disposed = true
-    if (this.room.match === this) this.room.match = null
+    // A newer session of this room (a spectator that took a seat) reports the match itself.
+    if (this.room.match && this.room.match !== this) return
+    this.room.match = null
     this.room.setInMatch(0)
   }
 }

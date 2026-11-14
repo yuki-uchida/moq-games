@@ -70,6 +70,14 @@ export interface OnlineControls {
   followTeam?(team: TeamId): void
   /** Guest spectating PvP: the team asked for, and the team whose key it holds now (undefined: none yet). */
   watching?(): { want: TeamId; have: TeamId | undefined }
+  /** Guest spectating a running match: seats nobody plays that it may take. */
+  freeSeats?(): number
+  /** Guest spectating: asks the host for a free seat (false when none is free). */
+  requestSeat?(): boolean
+  /** Guest spectating: its seat request is on its way, recently failed (the seat was taken), or none. */
+  seatRequest?(): 'idle' | 'joining' | 'failed'
+  /** Guest spectating: the start to play the seat the host gave it in the running match (null until then). */
+  seatedStart?(): MatchStart | null
 }
 
 export interface LocalChoice {

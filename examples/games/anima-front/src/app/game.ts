@@ -22,7 +22,7 @@ import { createSpectatorBar, watchedPlayer } from '../ui/spectator'
 import { SPECIES, eyeHeight } from '../data/species'
 import type { AppContext, RouteArgs, Screen } from './context'
 import { setMatchProbe } from './debug'
-import type { OnlineMember } from './lobby'
+import type { MatchStart, OnlineMember } from './lobby'
 import { TEAMS, musicFor, prepareRequestFor } from './match'
 import { recordMatch } from './records'
 import type { Session } from './session'
@@ -67,12 +67,27 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
     ? createSpectatorBar({
         pvp: start.config.mode === 'pvp' && !!online?.followTeam,
         onTeam: pickTeam,
-        onNext: () => spectateIndex++
+        onNext: () => spectateIndex++,
+        onJoin: () => ctx.sfx(online?.requestSeat?.() ? 'uiReady' : 'uiError')
       })
     : null
   const onSpectateKey = (e: KeyboardEvent) => {
-    if (!spectate || mode !== 'play' || !/^Digit[1-3]$/.test(e.code)) return
-    pickTeam((Number(e.code.slice(5)) - 1) as TeamId)
+    if (!spectate || mode !== 'play') return
+    if (/^Digit[1-3]$/.test(e.code)) pickTeam((Number(e.code.slice(5)) - 1) as TeamId)
+    else if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'KeyJ') spectate.join()
+  }
+  /** The host gave this spectator a seat: the screen reopens as that player (same match, a new session). */
+  function enterSeat(next: MatchStart) {
+    let seated: Session
+    try {
+      seated = next.connect()
+    } catch (err) {
+      console.warn('[anima-front] could not take the seat', err)
+      return
+    }
+    mode = 'done'
+    ctx.toast('空いた席に入りました', 'ok')
+    ctx.open('game', { selection, start: next, lobby: args.lobby, session: seated })
   }
 
   // ---- overlays
@@ -685,8 +700,15 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
         spectate.update({
           want: w?.want,
           have: start.config.mode === 'pvp' ? w?.have : undefined,
-          watching: next.players.find((p) => p.id === viewer)?.name
+          watching: next.players.find((p) => p.id === viewer)?.name,
+          free: online?.freeSeats?.() ?? 0,
+          request: online?.seatRequest?.() ?? 'idle'
         })
+        const seat = online?.seatedStart?.()
+        if (seat) {
+          enterSeat(seat)
+          return
+        }
       }
       const me = next.players.find((p) => p.id === viewer)
       const follow = followTarget(next, me)

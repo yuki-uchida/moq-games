@@ -176,7 +176,11 @@ function guestLobby(room: GuestRoom): Lobby {
       },
       backInLobby: () => undefined,
       followTeam: (team) => room.setFollowTeam(team),
-      watching: () => ({ want: room.followTeam, have: room.keyTeam })
+      watching: () => ({ want: room.followTeam, have: room.keyTeam }),
+      freeSeats: () => room.freeSeats,
+      requestSeat: () => room.requestSeat(),
+      seatRequest: () => room.seatRequest,
+      seatedStart: () => room.seatedStart()
     }
   }
 }

@@ -2259,6 +2259,24 @@ button.room-card:hover,
   font-weight: 700;
   cursor: pointer;
 }
+.spectate-join {
+  border-color: var(--anima-2);
+  background: linear-gradient(180deg, var(--anima-2), var(--anima));
+  color: #2a1406;
+}
+.spectate-join[hidden] {
+  display: none;
+}
+.spectate-join:disabled {
+  opacity: 0.75;
+  cursor: progress;
+}
+.spectate-note {
+  color: var(--muted);
+}
+.spectate-note[hidden] {
+  display: none;
+}
 .spectate-btn[aria-pressed='true'] {
   background: var(--team);
   color: #10141f;

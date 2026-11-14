@@ -74,6 +74,8 @@ export interface RoomMsg {
   hk?: string
   /** PvP briefing/match: key generation and, per member id, its team key wrapped for it (seal.ts). */
   keys?: { g: number; w: Record<string, string> }
+  /** Briefing / match: seats nobody plays (a bot's, or one whose player left) that a spectator may take. */
+  free?: number
 }
 
 export interface SnapMsg {
@@ -122,6 +124,8 @@ export interface ProfileMsg {
   ek?: string
   /** Spectators: the team whose view to follow (default 0). */
   f?: TeamId
+  /** Spectators: asks for a free seat in this match id (repeated until seated or given up). */
+  j?: number
 }
 
 export interface InputMsg {
