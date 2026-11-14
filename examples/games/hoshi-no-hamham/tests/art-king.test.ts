@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest'
 import { KING_MANTLE, KING_RAGE_RED } from '../src/art/chars/king'
-import { bossSpec } from '../src/art/contract'
+import { KING_RAGED, KING_RAGED_SPEC, bossSpec } from '../src/art/contract'
 import { sheet } from '../src/art/index'
-import { R } from '../src/art/palette'
+import { C, R } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
 
 const ID = 'king'
@@ -133,5 +133,141 @@ describe('黒ハム王 (king) on the hamster kit', () => {
         expect(bottom(f), `${name} ${i}`).toBeGreaterThanOrEqual(118)
         expect(bottom(f), `${name} ${i}`).toBeLessThanOrEqual(123)
       }
+  })
+})
+
+describe('黒ハム王 after the transformation (king:raged)', () => {
+  const plain = sheet(ID)
+  const raged = sheet(KING_RAGED)
+  const CLIPS = ['idle', 'hurt', 'move', 'windup', 'attack', 'air', 'land', 'shoot', 'recover']
+  /** The aura's ramp (its fill, shade and core; the line is the king's own ink). */
+  const fire = new Set<number>(R.dark.slice(0, 4))
+  /** The plain eye's glow (both the resting and the hot key light it; nothing else of these clips uses it). */
+  const glow = new Set<number>([C.glow])
+  /** Painted, and not the aura. */
+  const body = (f: Raster, x: number, y: number) => f.get(x, y) !== 0 && !fire.has(f.get(x, y))
+  /** A pixel next to one of the fire's ramp (the plain cast's flame and flash). */
+  const nearFire = (f: Raster, x: number, y: number) =>
+    [-1, 0, 1].some((dy) => [-1, 0, 1].some((dx) => fire.has(f.get(x + dx, y + dy))))
+
+  test('exactly the fight clips, with the plain timing and the contract', () => {
+    expect(Object.keys(KING_RAGED_SPEC).sort()).toEqual([...CLIPS].sort())
+    expect(Object.keys(raged).sort()).toEqual([...CLIPS].sort())
+    for (const name of CLIPS) {
+      const want = KING_RAGED_SPEC[name]
+      for (const a of [raged[name], plain[name]]) {
+        expect(a.frames.length, `${name} frames`).toBe(want.frames)
+        expect(a.fps, `${name} fps`).toBe(want.fps)
+        expect(a.loop, `${name} loop`).toBe(want.loop)
+        expect(a.sustain, `${name} sustain`).toBe(want.sustain)
+      }
+    }
+  })
+
+  test('every frame burns: aura pixels in each raged frame, none in the plain one', () => {
+    for (const name of CLIPS)
+      for (const [i, f] of raged[name].frames.entries()) {
+        const p = plain[name].frames[i]
+        // the plain cast's own flame and flash use the ramp too: the aura adds to them
+        expect(count(f, fire) - count(p, fire), `${name} ${i}`).toBeGreaterThan(150)
+        if (name !== 'shoot') expect(count(p, fire), `plain ${name} ${i}`).toBe(0)
+      }
+  })
+
+  test('red eyes in every frame with the eyes open, and never the yellow glow', () => {
+    // only the two flinching frames of `hurt` have the eyes squeezed shut (drawn in ink on both sheets)
+    const shut = (name: string, i: number) => name === 'hurt' && i < 2
+    for (const name of CLIPS)
+      for (const [i, f] of raged[name].frames.entries()) {
+        const p = plain[name].frames[i]
+        expect(count(p, red), `plain ${name} ${i}`).toBe(0)
+        expect(count(f, glow), `${name} ${i}`).toBe(0)
+        if (shut(name, i)) expect(count(f, red), `${name} ${i} (eyes shut)`).toBe(0)
+        else expect(count(f, red), `${name} ${i}`).toBeGreaterThan(4)
+      }
+  })
+
+  test('the same pose: with the aura masked out, the raged frame covers the plain one exactly', () => {
+    for (const name of CLIPS)
+      for (const [i, f] of raged[name].frames.entries()) {
+        const p = plain[name].frames[i]
+        let missing = 0
+        let extra = 0
+        for (let y = 0; y < f.h; y++)
+          for (let x = 0; x < f.w; x++) {
+            // (the rim of the cast's own flame may merge into the aura's ramp where the two touch)
+            if (body(p, x, y) && !body(f, x, y) && !nearFire(p, x, y)) missing++
+            if (body(f, x, y) && !p.get(x, y)) extra++
+          }
+        expect(missing, `${name} ${i}: plain pixels lost`).toBe(0)
+        // the aura's outline in the king's ink is all it may add around him
+        expect(extra, `${name} ${i}: pixels added outside the aura`).toBeLessThan(count(f, fire) * 0.6)
+      }
+  })
+
+  test('the aura stays behind the face: the mask and the mouth are drawn as on the plain sheet', () => {
+    // every pixel the plain frame paints in the face's colours (the lilac mask, the mouth) is the same on the raged
+    // one (white is left out: the hot eye's highlight is white and turns pink in the red eye)
+    const face = new Set<number>([C.mouth, ...R.kingBelly.slice(0, 2)])
+    for (const name of CLIPS)
+      for (const [i, f] of raged[name].frames.entries()) {
+        const p = plain[name].frames[i]
+        for (let y = 0; y < f.h; y++)
+          for (let x = 0; x < f.w; x++)
+            if (face.has(p.get(x, y))) expect(f.get(x, y), `${name} ${i} at ${x},${y}`).toBe(p.get(x, y))
+      }
+  })
+
+  test('every frame one pixel clear of the cell; standing clips on the plain soles', () => {
+    for (const name of CLIPS)
+      for (const [i, f] of raged[name].frames.entries()) {
+        const b = box(f)
+        expect(b.x, `${name} ${i}`).toBeGreaterThanOrEqual(1)
+        expect(b.y, `${name} ${i}`).toBeGreaterThanOrEqual(1)
+        expect(b.x + b.w, `${name} ${i}`).toBeLessThanOrEqual(f.w - 1)
+        expect(b.y + b.h, `${name} ${i}`).toBeLessThanOrEqual(f.h - 1)
+        if (name !== 'air') expect(bottom(f), `${name} ${i}`).toBe(bottom(plain[name].frames[i]))
+      }
+  })
+
+  test('the loops close: the last frame leads into the first no harder than any step', () => {
+    for (const name of CLIPS.filter((c) => raged[c].loop)) {
+      const fr = raged[name].frames
+      const diff = (a: Raster, b: Raster) => {
+        let n = 0
+        for (let k = 0; k < a.data.length; k++) if (a.data[k] !== b.data[k]) n++
+        return n
+      }
+      const steps = fr.slice(1).map((f, i) => diff(fr[i], f))
+      expect(diff(fr[fr.length - 1], fr[0]), name).toBeLessThanOrEqual(Math.max(...steps))
+    }
+  })
+
+  test('the aura leans with him: streaming back in the charge, thrown wide on the slam', () => {
+    /** The aura's horizontal extent behind (left of) and before (right of) the body's own box. */
+    const reachOut = (f: Raster, p: Raster) => {
+      const b = box(p)
+      let back = 0
+      let front = 0
+      for (let y = 0; y < f.h; y++)
+        for (let x = 0; x < f.w; x++)
+          if (fire.has(f.get(x, y))) {
+            back = Math.max(back, b.x - x)
+            front = Math.max(front, x - (b.x + b.w - 1))
+          }
+      return { back, front }
+    }
+    const idleBack = Math.max(...raged.idle.frames.map((f, i) => reachOut(f, plain.idle.frames[i]).back))
+    for (const [i, f] of raged.attack.frames.entries())
+      expect(reachOut(f, plain.attack.frames[i]).back, `attack ${i}`).toBeGreaterThan(idleBack)
+    // the slam: the aura's top sits lower than in the standing pose (flattened)
+    const auraTop = (f: Raster) => topOf(f, fire)
+    expect(auraTop(raged.land.frames[0])).toBeGreaterThan(Math.max(...raged.idle.frames.map(auraTop)))
+  })
+
+  test('the hit frame of the cast still reaches furthest forward', () => {
+    const reaches = raged.shoot.frames.map(reach)
+    expect(KING_RAGED_SPEC.shoot.hit).toBe(3)
+    for (const [i, r] of reaches.entries()) if (i !== 3) expect(r).toBeLessThan(reaches[3])
   })
 })

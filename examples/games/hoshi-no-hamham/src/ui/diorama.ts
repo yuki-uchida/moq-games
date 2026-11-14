@@ -33,6 +33,9 @@ const keyOf = (shot: Shot) => {
   return key
 }
 
+/** Clips whose own drawing leaves the ground: a figure playing one gets no `hop` on top. */
+const LEAVES_THE_GROUND = new Set(['cheer'])
+
 export class Diorama {
   private shot: Shot | null = null
   private previous: Shot | null = null
@@ -218,17 +221,22 @@ export class Diorama {
     const t = this.time + (figure.phase ?? 0)
     let x = figure.x
     let lift = figure.lift ?? 0
+    let flip = figure.flip
     const motion = still ? 'none' : (figure.motion ?? 'none')
-    if (motion === 'hop') lift += Math.round(Math.abs(Math.sin(t * 4.2)) * 10)
+    // A clip that leaves the ground itself (the cheer) gets no hop on top: the two would drift out of phase.
+    if (motion === 'hop' && !LEAVES_THE_GROUND.has(figure.clip)) lift += Math.round(Math.abs(Math.sin(t * 4.2)) * 10)
     else if (motion === 'float') lift += Math.round(Math.sin(t * 2.2) * 4)
     else if (motion === 'shake') x += Math.floor(t * 18) % 2 ? 1 : -1
-    else if (motion === 'pace') x += Math.round(Math.sin(t * 1.4) * 10)
-    else if (motion === 'fall') {
+    else if (motion === 'pace') {
+      // A patrol faces the way it goes: it turns round at each end instead of walking backwards.
+      x += Math.round(Math.sin(t * 1.4) * 10)
+      flip = Math.cos(t * 1.4) < 0
+    } else if (motion === 'fall') {
       const drop = Math.max(0, 96 - this.since * 40)
       lift += Math.round(drop)
       x += Math.round(Math.sin(t * 2.4) * (drop > 0 ? 8 : 0))
     }
     if (still && figure.motion === 'fall') lift = figure.lift ?? 0
-    blit(ctx, a, t, x, GROUND - lift, { flip: figure.flip })
+    blit(ctx, a, t, x, GROUND - lift, { flip })
   }
 }

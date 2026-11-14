@@ -14,6 +14,7 @@ import {
   allSheetSpecs,
   bossSpec,
   type AnimSpec,
+  KING_RAGED,
   type BossArt,
   type EnemyArt
 } from '../src/art/contract'
@@ -28,6 +29,7 @@ import type { BossKind } from '../src/game/types'
 import type { Hud } from '../src/ui/hud'
 import { ActorsView, BOSS_DEFEAT_TAIL } from '../src/view/actors'
 import {
+  FLINCH_MAX_SPEED,
   WAIT_AFTER,
   bossClip,
   bossSheetSpec,
@@ -46,7 +48,7 @@ import type { Renderer } from '../src/view/renderer'
 import { SILENT_AUDIO } from '../src/view/sound-map'
 
 const SPECS = allSheetSpecs()
-const SHEETS = ['hero', 'princess', 'mom', ...ENEMY_KINDS, ...BOSS_ARTS]
+const SHEETS = ['hero', 'princess', 'mom', ...ENEMY_KINDS, ...BOSS_ARTS, KING_RAGED]
 /** Boss sheets with the kind that fights with them (the chasing parent is drawn from `mom`). */
 const BOSSES: [BossKind, string][] = [
   ['chaser', 'mom'],
@@ -170,6 +172,10 @@ const boss = (kind: BossKind, state: BossState, extra: Partial<BossSnapshot> = {
   vy: 0,
   rageAge: null,
   hurtAge: null,
+  onGround: false,
+  shotTimer: 99,
+  shotAge: null,
+  summonAge: null,
   time: 0.4,
   ...extra
 })
@@ -183,7 +189,11 @@ const BOSS_EXTRAS: Partial<BossSnapshot>[] = [
   { prevState: 'shoot', stateTime: 0.02 },
   { hurtAge: 0.01 },
   { rageAge: 0.1 },
-  { active: false }
+  { active: false },
+  { shotTimer: 0.1 },
+  { shotAge: 0.05 },
+  { summonAge: 0.05 },
+  { onGround: true }
 ]
 
 // ------------------------------------------------------------------------------------------------- staging
@@ -323,6 +333,11 @@ describe('every clip of every character is shown somewhere', () => {
   for (const [kind, art] of BOSSES)
     for (const state of BOSS_STATES)
       for (const extra of BOSS_EXTRAS) add(art, bossClip(boss(kind, state, extra), art).name)
+  // After his transformation the king is drawn from his raged sheet (ActorsView.bossSheet): every clip the fight
+  // selects then.
+  for (const state of BOSS_STATES)
+    for (const extra of BOSS_EXTRAS)
+      add(KING_RAGED, bossClip(boss('final', state, { ...extra, rageAge: 9 }), 'king').name)
   for (const [caged, freed, open] of [
     [true, null, false],
     [false, 0.5, false],
@@ -445,6 +460,21 @@ describe('every clip that plays over a window of time shows all of its frames', 
           )
         )
     }
+    // The throws and casts: the timer runs out (wind-up), the shot leaves (release and follow-through).
+    for (const [kind, art] of [
+      ['flyer', 'crowBoss'],
+      ['swarm', 'foxBoss'],
+      ['swarm', 'beeBoss']
+    ] as const) {
+      const spec = bossSheetSpec(kind, art)
+      expectWhole(
+        `${art}#shoot`,
+        spec.shoot,
+        sweep(spec.shoot, 'shoot', times(0, 1), (t) =>
+          bossClip(boss(kind, 'idle', t < 0.3 ? { shotTimer: 0.3 - t } : { shotTimer: 1.5, shotAge: t - 0.3 }), art)
+        )
+      )
+    }
     // Without staging (the fallback) the transformation plays once on sim time; its burning tail is staged only.
     const rage = bossSpec('king').rage
     expectWhole(
@@ -523,7 +553,7 @@ class PlayRecorder {
       }
     }
     const boss = world.boss
-    if (boss && !boss.dead) this.add(boss.def.art, view.selectBoss(boss).name)
+    if (boss && !boss.dead) this.add(view.bossSheet(boss), view.selectBoss(boss).name)
   }
 
   /** Steps while `go` holds, at most `seconds`, keeping the hero alive. */
@@ -547,7 +577,9 @@ function fightInput(world: World): InputState {
   const ahead = Math.floor((p.x + p.w / 2 + Math.sign(dx) * (p.w / 2 + 10)) / TILE)
   const foot = Math.floor((p.y + p.h - 4) / TILE)
   const wall = world.solidAt(ahead, foot) || world.solidAt(ahead, foot - 1)
-  const pit = !world.solidAt(ahead, Math.floor((p.y + p.h + 12) / TILE))
+  // A boss below is reached by stepping off the ledge, not by jumping the gap.
+  const below = boss.y + boss.h > p.y + p.h + 40
+  const pit = !below && !world.solidAt(ahead, Math.floor((p.y + p.h + 12) / TILE))
   if ((bossMid < playerMid - 60 || wall || pit) && p.onGround) {
     input.jump = true
     input.jumpPressed = true
@@ -565,6 +597,13 @@ function fightInput(world: World): InputState {
 }
 
 const hold = (keys: Partial<InputState>) => () => ({ ...emptyInput(), ...keys })
+
+/** The same input without the bite. */
+const holdBite = (input: InputState) => {
+  input.bite = false
+  input.bitePressed = false
+  return input
+}
 
 /** The moves a player makes and the bot does not: standing still, a turn on the spot, a skid, a long drop. */
 function heroMoves(r: PlayRecorder) {
@@ -639,16 +678,53 @@ function playStage(no: number) {
   const boss = world.boss
   if (boss?.active && stage.boss.kind === 'brute') wallDodge(r)
   if (boss) {
-    r.run(
-      90,
-      () => !boss.dead && !(chase && boss.state === 'tired' && boss.stateTime > 1),
-      () => fightInput(world)
-    )
-    r.run(
-      chase ? 3 : 2.5,
-      () => true,
-      () => fightInput(world)
-    ) // the defeat ghost plays out, or she catches her breath
+    const fight = () => fightInput(world)
+    const going = () => !boss.dead && !(chase && boss.state === 'tired' && boss.stateTime > 1)
+    if (stage.boss.kind === 'final') {
+      // A player who waits sees the king's attacks (charge, leap, cast) in each phase before biting on.
+      r.run(
+        8,
+        () => true,
+        () => holdBite(fight())
+      )
+      r.run(90, () => going() && boss.phase === 1, fight)
+      // Transformed: the hero steps out of the corner where the fight has pinned them both (he cannot be hurt
+      // here) to the near side of the arena, and lets the king come and attack.
+      const gate = world.bossGate
+      if (gate) {
+        world.player.x = (gate.x + 2) * TILE
+        world.player.y = boss.y + boss.h - world.player.h
+      }
+      r.run(
+        12,
+        () => true,
+        () => holdBite(fight())
+      )
+    }
+    if (stage.boss.kind === 'swarm') {
+      // The fox and the bee keep walking at the hero; a player bites them when they stand (after a dash). The bot
+      // can end up on a ledge out of their reach, which a player would leave: a hero off the boss's level for a
+      // second is put back on the arena floor.
+      let off = 0
+      const floor = (input: InputState) => {
+        const gate = world.bossGate
+        off = Math.abs(boss.y + boss.h - (world.player.y + world.player.h)) > 40 ? off + PLAY_STEP : 0
+        if (off > 1 && gate) {
+          world.player.x = (gate.x + 2) * TILE
+          world.player.y = boss.y + boss.h - world.player.h
+          off = 0
+        }
+        return input
+      }
+      r.run(
+        60,
+        () => going() && !r.shown.get(stage.boss.art)?.has('hurt'),
+        () => floor(Math.abs(boss.vx) <= FLINCH_MAX_SPEED ? fight() : holdBite(fight()))
+      )
+      r.run(150, going, () => floor(fight()))
+    }
+    r.run(150, going, fight)
+    r.run(chase ? 3 : 2.5, () => true, fight) // the defeat ghost plays out, or she catches her breath
   }
   // On to the goal: the clear makes the hero cheer.
   r.run(40, () => true)
@@ -673,6 +749,8 @@ const NOT_IN_PLAY: Record<string, Record<string, string>> = {
   }
 }
 for (const art of BOSS_ARTS) NOT_IN_PLAY[art] ??= { intro: 'staged when the boss wakes (covered above)' }
+// The phase-2 transformation is staged; without a director it plays on sim time, on the plain sheet.
+NOT_IN_PLAY[KING_RAGED] = {}
 
 /** A short run that ends with the hero knocked out by an enemy (the knock-out is shown in play). */
 function knockOut() {

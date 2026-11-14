@@ -1241,6 +1241,123 @@ const defeat = memo(() => {
   ]
 })
 
+/**
+ * shoot: the queen's command, for a volley of stingers and a summon of her swarm. She draws herself up and lifts the
+ * sceptre (0), raises it over her head with half-shut eyes, the free hand on her hip (1), the jewel glinting at the
+ * top (2), sweeps it down to point at the hero at full stretch, leaning in, mouth open, stinger forward (3, `hit`:
+ * the game spawns the stingers here), relaxes (4) and settles back toward the hover, haughty (5). The wings keep
+ * beating as in `idle`; the antennae and the sash trail the body.
+ */
+const shoot = memo(() => {
+  const poses = [
+    P({
+      y: 2,
+      lean: -5,
+      squash: 0.8,
+      nod: -11,
+      head: [0, -1],
+      eyes: 'disdain',
+      brow: 'arch',
+      mouth: 'line',
+      abd: [132, 94, 54, 16],
+      armN: [12, -3],
+      scep: 2,
+      ant: [6, 5],
+      sash: [74, 1, 0],
+      legs: [8, 10]
+    }),
+    P({
+      y: 3,
+      lean: -8,
+      squash: 1,
+      nod: -12,
+      head: [-0.5, -1],
+      eyes: 'tired',
+      brow: 'arch',
+      mouth: 'line',
+      abd: [138, 100, 60, 22],
+      armN: [13, -14],
+      scep: -12,
+      armF: [-7, 9],
+      ant: [14, 12],
+      sash: [80, 1.2, 1],
+      legs: [6, 12]
+    }),
+    P({
+      y: 4,
+      lean: -9,
+      squash: 1,
+      nod: -13,
+      head: [-0.5, -1],
+      eyes: 'tired',
+      brow: 'arch',
+      mouth: 'line',
+      abd: [140, 102, 62, 24],
+      armN: [15, -26],
+      scep: 2,
+      armF: [-7, 9],
+      ant: [18, 15],
+      sash: [84, 1.4, 2],
+      legs: [4, 12],
+      jewel: true
+    }),
+    P({
+      x: 2,
+      y: -1,
+      lean: 9,
+      squash: -0.6,
+      nod: 2,
+      head: [1, 0],
+      eyes: 'fury',
+      brow: 'fury',
+      mouth: 'o',
+      abd: [118, 74, 26, -10],
+      armN: [19, 2],
+      scep: 94,
+      armF: [-8, 8],
+      ant: [26, 22],
+      sash: [96, 1.6, 3],
+      legs: [-12, 14],
+      sting: true
+    }),
+    P({
+      x: 1,
+      y: 1.5,
+      lean: 4,
+      nod: -2,
+      head: [0.5, 0],
+      eyes: 'cruel',
+      brow: 'arch',
+      mouth: 'smile',
+      abd: [150, 114, 76, 38],
+      armN: [16, 5],
+      scep: 64,
+      ant: [-6, -5],
+      sash: [78, 1.4, 4],
+      legs: [6, 8]
+    }),
+    P({
+      y: 0.5,
+      lean: 0,
+      nod: -7,
+      eyes: 'disdain',
+      brow: 'arch',
+      mouth: 'line',
+      abd: [146, 108, 68, 30],
+      armN: [12, 5],
+      scep: 16,
+      ant: [4, 3],
+      sash: [72, 1.1, 5],
+      legs: [2, 7]
+    })
+  ].map((pose, i) => ({ ...pose, wings: BEAT[i % 3] }))
+  // the sweep leaves a sparkle just behind the jewel, on its arc down from the top
+  const a = jewelAt(poses[2])
+  const b = jewelAt(poses[3])
+  if (a && b) poses[3] = { ...poses[3], sparks: [[b[0] - 9, b[1] - 8]] }
+  return poses
+})
+
 const draw = (poses: BeePose[]) => poses.map(drawBee)
 
 export const sheets: SheetModule = {
@@ -1252,6 +1369,7 @@ export const sheets: SheetModule = {
     move: lazyAnim(() => draw(move()), 12, true),
     windup: lazyAnim(() => draw(windup()), 12, false, { sustain: 2 }),
     attack: lazyAnim(() => draw(attack()), 16, true),
+    shoot: lazyAnim(() => draw(shoot()), 12, false),
     recover: lazyAnim(() => draw(recover()), 8, true)
   })
 }

@@ -95,6 +95,10 @@ export interface CrowBossPose {
   loose: readonly (readonly [number, number])[]
   /** Stars circling over the head: phase 0..1, −1 = none. */
   stars: number
+  /** Speed streaks: start as a screen offset from the body's centre, length and direction in degrees on screen. */
+  streaks: readonly (readonly [number, number, number, number])[]
+  /** Dust kicked up along the anchor row behind him: phase 0..1, −1 = none. */
+  dust: number
 }
 
 export const crowBossPose = (p: Partial<CrowBossPose> = {}): CrowBossPose => ({
@@ -117,6 +121,8 @@ export const crowBossPose = (p: Partial<CrowBossPose> = {}): CrowBossPose => ({
   crest: 0,
   loose: [],
   stars: -1,
+  streaks: [],
+  dust: -1,
   ...p
 })
 
@@ -329,6 +335,14 @@ export function crowBossWingTips(p: CrowBossPose) {
   const { wingN, wingF } = crowBossRig(p)
   const xs = (f: Frame, w: Wing) => primaries(w[1], w[2]).map(([, tip]) => f.pt(...tip)[0])
   return { near: Math.min(...xs(wingN, p.wingN)), far: Math.max(...xs(wingF, p.wingF)) }
+}
+
+/** Screen point of the near wing's tip (the primary tip farthest from the shoulder) and the body's centre. */
+export function crowBossNearTip(p: CrowBossPose): { tip: Pt; centre: Pt } {
+  const { root, wingN } = crowBossRig(p)
+  const tips = primaries(p.wingN[1], p.wingN[2]).map(([, tip]) => tip)
+  const far = tips.reduce((a, b) => (Math.hypot(...b) > Math.hypot(...a) ? b : a))
+  return { tip: wingN.pt(...far), centre: root.pt(0, 0) }
 }
 
 export function drawCrowBoss(p: CrowBossPose): Raster {
@@ -576,6 +590,34 @@ export function drawCrowBoss(p: CrowBossPose): Raster {
     fill(l, Frame.at(knot[0], knot[1]), oval(0, 0, 3.6, 3.2), BAND[1])
     cel(l, { shade: 1.4, rim: 1 })
   })
+
+  // ---- speed streaks: thin pale dashes with the dark rim, just behind the near wing
+  if (p.streaks.length)
+    g.add(0.9, (l) => {
+      for (const [dx, dy, len, deg] of p.streaks) {
+        const a: Pt = [centre[0] + dx, centre[1] + dy]
+        fill(l, ID, capsule(a, add(a, pol(len, deg)), 1.3, 0.7), CHEST[1])
+      }
+      cel(l, { shade: 1 })
+    })
+
+  // ---- dust skimmed up off the ground: a low trail of puffs on the anchor row behind him
+  if (p.dust >= 0)
+    g.add(-7, (l) => {
+      const d = p.dust
+      const tail = root.pt(0, 0)[0]
+      for (const [ox, r] of [
+        [-4, 4.2],
+        [-14, 5.2],
+        [-25, 4.4],
+        [-35, 3.2]
+      ] as const) {
+        const cx = tail + ox - d * 6
+        const rr = r * (0.8 + d * 0.35)
+        fill(l, Frame.at(cx, 120 - rr * 0.55 - d * 1.5), oval(0, 0, rr * 1.3, rr * 0.6), R.dust[1])
+      }
+      cel(l, { shade: 1.4 })
+    })
 
   // ---- loose feathers
   if (p.loose.length)
@@ -836,28 +878,211 @@ const windup = memo(() => {
   ]
 })
 
-/** attack: the dive — wings swept hard back, the body a spear behind the beak, talons out, the scarf streaming. */
-const attack = memo(() =>
-  [0, 1, 2].map((i) =>
+/**
+ * attack: the dive — wings swept hard back, the body a spear behind the beak, talons out, the scarf streaming. The
+ * loop is the wind: the wing tips and tail feathers flutter, the scarf whips, the crest is combed back and forth, and
+ * the speed streaks behind him alternate.
+ */
+const attack = memo(() => {
+  // streaks along the line of the dive (down and forward), behind the back and the swept wings
+  const streaks: CrowBossPose['streaks'][] = [
+    [
+      [-34, -30, 14, 40],
+      [-10, -42, 10, 40]
+    ],
+    [
+      [-40, -18, 12, 40],
+      [-22, -40, 14, 40]
+    ],
+    [
+      [-30, -36, 10, 40],
+      [-44, -24, 13, 40]
+    ]
+  ]
+  return [0, 1, 2].map((i) =>
     P({
-      x: 0,
-      y: 12,
-      lean: 108,
+      x: [0, 1, 0][i],
+      y: 12 + [0, -1, 1][i],
+      lean: 108 + [0, -2, 2][i],
       squash: -2.5,
       head: [1, 0],
-      nod: -20,
+      nod: -20 + [0, 2, -2][i],
       jaw: 0.35,
       eyes: 'glare',
-      wingN: [-152 + [0, 2, -1][i], 0.88, [0, 0.25, 0.1][i], 0],
-      wingF: [-140 + [1, -1, 2][i], 0.88, [0.15, 0, 0.25][i], 0],
-      tail: [-8, [0.2, 0.4, 0.3][i]],
+      wingN: [-152 + [0, 6, -5][i], [0.88, 0.8, 0.94][i], [0, 0.7, 0.3][i], 0],
+      wingF: [-140 + [4, -4, 2][i], [0.86, 0.94, 0.8][i], [0.5, 0, 0.8][i], 0],
+      tail: [-8 + [0, 6, -5][i], [0.1, 0.8, 0.4][i]],
       feet: [150, 1],
       reach: 13,
-      crest: 0,
-      scarf: [-36, 36, 1.2, (i / 3) * TAU]
+      crest: [0, 0.6, 0.3][i],
+      scarf: [-36 + [0, -8, 6][i], 36, 2.2, (i / 3) * TAU],
+      streaks: streaks[i]
     })
   )
-)
+})
+
+/** The far wing's beat while he hovers (the idle beat's frames), so it keeps beating through the throw. */
+const HOVER_FAR: Wing[] = [
+  [-68, 0.95, 0.9, 0],
+  [-2, 1, 1, 0],
+  [34, 0.85, 0.7, 0],
+  [38, 0.35, 0.1, 0],
+  [-22, 0.3, 0.15, 1],
+  [-54, 0.6, 0.5, 0]
+]
+
+/**
+ * shoot: the feather throw from the hover — the near wing coils back over the shoulder with the body twisting back,
+ * snaps forward and down at full stretch on `hit` (3) with a caw, swings past, and recovers into the hover.
+ */
+const shoot = memo(() => {
+  const poses = [
+    P({
+      x: -2,
+      y: 1,
+      lean: -8,
+      head: [-2, 1],
+      nod: 6,
+      eyes: 'narrow',
+      wingN: [-138, 0.5, 0.4, 0],
+      tail: [46, 0.5],
+      feet: [6, 0.3],
+      crest: 0.3,
+      scarf: [6, 32, 1.2, 0]
+    }),
+    P({
+      x: -3,
+      y: 2,
+      lean: -13,
+      head: [-3, 2],
+      nod: 9,
+      eyes: 'narrow',
+      wingN: [-148, 0.42, 0.3, 0],
+      tail: [52, 0.4],
+      feet: [10, 0.3],
+      crest: 0.5,
+      scarf: [-8, 32, 1.4, 1.1]
+    }),
+    P({
+      x: -4,
+      y: 2,
+      lean: -17,
+      head: [-3, 2],
+      nod: 12,
+      eyes: 'narrow',
+      wingN: [-156, 0.36, 0.25, 0],
+      tail: [56, 0.4],
+      feet: [12, 0.4],
+      crest: 0.7,
+      scarf: [-16, 32, 1.6, 2.2]
+    }),
+    P({
+      x: 5,
+      y: 0,
+      lean: 20,
+      head: [2, 0],
+      nod: -12,
+      jaw: 0.95,
+      eyes: 'wide',
+      wingN: [16, 1, 0.9, 0],
+      tail: [30, 0.9],
+      feet: [-4, 0.6],
+      crest: 1,
+      scarf: [22, 34, 1.8, 3.3]
+    }),
+    P({
+      x: 4,
+      y: 0,
+      lean: 18,
+      head: [2, 1],
+      nod: 2,
+      jaw: 0.35,
+      eyes: 'glare',
+      wingN: [52, 0.7, 0.6, 0],
+      tail: [34, 0.7],
+      feet: [-2, 0.4],
+      crest: 0.6,
+      scarf: [30, 32, 1.6, 4.4]
+    }),
+    P({
+      x: 1,
+      y: 1,
+      lean: 4,
+      head: [1, 0],
+      nod: 3,
+      eyes: 'glare',
+      wingN: [-146, 0.5, 0.35, 1],
+      tail: [42, 0.5],
+      feet: [2, 0.2],
+      crest: 0.3,
+      scarf: [14, 32, 1.2, 5.5]
+    })
+  ].map((p, i) => ({ ...p, wingF: HOVER_FAR[i] }))
+  // the flick's release: two short dashes flung on from the wing tip, toward the hero
+  const { tip, centre } = crowBossNearTip(poses[3])
+  poses[3] = {
+    ...poses[3],
+    streaks: [
+      [tip[0] - centre[0] + 3, tip[1] - centre[1] - 1, 9, 18],
+      [tip[0] - centre[0] + 1, tip[1] - centre[1] + 4, 8, 50]
+    ]
+  }
+  return poses
+})
+
+/**
+ * sweep: the dive levelled out, skimming the ground — the body level behind the beak, the wings spread wide and swept
+ * back on a shallow four-frame beat (up, mid, down, mid), the talons tucked forward, the scarf streaming back, dust
+ * kicked up behind him on the down beat.
+ */
+const sweep = memo(() => {
+  const near: Wing[] = [
+    [-160, 1, 0.8, 0],
+    [-174, 1, 1, 0],
+    [168, 0.94, 0.9, 0],
+    [178, 0.97, 0.6, 0]
+  ]
+  const far: Wing[] = [
+    [-128, 0.95, 0.8, 0],
+    [-142, 0.95, 1, 0],
+    [-154, 0.9, 0.7, 0],
+    [-140, 0.92, 0.5, 0]
+  ]
+  // level speed streaks trailing behind him, alternating high and low
+  const streaks: CrowBossPose['streaks'][] = [
+    [
+      [-40, 4, -12, 0],
+      [-30, 14, -10, 0]
+    ],
+    [[-46, 10, -12, 0]],
+    [
+      [-42, 0, -10, 0],
+      [-36, 12, -12, 0]
+    ],
+    [[-48, 6, -10, 0]]
+  ]
+  return [0, 1, 2, 3].map((i) =>
+    P({
+      x: 0,
+      y: -9 + [1, 0, -1, 0][i],
+      lean: 80,
+      squash: -1.5,
+      head: [1, 0],
+      nod: -36,
+      jaw: 0.15,
+      eyes: 'glare',
+      wingN: near[i],
+      wingF: far[i],
+      tail: [16 + [-3, 0, 3, 0][i], 0.35],
+      feet: [150, 0.8],
+      reach: 0,
+      crest: [0.2, 0.5, 0.3, 0][i],
+      scarf: [-16, 44, 1.8, (i / 4) * TAU],
+      streaks: streaks[i],
+      dust: [-1, -1, 0, 0.5][i]
+    })
+  )
+})
 
 /** recover: out of breath — heavy, uneven flaps, the beak open on the tongue, the head hanging. */
 const recover = memo(() => {
@@ -999,7 +1224,7 @@ const defeat = memo(() => {
 })
 
 /** The clips as poses (for the tests). */
-export const crowBossPoses = { idle, intro, hurt, windup, attack, recover, defeat }
+export const crowBossPoses = { idle, intro, hurt, windup, attack, shoot, sweep, recover, defeat }
 
 export const sheets: SheetModule = {
   crowBoss: () => ({
@@ -1009,6 +1234,8 @@ export const sheets: SheetModule = {
     defeat: lazyAnim(() => draw(defeat()), 10, false, { sustain: 2 }),
     windup: lazyAnim(() => draw(windup()), 10, false, { sustain: 2 }),
     attack: lazyAnim(() => draw(attack()), 14, true),
+    sweep: lazyAnim(() => draw(sweep()), 14, true),
+    shoot: lazyAnim(() => draw(shoot()), 12, false),
     recover: lazyAnim(() => draw(recover()), 8, true)
   })
 }

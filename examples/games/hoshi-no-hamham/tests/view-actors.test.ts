@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /** Every blit the actors view makes, in order. */
-const blits: { anim: string; t: number; x: number; y: number; alpha?: number; frame?: number }[] = []
+const blits: { anim: string; t: number; x: number; y: number; alpha?: number; frame?: number; flip?: boolean }[] = []
 
 vi.mock('../src/view/bake', () => ({
   clip: (sheet: string, name: string) => ({ id: `${sheet}#${name}` }),
@@ -31,11 +31,11 @@ vi.mock('../src/view/bake', () => ({
     t: number,
     x: number,
     y: number,
-    o: { alpha?: number; frame?: number } = {}
-  ) => blits.push({ anim: anim.id, t, x, y, alpha: o.alpha, frame: o.frame })
+    o: { alpha?: number; frame?: number; flip?: boolean } = {}
+  ) => blits.push({ anim: anim.id, t, x, y, alpha: o.alpha, frame: o.frame, flip: o.flip })
 }))
 
-import { HERO_SPEC, bossSpec } from '../src/art/contract'
+import { ENEMY_KINDS, ENEMY_SPEC, HERO_SPEC, bossSpec } from '../src/art/contract'
 import {
   ActorsView,
   BOSS_JOLT_PX,
@@ -46,10 +46,21 @@ import {
   TRAIL_ALPHAS,
   DIE_GRAVITY,
   DIE_HOP_SPEED,
+  ENEMY_KNOCK_HOP,
+  ENEMY_KNOCK_SPEED,
+  SKID_TAIL,
   bossJolt,
   dieLandTime
 } from '../src/view/actors'
-import { BOSS_DEFEAT_GROUND_FRAME, SKID_SPEED, clipLife, frameStart, heroClip, specDuration } from '../src/view/clips'
+import {
+  BOSS_DEFEAT_GROUND_FRAME,
+  ENEMY_DEFEAT_GROUND_FRAME,
+  SKID_SPEED,
+  clipLife,
+  frameStart,
+  heroClip,
+  specDuration
+} from '../src/view/clips'
 import { frameAt, type Anim } from '../src/art/sheet'
 import { TILE } from '../src/game/types'
 
@@ -512,6 +523,294 @@ describe('the rat and the mole stand still only after a while', () => {
     rat.vx = -74
     view.update(1 / 60)
     expect(view.selectEnemy(enemyOf).name).toBe('move')
+  })
+})
+
+describe('a knocked-out enemy flies away from the hero and comes to lie on the ground', () => {
+  const GROUND = 5 * TILE
+  /** The ghost of an enemy of `kind` knocked out with its feet on `feet`, the hero standing at `heroX`. */
+  const knock = (kind: string, feet: number, heroX: number, groundRow: number | null = 5) => {
+    const { world, view } = grounded(groundRow)
+    world.player.x = heroX
+    world.player.y = GROUND - world.player.h
+    const enemy = { id: 7, kind, x: 300, y: feet - 40, w: 44, h: 40, vx: 74, vy: 0, facing: 1, onGround: true }
+    ;(world as unknown as { enemies: unknown[] }).enemies = [enemy]
+    view.handle({ type: 'enemy-down', id: 7, kind, x: 322, y: feet - 20, dir: 1 } as never)
+    ;(world as unknown as { enemies: unknown[] }).enemies = []
+    const out: { age: number; x: number; y: number; flip?: boolean }[] = []
+    let age = 0
+    for (let i = 0; i < 40; i++) {
+      blits.length = 0
+      view.drawEnemies(ctx)
+      const ghost = blits.find((b) => b.anim === `${kind}#defeat`)
+      if (ghost) out.push({ age, x: ghost.x, y: ghost.y, flip: ghost.flip })
+      view.update(1 / 60)
+      age += 1 / 60
+    }
+    return out
+  }
+
+  for (const kind of ENEMY_KINDS)
+    for (const side of ['left', 'right'] as const)
+      it(`${kind}, the hero on the ${side}: away from him, facing him, on the ground row from its first lying frame`, () => {
+        const heroX = side === 'left' ? 100 : 500
+        const run = knock(kind, GROUND, heroX)
+        expect(run.length).toBeGreaterThan(20)
+        const away = side === 'left' ? 1 : -1
+        for (let i = 1; i < run.length; i++) expect((run[i].x - run[i - 1].x) * away).toBeGreaterThanOrEqual(0)
+        expect((run.at(-1)!.x - run[0].x) * away).toBeGreaterThan(10)
+        // Facing the hero (the art faces right): flung backwards is away from him.
+        for (const r of run) expect(r.flip).toBe(away > 0)
+        const at = frameStart(ENEMY_SPEC[kind].defeat, ENEMY_DEFEAT_GROUND_FRAME[kind])
+        const top = Math.min(...run.map((r) => r.y))
+        expect(GROUND - top).toBeGreaterThan(ENEMY_KNOCK_HOP - 3)
+        expect(GROUND - top).toBeLessThanOrEqual(ENEMY_KNOCK_HOP + 1e-6)
+        const landed = run.filter((r) => r.age >= at - 1e-9)
+        for (const r of landed) expect(r.y).toBe(GROUND)
+        // No travel after landing.
+        for (const r of landed) expect(r.x).toBe(landed[0].x)
+      })
+
+  it('a flyer knocked out 70 px up comes down to the ground by its first lying frame', () => {
+    const run = knock('flyer', GROUND - 70, 100)
+    const at = frameStart(ENEMY_SPEC.flyer.defeat, ENEMY_DEFEAT_GROUND_FRAME.flyer)
+    expect(run[0].y).toBe(GROUND - 70)
+    for (const r of run) {
+      expect(r.y).toBeLessThanOrEqual(GROUND)
+      if (r.age >= at - 1e-9) expect(r.y).toBe(GROUND)
+    }
+  })
+
+  it('over a pit: the old arc', () => {
+    const run = knock('walker', GROUND, 100, null)
+    // Up first (vy -170), then down under 700 px/s², never stopping.
+    expect(Math.min(...run.map((r) => r.y))).toBeLessThan(GROUND - 15)
+    expect(run.at(-1)!.y).toBeGreaterThan(Math.min(...run.map((r) => r.y)) + 10)
+  })
+
+  it('the puff at the end of its life is where the body lies', () => {
+    const { world, view } = grounded(5)
+    const spawned: { name: string; x: number; y: number }[] = []
+    ;(view as unknown as { fx: { spawn: (name: string, x: number, y: number) => void } }).fx.spawn = (name, x, y) =>
+      spawned.push({ name, x, y })
+    world.player.x = 100
+    const enemy = { id: 3, kind: 'walker', x: 300, y: GROUND - 40, w: 44, h: 40, vx: -74, vy: 0, facing: -1 }
+    ;(world as unknown as { enemies: unknown[] }).enemies = [enemy]
+    view.handle({ type: 'enemy-down', id: 3, kind: 'walker', x: 322, y: GROUND - 20, dir: -1 } as never)
+    for (let i = 0; i < 60; i++) view.update(1 / 60)
+    const puff = spawned.find((s) => s.name === 'puff')!
+    const at = frameStart(ENEMY_SPEC.walker.defeat, ENEMY_DEFEAT_GROUND_FRAME.walker)
+    expect(puff.y).toBe(GROUND - 20)
+    expect(puff.x).toBeCloseTo(322 + ENEMY_KNOCK_SPEED * at)
+  })
+})
+
+describe('a clear touched in the air', () => {
+  const GROUND = 5 * TILE
+  const clear = (feet: number) => {
+    const { world, view } = grounded(5)
+    world.player.y = feet - world.player.h
+    world.player.onGround = feet === GROUND
+    world.player.vy = -40
+    world.state = 'clear'
+    view.handle({ type: 'clear', x: 0, y: 0 } as never)
+    view.pose('hero', 'cheer', 3)
+    const out: { name: string; t: number; feet: number }[] = []
+    for (let i = 0; i < 60; i++) {
+      const c = view.selectHero()!
+      out.push({ name: c.name, t: c.t, feet: view.heroPoint()!.y + world.player.h / 2 })
+      view.update(1 / 60)
+      view.tickReal(1 / 60)
+    }
+    return out
+  }
+
+  it('cleared 60 px up: fall with the feet going down to the ground row, then cheer from frame 0 on the ground', () => {
+    const run = clear(GROUND - 60)
+    const first = run.findIndex((r) => r.name === 'cheer')
+    expect(first).toBeGreaterThan(3)
+    for (const r of run.slice(0, first)) expect(r.name).toBe('fall')
+    for (let i = 1; i < first; i++) expect(run[i].feet).toBeGreaterThanOrEqual(run[i - 1].feet)
+    expect(run[first].t).toBeLessThan(1 / 60 + 1e-9)
+    for (const r of run.slice(first)) {
+      expect(r.name).toBe('cheer')
+      expect(r.feet).toBe(GROUND)
+    }
+  })
+
+  it('cleared on the ground: the cheer at once, as before', () => {
+    const run = clear(GROUND)
+    expect(run[0].name).toBe('cheer')
+    for (const r of run) expect(r.feet).toBe(GROUND)
+  })
+})
+
+describe('a staged hero pose gives way to his own body while the simulation runs', () => {
+  for (const [what, change] of [
+    ['moves', (p: { vx: number }) => (p.vx = 200)],
+    ['leaves the ground', (p: { onGround: boolean }) => (p.onGround = false)],
+    ['bites', (p: { biteTimer: number }) => (p.biteTimer = 0.2)]
+  ] as const)
+    it(`ends when he ${what}`, () => {
+      const { world, view } = setup()
+      view.pose('hero', 'cheer', 2)
+      view.update(1 / 60)
+      expect(view.posing('hero')).toBe('cheer')
+      ;(change as (p: unknown) => void)(world.player)
+      view.update(1 / 60)
+      expect(view.posing('hero')).toBeNull()
+    })
+
+  it('ends when he is hurt, and stays while the simulation is held', () => {
+    const { world, view } = setup()
+    view.pose('hero', 'cheer', 2)
+    world.player.vx = 200
+    view.update(0)
+    expect(view.posing('hero')).toBe('cheer')
+    world.player.vx = 0
+    view.handle({ type: 'hurt' } as never)
+    expect(view.posing('hero')).toBeNull()
+  })
+
+  it('a moment ends only its own pose', () => {
+    const { view } = setup()
+    const first = view.pose('hero', 'idle', 2)
+    view.pose('hero', 'cheer', 2)
+    view.unposeIf('hero', first)
+    expect(view.posing('hero')).toBe('cheer')
+  })
+})
+
+describe('a stun shows only once it lasts; a crash jolts the body', () => {
+  const dizzy = () => blits.filter((b) => b.anim === 'fx#dizzy')
+  it('a one-step stun changes neither the clip nor shows the mark; a lasting one does after 0.05 s', () => {
+    const { world, view } = setup()
+    world.boss = bossBody({ state: 'charge', vx: 300, def: { kind: 'swarm', art: 'boarBoss' } })
+    view.update(1 / 60)
+    world.boss = bossBody({ state: 'stunned', stateTime: 1 / 60, def: { kind: 'swarm', art: 'boarBoss' } })
+    view.update(1 / 60)
+    view.drawBoss(ctx)
+    expect(bodyBlits().at(-1)!.anim).toBe('boarBoss#attack')
+    expect(dizzy()).toHaveLength(0)
+    blits.length = 0
+    world.boss.stateTime = 0.06
+    view.drawBoss(ctx)
+    expect(bodyBlits().at(-1)!.anim).toBe('boarBoss#recover')
+    expect(dizzy()).toHaveLength(1)
+  })
+
+  it('the crash jolts the sprite away from the wall', () => {
+    const { world, view } = setup()
+    world.boss = bossBody({ state: 'stunned', stateTime: 0, def: { kind: 'swarm', art: 'boarBoss' } })
+    view.handle({ type: 'boss-crash', x: 0, y: 0, dir: 1 } as never)
+    view.drawBoss(ctx)
+    expect(bodyBlits().at(-1)!.x).toBe(140 - BOSS_JOLT_PX)
+    blits.length = 0
+    view.update(BOSS_JOLT_SECONDS)
+    view.drawBoss(ctx)
+    expect(bodyBlits().at(-1)!.x).toBe(140)
+  })
+})
+
+describe('throws, casts and summons are shown only where the boss can show them', () => {
+  const fox = (state: string, extra = {}) =>
+    bossBody({ state, stateTime: 0.2, shotTimer: 1.5, def: { kind: 'swarm', art: 'foxBoss' }, ...extra })
+  const drawn = () => {
+    blits.length = 0
+    return (view: ActorsView) => {
+      view.drawBoss(ctx)
+      return blits.filter((b) => b.anim.startsWith('foxBoss#')).at(-1)!.anim
+    }
+  }
+
+  for (const type of ['boss-shoot', 'minion'] as const)
+    it(`${type} while he walks: the gesture from its release; during the dash: none, not even when the dash ends`, () => {
+      const event = { type, x: 0, y: 0, count: 1, kind: 'walker' } as never
+      // Walking: the release and the follow-through play.
+      const walking = setup()
+      walking.world.boss = fox('idle')
+      walking.view.handle(event)
+      expect(drawn()(walking.view)).toBe('foxBoss#shoot')
+      // In the dash the state's clip stays ...
+      const dashing = setup()
+      dashing.world.boss = fox('charge', { vx: 400 })
+      dashing.view.handle(event)
+      expect(drawn()(dashing.view)).toBe('foxBoss#attack')
+      // ... and when the dash ends a moment later, the tail of the gesture does not pop in.
+      dashing.view.update(0.1)
+      dashing.world.boss = fox('idle', { stateTime: 0 })
+      expect(drawn()(dashing.view)).not.toBe('foxBoss#shoot')
+    })
+})
+
+describe('the skid ends with the braking', () => {
+  it('a full-speed reversal: skid from frame 0 while braking, gone SKID_TAIL after; a new skid starts again', () => {
+    expect(SKID_TAIL).toBe(0.08)
+    const { world, view } = setup()
+    const age = () => (view as unknown as { skidAge: number | null }).skidAge
+    // The simulation's reversal at full speed: from +215 px/s pressing left, the speed falls by about 30 px/s a
+    // step through zero, then grows the other way.
+    const speeds = [215, 185, 155, 125, 95, 65, 35, 5, -25, -55, -85, -115, -145, -175, -205, -215, -215, -215, -215]
+    world.player.facing = -1
+    const ages: (number | null)[] = []
+    for (const vx of speeds) {
+      world.player.vx = vx
+      view.update(1 / 60)
+      ages.push(age())
+    }
+    expect(ages[0]).toBe(0)
+    // Braking while |vx| > SKID_SPEED (the first four steps), then a tail of 0.08 s.
+    const braking = speeds.filter((v) => v > SKID_SPEED).length
+    for (let i = 1; i < braking; i++) expect(ages[i]).toBeCloseTo(i / 60)
+    const tailSteps = Math.floor(SKID_TAIL * 60)
+    for (let i = braking; i < braking + tailSteps; i++) expect(ages[i]).not.toBeNull()
+    for (let i = braking + tailSteps + 1; i < ages.length; i++) expect(ages[i]).toBeNull()
+    // A second skid right after the first: from frame 0 again.
+    world.player.facing = -1
+    world.player.vx = 215
+    view.update(1 / 60)
+    expect(age()).toBe(0)
+  })
+})
+
+describe("the king's raged sheet", () => {
+  const king = (extra = {}) => bossBody({ def: { kind: 'final', art: 'king' }, ...extra })
+  it('phase 1 draws `king`; after the staged transformation `king:raged`, for every state; the knock-out stays plain', () => {
+    const { world, view } = setup()
+    world.boss = king()
+    view.drawBoss(ctx)
+    expect(blits.at(-1)!.anim).toBe('king#idle')
+    view.handle({ type: 'boss-phase', phase: 2, x: 0, y: 0 } as never)
+    view.pose('boss', 'rage', 1.2)
+    blits.length = 0
+    view.drawBoss(ctx)
+    expect(blits.at(-1)!.anim).toBe('king#rage')
+    view.tickReal(1.3)
+    for (const state of ['idle', 'windup', 'charge', 'recover', 'shoot', 'slam']) {
+      blits.length = 0
+      world.boss = king({ state, vy: -300, vx: 0 })
+      view.drawBoss(ctx)
+      const body = blits.filter((b) => b.anim.startsWith('king')).at(-1)!
+      expect(body.anim.startsWith('king:raged#'), `${state}: ${body.anim}`).toBe(true)
+    }
+    world.boss = king({ dead: true })
+    view.handle({ type: 'boss-down', x: 0, y: 0 } as never)
+    world.boss = null
+    blits.length = 0
+    view.drawBoss(ctx)
+    expect(blits.at(-1)!.anim).toBe('king#defeat')
+  })
+
+  it('without staging, the sim-time rage plays on the plain sheet, then the raged one', () => {
+    const { world, view } = setup()
+    world.boss = king()
+    view.handle({ type: 'boss-phase', phase: 2, x: 0, y: 0 } as never)
+    view.drawBoss(ctx)
+    expect(blits.at(-1)!.anim).toBe('king#rage')
+    view.update(specDuration(bossSpec('king').rage) + 0.01)
+    blits.length = 0
+    view.drawBoss(ctx)
+    expect(blits.at(-1)!.anim).toBe('king:raged#idle')
   })
 })
 

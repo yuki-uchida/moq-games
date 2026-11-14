@@ -11,6 +11,7 @@ import { ZONES } from '../ui/hud-model'
 import type { DirectorHost, Outcome } from './director'
 import { bossSheetSpec, clipLife, specDuration } from './clips'
 import type { Anchor, BubbleTone } from './overlay'
+import type { PoseTarget } from './actors'
 import { Sequence } from './sequence'
 
 /** Who interrupts whom: a higher priority cancels the moment playing, a lower one waits for it. */
@@ -67,6 +68,22 @@ export class Staging {
   private heroCentre() {
     const p = this.host.world.player
     return { x: p.x + p.w / 2, y: p.y + p.h / 2 }
+  }
+
+  /**
+   * Stages a pose that belongs to the moment `seq`: it ends when the moment ends or is skipped (unless a later pose
+   * has replaced it), so no pose outlives its moment.
+   */
+  private posed(
+    seq: Sequence,
+    who: PoseTarget,
+    clip: string,
+    seconds: number,
+    options?: { hop?: number; hopSeconds?: number }
+  ) {
+    const actors = this.host.view.actors
+    const token = actors.pose(who, clip, seconds, options)
+    seq.onEnd(() => actors.unposeIf(who, token))
   }
 
   /** A world point in screen pixels of the current (unshaken) view. */
@@ -185,8 +202,8 @@ export class Staging {
         sound.cue('stage-start')
         hud.lights(true)
         hud.showBanner(`${stage.no}. ${stage.name}`, stage.subtitle, length - 0.14 - CARD_GAP)
-        view.actors.pose('hero', 'idle', 0.4)
-        view.actors.pose('boss', 'idle', 0.2)
+        this.posed(seq, 'hero', 'idle', 0.4)
+        this.posed(seq, 'boss', 'idle', 0.2)
       },
       true
     )
@@ -194,7 +211,7 @@ export class Staging {
       this.reduced ? 0 : 0.16,
       () => {
         const boss = world.boss
-        view.actors.pose('boss', 'yell', 1)
+        this.posed(seq, 'boss', 'yell', 1)
         this.say('こらーっ！まちなさーい！', momHead, 2, this.bossSpeaker(), 'yell')
         sound.cue('mom-yell')
         this.trauma(0.28)
@@ -212,7 +229,7 @@ export class Staging {
     )
     seq.at(this.reduced ? 0.1 : 0.4, () => {
       const p = world.player
-      view.actors.pose('hero', 'hurt', 0.45, { hop: 24, hopSeconds: 0.36 })
+      this.posed(seq, 'hero', 'hurt', 0.45, { hop: 24, hopSeconds: 0.36 })
       this.fx.spawn('alert', p.x + p.w / 2 + 6, p.y - 26, { vy: -20, life: 0.6, layer: 'front' })
       this.fx.spawn('sweat', p.x + p.w / 2 - 18, p.y - 6, { vy: -10, life: 0.5, layer: 'front' })
     })
@@ -251,14 +268,14 @@ export class Staging {
       // Frame him with his feet above the nameplate zone (the lower third), whatever his size.
       const lowest = boss.y + boss.h - (ZONES.bossFeet - 0.5) * VIEW_H
       camera.panTo(c.x, Math.max(c.y - 24, lowest), this.reduced ? 0 : pan)
-      view.actors.pose('boss', 'idle', pan + 0.05)
+      this.posed(seq, 'boss', 'idle', pan + 0.05)
     })
     // The roar is posed for the whole `intro` clip and one pass of its sustained tail (holds included).
     const intro = bossSheetSpec(boss.def.kind, boss.def.art).intro
     const roar = Math.max(BOSS_ROAR_SECONDS, intro ? clipLife(intro) : 0)
     seq.at(pan, () => {
       const c = centre()
-      view.actors.pose('boss', 'intro', roar)
+      this.posed(seq, 'boss', 'intro', roar)
       sound.cue('boss-roar')
       this.trauma(0.55)
       this.fx.spawn('ring', c.x, c.y, { layer: 'front' })
@@ -440,9 +457,10 @@ export class Staging {
 
   /** ハム姫 is freed: hearts, she cheers and thanks him, the hero cheers; play slows for a moment, never stops. */
   princessFree(event: At<'princess-free'>): Sequence | null {
-    const { camera, overlay, view, world } = this.host
+    const { camera, world } = this.host
     if (!camera.sees(event.x, event.y, 0) || world.state !== 'play') return null
-    const seq = new Sequence('princess-free', 0.55, {
+    const length = 0.55
+    const seq = new Sequence('princess-free', length, {
       priority: PRIORITY.princess,
       claims: this.reduced ? {} : { scale: 0.35, lock: true }
     })
@@ -455,7 +473,9 @@ export class Staging {
         life: [0.9, 1.3],
         layer: 'front'
       })
-      if (world.player.onGround && !world.player.dead) view.actors.pose('hero', 'cheer', 0.9)
+      // The hero cheers only while the input is locked (never over free input; there is no lock under reduced
+      // motion, so no cheer either).
+      if (!this.reduced && world.player.onGround && !world.player.dead) this.posed(seq, 'hero', 'cheer', length)
     })
     return seq
   }
@@ -497,7 +517,8 @@ export class Staging {
       true
     )
     seq.at(0.12, () => {
-      const c = this.heroCentre()
+      // A clear touched in the air brings the hero down first (ActorsView): the stars follow his body.
+      const c = view.actors.heroPoint() ?? this.heroCentre()
       this.fx.burst('star', c.x, c.y - 10, 8, { speed: [140, 260], gravity: 320, life: [0.6, 1], layer: 'front' })
       this.fx.burst('sparkle', event.x, event.y - 20, 8, { speed: [60, 140], life: [0.4, 0.7], layer: 'front' })
     })
@@ -508,7 +529,7 @@ export class Staging {
     seq.at(
       irisAt,
       () => {
-        const h = this.toScreen(this.heroCentre())
+        const h = this.toScreen(view.actors.heroRest())
         overlay.irisTo(0, 0.7, h.x, h.y)
         sound.cue('iris-out')
         hud.lights(false)

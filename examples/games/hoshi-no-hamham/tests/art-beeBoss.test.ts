@@ -81,6 +81,56 @@ describe('ハチ女王 (beeBoss) on the rig', () => {
     }
   })
 
+  describe('shoot: the queen commands a volley or a summon', () => {
+    const f = s.shoot.frames
+    const top = (r: Raster) => box(r).y
+    const right = (r: Raster) => box(r).x + box(r).w - 1
+    const idle = s.idle.frames
+    const idleTop = Math.min(...idle.map(top))
+    const idleRight = Math.max(...idle.map(right))
+    const idleBottom = idle.map(bottom)
+    /** The topmost painted row of a material in a frame (Infinity when it is absent). */
+    const topOf = (r: Raster, m: Set<number>) => {
+      for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) if (m.has(r.get(x, y))) return y
+      return Infinity
+    }
+
+    test('six frames, released on frame 3', () => {
+      expect(f.length).toBe(spec.shoot.frames)
+      expect(spec.shoot.hit).toBe(3)
+    })
+
+    test('frame 2 holds the sceptre over her head: its top is the highest painted material, higher than in idle', () => {
+      const t = top(f[2])
+      // the rod's gold or the jewel's red is within the glint's reach of the top row (the antennae end lower)
+      expect(Math.min(topOf(f[2], gold), topOf(f[2], red)), 'sceptre at the top').toBeLessThanOrEqual(t + 3)
+      expect(t, `top ${t} vs idle ${idleTop}`).toBeLessThan(idleTop - 4)
+      for (const [i, r] of f.entries()) if (i !== 2) expect(top(r), `frame ${i} not above frame 2`).toBeGreaterThan(t)
+    })
+
+    test('frame 3 reaches furthest forward of the clip and further than idle', () => {
+      const r3 = right(f[3])
+      expect(r3, `frame 3 ${r3} vs idle ${idleRight}`).toBeGreaterThan(idleRight + 8)
+      for (const [i, r] of f.entries()) if (i !== 3) expect(right(r), `frame ${i}`).toBeLessThan(r3)
+    })
+
+    test('she keeps her hover height at the start and the end', () => {
+      for (const i of [0, 5]) {
+        const b = bottom(f[i])
+        for (const ib of idleBottom)
+          expect(Math.abs(b - ib), `frame ${i} bottom ${b} vs idle ${ib}`).toBeLessThanOrEqual(4)
+      }
+    })
+
+    test('neighbouring frames differ', () => {
+      for (let i = 1; i < f.length; i++) {
+        let d = 0
+        for (let k = 0; k < f[i].data.length; k++) if (f[i].data[k] !== f[i - 1].data[k]) d++
+        expect(d, `frames ${i - 1}→${i}`).toBeGreaterThan(200)
+      }
+    })
+  })
+
   test('every frame stays inside the cell with no isolated pixel', () => {
     for (const [name, anim] of Object.entries(s))
       for (const [i, f] of anim.frames.entries()) {

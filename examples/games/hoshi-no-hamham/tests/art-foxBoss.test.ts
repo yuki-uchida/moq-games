@@ -89,6 +89,46 @@ describe('きつね旋風 (foxBoss) on the rig', () => {
       }
   })
 
+  describe('shoot: the ninja cast', () => {
+    /** The pale core of the fox-fire and of the release flash: no other drawing of his uses it. */
+    const fire = new Set<number>([R.fire[0]])
+    const front = (f: Raster) => box(f).x + box(f).w - 1
+    const bottom = (f: Raster) => box(f).y + box(f).h - 1
+
+    test('six frames, hit on 3', () => {
+      expect(s.shoot.frames.length).toBe(6)
+      expect(spec.shoot.hit).toBe(3)
+    })
+
+    test('the thrust on hit reaches furthest forward of the clip and past the stance', () => {
+      const fs = s.shoot.frames
+      const hit = front(fs[3])
+      for (const [i, f] of fs.entries()) if (i !== 3) expect(front(f), `shoot ${i}`).toBeLessThan(hit)
+      for (const [i, f] of s.idle.frames.entries()) expect(front(f), `idle ${i}`).toBeLessThan(hit - 6)
+    })
+
+    test('feet stay on the anchor row in every frame', () => {
+      const idleBottom = bottom(s.idle.frames[0])
+      for (const [i, f] of s.shoot.frames.entries())
+        expect(Math.abs(bottom(f) - idleBottom), `shoot ${i} bottom ${bottom(f)}`).toBeLessThanOrEqual(2)
+    })
+
+    test('the fox-fire burns in frames 1–3 and is gone by frame 5', () => {
+      const fs = s.shoot.frames
+      for (const i of [1, 2, 3]) expect(count(fs[i], fire), `shoot ${i} fire`).toBeGreaterThanOrEqual(3)
+      expect(count(fs[2], fire), 'the flame grows').toBeGreaterThan(count(fs[1], fire))
+      expect(count(fs[5], fire), 'shoot 5 fire').toBe(0)
+      for (const name of ['idle', 'move', 'windup', 'attack', 'recover', 'intro', 'hurt', 'defeat'])
+        for (const [i, f] of s[name].frames.entries()) expect(count(f, fire), `${name} ${i} fire`).toBe(0)
+    })
+
+    test('neighbouring frames differ', () => {
+      const fs = s.shoot.frames
+      for (let i = 0; i + 1 < fs.length; i++)
+        expect(differ(fs[i], fs[i + 1]), `shoot ${i} → ${i + 1}`).toBeGreaterThanOrEqual(0.1)
+    })
+  })
+
   test('grounded clips stand on the anchor row', () => {
     for (const name of ['idle', 'move', 'recover', 'windup'])
       for (const [i, f] of s[name].frames.entries()) {

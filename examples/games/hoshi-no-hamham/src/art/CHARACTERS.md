@@ -173,6 +173,10 @@ in between are sampled, so more frames cost nothing but must still be looked at.
   simulation really produces and for as long as it lasts there (the frog is on the ground for one step, so its
   landing is one frame). `tests/view-clip-coverage.test.ts` plays every stage with the bot and fails on a clip
   the view never selects, unless it is listed there with its reason (staging, the story pictures).
+- **Draw the pose for the motion it plays under.** A clip is shown while the body does what the clip shows: a
+  flinch only when the boss stands, the lying frames of a knock-out only on the ground (the view lands the body on
+  the first of them: list it next to the code when it is not frame 4), a planted pose not in the air, a standing
+  pose not while sliding.
 - **No twins, no noise.** Every frame differs from its neighbours for a reason; nothing jitters by a pixel back
   and forth.
 

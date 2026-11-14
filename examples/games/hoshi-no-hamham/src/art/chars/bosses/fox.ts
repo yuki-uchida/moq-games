@@ -49,6 +49,8 @@ const RUSSET = ramp('#ec8a48', '#c4561f', '#93391a', '#783818', '#3a1a22')
 const PALE = ramp('#ffffff', '#f7efe8', '#dccbc4', '#a68c8c', '#3a1a22')
 /** The dark navy jacket; one step down it is the black of the gloves, leggings, boots and ear tips. */
 const NAVY = ramp('#6c7cc0', '#3e4a86', '#2a3260', '#1b2040', '#1c1830')
+/** The pale core of his fox-fire (only the cast uses it). */
+const FIRE = R.fire
 const BAND = R.bandana
 const STEEL = R.steel
 const GOLD = R.gold
@@ -109,6 +111,10 @@ export interface FoxPose {
   windR: number
   /** The whole figure lifted on screen (px), for bounces of a lying or tumbling body. */
   rise: number
+  /** Fox-fire gathering over the near hand's fingertips: flame radius (px), 0 = none. */
+  fire: number
+  /** The release flash in front of the near palm: its reach (px), 0 = none. */
+  flash: number
 }
 
 /** The tail at rest: down and back from the rump, up behind him, the tip curling forward at head height. */
@@ -153,6 +159,8 @@ export const foxPose = (p: Partial<FoxPose> = {}): FoxPose => ({
   windAt: 0,
   windR: 34,
   rise: 0,
+  fire: 0,
+  flash: 0,
   ...p
 })
 
@@ -625,6 +633,47 @@ export function drawFox(p: FoxPose): Raster {
 
   // ---- near arm, in front of everything but a wrapped tail
   g.add(5.5, armLayer(armN, p.handN, FUR[1], NAVY[2]))
+
+  // ---- fox-fire over the fingertips: a flame of his own orange licking up and back, a pale core, the ink line round it
+  if (p.fire > 0)
+    g.add(5.6, (l) => {
+      const r = p.fire
+      const [tx, ty] = armN.hand.pt(8.5, -0.8)
+      const f = Frame.at(tx - 0.5, ty - r * 1.05)
+      fill(
+        l,
+        f,
+        union(
+          oval(0, 0, r, r * 0.95),
+          polygon([
+            [-r * 0.95, -r * 0.1],
+            [r * 0.9, -r * 0.3],
+            [-r * 0.5, -r * 2.5]
+          ]),
+          polygon([
+            [r * 0.1, -r * 0.6],
+            [r * 0.85, -r * 0.2],
+            [r * 0.6, -r * 1.6]
+          ])
+        ),
+        FUR[1]
+      )
+      tint(l, f, union(oval(0, r * 0.15, r * 0.65, r * 0.6), oval(-r * 0.2, -r * 0.7, r * 0.35, r * 0.7)), FUR[0])
+      tint(l, f, oval(0, r * 0.2, r * 0.45, r * 0.42), FIRE[0])
+    })
+
+  // ---- the release flash in front of the open palm: a pale burst with short rays toward the hero
+  if (p.flash > 0)
+    g.add(5.7, (l) => {
+      const k = p.flash
+      const [px, py] = armN.hand.pt(4, 4.5)
+      const f = Frame.at(px + 1.5, py)
+      const rays = [-55, -22, 10, 42].map((d, i) =>
+        capsule([0, 0], [Math.cos(d * RAD) * k * (i % 2 ? 7 : 9), Math.sin(d * RAD) * k * (i % 2 ? 7 : 9)], 1.7, 0.7)
+      )
+      fill(l, f, union(oval(0, 0, 3.2 * k, 3.6 * k), ...rays), FUR[0])
+      tint(l, f, oval(0.4, 0, 1.8 * k, 2.2 * k), FIRE[0])
+    })
 
   // ---- wind streaks round the turning centre
   if (p.wind > 0) {
@@ -1158,6 +1207,180 @@ const defeat = memo(() => {
   ]
 })
 
+/**
+ * shoot: the ninja's cast — the hand sign before his face, fox-fire gathering at the fingertips while he coils back,
+ * the thrust onto the front foot with the palm open (the game spawns the orb on `hit`), the arm swinging down, back
+ * to the stance. `x` moves the whole figure; the leg offsets cancel it so the feet stay planted unless he steps.
+ */
+const shoot = memo(() => [
+  // 0 — the sign: weight down, two fingers raised before the face, the tail curled up, eyes narrowed, the band hanging
+  P({
+    x: -1,
+    y: -3,
+    lean: 8,
+    squash: 1,
+    head: [0, 1],
+    nod: 5,
+    eyes: 'angry',
+    mouth: 'flat',
+    earN: 10,
+    earF: 6,
+    armN: [25, -4, -80, 1],
+    handN: 'two',
+    armF: [-5, 14, 30, 1],
+    legN: [1, 0, 0],
+    legF: [1, 0, 0],
+    tail: [
+      [-6, -1],
+      [-18, 3],
+      [-31, -3],
+      [-33, -23],
+      [-19, -35]
+    ],
+    sway: 0.5,
+    swayAmp: 1,
+    band: [38, 26, 0.6, 0, 30]
+  }),
+  // 1 — the flame catches; he coils back, the tail fluffs
+  P({
+    x: -3,
+    y: -4,
+    lean: -2,
+    squash: 1,
+    head: [-1, 1],
+    nod: 1,
+    eyes: 'angry',
+    mouth: 'smirk',
+    earN: 18,
+    earF: 14,
+    armN: [25, -5, -86, 1],
+    handN: 'two',
+    armF: [-8, 12, 30, 1],
+    legN: [3, 0, 0],
+    legF: [2, 0, 0],
+    tail: [
+      [-6, -1],
+      [-20, 4],
+      [-34, -3],
+      [-38, -22],
+      [-27, -37]
+    ],
+    puff: 1.15,
+    sway: 1,
+    swayAmp: 1.5,
+    band: [28, 28, 1, 1, 30],
+    fire: 3.2
+  }),
+  // 2 — the flame grows; coiled furthest back, grinning
+  P({
+    x: -4,
+    y: -4,
+    lean: -7,
+    squash: 0.5,
+    head: [-2, 0],
+    nod: -2,
+    eyes: 'angry',
+    mouth: 'grin',
+    earN: 22,
+    earF: 18,
+    armN: [24.5, -5, -90, 1],
+    handN: 'two',
+    armF: [-10, 10, 30, 1],
+    legN: [4, 0, 0],
+    legF: [3, 0, 0],
+    tail: [
+      [-6, -1],
+      [-21, 4],
+      [-35, -4],
+      [-39, -24],
+      [-28, -40]
+    ],
+    puff: 1.3,
+    sway: 1.6,
+    swayAmp: 1.5,
+    band: [22, 28, 1.2, 2, 28],
+    fire: 4.6
+  }),
+  // 3 (hit) — the thrust: arm at full stretch, palm open, a lunge onto the front foot, band and tail snapped straight
+  P({
+    x: 4,
+    y: -4,
+    lean: 20,
+    squash: -1,
+    head: [2, 2],
+    nod: -2,
+    eyes: 'angry',
+    mouth: 'open',
+    jaw: 0.45,
+    earN: 28,
+    earF: 28,
+    armN: [30, 1, -82, 1],
+    handN: 'open',
+    armF: [-15, 5, 0, 1],
+    handF: 'fist',
+    legN: [4, 0, 0],
+    legF: [-5, 0, 0],
+    tail: [
+      [-6, -1],
+      [-18, -3],
+      [-30, -5],
+      [-41, -6],
+      [-51, -10]
+    ],
+    puff: 1.1,
+    swayAmp: 0,
+    band: [-8, 34, 0.3, 3, 4],
+    flash: 1.3
+  }),
+  // 4 — follow-through: the arm swings down, the tail swishes through under him
+  P({
+    x: 3,
+    y: -3,
+    lean: 13,
+    head: [1, 2],
+    nod: 3,
+    eyes: 'sly',
+    mouth: 'grin',
+    earN: 16,
+    earF: 14,
+    armN: [17, 13, -20, 1],
+    handN: 'open',
+    armF: [-9, 12, 20, 1],
+    legN: [5, 0, 0],
+    legF: [-4, 0, 0],
+    tail: [
+      [-6, -1],
+      [-19, 6],
+      [-32, 4],
+      [-39, -11],
+      [-32, -28]
+    ],
+    puff: 1.05,
+    sway: 2.4,
+    swayAmp: 2,
+    band: [8, 32, 1.8, 4, 22]
+  }),
+  // 5 — straightening back into the stance, the hand returning to the sign at the chest
+  P({
+    x: 1,
+    y: -1,
+    lean: 6,
+    head: [0, 1],
+    nod: 1,
+    eyes: 'sly',
+    mouth: 'smirk',
+    earN: 6,
+    earF: 4,
+    armN: [13, 8, -12, 1],
+    handN: 'two',
+    armF: [-7, 15, 30, 1],
+    legN: [2, 0, 0],
+    legF: [-1, 0, 0],
+    sway: 3.4,
+    band: [10, 30, 1.6, 5, 32]
+  })
+])
+
 /** The poses of the idle and move clips (for the tests). */
 export const idlePoses = () => idle()
 export const movePoses = () => move()
@@ -1171,6 +1394,7 @@ export const sheets: SheetModule = {
     move: lazyAnim(() => draw(move()), 12, true),
     windup: lazyAnim(() => draw(windup()), 12, false, { sustain: 2 }),
     attack: lazyAnim(() => draw(attack()), 16, true),
-    recover: lazyAnim(() => draw(recover()), 8, true)
+    recover: lazyAnim(() => draw(recover()), 8, true),
+    shoot: lazyAnim(() => draw(shoot()), 12, false)
   })
 }

@@ -15,7 +15,10 @@
  * (`acc.flash`), dust and stone chips (`acc.dust`, `acc.kick`), the cape spread flat under a fallen king
  * (`acc.rug`) and the outlined stars over a knocked-out head (`acc.stars`).
  *
- * Depth (back to front): dust (-7), dark fire (-6.5), the rug (-6.2), far ear (-5), the cape (-4.3), the collar
+ * After the transformation (`king:raged`) the fight's clips are drawn again from the same poses with the red eyes
+ * and a low aura of the same dark fire (`acc.aura`, see `aura`).
+ *
+ * Depth (back to front): the aura (-7.1), dust (-7), dark fire (-6.5), the rug (-6.2), far ear (-5), the cape (-4.3), the collar
  * (-4.25), the kit's tail, far leg, far foot, near leg, body, far arm, near foot (-3.6 … 0.6), the cape's edge
  * across the chest (1), the clasp (1.2), near ear (1.5), head + face (2), the scar (2.05), the crown (2.2), near arm
  * (3), the flame in the paw (3.2), the flash (3.3), front dust (3.4), stars and the loose crown (6, 6.5).
@@ -695,6 +698,107 @@ const fire: HamAccessory = ({ g, pose: p, ground, root }) => {
   })
 }
 
+/**
+ * One tongue of the aura along a direction `d` (unit): a centre line whose wave travels from the base to the tip as
+ * the phase `ph` grows, a body that tapers to a point with a swell running up it, a pale core in its lower part.
+ * Every term turns with `ph` in whole turns, so a loop whose phase steps a whole number of turns closes.
+ */
+function lick(base: Pt, d: Pt, h: number, w: number, ph: number, k: number): { body: Pt[]; core: Pt[] } {
+  const n: Pt = [-d[1], d[0]]
+  const steps = 10
+  const left: Pt[] = []
+  const right: Pt[] = []
+  const coreL: Pt[] = []
+  const coreR: Pt[] = []
+  for (let j = 0; j <= steps; j++) {
+    const t = j / steps
+    const wave = Math.sin(t * 5 - ph + k) * t * w * 0.75
+    const cx = base[0] + d[0] * h * t + n[0] * wave
+    const cy = base[1] + d[1] * h * t + n[1] * wave
+    const hw = w * Math.pow(1 - t, 0.75) * (1 + 0.25 * Math.sin(t * 8 - ph * 2 + k)) + 0.3
+    left.push([cx - n[0] * hw, cy - n[1] * hw])
+    right.unshift([cx + n[0] * hw, cy + n[1] * hw])
+    if (t <= 0.45) {
+      coreL.push([cx - n[0] * hw * 0.45 - d[0] * 1.5, cy - n[1] * hw * 0.45 - d[1] * 1.5])
+      coreR.unshift([cx + n[0] * hw * 0.45 - d[0] * 1.5, cy + n[1] * hw * 0.45 - d[1] * 1.5])
+    }
+  }
+  return { body: [...left, ...right], core: [...coreL, ...coreR] }
+}
+
+/**
+ * Where the aura's tongues rise, in his own units: behind the feet (`g`, on the soles' line), up the back and over
+ * the shoulders (`t`, on the torso); with each tongue's share of the height and its width.
+ */
+const AURA_BASES: readonly (readonly ['g' | 't', number, number, number, number])[] = [
+  ['g', -22, -0.5, 0.75, 4.2],
+  ['g', -12, -0.5, 0.9, 4.6],
+  ['g', 10, -0.5, 0.7, 4],
+  ['g', 19, -0.5, 0.6, 3.6],
+  ['t', -19, -4, 1, 4.6],
+  ['t', -18, -12, 1, 4.4],
+  ['t', -13, -18, 0.95, 4],
+  ['t', -3, -21, 0.8, 3.8],
+  ['t', 9, -18, 0.7, 3.4]
+]
+
+/**
+ * The raged king's aura (`acc.aura` 0..1 its height; absent on the plain sheet): low tongues of the rage's dark fire
+ * rising behind his feet, his back and his shoulders. `acc.aph` is its phase, `acc.alx` leans every tongue sideways
+ * (negative streams back), `acc.aly` below 0 flattens it toward the ground, `acc.asp` splays the tongues away from
+ * his middle, `acc.agut` makes them gutter (uneven, sunk). A tongue that would come near the cell's edge is
+ * shortened, not cut.
+ */
+/** The aura's body: a step deeper than the rage's flames, so the lit core and the flash of the cast share its ramp. */
+const AURA_BODY = DARK[2]
+const aura: HamAccessory = ({ g, pose: p, ground, torso, s }) => {
+  const level = accOf(p, 'aura')
+  if (level <= 0) return
+  const ph = accOf(p, 'aph')
+  const lx = accOf(p, 'alx')
+  const ly = accOf(p, 'aly')
+  const sp = accOf(p, 'asp')
+  const gut = accOf(p, 'agut')
+  g.add(-7.1, (l) => {
+    const [gx, gy] = ground.pt(0, 0)
+    const lo = 3
+    const hiX = l.w - 4
+    const hiY = l.h - 4
+    const inside = (pts: Pt[]) => pts.every(([x, y]) => x >= lo && x <= hiX && y >= lo && y <= hiY)
+    const tongues: { body: Pt[]; core: Pt[] }[] = []
+    AURA_BASES.forEach(([on, u, v, share, w], i) => {
+      const base = on === 'g' ? ground.pt(u, v) : torso.pt(u, v)
+      const side = Math.sign(base[0] - gx) || -1
+      const dx = lx + side * sp
+      const dy = -1 - ly
+      const len = Math.hypot(dx, dy) || 1
+      const d: Pt = [dx / len, dy / len]
+      const flick = 1 - 0.14 * (0.5 + 0.5 * Math.sin(ph + i * 2.3)) - gut * 0.45 * (0.5 + 0.5 * Math.sin(ph + i * 1.7))
+      let h = 22 * s * level * share * flick
+      let t = lick(base, d, h, w * s, ph, i * 1.9)
+      for (let k = 0; k < 10 && !inside(t.body); k++) {
+        h *= 0.82
+        t = lick(base, d, h, w * s * 0.92, ph, i * 1.9)
+      }
+      if (inside(t.body)) tongues.push(t)
+    })
+    for (const t of tongues) fill(l, ID, polygon(t.body), AURA_BODY)
+    // the aura's root: a low smoulder behind his feet
+    for (const u of [-9, 0, 9]) {
+      const [x, y] = ground.pt(u, -2)
+      const rx = Math.min((5.5 + sp * 3) * s * level, x - lo, hiX - x)
+      fill(l, ID, oval(x, y, rx, (2.6 - Math.min(0, ly) * 0.8) * s * level), AURA_BODY)
+    }
+    smooth(l)
+    cel(l, { shade: 2, dir: [-0.45, 0.89] })
+    for (const t of tongues) tint(l, ID, polygon(t.core), DARK[0])
+    // nothing below the soles of a standing king (its outline lands on their row), nothing within 3 px of the cell's edge
+    const floor = p.air <= 0 ? Math.floor(gy) - 1 : hiY
+    for (let y = 0; y < l.h; y++)
+      for (let x = 0; x < l.w; x++) if (x < lo || y < lo || x > hiX || y > Math.min(floor, hiY)) l.set(x, y, 0)
+  })
+}
+
 /** A flame gathering in the near paw (`acc.hf` its size) and the flash of the cast (`acc.flash`). */
 const handFire: HamAccessory = ({ g, pose: p, handN, s }) => {
   const k = accOf(p, 'hf')
@@ -843,6 +947,9 @@ const stars: HamAccessory = ({ g, pose: p, head }) => {
 // ------------------------------------------------------------------------------------------------------ look
 
 /** 黒ハム王's look: the family build at 1.6 with the boss coat, his own stamps and his regalia. */
+/** What his portrait wears of the sprite's accessories (by name, so the look's own list can change freely). */
+export const KING_PORTRAIT_ACCESSORIES: readonly HamAccessory[] = [cape, collar, clasp]
+
 export const KING_LOOK = hamLook({
   scale: 1.6,
   size: KING_CELL,
@@ -885,7 +992,7 @@ export const KING_LOOK = hamLook({
     headLocks: HEAD_LOCKS
   },
   eyeKeyOf: (p) => (accOf(p, 'red') > 0 ? EYE_KEY_RED : accOf(p, 'hot') > 0 ? EYE_KEY_HOT : EYE_KEY),
-  accessories: [fire, rug, dust, cape, collar, clasp, scar, crown, knuckles, handFire, stars]
+  accessories: [fire, aura, rug, dust, cape, collar, clasp, scar, crown, knuckles, handFire, stars]
 })
 
 /** His pose: the family pose with his rest (blush off, heavy brows, the sneer, the cape hanging). */
@@ -1070,68 +1177,66 @@ const intro = memo(() =>
 )
 
 /** Flinch with the eyes shut and the crown jolted, recoil, a furious glare. */
-const hurt = memo(() =>
-  draw([
-    P({
-      x: -2,
-      y: 1.5,
-      lean: -14,
-      squash: -1.4,
-      headSquash: -0.4,
-      head: [-1, 1],
-      nod: -10,
-      eyes: 'hurt',
-      brow: 'worried',
-      mouth: 'grit',
-      armN: [-6, -2],
-      armF: [10, -4],
-      open: true,
-      earN: -16,
-      earF: -12,
-      footN: [-2.5, 0, 0],
-      footF: [2.5, 0, -14],
-      scarf: [40, 22, 1.4, 0],
-      acc: { ct: -16, cx: -1, cy: -2.4, billow: 1.6 }
-    }),
-    P({
-      x: -3,
-      lean: -5,
-      squash: 2,
-      headSquash: 0.4,
-      nod: 6,
-      eyes: 'closed',
-      brow: 'worried',
-      mouth: 'grit',
-      armN: [3, 4],
-      armF: [6, 2],
-      earN: -4,
-      earF: -3,
-      footN: [-2.5, 0, 0],
-      footF: [2, 0, 0],
-      scarf: [100, 21, 1, 1.4],
-      acc: { ct: 9, cx: 0.6, cy: -0.8, billow: 0.6 }
-    }),
-    P({
-      x: -1,
-      lean: 6,
-      squash: 0.6,
-      nod: 6,
-      head: [1, 0],
-      eyes: 'open',
-      brow: 'hard',
-      mouth: 'grit',
-      armN: [9, 2],
-      armF: [7, 1],
-      earN: 6,
-      earF: 5,
-      scarf: [78, 22, 0.9, 2.6],
-      acc: { ct: 4, cy: -0.3, hot: 1 }
-    })
-  ])
-)
+const hurtPoses = memo((): HamPose[] => [
+  P({
+    x: -2,
+    y: 1.5,
+    lean: -14,
+    squash: -1.4,
+    headSquash: -0.4,
+    head: [-1, 1],
+    nod: -10,
+    eyes: 'hurt',
+    brow: 'worried',
+    mouth: 'grit',
+    armN: [-6, -2],
+    armF: [10, -4],
+    open: true,
+    earN: -16,
+    earF: -12,
+    footN: [-2.5, 0, 0],
+    footF: [2.5, 0, -14],
+    scarf: [40, 22, 1.4, 0],
+    acc: { ct: -16, cx: -1, cy: -2.4, billow: 1.6 }
+  }),
+  P({
+    x: -3,
+    lean: -5,
+    squash: 2,
+    headSquash: 0.4,
+    nod: 6,
+    eyes: 'closed',
+    brow: 'worried',
+    mouth: 'grit',
+    armN: [3, 4],
+    armF: [6, 2],
+    earN: -4,
+    earF: -3,
+    footN: [-2.5, 0, 0],
+    footF: [2, 0, 0],
+    scarf: [100, 21, 1, 1.4],
+    acc: { ct: 9, cx: 0.6, cy: -0.8, billow: 0.6 }
+  }),
+  P({
+    x: -1,
+    lean: 6,
+    squash: 0.6,
+    nod: 6,
+    head: [1, 0],
+    eyes: 'open',
+    brow: 'hard',
+    mouth: 'grit',
+    armN: [9, 2],
+    armF: [7, 1],
+    earN: 6,
+    earF: 5,
+    scarf: [78, 22, 0.9, 2.6],
+    acc: { ct: 4, cy: -0.3, hot: 1 }
+  })
+])
 
 /** A slow, crushing walk: each step a small fall, the body rolling, the cape swinging a beat late. */
-const move = memo(() => {
+const movePoses = memo((): HamPose[] => {
   const n = 8
   // contact (0, 4), down (1, 5), passing (2, 6), up (3, 7)
   const FOOT: [number, number, number][] = [
@@ -1149,40 +1254,38 @@ const move = memo(() => {
   const roll = Array.from({ length: n }, (_, i) => Math.sin((i / n) * TAU))
   const late = lag(roll, { stiffness: 0.3, damping: 0.45, loop: true })
   const fall = lag(bob, { stiffness: 0.35, damping: 0.5, loop: true })
-  return draw(
-    Array.from({ length: n }, (_, i) => {
-      const swing = Math.cos((i / n) * TAU)
-      return P({
-        y: bob[i],
-        x: roll[i] * 0.6,
-        lean: 5 + roll[i] * 2,
-        squash: i % 4 === 1 ? 1.4 : i % 4 === 3 ? -0.6 : 0.4,
-        head: [1, Math.round(-bob[i] * 0.5)],
-        nod: 5,
-        eyes: 'open',
-        brow: 'hard',
-        mouth: 'flat',
-        footN: [FOOT[i][0] - 1, FOOT[i][1], FOOT[i][2]],
-        footF: [FOOT[(i + 4) % n][0] + 1, FOOT[(i + 4) % n][1], FOOT[(i + 4) % n][2]],
-        armN: [7 - swing * 4, 4 - Math.abs(swing)],
-        armF: [3 + swing * 3, 3.5 - Math.abs(swing)],
-        earN: 6 + fall[i] * 8,
-        earF: 5 + fall[i] * 6,
-        scarf: [74 - late[i] * 10, 22, 1, (i / n) * TAU],
-        tail: -fall[i],
-        acc: {
-          ct: -late[i] * 5,
-          billow: 1 + late[i] * 0.4,
-          lining: Math.max(0, -late[i]) * 0.3,
-          hot: i % 4 === 0 ? 1 : 0
-        }
-      })
+  return Array.from({ length: n }, (_, i) => {
+    const swing = Math.cos((i / n) * TAU)
+    return P({
+      y: bob[i],
+      x: roll[i] * 0.6,
+      lean: 5 + roll[i] * 2,
+      squash: i % 4 === 1 ? 1.4 : i % 4 === 3 ? -0.6 : 0.4,
+      head: [1, Math.round(-bob[i] * 0.5)],
+      nod: 5,
+      eyes: 'open',
+      brow: 'hard',
+      mouth: 'flat',
+      footN: [FOOT[i][0] - 1, FOOT[i][1], FOOT[i][2]],
+      footF: [FOOT[(i + 4) % n][0] + 1, FOOT[(i + 4) % n][1], FOOT[(i + 4) % n][2]],
+      armN: [7 - swing * 4, 4 - Math.abs(swing)],
+      armF: [3 + swing * 3, 3.5 - Math.abs(swing)],
+      earN: 6 + fall[i] * 8,
+      earF: 5 + fall[i] * 6,
+      scarf: [74 - late[i] * 10, 22, 1, (i / n) * TAU],
+      tail: -fall[i],
+      acc: {
+        ct: -late[i] * 5,
+        billow: 1 + late[i] * 0.4,
+        lining: Math.max(0, -late[i]) * 0.3,
+        hot: i % 4 === 0 ? 1 : 0
+      }
     })
-  )
+  })
 })
 
 /** The telegraph: he sinks low and coils, the near paw drawn back, eyes blazing; the last two frames tremble. */
-const windup = memo(() => {
+const windupPoses = memo((): HamPose[] => {
   const set: Partial<HamPose> = {
     y: 0.4,
     squash: 3,
@@ -1201,7 +1304,7 @@ const windup = memo(() => {
     footN: [-4, 0, 0],
     footF: [4, 0, -6]
   }
-  return draw([
+  return [
     P({
       y: -1,
       squash: 1.6,
@@ -1222,11 +1325,11 @@ const windup = memo(() => {
     P({ ...set, scarf: [100, 20, 0.8, 1.4], acc: { hot: 1, gl: 0.2, billow: 0.4, collar: 0.6 } }),
     P({ ...set, x: -0.6, scarf: [101, 20, 0.9, 2.2], acc: { gl: 0.6, billow: 0.5, collar: 0.8 } }),
     P({ ...set, x: 0.6, y: 0, scarf: [99, 20, 0.9, 3], acc: { hot: 1, gl: 0.9, billow: 0.4, collar: 0.7 } })
-  ])
+  ]
 })
 
 /** The charge: head down like a ram, crown leading, cape streaming flat, a heavy two-legged gallop with dust. */
-const attack = memo(() => {
+const attackPoses = memo((): HamPose[] => {
   const n = 6
   const FOOT: [number, number, number][] = [
     [9, 0, -12], // contact
@@ -1238,309 +1341,299 @@ const attack = memo(() => {
   ]
   const BOB = [1, 0, 2, 3.5, 3, 2]
   const late = lag(BOB, { stiffness: 0.4, damping: 0.5, loop: true })
-  return draw(
-    Array.from({ length: n }, (_, i) => {
-      const j = (i + 3) % n
-      const swing = Math.cos((i / n) * TAU)
-      return P({
-        x: 3,
-        y: BOB[i],
-        lean: 24,
-        squash: i === 1 ? 1.6 : i === 3 ? -1 : 0.4,
-        head: [2, -2 - Math.round(late[i] * 0.4)],
-        nod: 18 + late[i] * 2,
-        eyes: 'squint',
-        brow: 'hard',
-        mouth: 'grit',
-        footN: FOOT[i],
-        footF: FOOT[j],
-        armN: [-2 + swing * 4, 6],
-        armF: [-1 - swing * 3, 5],
-        earN: 40 + late[i] * 4,
-        earF: 34 + late[i] * 4,
-        scarf: [4 + Math.sin((i / n) * TAU) * 5, 25, 1.8, (i / n) * TAU * 2],
-        acc: {
-          ct: 8 + late[i] * 2,
-          spread: 0.8,
-          billow: 0.6,
-          lining: 0.35,
-          kick: i === 0 || i === 3 ? 1 : i === 1 || i === 4 ? 0.5 : 0,
-          kx: -10 + (i % 3) * -3
-        }
-      })
+  return Array.from({ length: n }, (_, i) => {
+    const j = (i + 3) % n
+    const swing = Math.cos((i / n) * TAU)
+    return P({
+      x: 3,
+      y: BOB[i],
+      lean: 24,
+      squash: i === 1 ? 1.6 : i === 3 ? -1 : 0.4,
+      head: [2, -2 - Math.round(late[i] * 0.4)],
+      nod: 18 + late[i] * 2,
+      eyes: 'squint',
+      brow: 'hard',
+      mouth: 'grit',
+      footN: FOOT[i],
+      footF: FOOT[j],
+      armN: [-2 + swing * 4, 6],
+      armF: [-1 - swing * 3, 5],
+      earN: 40 + late[i] * 4,
+      earF: 34 + late[i] * 4,
+      scarf: [4 + Math.sin((i / n) * TAU) * 5, 25, 1.8, (i / n) * TAU * 2],
+      acc: {
+        ct: 8 + late[i] * 2,
+        spread: 0.8,
+        billow: 0.6,
+        lining: 0.35,
+        kick: i === 0 || i === 3 ? 1 : i === 1 || i === 4 ? 0.5 : 0,
+        kx: -10 + (i % 3) * -3
+      }
     })
-  )
+  })
 })
 
 /** Air: rising (arms and cape thrown up), the top (cape spread like wings), falling (fists and feet first). */
-const air = memo(() =>
-  draw([
-    P({
-      air: 3,
-      reach: 1.5,
-      paw: 0.6,
-      up: true,
-      open: true,
-      squash: -2.6,
-      headSquash: -0.4,
-      lean: -6,
-      nod: -8,
-      jaw: 0.8,
-      eyes: 'wide',
-      brow: 'hard',
-      mouth: 'wide',
-      armN: [-15, -14],
-      armF: [15, -14],
-      footN: [-4, 1, 40],
-      footF: [0, 0.5, 30],
-      earN: 26,
-      earF: 22,
-      scarf: [100, 24, 0.9, 0.5],
-      acc: { spread: 0.75, billow: 0.3, gl: 0.3 }
-    }),
-    P({
-      air: 4,
-      reach: 1.5,
-      paw: 0.6,
-      open: true,
-      squash: 0.6,
-      lean: 4,
-      nod: 6,
-      eyes: 'open',
-      brow: 'hard',
-      mouth: 'smile',
-      armN: [-12, -5],
-      armF: [14, -4],
-      footN: [-3, 3, 24],
-      footF: [3, 2, 10],
-      earN: -8,
-      earF: -6,
-      earLift: 1,
-      scarf: [-6, 27, 1.2, 1.6],
-      acc: { spread: 2, billow: 2.4, lining: 1, collar: 1, hot: 1 }
-    }),
-    P({
-      air: 4,
-      squash: -1.4,
-      lean: 12,
-      nod: 12,
-      eyes: 'squint',
-      brow: 'hard',
-      mouth: 'grit',
-      armN: [8, 9],
-      armF: [9, 8],
-      paw: 0.6,
-      footN: [3, -1, -20],
-      footF: [7, 0, -24],
-      earN: -24,
-      earF: -20,
-      earLift: 2,
-      scarf: [-72, 24, 1.4, 3],
-      acc: { spread: 1, billow: 1.2, lining: 0.6, ct: -6, cy: -1 }
-    })
-  ])
-)
+const airPoses = memo((): HamPose[] => [
+  P({
+    air: 3,
+    reach: 1.5,
+    paw: 0.6,
+    up: true,
+    open: true,
+    squash: -2.6,
+    headSquash: -0.4,
+    lean: -6,
+    nod: -8,
+    jaw: 0.8,
+    eyes: 'wide',
+    brow: 'hard',
+    mouth: 'wide',
+    armN: [-15, -14],
+    armF: [15, -14],
+    footN: [-4, 1, 40],
+    footF: [0, 0.5, 30],
+    earN: 26,
+    earF: 22,
+    scarf: [100, 24, 0.9, 0.5],
+    acc: { spread: 0.75, billow: 0.3, gl: 0.3 }
+  }),
+  P({
+    air: 4,
+    reach: 1.5,
+    paw: 0.6,
+    open: true,
+    squash: 0.6,
+    lean: 4,
+    nod: 6,
+    eyes: 'open',
+    brow: 'hard',
+    mouth: 'smile',
+    armN: [-12, -5],
+    armF: [14, -4],
+    footN: [-3, 3, 24],
+    footF: [3, 2, 10],
+    earN: -8,
+    earF: -6,
+    earLift: 1,
+    scarf: [-6, 27, 1.2, 1.6],
+    acc: { spread: 2, billow: 2.4, lining: 1, collar: 1, hot: 1 }
+  }),
+  P({
+    air: 4,
+    squash: -1.4,
+    lean: 12,
+    nod: 12,
+    eyes: 'squint',
+    brow: 'hard',
+    mouth: 'grit',
+    armN: [8, 9],
+    armF: [9, 8],
+    paw: 0.6,
+    footN: [3, -1, -20],
+    footF: [7, 0, -24],
+    earN: -24,
+    earF: -20,
+    earLift: 2,
+    scarf: [-72, 24, 1.4, 3],
+    acc: { spread: 1, billow: 1.2, lining: 0.6, ct: -6, cy: -1 }
+  })
+])
 
 /** The slam: squashed wide with dust and stone chips, the cape collapsing a frame late; rebound; rising. */
-const land = memo(() =>
-  draw([
-    P({
-      y: -0.6,
-      squash: 5,
-      headSquash: 1.2,
-      head: [0, -2],
-      nod: 10,
-      eyes: 'squint',
-      brow: 'hard',
-      mouth: 'grit',
-      armN: [11, 6],
-      armF: [9, 6],
-      paw: 0.6,
-      footN: [-5, 0, 0],
-      footF: [5, 0, 0],
-      earN: -18,
-      earF: -15,
-      earLift: -1,
-      scarf: [-40, 24, 1.2, 0],
-      acc: { dust: 1, chips: 0.5, spread: 1.2, billow: 1.6, lining: 0.6, ct: 6, cy: 1 }
-    }),
-    P({
-      y: -0.2,
-      squash: 3,
-      headSquash: 0.6,
-      head: [0, -1],
-      nod: 8,
-      eyes: 'squint',
-      brow: 'hard',
-      mouth: 'grit',
-      armN: [10, 6],
-      armF: [8, 5],
-      footN: [-4, 0, 0],
-      footF: [4, 0, 0],
-      earN: -6,
-      earF: -5,
-      scarf: [110, 18, 1.4, 1.2],
-      acc: { dust: 1.6, chips: 1, spread: 1.3, billow: 0.4, ct: -4 }
-    }),
-    P({
-      y: 1,
-      squash: -1.6,
-      headSquash: -0.4,
-      head: [0, 1],
-      eyes: 'open',
-      brow: 'hard',
-      mouth: 'smile',
-      armN: [7, 2],
-      armF: [4, 2],
-      earN: 10,
-      earF: 8,
-      earLift: 1,
-      scarf: [70, 22, 1.2, 2.4],
-      acc: { dust: 0.6, spread: 1.05, billow: 1.2, ct: 3, cy: -1 }
-    }),
-    P({
-      squash: 0.6,
-      eyes: 'open',
-      brow: 'angry',
-      mouth: 'flat',
-      earN: 3,
-      earF: 2,
-      scarf: [84, 22, 0.8, 3.4],
-      acc: { gl: 0.5 }
-    })
-  ])
-)
+const landPoses = memo((): HamPose[] => [
+  P({
+    y: -0.6,
+    squash: 5,
+    headSquash: 1.2,
+    head: [0, -2],
+    nod: 10,
+    eyes: 'squint',
+    brow: 'hard',
+    mouth: 'grit',
+    armN: [11, 6],
+    armF: [9, 6],
+    paw: 0.6,
+    footN: [-5, 0, 0],
+    footF: [5, 0, 0],
+    earN: -18,
+    earF: -15,
+    earLift: -1,
+    scarf: [-40, 24, 1.2, 0],
+    acc: { dust: 1, chips: 0.5, spread: 1.2, billow: 1.6, lining: 0.6, ct: 6, cy: 1 }
+  }),
+  P({
+    y: -0.2,
+    squash: 3,
+    headSquash: 0.6,
+    head: [0, -1],
+    nod: 8,
+    eyes: 'squint',
+    brow: 'hard',
+    mouth: 'grit',
+    armN: [10, 6],
+    armF: [8, 5],
+    footN: [-4, 0, 0],
+    footF: [4, 0, 0],
+    earN: -6,
+    earF: -5,
+    scarf: [110, 18, 1.4, 1.2],
+    acc: { dust: 1.6, chips: 1, spread: 1.3, billow: 0.4, ct: -4 }
+  }),
+  P({
+    y: 1,
+    squash: -1.6,
+    headSquash: -0.4,
+    head: [0, 1],
+    eyes: 'open',
+    brow: 'hard',
+    mouth: 'smile',
+    armN: [7, 2],
+    armF: [4, 2],
+    earN: 10,
+    earF: 8,
+    earLift: 1,
+    scarf: [70, 22, 1.2, 2.4],
+    acc: { dust: 0.6, spread: 1.05, billow: 1.2, ct: 3, cy: -1 }
+  }),
+  P({
+    squash: 0.6,
+    eyes: 'open',
+    brow: 'angry',
+    mouth: 'flat',
+    earN: 3,
+    earF: 2,
+    scarf: [84, 22, 0.8, 3.4],
+    acc: { gl: 0.5 }
+  })
+])
 
 /** The cast: dark fire gathers in the drawn-back paw (0–2), thrust forward on frame 3, follow-through, recovery. */
-const shoot = memo(() =>
-  draw([
-    P({
-      lean: -4,
-      squash: 0.8,
-      eyes: 'open',
-      brow: 'hard',
-      mouth: 'grit',
-      armN: [-5, 0],
-      armF: [5, 3],
-      open: true,
-      scarf: [90, 22, 0.6, 0],
-      acc: { hf: 0.3, fph: 0, hot: 1 }
-    }),
-    P({
-      x: -1,
-      lean: -9,
-      squash: 1.6,
-      nod: -2,
-      eyes: 'squint',
-      brow: 'hard',
-      mouth: 'grit',
-      armN: [-9, -2],
-      armF: [5, 2],
-      open: true,
-      footN: [-3, 0, 0],
-      footF: [3, 0, 0],
-      scarf: [96, 22, 0.7, 1],
-      acc: { hf: 0.7, fph: 1.4, collar: 0.4 }
-    }),
-    P({
-      x: -2,
-      y: 0.8,
-      lean: -11,
-      squash: 2.2,
-      nod: -4,
-      eyes: 'squint',
-      brow: 'hard',
-      mouth: 'smile',
-      armN: [-10, -5],
-      armF: [5, 1],
-      open: true,
-      footN: [-4, 0, 0],
-      footF: [4, 0, -6],
-      scarf: [100, 22, 0.9, 2],
-      acc: { hf: 1.1, fph: 2.6, collar: 0.7, hot: 1 }
-    }),
-    // the volley leaves: an open palm thrust forward, a flash, the cape snapping back
-    P({
-      x: 4,
-      lean: 18,
-      squash: -1.2,
-      nod: 6,
-      reach: 1.5,
-      paw: 0.8,
-      open: true,
-      jaw: 0.8,
-      eyes: 'wide',
-      brow: 'hard',
-      mouth: 'wide',
-      armN: [15, -1],
-      armF: [-4, 4],
-      footN: [-5, 0, 0],
-      footF: [5, 0, 0],
-      earN: 22,
-      earF: 18,
-      scarf: [20, 24, 1.6, 3],
-      acc: { flash: 1, spread: 1.1, billow: 1.4, lining: 0.6, gl: 0.4 }
-    }),
-    P({
-      x: 2,
-      lean: 10,
-      squash: 0.4,
-      nod: 6,
-      reach: 1.3,
-      open: true,
-      eyes: 'open',
-      brow: 'hard',
-      mouth: 'smile',
-      armN: [13, 0],
-      armF: [1, 4],
-      footN: [-4, 0, 0],
-      footF: [4, 0, 0],
-      earN: 10,
-      earF: 8,
-      scarf: [50, 23, 1.4, 4.2],
-      acc: { hf: 0.25, fph: 4, billow: 1.2, lining: 0.3, gl: 0.8 }
-    }),
-    P({
-      x: 1,
-      lean: 4,
-      squash: 0.8,
-      eyes: 'open',
-      brow: 'angry',
-      mouth: 'smile',
-      armN: [9, 3],
-      armF: [4, 3],
-      earN: 4,
-      earF: 3,
-      scarf: [76, 22, 1, 5.4],
-      acc: { billow: 1 }
-    })
-  ])
-)
+const shootPoses = memo((): HamPose[] => [
+  P({
+    lean: -4,
+    squash: 0.8,
+    eyes: 'open',
+    brow: 'hard',
+    mouth: 'grit',
+    armN: [-5, 0],
+    armF: [5, 3],
+    open: true,
+    scarf: [90, 22, 0.6, 0],
+    acc: { hf: 0.3, fph: 0, hot: 1 }
+  }),
+  P({
+    x: -1,
+    lean: -9,
+    squash: 1.6,
+    nod: -2,
+    eyes: 'squint',
+    brow: 'hard',
+    mouth: 'grit',
+    armN: [-9, -2],
+    armF: [5, 2],
+    open: true,
+    footN: [-3, 0, 0],
+    footF: [3, 0, 0],
+    scarf: [96, 22, 0.7, 1],
+    acc: { hf: 0.7, fph: 1.4, collar: 0.4 }
+  }),
+  P({
+    x: -2,
+    y: 0.8,
+    lean: -11,
+    squash: 2.2,
+    nod: -4,
+    eyes: 'squint',
+    brow: 'hard',
+    mouth: 'smile',
+    armN: [-10, -5],
+    armF: [5, 1],
+    open: true,
+    footN: [-4, 0, 0],
+    footF: [4, 0, -6],
+    scarf: [100, 22, 0.9, 2],
+    acc: { hf: 1.1, fph: 2.6, collar: 0.7, hot: 1 }
+  }),
+  // the volley leaves: an open palm thrust forward, a flash, the cape snapping back
+  P({
+    x: 4,
+    lean: 18,
+    squash: -1.2,
+    nod: 6,
+    reach: 1.5,
+    paw: 0.8,
+    open: true,
+    jaw: 0.8,
+    eyes: 'wide',
+    brow: 'hard',
+    mouth: 'wide',
+    armN: [15, -1],
+    armF: [-4, 4],
+    footN: [-5, 0, 0],
+    footF: [5, 0, 0],
+    earN: 22,
+    earF: 18,
+    scarf: [20, 24, 1.6, 3],
+    acc: { flash: 1, spread: 1.1, billow: 1.4, lining: 0.6, gl: 0.4 }
+  }),
+  P({
+    x: 2,
+    lean: 10,
+    squash: 0.4,
+    nod: 6,
+    reach: 1.3,
+    open: true,
+    eyes: 'open',
+    brow: 'hard',
+    mouth: 'smile',
+    armN: [13, 0],
+    armF: [1, 4],
+    footN: [-4, 0, 0],
+    footF: [4, 0, 0],
+    earN: 10,
+    earF: 8,
+    scarf: [50, 23, 1.4, 4.2],
+    acc: { hf: 0.25, fph: 4, billow: 1.2, lining: 0.3, gl: 0.8 }
+  }),
+  P({
+    x: 1,
+    lean: 4,
+    squash: 0.8,
+    eyes: 'open',
+    brow: 'angry',
+    mouth: 'smile',
+    armN: [9, 3],
+    armF: [4, 3],
+    earN: 4,
+    earF: 3,
+    scarf: [76, 22, 1, 5.4],
+    acc: { billow: 1 }
+  })
+])
 
 /** Out of breath: hunched, the near paw on his knee, panting, the crown askew. */
-const recover = memo(() =>
-  draw(
-    [0, 1, 0.3, 0.8].map((pant, i) =>
-      P({
-        y: 1 - pant * 0.6,
-        lean: 16,
-        squash: 1.4 + pant * 0.4,
-        head: [1, -2],
-        nod: 12,
-        jaw: 0.3 + pant * 0.4,
-        eyes: 'half',
-        brow: 'worried',
-        mouth: pant > 0.5 ? 'open' : 'o',
-        armN: [4, 10],
-        armF: [6, 6 - Math.round(pant)],
-        footN: [-3, 0, 0],
-        footF: [4, 0, 0],
-        earN: 18 + pant * 4,
-        earF: 15 + pant * 3,
-        scarf: [92, 21, 0.4, i * 1.6],
-        acc: { ct: 14, cx: 1.5, cy: 0.6, billow: 0.5 + pant * 0.2 }
-      })
-    )
+const recoverPoses = memo((): HamPose[] =>
+  [0, 1, 0.3, 0.8].map((pant, i) =>
+    P({
+      y: 1 - pant * 0.6,
+      lean: 16,
+      squash: 1.4 + pant * 0.4,
+      head: [1, -2],
+      nod: 12,
+      jaw: 0.3 + pant * 0.4,
+      eyes: 'half',
+      brow: 'worried',
+      mouth: pant > 0.5 ? 'open' : 'o',
+      armN: [4, 10],
+      armF: [6, 6 - Math.round(pant)],
+      footN: [-3, 0, 0],
+      footF: [4, 0, 0],
+      earN: 18 + pant * 4,
+      earF: 15 + pant * 3,
+      scarf: [92, 21, 0.4, i * 1.6],
+      acc: { ct: 14, cx: 1.5, cy: 0.6, billow: 0.5 + pant * 0.2 }
+    })
   )
 )
 
@@ -1808,19 +1901,102 @@ const defeat = memo(() => {
   ])
 })
 
+// ------------------------------------------------------------------------------------------------ the raged king
+
+/** The aura of one frame: its phase and how it lies (see `aura`). */
+interface AuraSet {
+  ph: number
+  h?: number
+  lx?: number
+  ly?: number
+  sp?: number
+  gut?: number
+}
+
+/** One turn of the aura's phase per pass of a loop of `n` frames (times `turns`): the flames close with the loop. */
+const turn = (i: number, n: number, turns = 1) => (i / n) * TAU * turns
+/** The phase of a clip that plays once: a steady step, so the tongues keep travelling up. */
+const step = (i: number) => i * 2.2
+
+/** How the aura lies in each frame of each clip after the transformation. */
+const AURA: Record<string, (i: number, n: number) => AuraSet> = {
+  // standing: the low fire breathes and climbs
+  idle: (i, n) => ({ ph: turn(i, n) }),
+  // the blow knocks him back: the flames drag forward a frame, then stand again
+  hurt: (i) => ({ ph: step(i), h: [0.9, 0.95, 1][i], lx: [0.25, 0.1, 0][i] }),
+  // the walk: trailing back a little
+  move: (i, n) => ({ ph: turn(i, n), lx: -0.25 }),
+  // the coil: the fire sinks with him and gathers; the held tail flickers between two states
+  windup: (i) => ({ ph: [0, 2.2, 3.4, 3.4 + Math.PI][i], h: [0.95, 0.85, 0.85, 0.85][i] }),
+  // the charge: streaming back, short (he already reaches far forward)
+  attack: (i, n) => ({ ph: turn(i, n, 2), h: 0.85, lx: -1.5, ly: -0.15 }),
+  // the leap: spread wide on the way up and at the top, pulled up behind him in the fall
+  air: (i) => ({ ph: step(i), h: [0.95, 1.15, 1][i], sp: [0.7, 1.1, 0.4][i], ly: [-0.2, 0, 0.3][i] }),
+  // the slam: flattened and thrown outward, then rising back
+  land: (i) => ({ ph: step(i), h: [1.25, 1.1, 0.95, 1][i], ly: [-0.7, -0.55, -0.2, 0][i], sp: [1.5, 1.2, 0.5, 0][i] }),
+  // the cast: blown back by the thrust on the release
+  shoot: (i) => ({ ph: step(i), lx: [0, 0.1, 0.15, -0.9, -0.45, -0.1][i], h: [1, 1, 1, 0.9, 0.95, 1][i] }),
+  // out of breath: low and guttering
+  recover: (i, n) => ({ ph: turn(i, n), h: 0.55, gut: 1 })
+}
+
+/** A plain pose after the transformation: red eyes, the aura of the frame. */
+const ragedPose = (p: HamPose, a: AuraSet): HamPose => ({
+  ...p,
+  acc: { ...p.acc, red: 1, aura: a.h ?? 1, aph: a.ph, alx: a.lx ?? 0, aly: a.ly ?? 0, asp: a.sp ?? 0, agut: a.gut ?? 0 }
+})
+
+const clips = new Map<string, () => Raster[]>()
+/** A clip of either sheet from one pose list (the plain poses, or their raged variants), drawn once. */
+const clip = (name: string, poses: () => HamPose[], raged: boolean) => {
+  const key = `${raged ? 'raged' : 'plain'}/${name}`
+  let build = clips.get(key)
+  if (!build) {
+    build = memo(() => {
+      const list = poses()
+      return draw(raged ? list.map((p, i) => ragedPose(p, AURA[name](i, list.length))) : list)
+    })
+    clips.set(key, build)
+  }
+  return build
+}
+
+/** The clips of the fight, the same on both sheets: name, poses, fps, loop, extra timing. */
+const FIGHT: readonly [string, () => HamPose[], number, boolean, { sustain?: number }][] = [
+  ['idle', idlePoses, 8, true, {}],
+  ['hurt', hurtPoses, 12, false, {}],
+  ['move', movePoses, 10, true, {}],
+  ['windup', windupPoses, 12, false, { sustain: 2 }],
+  ['attack', attackPoses, 16, true, {}],
+  ['air', airPoses, 8, false, {}],
+  ['land', landPoses, 14, false, {}],
+  ['shoot', shootPoses, 12, false, {}],
+  ['recover', recoverPoses, 6, true, {}]
+]
+
+const fight = (raged: boolean) =>
+  Object.fromEntries(
+    FIGHT.map(([name, poses, fps, loop, extra]) => [name, lazyAnim(clip(name, poses, raged), fps, loop, extra)])
+  )
+
 export const sheets: SheetModule = {
-  king: () => ({
-    idle: lazyAnim(() => draw(idlePoses()), 8, true),
-    intro: lazyAnim(intro, 10, false, { sustain: 2 }),
-    hurt: lazyAnim(hurt, 12, false),
-    defeat: lazyAnim(defeat, 10, false, { sustain: 2 }),
-    move: lazyAnim(move, 10, true),
-    windup: lazyAnim(windup, 12, false, { sustain: 2 }),
-    attack: lazyAnim(attack, 16, true),
-    air: lazyAnim(air, 8, false),
-    land: lazyAnim(land, 14, false),
-    shoot: lazyAnim(shoot, 12, false),
-    recover: lazyAnim(recover, 6, true),
-    rage: lazyAnim(rage, 10, false, { sustain: 2 })
-  })
+  king: () => {
+    const f = fight(false)
+    return {
+      idle: f.idle,
+      intro: lazyAnim(intro, 10, false, { sustain: 2 }),
+      hurt: f.hurt,
+      defeat: lazyAnim(defeat, 10, false, { sustain: 2 }),
+      move: f.move,
+      windup: f.windup,
+      attack: f.attack,
+      air: f.air,
+      land: f.land,
+      shoot: f.shoot,
+      recover: f.recover,
+      rage: lazyAnim(rage, 10, false, { sustain: 2 })
+    }
+  },
+  // after the transformation: the fight's clips again, red-eyed in a low aura of dark fire
+  'king:raged': () => fight(true)
 }

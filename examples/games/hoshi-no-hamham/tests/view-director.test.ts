@@ -282,6 +282,48 @@ describe('stage start', () => {
     expect(rig.view.overlay.bubbleTexts).toContain('こらーっ！まちなさーい！')
   })
 
+  it('stage 1: the yell is gone when the chase starts', () => {
+    const rig = setup(1)
+    rig.session.start()
+    rig.run(2, () => rig.director.current === null)
+    expect(rig.view.actors.posing('boss')).toBeNull()
+    expect(rig.view.actors.posing('hero')).toBeNull()
+  })
+
+  for (const [name, start] of [
+    ['the chase start', (rig: Rig) => rig.session.start()],
+    ['the boss intro', (rig: Rig) => wakeBoss(rig)]
+  ] as const)
+    it(`skipping ${name} at 0.15 s leaves no pose once the simulation runs`, () => {
+      const rig = name === 'the chase start' ? setup(1) : started(5)
+      start(rig)
+      expect(rig.director.current).not.toBeNull()
+      rig.run(0.15)
+      rig.input.press()
+      rig.frame()
+      expect(rig.director.current).toBeNull()
+      expect(rig.view.actors.posing('boss')).toBeNull()
+      expect(rig.view.actors.posing('hero')).toBeNull()
+    })
+
+  for (const reducedMotion of [false, true])
+    it(`the freed princess's cheer never overlaps free input${reducedMotion ? ' (reduced motion: no cheer)' : ''}`, () => {
+      const rig = started(4, { reducedMotion })
+      const p = rig.world.player
+      rig.run(0.5)
+      expect(p.onGround).toBe(true)
+      emit(rig, { type: 'princess-free', x: p.x + p.w / 2, y: p.y + p.h / 2 })
+      let posed = false
+      for (let i = 0; i < 90; i++) {
+        if (rig.view.actors.posing('hero') === 'cheer') {
+          posed = true
+          expect(rig.director.inputLocked).toBe(true)
+        }
+        rig.frame()
+      }
+      expect(posed).toBe(!reducedMotion)
+    })
+
   it('stage 1: ハム代 yells while the simulation is held, the hero jumps in fright, and he is unhurt', () => {
     const rig = setup(1)
     rig.session.start()

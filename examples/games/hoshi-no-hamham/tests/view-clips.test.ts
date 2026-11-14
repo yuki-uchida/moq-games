@@ -23,6 +23,17 @@ import {
   SPIT_INTERVAL,
   SPIT_READY_DIP,
   SPIT_READY_HOLD,
+  AIR_BITE_FRAMES,
+  WAIT_AFTER,
+  WAIT_EVERY,
+  DIVE_LEVEL_SPEED,
+  DIVE_PINNED_SPEED,
+  FLINCH_MAX_SPEED,
+  FLYER_RECOVER_SECONDS,
+  FLYER_SHOT_INTERVAL,
+  STUN_SHOW_AFTER,
+  SWARM_SHOT_INTERVAL,
+  stunShown,
   STAND_AFTER,
   airFrame,
   bossClip,
@@ -190,6 +201,36 @@ describe('hero clips', () => {
     expect(a.t).toBe(b.t)
     const far = heroClip(hero({ vx: 215, distance: 215 / 14 }), HERO_SPEC)
     expect(frameOf(HERO_SPEC.run, far)).toBe(1)
+  })
+})
+
+describe('hero: a bite in the air, the fidget again', () => {
+  it('a bite at the top of a jump plays the lunge and the chomp, then the air clip', () => {
+    expect(AIR_BITE_FRAMES).toBe(2)
+    const STEP = 1 / 60
+    const shown: string[] = []
+    // Bitten at the top of a jump: rising slowly, then falling (the simulation's gravity is 1600 px/s²).
+    for (let i = 0; i * STEP < BITE_TIME; i++) {
+      const vy = -60 + 1600 * i * STEP
+      const choice = heroClip(hero({ onGround: false, vy, biteAge: i * STEP, airTime: 0.4 + i * STEP }))
+      shown.push(choice.name === 'bite' ? `bite${frameOf(HERO_SPEC.bite, choice)}` : choice.name)
+    }
+    const seq = shown.filter((f, i) => i === 0 || f !== shown[i - 1])
+    expect(seq.slice(0, 2)).toEqual(['bite0', 'bite1'])
+    for (const name of seq.slice(2)) expect(['apex', 'fall']).toContain(name)
+    // On the ground the whole bite plays.
+    expect(frameOf(HERO_SPEC.bite, heroClip(hero({ biteAge: 0.19 })))).toBe(4)
+  })
+
+  it('the fidget plays 5 s into standing, and again every 8 s', () => {
+    expect(WAIT_EVERY).toBe(8)
+    const name = (idleTime: number) => heroClip(hero({ idleTime })).name
+    expect(name(WAIT_AFTER - 0.01)).toBe('idle')
+    expect(name(WAIT_AFTER + 0.1)).toBe('wait')
+    expect(name(WAIT_AFTER + specDuration(HERO_SPEC.wait) + 0.01)).toBe('idle')
+    expect(name(WAIT_AFTER + WAIT_EVERY - 0.01)).toBe('idle')
+    expect(heroClip(hero({ idleTime: WAIT_AFTER + WAIT_EVERY }))).toEqual({ name: 'wait', t: 0 })
+    expect(name(WAIT_AFTER + 2 * WAIT_EVERY + 1)).toBe('wait')
   })
 })
 
@@ -501,6 +542,10 @@ const boss = (kind: BossKind, state: BossState, extra = {}) => ({
   vy: 0,
   rageAge: null,
   hurtAge: null,
+  onGround: false,
+  shotTimer: 99,
+  shotAge: null,
+  summonAge: null,
   time: 0.4,
   ...extra
 })
@@ -541,7 +586,9 @@ describe('boss clips', () => {
     ['brute', 'recover', {}, 'recover'],
     ['flyer', 'idle', {}, 'idle'],
     ['flyer', 'windup', {}, 'windup'],
-    ['flyer', 'dive', {}, 'attack'],
+    ['flyer', 'dive', { vy: 260 }, 'attack'],
+    ['flyer', 'dive', { vx: 500, vy: 0, onGround: true }, 'sweep'],
+    ['flyer', 'dive', { vx: 0, vy: 0, onGround: true }, 'recover'],
     ['flyer', 'recover', {}, 'recover'],
     ['tank', 'idle', { vx: 80 }, 'move'],
     ['tank', 'idle', {}, 'idle'],
@@ -647,10 +694,17 @@ describe('boss clips', () => {
         })
     }
 
-    it('a walking boss flinches too, and a new hit restarts the clip', () => {
+    it('a walking or running boss shows the hit as the flash and the jolt; a new hit restarts the flinch', () => {
+      expect(FLINCH_MAX_SPEED).toBe(20)
       const spec = bossSheetSpec('tank', 'bearBoss')
-      expect(bossClip(boss('tank', 'idle', { vx: 80, hurtAge: 0.01 }), 'bearBoss', spec).name).toBe('hurt')
+      expect(bossClip(boss('tank', 'idle', { vx: 80, hurtAge: 0.01 }), 'bearBoss', spec).name).toBe('move')
+      expect(bossClip(boss('tank', 'idle', { vx: FLINCH_MAX_SPEED, hurtAge: 0.01 }), 'bearBoss', spec).name).toBe(
+        'hurt'
+      )
       expect(bossClip(boss('tank', 'idle', { hurtAge: 0 }), 'bearBoss', spec)).toEqual({ name: 'hurt', t: 0 })
+      // The running mother too.
+      expect(bossClip(boss('chaser', 'idle', { vx: 261, hurtAge: 0.01 }), 'mom').name).toBe('move')
+      expect(bossClip(boss('chaser', 'tired', { vx: 3, hurtAge: 0.01 }), 'mom').name).toBe('hurt')
     })
 
     it('the landing of a slam and the follow-through of a volley are kept', () => {
@@ -665,6 +719,170 @@ describe('boss clips', () => {
     it('the transformation comes before the flinch', () => {
       const spec = bossSheetSpec('final', 'king')
       expect(bossClip(boss('final', 'idle', { rageAge: 0.1, hurtAge: 0.01 }), 'king', spec).name).toBe('rage')
+    })
+  })
+
+  describe('a stun shows only once it lasts', () => {
+    it('a one-step stun keeps the clip before it; a lasting one shows after STUN_SHOW_AFTER', () => {
+      expect(STUN_SHOW_AFTER).toBe(0.05)
+      for (const kind of ['brute', 'swarm', 'final'] as const) {
+        const art = ART[kind]
+        const charge = bossClip(boss(kind, 'charge', { stateTime: 0.5 }), art).name
+        const early = bossClip(boss(kind, 'stunned', { prevState: 'charge', stateTime: 1 / 60 }), art)
+        expect(early.name).toBe(charge)
+        expect(stunShown('stunned', 1 / 60)).toBe(false)
+        const late = bossClip(boss(kind, 'stunned', { prevState: 'charge', stateTime: STUN_SHOW_AFTER }), art)
+        expect(late.name).toBe(kind === 'brute' ? 'stunned' : 'recover')
+        expect(stunShown('stunned', STUN_SHOW_AFTER)).toBe(true)
+      }
+      expect(bossClip(boss('chaser', 'stunned', { stateTime: 0.01 }), 'mom').name).toBe('move')
+      expect(bossClip(boss('chaser', 'stunned', { stateTime: 0.06 }), 'mom').name).toBe('stunned')
+    })
+  })
+
+  describe("the crow's dive levels out", () => {
+    it('attack while it comes down, sweep once it travels level (a dive recorded from the simulation)', () => {
+      // Recorded from the simulation (stage 2, the hero on flat ground): vy 260 until the crow reaches the ground,
+      // then vy 0 on the ground for the rest of the dive (up to 1.4 s).
+      const steps = [
+        ...Array.from({ length: 9 }, (_, i) => ({ t: i / 60, vy: 260, onGround: false })),
+        ...Array.from({ length: 50 }, (_, i) => ({ t: (9 + i) / 60, vy: 0, onGround: true }))
+      ]
+      const names = steps.map(
+        (st) =>
+          bossClip(boss('flyer', 'dive', { stateTime: st.t, vx: 504, vy: st.vy, onGround: st.onGround }), 'crowBoss')
+            .name
+      )
+      expect(names.slice(0, 9).every((n) => n === 'attack')).toBe(true)
+      expect(names.slice(9).every((n) => n === 'sweep')).toBe(true)
+      // Level in the air too (its fall has gone).
+      expect(bossClip(boss('flyer', 'dive', { vx: 504, vy: DIVE_LEVEL_SPEED }), 'crowBoss').name).toBe('sweep')
+      expect(bossClip(boss('flyer', 'dive', { vx: 504, vy: DIVE_LEVEL_SPEED + 1 }), 'crowBoss').name).toBe('attack')
+      // Pinned against a wall the dive runs on with no speed at all: he flaps on the spot instead of skimming.
+      expect(bossClip(boss('flyer', 'dive', { vx: 0, vy: 0, onGround: true }), 'crowBoss').name).toBe('recover')
+      expect(
+        bossClip(boss('flyer', 'dive', { vx: DIVE_PINNED_SPEED + 1, vy: 0, onGround: true }), 'crowBoss').name
+      ).toBe('sweep')
+    })
+  })
+
+  describe('throws and casts', () => {
+    const STEP = 1 / 60
+    /**
+     * Runs a boss's shot timer through the simulation's order of a step (state first, then the timer: sim.ts
+     * `updateFlyerBoss` / `updateSwarmBoss`) and returns the clip and frame the view shows after each step, with the
+     * step of each `boss-shoot` marked.
+     */
+    const play = (
+      kind: 'flyer' | 'swarm',
+      art: string,
+      plan: (time: number) => { state: BossState; prevState: BossState | null; stateTime: number },
+      seconds: number,
+      shotTimer = 0.6
+    ) => {
+      const spec = bossSheetSpec(kind, art)
+      const interval = kind === 'flyer' ? FLYER_SHOT_INTERVAL : SWARM_SHOT_INTERVAL
+      let timer = shotTimer
+      let shotAt: number | null = null
+      const out: { frame: string; shot: boolean }[] = []
+      for (let i = 1; i * STEP <= seconds; i++) {
+        const time = i * STEP
+        const st = plan(time)
+        timer -= STEP
+        let shot = false
+        if (timer <= 0 && (kind === 'swarm' || st.state === 'idle')) {
+          timer = interval
+          shot = true
+          shotAt = st.state === 'idle' || st.state === 'recover' ? time : null
+        }
+        const choice = bossClip(
+          boss(kind, st.state, {
+            prevState: st.prevState,
+            stateTime: st.stateTime,
+            // A dive travels (the crow's is 2.4 times his cruising speed).
+            vx: st.state === 'dive' ? 504 : 0,
+            shotTimer: timer,
+            shotAge: shotAt === null ? null : time - shotAt,
+            time
+          }),
+          art,
+          spec
+        )
+        out.push({ frame: choice.name === 'shoot' ? `shoot${frameOf(spec.shoot, choice)}` : choice.name, shot })
+      }
+      return out
+    }
+    const shots = (run: { frame: string; shot: boolean }[]) => {
+      const seq = run.map((r) => r.frame).filter((f, i, all) => i === 0 || f !== all[i - 1])
+      return seq
+    }
+    const idle = () => ({ state: 'idle' as BossState, prevState: null, stateTime: 0.2 })
+
+    for (const [kind, art] of [
+      ['flyer', 'crowBoss'],
+      ['swarm', 'foxBoss'],
+      ['swarm', 'beeBoss']
+    ] as const)
+      it(`${art}: frames 0, 1, 2 before the shot, 3 on the step of boss-shoot, then 4, 5`, () => {
+        expect(bossSheetSpec(kind, art).shoot.hit).toBe(3)
+        const run = play(kind, art, idle, 1.2)
+        const onShot = run.find((r) => r.shot)!
+        expect(onShot.frame).toBe('shoot3')
+        expect(shots(run)).toEqual(['idle', 'shoot0', 'shoot1', 'shoot2', 'shoot3', 'shoot4', 'shoot5', 'idle'])
+      })
+
+    it('no throw or cast pose during windup, charge or dive (the shot leaves without a pose)', () => {
+      for (const [kind, art, states] of [
+        ['flyer', 'crowBoss', ['windup', 'dive']],
+        ['swarm', 'foxBoss', ['windup', 'charge']]
+      ] as const)
+        for (const state of states) {
+          const run = play(kind, art, () => ({ state, prevState: null, stateTime: 0.2 }), 2)
+          expect(
+            run.some((r) => r.frame.startsWith('shoot')),
+            `${art} ${state}`
+          ).toBe(false)
+        }
+    })
+
+    it("the crow's timer runs out during a dive: the wind-up ends the recover, the release lands on the shot", () => {
+      // Dive until 0.5 s, then recover for 0.9 s (FLYER_RECOVER_SECONDS), then idle: the timer ran out at 0.6 s.
+      const plan = (time: number) =>
+        time < 0.5
+          ? { state: 'dive' as BossState, prevState: 'windup' as BossState, stateTime: time }
+          : time - 0.5 <= FLYER_RECOVER_SECONDS
+            ? { state: 'recover' as BossState, prevState: 'dive' as BossState, stateTime: time - 0.5 }
+            : {
+                state: 'idle' as BossState,
+                prevState: 'recover' as BossState,
+                stateTime: time - 0.5 - FLYER_RECOVER_SECONDS
+              }
+      const run = play('flyer', 'crowBoss', plan, 2.2)
+      const shotIndex = run.findIndex((r) => r.shot)
+      expect(shotIndex).toBeGreaterThan(0)
+      expect(run[shotIndex].frame).toBe('shoot3')
+      // (The dive of this plan is level: `sweep`.)
+      expect(shots(run)).toEqual([
+        'sweep',
+        'recover',
+        'shoot0',
+        'shoot1',
+        'shoot2',
+        'shoot3',
+        'shoot4',
+        'shoot5',
+        'idle'
+      ])
+    })
+
+    it('a summon plays the gesture from its release; a state clip keeps priority', () => {
+      const spec = bossSheetSpec('swarm', 'foxBoss')
+      expect(frameOf(spec.shoot, bossClip(boss('swarm', 'idle', { summonAge: 0 }), 'foxBoss'))).toBe(3)
+      expect(bossClip(boss('swarm', 'idle', { summonAge: 0.2 }), 'foxBoss').name).toBe('shoot')
+      expect(bossClip(boss('swarm', 'idle', { summonAge: 0.3 }), 'foxBoss').name).toBe('idle')
+      expect(bossClip(boss('swarm', 'windup', { summonAge: 0 }), 'foxBoss').name).toBe('windup')
+      // Only the fox and the bee summon with a gesture.
+      expect(bossClip(boss('flyer', 'idle', { summonAge: 0 }), 'crowBoss').name).toBe('idle')
     })
   })
 

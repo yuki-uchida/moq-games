@@ -97,13 +97,22 @@ describe('story scenes', () => {
     )
   })
 
-  test('the kidnapping page keeps the weasel and the princess apart, the princess held clear above him', () => {
+  test('the kidnapping page: the weasel gallops off to the right with the princess on his back, clear of his head', () => {
     const [shot] = STORY_SCENES['3']
     const weasel = shot.figures.find((f) => f.sheet === 'weaselBoss')!
     const princess = shot.figures.find((f) => f.sheet === 'princess')!
     expect(weasel.flip).toBe(false)
-    expect(princess.lift ?? 0).toBeGreaterThanOrEqual(64)
-    expect(Math.abs(princess.x - weasel.x)).toBeLessThan(40)
+    expect(weasel.clip).toBe('attack')
+    // She sits on his back (his galloping body is about 40 px high there), not on the ground and not in the air ...
+    expect(princess.lift ?? 0).toBeGreaterThanOrEqual(28)
+    expect(princess.lift ?? 0).toBeLessThanOrEqual(46)
+    // ... behind his shoulders: his head and cap, at the front of his 100 px length, stay clear of her.
+    expect(weasel.x - princess.x).toBeGreaterThanOrEqual(12)
+    expect(weasel.x - princess.x).toBeLessThan(40)
+    // She is carried: she does not bob on her own.
+    expect(princess.motion ?? 'none').toBe('none')
+    // And she is drawn over him.
+    expect(shot.figures.indexOf(princess)).toBeGreaterThan(shot.figures.indexOf(weasel))
   })
 
   test('stage 1 shows mom behind the hero', () => {
