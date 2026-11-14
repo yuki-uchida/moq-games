@@ -23,7 +23,6 @@ import { countValue, fitScale, formatClock, goalProgress, starRating, starTrail,
 import type { SoundCue } from '../view/cues'
 import { moveFocus, focusables, type Direction } from './spatial'
 import { CREDITS_SHOT, endingShot, resultShot, shotFor } from './story-scenes'
-import { replay as restartAnimation } from './replay'
 import { Typewriter } from './typewriter'
 import { setZoomLock } from './zoom-guard'
 
@@ -185,8 +184,12 @@ const setLabel = (button: HTMLElement, text: string) => {
   else button.textContent = text
 }
 
-/** Restarts a CSS enter animation. */
-const replay = (node: HTMLElement, className = 'is-entering') => restartAnimation(node, className)
+/** Restarts a CSS enter animation (a style flush, no layout). */
+function replay(node: HTMLElement, className = 'is-entering') {
+  node.classList.remove(className)
+  void getComputedStyle(node).animationName
+  node.classList.add(className)
+}
 
 /** Count-up tally on the result card. */
 interface TallyLine {
