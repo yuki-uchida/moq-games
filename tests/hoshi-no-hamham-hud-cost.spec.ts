@@ -442,3 +442,48 @@ test.describe('HUD animations restart without forcing style', () => {
     await context.close()
   })
 })
+
+test.describe('the texts laid out ahead at the start of a stage', () => {
+  test.setTimeout(120_000)
+
+  for (const profile of PROFILES) {
+    test(`${profile.name}: a stage started again reads no font and wishes for nothing new`, async ({ browser }) => {
+      const { page, context, errors } = await open(browser, profile.width, profile.height, 3)
+      const again = await page.evaluate(() => {
+        interface AheadHud {
+          stage: unknown
+          reveal(): void
+          setStage(stage: unknown): void
+          ahead: { idle(all?: boolean): boolean; fonts: Map<string, { known: Map<string, boolean> }> }
+        }
+        const hud = hook().app.hud as unknown as AheadHud
+        const known = () => [...hud.ahead.fonts.values()].reduce((sum, font) => sum + font.known.size, 0)
+        const fontsBefore = hud.ahead.fonts.size
+        const knownBefore = known()
+        let styles = 0
+        const original = window.getComputedStyle
+        window.getComputedStyle = ((...args: Parameters<typeof getComputedStyle>) => {
+          styles += 1
+          return original(...args)
+        }) as typeof getComputedStyle
+        try {
+          // What the tap that starts a stage does to the HUD (play.ts, `start`).
+          hud.reveal()
+          hud.setStage(hud.stage)
+        } finally {
+          window.getComputedStyle = original
+        }
+        return { styles, fontsBefore, fonts: hud.ahead.fonts.size, knownBefore, known: known() }
+      })
+      // The fonts were read when the stage's size was set; the same stage at the same size reads none.
+      expect(again.styles).toBe(0)
+      // Texts are wished for in the fonts of several places, and none of them is new.
+      expect(again.fontsBefore).toBeGreaterThanOrEqual(5)
+      expect(again.fonts).toBe(again.fontsBefore)
+      expect(again.knownBefore).toBeGreaterThan(100)
+      expect(again.known).toBe(again.knownBefore)
+      expect(errors).toEqual([])
+      await context.close()
+    })
+  }
+})
