@@ -17,7 +17,8 @@ import {
   enemyClip,
   heroClip,
   isSkidding,
-  type ClipChoice
+  type ClipChoice,
+  type EnemySnapshot
 } from './clips'
 import type { FxPool } from './fx'
 import { ENEMY_SPEC, MOM_SPEC, bossSpec, type BossArt } from '../art/contract'
@@ -101,10 +102,25 @@ interface EnemyTimers {
 }
 
 /** Squash/stretch scale factors for a value s in [−MAX, MAX] (s > 0 stretches); volume preserving. */
-export function squashScale(s: number) {
+export function squashScale(s: number, out = { sx: 1, sy: 1 }) {
   const c = Math.max(-MAX_SQUASH, Math.min(MAX_SQUASH, s))
-  return { sx: 1 / (1 + c), sy: 1 + c }
+  out.sx = 1 / (1 + c)
+  out.sy = 1 + c
+  return out
 }
+
+/** What the enemies' clip choice reads, refilled for each enemy drawn. */
+const enemySnapshot: EnemySnapshot = {
+  kind: 'walker',
+  vx: 0,
+  vy: 0,
+  onGround: true,
+  hitFlash: 0,
+  shootTimer: 0,
+  landAge: 99,
+  time: 0
+}
+const squash: { sx: number; sy: number } = { sx: 1, sy: 1 }
 
 /** The y of the ground under (x, feetY), looking down at most `maxTiles`; null over a pit. */
 export function groundBelow(world: Pick<World, 'solidAt' | 'tileAt' | 'h'>, x: number, feetY: number, maxTiles = 6) {
@@ -369,7 +385,9 @@ export class ActorsView {
         }
       }
     }
-    this.ghosts = this.ghosts.filter((g) => g.age < g.life)
+    let kept = 0
+    for (const g of this.ghosts) if (g.age < g.life) this.ghosts[kept++] = g
+    this.ghosts.length = kept
     if (this.death) {
       const d = this.death
       d.age += dt
@@ -442,7 +460,7 @@ export class ActorsView {
       this.heroChoice = { name: this.poses.hero!.clip, t: staged.age }
       this.lastRunFrame = -1
       this.drawShadow(ctx, x, y, p.w)
-      const { sx, sy } = squashScale(this.squash)
+      const { sx, sy } = squashScale(this.squash, squash)
       blit(ctx, staged.anim, staged.age, x, y - staged.lift, brush(p.facing < 0, undefined, undefined, sx, sy))
       return
     }
@@ -455,7 +473,7 @@ export class ActorsView {
     this.drawShadow(ctx, x, y, p.w)
     // Flicker while invulnerable, after the hurt reaction.
     if (p.invuln > 0 && choice.name !== 'hurt' && Math.floor(this.time * 20) % 2 === 0) return
-    const { sx, sy } = squashScale(this.squash)
+    const { sx, sy } = squashScale(this.squash, squash)
     blit(ctx, anim, choice.t, x, y, brush(p.facing < 0, undefined, choice.frame, sx, sy))
   }
 
@@ -485,16 +503,16 @@ export class ActorsView {
 
   private drawEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy) {
     const timers = this.enemyTimers.get(enemy.id)
-    const choice = enemyClip({
-      kind: enemy.kind,
-      vx: enemy.vx,
-      vy: enemy.vy,
-      onGround: enemy.onGround,
-      hitFlash: enemy.hitFlash,
-      shootTimer: enemy.shootTimer,
-      landAge: timers?.landAge ?? 99,
-      time: this.time + enemy.id * 0.13
-    })
+    const snapshot = enemySnapshot
+    snapshot.kind = enemy.kind
+    snapshot.vx = enemy.vx
+    snapshot.vy = enemy.vy
+    snapshot.onGround = enemy.onGround
+    snapshot.hitFlash = enemy.hitFlash
+    snapshot.shootTimer = enemy.shootTimer
+    snapshot.landAge = timers?.landAge ?? 99
+    snapshot.time = this.time + enemy.id * 0.13
+    const choice = enemyClip(snapshot)
     const anim = clip(enemy.kind, choice.name)
     if (!anim) return
     const x = enemy.x + enemy.w / 2

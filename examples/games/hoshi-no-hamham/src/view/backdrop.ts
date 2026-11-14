@@ -5,14 +5,8 @@ import { backdrop, type Backdrop, type BackdropLayer } from '../art'
 import { VIEW_H, VIEW_W, type Ambience, type ThemeId } from '../art/contract'
 import { bake, blit, brush, clip } from './bake'
 
-interface Mote {
-  x: number
-  y: number
-  vx: number
-  vy: number
-  phase: number
-  size: number
-}
+/** Numbers per mote in `motes`: x, y, vx, vy, phase, size (a typed array, so that moving them makes no garbage). */
+const MOTE = 6
 
 const AMBIENCE_COUNT: Record<Ambience, number> = {
   none: 0,
@@ -45,7 +39,7 @@ export function layerOffset(
 
 export class BackdropView {
   private art: Backdrop
-  private motes: Mote[] = []
+  private motes: Float64Array
   private twinkles: { x: number; y: number; phase: number }[] = []
   private time = 0
   private readonly offset = { x: 0, y: 0 }
@@ -63,15 +57,15 @@ export class BackdropView {
       return seed / 2147483647
     }
     const ambience = this.art.ambience
-    for (let i = 0; i < AMBIENCE_COUNT[ambience]; i++)
-      this.motes.push({
-        x: r() * VIEW_W,
-        y: r() * VIEW_H,
-        vx: (r() - 0.5) * 10,
-        vy: (r() - 0.5) * 6,
-        phase: r() * Math.PI * 2,
-        size: r() < 0.3 ? 2 : 1
-      })
+    this.motes = new Float64Array(AMBIENCE_COUNT[ambience] * MOTE)
+    for (let i = 0; i < this.motes.length; i += MOTE) {
+      this.motes[i] = r() * VIEW_W
+      this.motes[i + 1] = r() * VIEW_H
+      this.motes[i + 2] = (r() - 0.5) * 10
+      this.motes[i + 3] = (r() - 0.5) * 6
+      this.motes[i + 4] = r() * Math.PI * 2
+      this.motes[i + 5] = r() < 0.3 ? 2 : 1
+    }
     if (NIGHT_SKIES.has(theme))
       for (let i = 0; i < 7; i++) this.twinkles.push({ x: r() * VIEW_W, y: r() * VIEW_H * 0.42, phase: r() * 10 })
   }
@@ -79,20 +73,23 @@ export class BackdropView {
   update(dt: number) {
     this.time += dt
     const ambience = this.art.ambience
-    for (const m of this.motes) {
-      let vx = m.vx
-      let vy = m.vy
+    const m = this.motes
+    for (let i = 0; i < m.length; i += MOTE) {
+      const phase = m[i + 4]
+      const size = m[i + 5]
+      let vx = m[i + 2]
+      let vy = m[i + 3]
       if (ambience === 'leaves') {
-        vy = 16 + m.size * 6
-        vx = Math.sin(this.time * 1.3 + m.phase) * 18 - 6
-      } else if (ambience === 'embers') vy = -14 - m.size * 4
-      else if (ambience === 'pollen') vy = Math.sin(this.time * 0.8 + m.phase) * 4 - 2
-      m.x += vx * dt
-      m.y += vy * dt
-      if (m.x < -10) m.x += VIEW_W + 20
-      if (m.x > VIEW_W + 10) m.x -= VIEW_W + 20
-      if (m.y < -10) m.y += VIEW_H + 20
-      if (m.y > VIEW_H + 10) m.y -= VIEW_H + 20
+        vy = 16 + size * 6
+        vx = Math.sin(this.time * 1.3 + phase) * 18 - 6
+      } else if (ambience === 'embers') vy = -14 - size * 4
+      else if (ambience === 'pollen') vy = Math.sin(this.time * 0.8 + phase) * 4 - 2
+      m[i] += vx * dt
+      m[i + 1] += vy * dt
+      if (m[i] < -10) m[i] += VIEW_W + 20
+      if (m[i] > VIEW_W + 10) m[i] -= VIEW_W + 20
+      if (m[i + 1] < -10) m[i + 1] += VIEW_H + 20
+      if (m[i + 1] > VIEW_H + 10) m[i + 1] -= VIEW_H + 20
     }
   }
 
@@ -136,34 +133,37 @@ export class BackdropView {
     const ambience = this.art.ambience
     if (ambience === 'none') return
     const leaf = ambience === 'leaves' ? clip('fx', 'leaf') : undefined
-    for (const m of this.motes) {
-      const x = Math.round(m.x)
-      const y = Math.round(m.y)
+    const m = this.motes
+    for (let i = 0; i < m.length; i += MOTE) {
+      const x = Math.round(m[i])
+      const y = Math.round(m[i + 1])
+      const phase = m[i + 4]
+      const size = m[i + 5]
       if (leaf) {
-        blit(ctx, leaf, this.time + m.phase, x, y, brush(m.phase > Math.PI, 0.75))
+        blit(ctx, leaf, this.time + phase, x, y, brush(phase > Math.PI, 0.75))
         continue
       }
       let color = '#fff3b8'
       let alpha = 0.6
       if (ambience === 'fireflies') {
         color = '#d8ff7a'
-        alpha = 0.25 + 0.75 * Math.max(0, Math.sin(this.time * 2 + m.phase))
+        alpha = 0.25 + 0.75 * Math.max(0, Math.sin(this.time * 2 + phase))
       } else if (ambience === 'dust') {
         color = '#d8c8e8'
         alpha = 0.35
       } else if (ambience === 'embers') {
-        color = m.size > 1 ? '#ffb347' : '#ff7a3c'
-        alpha = 0.4 + 0.4 * Math.sin(this.time * 5 + m.phase)
+        color = size > 1 ? '#ffb347' : '#ff7a3c'
+        alpha = 0.4 + 0.4 * Math.sin(this.time * 5 + phase)
       } else if (ambience === 'stardust') {
-        color = m.phase > 3 ? '#bfe6ff' : '#fff3b8'
-        alpha = 0.3 + 0.6 * Math.abs(Math.sin(this.time * 1.5 + m.phase))
+        color = phase > 3 ? '#bfe6ff' : '#fff3b8'
+        alpha = 0.3 + 0.6 * Math.abs(Math.sin(this.time * 1.5 + phase))
       }
       ctx.globalAlpha = Math.max(0, Math.min(1, alpha))
       ctx.fillStyle = color
-      ctx.fillRect(x, y, m.size, m.size)
+      ctx.fillRect(x, y, size, size)
       if (ambience === 'fireflies' && alpha > 0.7) {
         ctx.globalAlpha = (alpha - 0.7) * 0.8
-        ctx.fillRect(x - 1, y - 1, m.size + 2, m.size + 2)
+        ctx.fillRect(x - 1, y - 1, size + 2, size + 2)
       }
     }
     ctx.globalAlpha = 1
