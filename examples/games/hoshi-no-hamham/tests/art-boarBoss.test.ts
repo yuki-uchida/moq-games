@@ -1,13 +1,13 @@
 import { describe, expect, test } from 'vitest'
 import { BOAR_TONES } from '../src/art/chars/bosses/boar'
-import { bossSpecNext } from '../src/art/contract'
+import { bossSpec } from '../src/art/contract'
 import { sheet } from '../src/art/index'
 import { R } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
 
 const ID = 'boarBoss'
 const ANCHOR_Y = 120
-const spec = bossSpecNext(ID)
+const spec = bossSpec(ID)
 /** The pompadour (and the brows and hooves) are glossy black; its outline is the warm ink. */
 const black = new Set<number>(BOAR_TONES.hair)
 const cream = new Set<number>(BOAR_TONES.tusk.slice(0, 2))

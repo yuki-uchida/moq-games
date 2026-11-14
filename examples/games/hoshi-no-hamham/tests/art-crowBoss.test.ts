@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'vitest'
 import { crowBossPoses, crowBossWingTips } from '../src/art/chars/bosses/crow'
-import { bossSpecNext } from '../src/art/contract'
+import { bossSpec } from '../src/art/contract'
 import { sheet } from '../src/art/index'
 import { C, R } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
 
 const ID = 'crowBoss'
-const spec = bossSpecNext(ID)
+const spec = bossSpec(ID)
 const beak = new Set<number>(R.beak.slice(0, 4))
 const red = new Set<number>(R.bandana.slice(0, 4))
 

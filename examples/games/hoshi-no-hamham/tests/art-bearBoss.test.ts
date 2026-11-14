@@ -1,13 +1,13 @@
 import { describe, expect, test } from 'vitest'
 import { LEAF, bearPose, drawBear } from '../src/art/chars/bosses/bear'
-import { bossSpecNext } from '../src/art/contract'
+import { bossSpec } from '../src/art/contract'
 import { sheet } from '../src/art/index'
 import { R } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
 
 const ID = 'bearBoss'
 const ANCHOR_Y = 120
-const spec = bossSpecNext(ID)
+const spec = bossSpec(ID)
 const leaf = new Set<number>(LEAF.slice(0, 4))
 const gold = new Set<number>(R.honey.slice(0, 4))
 const red = new Set<number>(R.bandana.slice(0, 4))

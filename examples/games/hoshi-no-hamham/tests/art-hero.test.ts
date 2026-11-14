@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { HERO_NEXT } from '../src/art/contract'
+import { HERO_SPEC } from '../src/art/contract'
 import { sheet } from '../src/art/index'
 import { C, R } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
@@ -29,9 +29,9 @@ const scarfTip = (f: Raster) => {
 }
 
 describe('hero sheet', () => {
-  test('every clip of HERO_NEXT is drawn with its frame count', () => {
+  test('every clip of HERO_SPEC is drawn with its frame count', () => {
     const s = hero()
-    for (const [name, spec] of Object.entries(HERO_NEXT)) {
+    for (const [name, spec] of Object.entries(HERO_SPEC)) {
       expect(s[name], name).toBeDefined()
       expect(s[name].frames.length, name).toBe(spec.frames)
     }

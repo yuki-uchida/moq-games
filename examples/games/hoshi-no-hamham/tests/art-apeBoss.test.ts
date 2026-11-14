@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { NAVY, SILVER, SKIN, apePose, drawApe, sheets } from '../src/art/chars/bosses/ape'
 import { sheets as wolfSheets } from '../src/art/chars/bosses/wolf'
-import { bossSpecNext } from '../src/art/contract'
+import { bossSpec } from '../src/art/contract'
 import { R } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
 
@@ -25,7 +25,7 @@ const bottom = (f: Raster) => f.bounds()!.y + f.bounds()!.h - 1
 
 describe('ごりら警部 (apeBoss) on the rig', () => {
   test('every clip of the spec is drawn with its frame count, fps, loop and sustain', () => {
-    for (const [name, spec] of Object.entries(bossSpecNext('apeBoss'))) {
+    for (const [name, spec] of Object.entries(bossSpec('apeBoss'))) {
       const a = sheet[name]
       expect(a, name).toBeDefined()
       expect(a!.frames.length, name).toBe(spec.frames)

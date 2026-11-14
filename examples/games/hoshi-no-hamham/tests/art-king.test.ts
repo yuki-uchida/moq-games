@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'vitest'
 import { KING_MANTLE, KING_RAGE_RED } from '../src/art/chars/king'
-import { bossSpecNext } from '../src/art/contract'
+import { bossSpec } from '../src/art/contract'
 import { sheet } from '../src/art/index'
 import { R } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
 
 const ID = 'king'
-const spec = bossSpecNext(ID)
+const spec = bossSpec(ID)
 const purple = new Set<number>([...R.kingPurple.slice(0, 4), KING_MANTLE[1]])
 const crimson = new Set<number>(R.crimson.slice(0, 4))
 const gold = new Set<number>(R.gold.slice(0, 4))

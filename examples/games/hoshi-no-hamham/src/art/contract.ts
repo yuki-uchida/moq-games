@@ -26,13 +26,7 @@
  *   weapons may reach further.
  * - Frame 0 of an attack-like clip is the anticipation; `hit` is the frame of contact or release.
  * - Cell props are 64×64 images placed on the top-left of their map cell (anchor [0, 0]).
- *
- * The cast is being redrawn on the rig toolkit. Until every character is done, each character sheet has two
- * specs: `*_NEXT` (the new contract: more frames, more clips) and `*_LEGACY` (what the old drawings have).
- * `migrated.ts` lists the sheets that follow the new one; everything the game and the tests import from here
- * (`HERO_SPEC`, `ENEMY_SPEC`, `bossSpec`, `allSheetSpecs` …) is the spec in force for each sheet.
  */
-import { MIGRATED } from './migrated'
 
 export const THEMES = ['meadow', 'night', 'cave', 'forest', 'fortress', 'castle', 'star'] as const
 export type ThemeId = (typeof THEMES)[number]
@@ -78,25 +72,7 @@ const small = (size: number, frames: number, fps: number, loop: boolean) => clip
 
 // ---------------------------------------------------------------------------------------------------- cast
 
-const next = (id: string) => MIGRATED.includes(id)
-
-export const HERO_LEGACY: Specs = {
-  idle: cell(4, 6, true), // breathing
-  blink: cell(2, 14, false), // half-closed, closed (played over idle every few seconds)
-  wait: cell(6, 6, false), // fidget after standing still: looks around, grooms a cheek
-  run: cell(8, 14, true), // contact frames 0 and 4
-  skid: cell(2, 12, false), // braking when reversing at speed
-  jump: cell(2, 12, false), // launch stretch, rising (last frame held)
-  fall: cell(2, 10, true), // arms up, fur and scarf fluttering
-  land: cell(3, 18, false), // squash, rebound, settle
-  bite: cell(5, 24, false, { hit: 2 }), // anticipation, lunge, CHOMP with front teeth, follow-through, recover
-  hurt: cell(2, 10, false),
-  die: cell(6, 10, false), // hit, tumble ×3, flat on the back, eyes swirling
-  cheer: cell(6, 10, true), // victory hop with both arms up
-  swim: cell(4, 8, true) // paddling, cheeks puffed
-}
-
-export const HERO_NEXT: Specs = {
+export const HERO_SPEC: Specs = {
   idle: cell(8, 8, true), // one breath: the chest rises, the head follows, ears and tuft settle a beat later
   // The same eight poses as `idle` with the eyes shut: the view swaps in the frame of the same index for the
   // length of a blink, so a blink never interrupts the breath.
@@ -116,34 +92,14 @@ export const HERO_NEXT: Specs = {
   swim: cell(6, 10, true) // paddling, cheeks puffed
 }
 
-export const HERO_SPEC: Specs = next('hero') ? HERO_NEXT : HERO_LEGACY
-
-export const PRINCESS_LEGACY: Specs = {
-  idle: cell(4, 6, true),
-  sad: cell(4, 5, true), // caged: trembling, a tear
-  cheer: cell(6, 10, true),
-  wave: cell(4, 8, true)
-}
-
-export const PRINCESS_NEXT: Specs = {
+export const PRINCESS_SPEC: Specs = {
   idle: cell(8, 8, true),
   sad: cell(6, 6, true), // caged: trembling, a tear
   cheer: cell(8, 12, true),
   wave: cell(6, 8, true)
 }
 
-export const PRINCESS_SPEC: Specs = next('princess') ? PRINCESS_NEXT : PRINCESS_LEGACY
-
-export const MOM_LEGACY: Specs = {
-  idle: mid(4, 6, true), // hands on hips, foot tapping
-  yell: mid(4, 10, false), // stage 1 intro: 「こらーっ！」
-  move: mid(8, 14, true), // furious run, ladle raised
-  stunned: mid(4, 8, true), // dizzy after smashing through a tree or rock
-  tired: mid(4, 5, true), // out of breath, rubbing her back
-  hurt: mid(2, 10, false)
-}
-
-export const MOM_NEXT: Specs = {
+export const MOM_SPEC: Specs = {
   idle: mid(8, 8, true), // hands on hips, foot tapping
   yell: mid(6, 10, false, { sustain: 2 }), // stage 1 intro: 「こらーっ！」
   move: mid(8, 14, true), // furious run, ladle raised
@@ -152,34 +108,15 @@ export const MOM_NEXT: Specs = {
   hurt: mid(3, 12, false)
 }
 
-export const MOM_SPEC: Specs = next('mom') ? MOM_NEXT : MOM_LEGACY
-
 export const ENEMY_KINDS = ['walker', 'flyer', 'jumper', 'spitter', 'tough'] as const
 export type EnemyArt = (typeof ENEMY_KINDS)[number]
 
-const DEFEAT = cell(5, 12, false) // knocked back, spin, poof
+const DEFEAT = cell(6, 12, false) // the blow, flung back head over heels (drawn, never a turned picture), limp
 const HURT = cell(2, 12, false)
 
-export const ENEMY_LEGACY: Record<EnemyArt, Specs> = {
-  walker: { idle: cell(2, 4, true), move: cell(6, 10, true), hurt: HURT, defeat: DEFEAT },
-  flyer: { move: cell(6, 14, true), hurt: HURT, defeat: DEFEAT }, // always flapping
-  jumper: {
-    idle: cell(2, 4, true),
-    air: cell(2, 8, false), // frame 0 rising (stretched), frame 1 falling (the view picks by vertical speed)
-    land: cell(2, 14, false),
-    hurt: HURT,
-    defeat: DEFEAT
-  },
-  spitter: { idle: cell(4, 6, true), shoot: cell(4, 12, false, { hit: 2 }), hurt: HURT, defeat: DEFEAT },
-  tough: { idle: cell(2, 4, true), move: cell(6, 8, true), hurt: HURT, defeat: DEFEAT }
-}
-
-const DEFEAT_NEXT = cell(6, 12, false) // the blow, flung back head over heels (drawn, never a turned picture), limp
-const HURT_NEXT = cell(2, 12, false)
-
-export const ENEMY_NEXT: Record<EnemyArt, Specs> = {
-  walker: { idle: cell(6, 8, true), move: cell(8, 12, true), hurt: HURT_NEXT, defeat: DEFEAT_NEXT },
-  flyer: { move: cell(8, 16, true), hurt: HURT_NEXT, defeat: DEFEAT_NEXT }, // always flapping
+export const ENEMY_SPEC: Record<EnemyArt, Specs> = {
+  walker: { idle: cell(6, 8, true), move: cell(8, 12, true), hurt: HURT, defeat: DEFEAT },
+  flyer: { move: cell(8, 16, true), hurt: HURT, defeat: DEFEAT }, // always flapping
   jumper: {
     idle: cell(6, 8, true), // the throat pumps
     // The frog never rests: the moment it lands it is off again, so this clip is nearly all the player sees of
@@ -187,16 +124,12 @@ export const ENEMY_NEXT: Record<EnemyArt, Specs> = {
     // hop (tucked), 3 falling, 4 bracing for the ground (legs reaching down, body starting to squash).
     air: cell(5, 8, false),
     land: cell(3, 14, false),
-    hurt: HURT_NEXT,
-    defeat: DEFEAT_NEXT
+    hurt: HURT,
+    defeat: DEFEAT
   },
-  spitter: { idle: cell(6, 8, true), shoot: cell(6, 12, false, { hit: 3 }), hurt: HURT_NEXT, defeat: DEFEAT_NEXT },
-  tough: { idle: cell(6, 8, true), move: cell(8, 10, true), hurt: HURT_NEXT, defeat: DEFEAT_NEXT }
+  spitter: { idle: cell(6, 8, true), shoot: cell(6, 12, false, { hit: 3 }), hurt: HURT, defeat: DEFEAT },
+  tough: { idle: cell(6, 8, true), move: cell(8, 10, true), hurt: HURT, defeat: DEFEAT }
 }
-
-export const ENEMY_SPEC: Record<EnemyArt, Specs> = Object.fromEntries(
-  ENEMY_KINDS.map((kind) => [kind, next(kind) ? ENEMY_NEXT[kind] : ENEMY_LEGACY[kind]])
-) as Record<EnemyArt, Specs>
 
 /** How each boss fights; decides which clips its sheet needs. */
 export const BOSS_KIND = {
@@ -213,54 +146,14 @@ export const BOSS_KIND = {
 export type BossArt = keyof typeof BOSS_KIND
 export const BOSS_ARTS = Object.keys(BOSS_KIND) as BossArt[]
 
-const BOSS_COMMON_LEGACY: Specs = {
-  idle: big(4, 6, true),
-  intro: big(4, 8, false), // the roar or pose shown when the fight begins
-  hurt: big(2, 12, false),
-  defeat: big(6, 8, false)
-}
-
-const BOSS_BY_KIND_LEGACY: Record<(typeof BOSS_KIND)[BossArt], Specs> = {
-  // idle → windup → charge along the ground → (wall: stunned) → recover
-  brute: {
-    windup: big(3, 10, false),
-    attack: big(4, 14, true),
-    stunned: big(4, 8, true),
-    recover: big(2, 6, true)
-  },
-  // hovering idle → windup → dive → recover
-  flyer: { windup: big(3, 10, false), attack: big(2, 12, true), recover: big(2, 8, true) },
-  // walk → windup (crouch) → leap (air: 0 rising, 1 falling) → land (slam) → recover
-  tank: {
-    move: big(6, 8, true),
-    windup: big(3, 10, false),
-    air: big(2, 8, false),
-    land: big(3, 14, false),
-    recover: big(2, 6, true)
-  },
-  // walk → windup → dash → recover
-  swarm: { move: big(6, 12, true), windup: big(3, 12, false), attack: big(4, 16, true), recover: big(2, 8, true) },
-  // walk → windup → charge | leap and slam | cast → recover; `rage` is the phase 2 transformation
-  final: {
-    move: big(6, 10, true),
-    windup: big(3, 12, false),
-    attack: big(4, 14, true),
-    air: big(2, 8, false),
-    land: big(3, 14, false),
-    shoot: big(4, 12, false, { hit: 2 }),
-    recover: big(2, 6, true),
-    rage: big(6, 10, false)
-  }
-}
-
-const BOSS_COMMON_NEXT: Specs = {
+const BOSS_COMMON: Specs = {
   idle: big(6, 8, true),
   intro: big(8, 10, false, { sustain: 2 }), // the roar or pose shown when the fight begins, then held alive
   hurt: big(3, 12, false),
   defeat: big(8, 10, false, { sustain: 2 }) // the last blow, the fall, the bounce, then out cold (stars circling)
 }
 
-const BOSS_BY_KIND_NEXT: Record<(typeof BOSS_KIND)[BossArt], Specs> = {
+const BOSS_BY_KIND: Record<(typeof BOSS_KIND)[BossArt], Specs> = {
   // idle → windup → charge along the ground → (wall: stunned) → recover
   brute: {
     windup: big(4, 10, false, { sustain: 2 }), // the whole body commits; the last two frames tremble with tension
@@ -302,16 +195,8 @@ const BOSS_BY_KIND_NEXT: Record<(typeof BOSS_KIND)[BossArt], Specs> = {
   }
 }
 
-/** The new contract of a boss sheet (whether or not the sheet follows it yet). */
-export const bossSpecNext = (art: BossArt): Specs => ({ ...BOSS_COMMON_NEXT, ...BOSS_BY_KIND_NEXT[BOSS_KIND[art]] })
-
-/** The legacy contract of a boss sheet (what the old drawings have). */
-export const bossSpecLegacy = (art: BossArt): Specs => ({
-  ...BOSS_COMMON_LEGACY,
-  ...BOSS_BY_KIND_LEGACY[BOSS_KIND[art]]
-})
-
-export const bossSpec = (art: BossArt): Specs => (next(art) ? bossSpecNext(art) : bossSpecLegacy(art))
+/** The animation specs of a boss sheet: the clips every boss has plus those of its kind. */
+export const bossSpec = (art: BossArt): Specs => ({ ...BOSS_COMMON, ...BOSS_BY_KIND[BOSS_KIND[art]] })
 
 // --------------------------------------------------------------------------------------------------- props
 
@@ -506,18 +391,7 @@ export const UI_SPEC: Specs = {
   paper: small(24, 1, 1, false)
 }
 
-/** The new contract of every character sheet: what a redrawn sheet has to provide. */
-export function nextCharacterSpecs(): Record<string, Specs> {
-  return {
-    hero: HERO_NEXT,
-    princess: PRINCESS_NEXT,
-    mom: MOM_NEXT,
-    ...ENEMY_NEXT,
-    ...Object.fromEntries(BOSS_ARTS.map((art) => [art, bossSpecNext(art)]))
-  }
-}
-
-/** Every sheet id with its animation specs (for character sheets: the spec in force, see `migrated.ts`). */
+/** Every sheet id with its animation specs. */
 export function allSheetSpecs(): Record<string, Specs> {
   return {
     hero: HERO_SPEC,

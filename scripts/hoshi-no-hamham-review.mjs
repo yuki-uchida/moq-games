@@ -2161,8 +2161,7 @@ const QUIET_CLIPS = new Set(['idle', 'blink', 'sad', 'recover', 'stunned', 'tire
 async function runArtAnimation(dir, art) {
   const contract = await load('src/art/contract.ts')
   const quality = await load('src/art/quality.ts')
-  const { MIGRATED } = await load('src/art/migrated.ts')
-  const characters = Object.keys(contract.nextCharacterSpecs())
+  const characters = ['hero', 'princess', 'mom', ...contract.ENEMY_KINDS, ...contract.BOSS_ARTS]
   const exporter = await run(process.execPath, [
     join(root, 'scripts/hoshi-no-hamham-art.mjs'),
     '--draft',
@@ -2222,14 +2221,12 @@ async function runArtAnimation(dir, art) {
       ])
     }
   }
-  const migrated = MIGRATED.filter((id) => characters.includes(id))
   const files = (pattern) =>
     characters.map((id) => `[${id}](${rel(join(dir, pattern.replace('<id>', id)))})`).join(', ')
   return [
     '### Character animation gates',
     '',
-    `Migrated to the new rig (src/art/migrated.ts): ${migrated.length ? migrated.join(', ') : 'none yet'}. ` +
-      `The gates of tests/art-rig-quality.test.ts apply to those; the other sheets are listed for reference. ` +
+    `The gates of tests/art-rig-quality.test.ts apply to every character sheet. ` +
       `Bold = past a gate: loop seam ratio above ${L.seamRatio}, quiet-clip boil (pixels flipping back and forth over four frames, in clips of ${L.boilFrames}+ frames) above ${L.boil * 100} % of the outline (or ${L.boilMean * 100} % on average), ` +
       'near-duplicate neighbours in a loop, any orphan pixel, any light pixel on the silhouette edge, more than ' +
       `${L.colours} colours in a frame, any pixel on the cell edge.`,

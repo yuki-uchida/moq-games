@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { drawSquirrel, spitterSheet, squirrelPose } from '../src/art/chars/enemies/spitter'
-import { ENEMY_NEXT } from '../src/art/contract'
+import { ENEMY_SPEC } from '../src/art/contract'
 import { C, R } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
 
@@ -78,7 +78,7 @@ const noseTip = (f: Raster) => {
 
 describe('spitter (リス団員) on the rig', () => {
   test('every clip of the spec is drawn with its frame count, fps and loop', () => {
-    for (const [name, spec] of Object.entries(ENEMY_NEXT.spitter)) {
+    for (const [name, spec] of Object.entries(ENEMY_SPEC.spitter)) {
       const a = sheet[name as keyof typeof sheet]
       expect(a, name).toBeDefined()
       expect(a.frames.length, name).toBe(spec.frames)

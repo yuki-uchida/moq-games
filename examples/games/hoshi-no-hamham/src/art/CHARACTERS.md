@@ -1,9 +1,9 @@
 # 星のハムハム — the character standard
 
 How every living thing in the game is designed, drawn and animated. Read it with `README.md` (the art pipeline),
-`rig.ts` and `motion.ts` (the tools) and `chars/hero.ts` (the reference character). The bar is a commercial 2D
-action game: a player who pauses on any frame sees a drawing a pixel artist would sign, and a player who watches
-sees characters that are alive.
+`rig.ts` and `motion.ts` (the tools), `chars/hero.ts` (the reference for the small cast) and
+`chars/bosses/wolf.ts` (the reference for a boss). The bar is a commercial 2D action game: a player who pauses on
+any frame sees a drawing a pixel artist would sign, and a player who watches sees characters that are alive.
 
 ## 1. What changed, and why
 
@@ -35,10 +35,15 @@ ear, arm and leg are a ramp step darker (`farRamp`). The view mirrors frames for
 
 **One family.** The same light (top-left, `LIGHT_DIR`), the same line (ink silhouette, soft inner contours), the
 same eye language (dark, tall, one bright highlight at the top-left and a small warm glint low on the other side),
-the same saturation. The gang (ばくろ団) all wear the red bandana; the four hamsters share one build.
+the same saturation. The gang (ばくろ団) all wear the gang's red (`R.bandana`: a neckerchief, a head scarf, a cap
+band, an armband, a sash; the cloth and its knot are in `chars/enemies/kit.ts`). The four hamsters share one
+build: `chars/hamster.ts` draws all of them (`drawHamster(look, pose, size)`), a look being the colours, the
+proportions, the face stamps and the accessories of one of them, so a change to the build reaches the hero, the
+princess, the mother, the king and their portraits together.
 
 **The portrait is the character.** The 32×32 portraits (`ui/faces.ts`) and the sprite show the same design:
-colours, markings, headgear, scars. When they disagree, fix whichever is weaker and say so in your report.
+colours, markings, headgear, scars. They are drawn from the same ramps and, for the hamsters, by the same
+function at portrait scale. When a sprite changes, its portrait changes with it.
 
 **Materials.** Fur: soft cel shadow, a few tufts that break the silhouette (cheek, chest, tail, crest) drawn as
 hand-placed stamps so they never flicker. Cloth: a rim of light on the lit edge, a fold or two. Metal and gems:
@@ -140,7 +145,7 @@ action opens the mouth, the recovery relaxes. A blink is a held closed-eye frame
 
 ## 5. Animation
 
-Clips, frame counts and timing: `contract.ts` (`*_NEXT`). A clip is a few **key poses** on a `track()`; the frames
+Clips, frame counts and timing: `contract.ts`. A clip is a few **key poses** on a `track()`; the frames
 in between are sampled, so more frames cost nothing but must still be looked at.
 
 - **Timing.** Fast out, slow in. Attacks: a held anticipation, one or two frames of travel, a held impact, a long
@@ -167,7 +172,7 @@ in between are sampled, so more frames cost nothing but must still be looked at.
 
 ## 6. The loop
 
-1. Read your character's brief, its spec in `contract.ts` (`*_NEXT`) and its portrait.
+1. Read your character's row in `../../DESIGN.md` (section 3), its spec in `contract.ts` and its portrait.
 2. Draw the standing pose first. Export and look:
 
    ```sh
@@ -176,17 +181,19 @@ in between are sampled, so more frames cost nothing but must still be looked at.
    ```
 
    `<id>.png` is the enlarged sheet, `<id>@1.png` the native size on three grounds. Judge both. Expect ten or
-   more rounds of draw → export → look → fix for the standing pose, and several for every clip.
+   more rounds of draw → export → look → fix for the standing pose, and several for every clip. `--draft` builds
+   only the sheets you name, so a round takes a second or two.
 
 3. Add the pose values the clips need, then author the clips from key poses. Look at every frame, then at
    neighbours in pairs.
-4. `npx vitest run examples/games/hoshi-no-hamham/tests/art-<your test>.test.ts`, then uncomment your sheet in
-   `migrated.ts` and run `tests/art-contract.test.ts`.
+4. `npx vitest run examples/games/hoshi-no-hamham/tests/art-<your test>.test.ts`, then run
+   `tests/art-contract.test.ts`.
 
-5. `npx vitest run examples/games/hoshi-no-hamham/tests/art-rig-quality.test.ts` checks every redrawn sheet for
+5. `npx vitest run examples/games/hoshi-no-hamham/tests/art-rig-quality.test.ts` checks every character sheet for
    stray pixels, light pixels on the outline, colour count, loop seams, twin frames and contour flicker;
    `node scripts/hoshi-no-hamham-art.mjs --draft --out .build/art-<id> --gif --onion --motion <id>` writes animated
-   previews, onion-skin sheets and the same numbers per frame.
+   previews, onion-skin sheets and the same numbers per frame; `--game` shows every clip at the size the game
+   draws it, `--stage <theme>` over a world's backdrop, `--lineup` the whole cast on one ground line.
 
 **Done means:** the silhouette reads in one colour; the face reads at 1× on grass, cave and brick; no stray
 pixel, broken outline or limb touching the cell edge; loops close; attacks anticipate and follow through; soft

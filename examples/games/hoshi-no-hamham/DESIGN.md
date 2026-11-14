@@ -46,37 +46,44 @@ character frames at draw time except the view's squash/stretch. Round, soft, rea
 the emotion (big eyes with one highlight, brows, mouth, blush).
 
 - Palette: `src/art/palette.ts`. Ramps are `[highlight, base, shade, deep, line]`. Modules may register extra
-  ramps with `ramp(...)`, but a single sheet stays within about 24 colours.
-- Toolkit: `src/art/raster.ts` (`Raster`, `ball`, `shadeEdges`, `outline`, `part`, `Painter`, `bar`, `bayer`).
-  Characters are **pose-parametric**: one draw function takes a pose object (body bob, squash, limb phases, eye
-  and mouth states, …) and every animation is a list of poses. Never copy a frame to pad an animation: every
-  frame of a clip must differ from its neighbours, and loops must close without a pop.
+  ramps with `ramp(...)`, but a prop stays within about 24 colours and a frame of a character within 28.
+- Toolkit: `src/art/raster.ts` (`Raster`, `ball`, `shadeEdges`, `outline`, `part`, `Painter`, `bar`, `bayer`) for
+  props, terrain, effects and interface; `src/art/rig.ts` and `src/art/motion.ts` for everything alive.
+- Characters are **rigs**: a tree of part frames (pelvis, torso, head, ears, limbs, tail, cloth) in which shapes
+  are written once and painted wherever the pose puts the part, shaded afterwards in screen space so the light
+  never turns with a limb. One draw function takes a pose object; a clip is a few key poses on a track, and the
+  soft parts (ears, tails, scarves, capes, hats) follow the body through a spring. Never copy a frame to pad an
+  animation: every frame of a clip must differ from its neighbours, and loops must close without a pop.
+  `src/art/CHARACTERS.md` is the standard for their design, construction and animation.
 - Characters face **right**; the view mirrors them. Feet sit on the anchor row. Characters read at a glance
   against every stage: keep a 1 px dark rim and avoid the stage's ground colours on the body.
 
 ### Cast
 
-| id           | 名前         | look                                                                                                                                     |
-| ------------ | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `hero`       | ハム彦       | pink round hamster kid, cream belly and muzzle, deep-pink inner ears, navy scarf with a gold star clasp, visible front teeth when biting |
-| `princess`   | ハム姫       | white hamster, pink ears, small gold star tiara, pink ribbon collar, sparkling eyes                                                      |
-| `mom`        | ママ・ハム代 | big orange hamster, white apron, hair curlers, ladle raised, furious brows                                                               |
-| `king`       | 黒ハム王     | huge dark-purple hamster, crimson high-collar cape, gold spiked crown with a dark star gem, glowing yellow eyes                          |
-| `walker`     | ネズミ団員   | grey rat thug, red gang bandana, eye mask                                                                                                |
-| `flyer`      | 子ガラス     | small navy crow, yellow beak, red bandana, flaps                                                                                         |
-| `jumper`     | カエル団員   | green frog, pale belly, red bandana, hops                                                                                                |
-| `spitter`    | リス団員     | red squirrel with stuffed cheeks, spits acorns                                                                                           |
-| `tough`      | モグラ隊長   | big brown mole, steel helmet, heavy claws                                                                                                |
-| `crowBoss`   | カラス助     | big crow captain, eye patch, red bandana, wide wings                                                                                     |
-| `weaselBoss` | いたち丞相   | long sly weasel, scholar cap, feather fan                                                                                                |
-| `boarBoss`   | いのしし番長 | boar gang leader, pompadour, long tusks, leaf stalk in mouth                                                                             |
-| `wolfBoss`   | おおかみ檄   | grey wolf, scar, red scarf                                                                                                               |
-| `bearBoss`   | ヒョウタン熊 | huge violet bear, gourd on a rope, leaves on head                                                                                        |
-| `foxBoss`    | きつね旋風   | orange fox, ninja headband, huge tail, spinning dash                                                                                     |
-| `apeBoss`    | ごりら警部   | charcoal gorilla, police cap and badge                                                                                                   |
-| `beeBoss`    | ハチ女王     | large queen bee, crown, fluffy collar, stinger, hovers                                                                                   |
+| id           | 名前         | look                                                                                                                                                                                 |
+| ------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `hero`       | ハム彦       | pink hamster kid, two heads tall: a mochi head with a cream mask, round ears, a three-lock tuft and two front teeth; a navy neckerchief with a swallowtail end and a gold star clasp |
+| `princess`   | ハム姫       | the same build in snow white: rose ears, sparkling eyes with lashes, a gold star tiara, a pink ribbon bow at the neck                                                                |
+| `mom`        | ママ・ハム代 | the same build a third bigger, in orange: three pink hair curlers, furious brows, a white apron with a heart, a steel ladle                                                          |
+| `king`       | 黒ハム王     | the same build at 1.6×, dark purple with a lilac mask: glowing yellow slit eyes, a scar, fangs, a five-spike gold crown with a dark star gem, a crimson cape with a high collar      |
+| `walker`     | ネズミ団員   | grey rat look-out on his hind legs: a long snout, a big thin ear, a black bandit mask with shifty eyes, a red neckerchief, a long pink tail                                          |
+| `flyer`      | 子ガラス     | navy crow chick, all head: a big yellow beak, the red bandana worn as a pirate head scarf, stubby wings that beat                                                                    |
+| `jumper`     | カエル団員   | fat teal frog: two eye bulges with heavy lids over a smug wide mouth, a pale throat sac, a red neckerchief                                                                           |
+| `spitter`    | リス団員     | red squirrel sitting up: a bushy question-mark tail taller than his ears, stuffed cream cheeks, an acorn in his paws, a red neckerchief                                              |
+| `tough`      | モグラ隊長   | barrel of a mole sergeant: a steel helmet with a red chevron over small eyes, a big pink nose, digging claws held like a boxer's guard                                               |
+| `crowBoss`   | カラス助     | pirate captain of a crow: a hooked beak, an eye patch, the red head scarf with long tails, wings of three feather rows about 100 px across                                           |
+| `weaselBoss` | いたち丞相   | tall sly weasel courtier: a black scholar's cap with the red band, a pale mask, a dark vest, a white feather fan; drops to all fours to charge                                       |
+| `boarBoss`   | いのしし番長 | the heaviest four-legged boss: a glossy black pompadour, a bristle ridge, long cream tusks, a leaf stalk in his mouth, a red neckerchief                                             |
+| `wolfBoss`   | おおかみ檄   | forest wolf: a dark saddle over grey fur, pale chest and cheeks, a red scar over the eye, fangs, a red scarf with one long streaming end                                             |
+| `bearBoss`   | ヒョウタン熊 | huge sleepy violet bear with a cream belly, a sprig of leaves on his crown and a golden gourd on a rope (the forest's own lord: no gang red)                                         |
+| `foxBoss`    | きつね旋風   | ninja fox on his toes: a red forehead protector with a steel plate and streaming tails, a navy jacket, a tail as big as his body; his dash is a wheel                                |
+| `apeBoss`    | ごりら警部   | the biggest boss: a knuckle-walking charcoal gorilla with a silver back, a navy police cap with a gold star badge, a red armband                                                     |
+| `beeBoss`    | ハチ女王     | haughty queen bee: a dark bob under a small crown, antennae with gold bobbles, a white fur collar, a striped abdomen with a stinger, a sceptre, a red sash                           |
 
-All gang members wear the same red bandana so they read as one gang (ばくろ団).
+Every member of the gang (ばくろ団) wears the gang's red somewhere (neckerchief, head scarf, cap band, armband,
+sash) so they read as one gang. The four hamsters are one build drawn by one function (`chars/hamster.ts`).
+The twelve portraits (`ui/faces.ts`) are drawn from the same ramps and shapes as their sprites: the portrait is
+the character. うりぼう, the sleeping piglet, is a prop in the code and a member of the cast in the drawing.
 
 ### World themes
 
@@ -118,7 +125,19 @@ emblem. Colour is never the only cue.
 ## 4. Animation
 
 Clips, frame counts, sizes and anchors are fixed by `src/art/contract.ts` and checked by
-`tests/art-contract.test.ts`. The view adds, on top of the frames:
+`tests/art-contract.test.ts`; how a clip is animated (key poses, timing, overlap, weight) is in
+`src/art/CHARACTERS.md` §5. Looping idles and cycles have 6–8 frames; attacks have an anticipation, an action and
+a follow-through; a knock-out is drawn (the rig turned and re-lit, the lying pose designed by hand), never a
+turned picture. Three things in the contract serve the view:
+
+- `sustain`: a clip that does not loop keeps cycling its last frames for as long as it is shown (the tremble of
+  a held wind-up, the flutter of a rise, the stars over a boss who is out cold) instead of freezing;
+- clips picked by state rather than time: the hero's `apex` (the top of a jump, by vertical speed), the frog's
+  five-frame hop and the three-frame leap of the heavy bosses (rising, the top, falling);
+- `blink` is the idle loop with the eyes shut, frame for frame, so a blink never interrupts the breath, and
+  `turn` faces the camera for a moment when the hero turns around on the spot.
+
+The view adds, on top of the frames:
 
 - squash and stretch on jump, land and bite (scale around the feet, volume preserving, ≤ 18%);
 - a blink every 2–4 s and a fidget after 5 s idle; a skid when reversing at speed; run dust on contact frames;
@@ -126,6 +145,7 @@ Clips, frame counts, sizes and anchors are fixed by `src/art/contract.ts` and ch
   hero is hurt, 450 ms plus slow motion when a boss falls;
 - defeated enemies play `defeat` as a ghost after the sim has removed them; the hero's death and cheer are
   view-driven sequences;
+- two after-images behind a boss that charges or dives faster than 260 px/s (off under reduced motion);
 - ground shadows under every actor that shrink with height.
 
 Bosses telegraph every attack: `windup` is visible for the whole wind-up time, with a glint or dust cue.
@@ -231,8 +251,13 @@ are a list scrolled by hand with a button that closes it.
 - `npm run art:hoshi-no-hamham` writes review sheets to `.build/hoshi-no-hamham-art/`.
   `--gif` (a GIF per clip with its real timing), `--onion` (previous frame as a ghost), `--motion` (numbers per frame
   and per clip), `--lineup` (the cast on one ground line), `--game` (every clip at 2x, the size the game draws, on four flat grounds) and `--stage <theme>` (clips over a world's backdrop) are for
-  judging character animation; `src/art/quality.ts` holds the measurements and `tests/art-rig-quality.test.ts` the
-  gates for the redrawn characters.
+  judging character animation.
+- `src/art/quality.ts` holds the measurements of a character sheet and `tests/art-rig-quality.test.ts` holds every
+  character to them: no isolated pixel, no light pixel on the edge of the silhouette, at most 28 colours in a
+  frame, a loop that closes no harder than its own steps, no two frames of a clip alike, a contour that does not
+  boil from frame to frame, and one clear pixel between the drawing and the edge of its cell. Each character also
+  has its own `tests/art-<id>.test.ts` for what makes it that character (its colours, its size against the hero,
+  what each clip must show).
 - `node scripts/hoshi-no-hamham-review.mjs` writes the review kit to `.build/hoshi-no-hamham-review/`: every screen
   at four viewports with its tallest empty band, wrapped headings, text under a focus frame and cut lines, the
   staged moments frame by frame

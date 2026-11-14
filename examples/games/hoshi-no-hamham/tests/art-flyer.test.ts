@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { crowPose, crowRig, drawCrow, flyerSheet, movePoses } from '../src/art/chars/enemies/flyer'
-import { ENEMY_NEXT } from '../src/art/contract'
+import { ENEMY_SPEC } from '../src/art/contract'
 import { R } from '../src/art/palette'
 import { centroid } from '../src/art/quality'
 import type { Raster } from '../src/art/raster'
@@ -13,7 +13,7 @@ const has = (f: Raster, set: Set<number>) => [...f.colors()].some((c) => set.has
 
 describe('flyer (子ガラス) on the rig', () => {
   test('every clip of the spec is drawn with its frame count, fps and loop', () => {
-    for (const [name, spec] of Object.entries(ENEMY_NEXT.flyer)) {
+    for (const [name, spec] of Object.entries(ENEMY_SPEC.flyer)) {
       const a = sheet[name as keyof typeof sheet]
       expect(a, name).toBeDefined()
       expect(a.frames.length, name).toBe(spec.frames)

@@ -17,7 +17,7 @@ vi.mock('../src/view/bake', () => ({
   ) => blits.push({ anim: anim.id, t, x, y, alpha: o.alpha, frame: o.frame })
 }))
 
-import { HERO_NEXT, bossSpecNext } from '../src/art/contract'
+import { HERO_SPEC, bossSpec } from '../src/art/contract'
 import { ActorsView, GHOST_SPEED, PositionTrail, TRAIL_AGES, TRAIL_ALPHAS } from '../src/view/actors'
 import { SKID_SPEED, clipLife, heroClip, specDuration } from '../src/view/clips'
 
@@ -111,7 +111,7 @@ describe('hero turn timer', () => {
     expect(turnAge(view)).toBe(0)
     view.update(0.1)
     expect(turnAge(view)).toBeCloseTo(0.1)
-    expect(specDuration(HERO_NEXT.turn)).toBeLessThan(0.5)
+    expect(specDuration(HERO_SPEC.turn)).toBeLessThan(0.5)
     view.update(0.45)
     expect(turnAge(view)).toBeNull()
   })
@@ -141,7 +141,7 @@ describe('hero turn timer', () => {
   })
 
   it('selects the turn clip once the timer runs', () => {
-    expect(heroClip({ ...baseHero, turnAge: 0 }, HERO_NEXT).name).toBe('turn')
+    expect(heroClip({ ...baseHero, turnAge: 0 }, HERO_SPEC).name).toBe('turn')
   })
 })
 
@@ -260,7 +260,7 @@ describe('speed ghosts of a charging boss', () => {
 
 describe('defeat ghosts and sustain', () => {
   it('the boss defeat ghost lives for the whole clip, its sustained tail and the closing burst', () => {
-    const spec = bossSpecNext('boarBoss')
+    const spec = bossSpec('boarBoss')
     expect(spec.defeat.sustain).toBeGreaterThan(1)
     expect(clipLife(spec.defeat, 0.5)).toBeGreaterThanOrEqual(specDuration(spec.defeat) + 0.5)
   })

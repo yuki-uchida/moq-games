@@ -46,7 +46,7 @@ describe('every sheet matches the art contract', () => {
         expect(a.frames.length, `${id}#${name} frames`).toBe(want.frames)
         expect(a.loop, `${id}#${name} loop`).toBe(want.loop)
         expect(a.fps, `${id}#${name} fps`).toBe(want.fps)
-        // A clip has `sustain` exactly when its spec does (legacy clips have none), and it is a usable tail.
+        // A clip has `sustain` exactly when its spec does, and it is a usable tail.
         expect(a.sustain, `${id}#${name} sustain`).toBe(want.sustain)
         if (want.sustain !== undefined) {
           expect(want.loop, `${id}#${name} a looping clip has no sustain`).toBe(false)

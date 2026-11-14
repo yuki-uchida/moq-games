@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'vitest'
 import { BEE_RAMPS } from '../src/art/chars/bosses/bee'
-import { bossSpecNext } from '../src/art/contract'
+import { bossSpec } from '../src/art/contract'
 import { sheet } from '../src/art/index'
 import type { Raster } from '../src/art/raster'
 
 const ID = 'beeBoss'
 const ANCHOR_Y = 120
-const spec = bossSpecNext(ID)
+const spec = bossSpec(ID)
 const { PLUM, HONEY, BAND, FUR, WING } = BEE_RAMPS
 const set = (...ramps: readonly (readonly number[])[]) => new Set<number>(ramps.flatMap((r) => r.slice(0, 4)))
 const white = new Set<number>([FUR[0], FUR[1]])

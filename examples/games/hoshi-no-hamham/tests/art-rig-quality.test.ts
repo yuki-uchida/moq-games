@@ -1,13 +1,12 @@
 /**
- * Quality gates for the redrawn characters (the sheets listed in `src/art/migrated.ts`). They measure what a pixel
+ * Quality gates for the character sheets. They measure what a pixel
  * artist would see in the contact sheet: stray pixels, missing outline, loop pops, twin frames, flicker in quiet
  * clips, figures touching the cell edge. Every failure names the sheet, the clip, the frame and the pixel.
  * The thresholds live in `LIMITS` (src/art/quality.ts), with the reasoning.
  */
 import { describe, expect, test } from 'vitest'
-import { nextCharacterSpecs } from '../src/art/contract'
+import { BOSS_ARTS, ENEMY_KINDS } from '../src/art/contract'
 import { sheet } from '../src/art/index'
-import { MIGRATED } from '../src/art/migrated'
 import {
   LIMITS,
   boil,
@@ -32,8 +31,7 @@ const WING_BEAT: Record<string, readonly string[]> = {
   beeBoss: ['idle', 'recover']
 }
 
-const characters = new Set(Object.keys(nextCharacterSpecs()))
-const migrated = MIGRATED.filter((id) => characters.has(id))
+const characters: readonly string[] = ['hero', 'princess', 'mom', ...ENEMY_KINDS, ...BOSS_ARTS]
 
 const where = (list: readonly Px[], max = 8) =>
   list
@@ -85,14 +83,8 @@ function faults(id: string): string[] {
   return out
 }
 
-describe('redrawn character quality gates', () => {
-  if (!migrated.length) {
-    test('no character is migrated yet (src/art/migrated.ts is empty): nothing to gate', () => {
-      expect(migrated).toEqual([])
-    })
-    return
-  }
-  test.each(migrated)(
+describe('character quality gates', () => {
+  test.each(characters)(
     '%s passes every gate',
     (id) => {
       const found = faults(id)

@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'vitest'
-import { bossSpecNext } from '../src/art/contract'
+import { bossSpec } from '../src/art/contract'
 import { sheet } from '../src/art/index'
 import { C, R } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
 
 const ID = 'wolfBoss'
 const ANCHOR_Y = 120
-const spec = bossSpecNext(ID)
+const spec = bossSpec(ID)
 const grey = new Set<number>(R.wolfGray)
 const red = new Set<number>(R.bandana)
 /** The scar across the near eye (the portrait's fruit red). */

@@ -29,11 +29,10 @@ export const clipLife = (spec: AnimSpec, tail = 0) => specDuration(spec) + Math.
 
 /**
  * The frame of an air clip by vertical speed (px/s, negative is up). A 3-frame clip is 0 rising, 1 the top (while
- * |vy| <= `apexSpeed`), 2 falling; a 2-frame legacy clip is 0 rising, 1 falling. A 5-frame clip adds the two ends
+ * |vy| <= `apexSpeed`), 2 falling. A 5-frame clip adds the two ends
  * of a hop, shown while |vy| > `fastSpeed`: 0 the launch, 1 rising, 2 the top, 3 falling, 4 bracing for the ground.
  */
 export function airFrame(vy: number, frames: number, apexSpeed: number, fastSpeed = apexSpeed * 3) {
-  if (frames < 3) return vy < 0 ? 0 : 1
   if (frames < 5) {
     if (vy < -apexSpeed) return 0
     return vy > apexSpeed ? 2 : 1
@@ -64,8 +63,6 @@ export const RUN_THRESHOLD = 20
 export const BLINK_TIME = 0.12
 /** In the air with |vy| (px/s) at or below this, the hero shows the top of the arc (`apex`). */
 export const APEX_SPEED = 140
-/** The skid clip is shown this long (s) after one pass when it has no `sustain`. */
-export const SKID_TAIL = 0.12
 
 export interface HeroSnapshot {
   /** The stage is cleared: the hero cheers. */
@@ -104,8 +101,8 @@ export const isSkidding = (s: Pick<HeroSnapshot, 'onGround' | 'vx' | 'facing'>) 
 
 /**
  * The hero's clip, in priority order: cheer, bite, hurt, swim, jump/apex/fall, land, skid, turn, run, wait, blink,
- * idle. Features come from `spec`: `apex` and `turn` are used when the spec has them, and a blink as long as the
- * idle clip (new spec) is played on the idle time base so the breath never skips.
+ * idle. The blink has the idle poses with the eyes shut, so it is played on the idle time base and the breath
+ * never skips.
  */
 export function heroClip(s: HeroSnapshot, spec: Record<string, AnimSpec> = HERO_SPEC): ClipChoice {
   if (s.cheering) return { name: 'cheer', t: s.cheerAge }
@@ -113,24 +110,21 @@ export function heroClip(s: HeroSnapshot, spec: Record<string, AnimSpec> = HERO_
   if (s.hurt) return { name: 'hurt', t: s.hurtAge }
   if (s.inWater) return { name: 'swim', t: s.waterTime }
   if (!s.onGround) {
-    if (spec.apex && Math.abs(s.vy) <= APEX_SPEED) return { name: 'apex', t: s.airTime, frame: s.vy < 0 ? 0 : 1 }
+    if (Math.abs(s.vy) <= APEX_SPEED) return { name: 'apex', t: s.airTime, frame: s.vy < 0 ? 0 : 1 }
     return s.vy < 0 ? { name: 'jump', t: s.airTime } : { name: 'fall', t: s.airTime }
   }
   if (s.hardLanding && s.landAge < specDuration(spec.land)) return { name: 'land', t: s.landAge }
-  // A sustained skid keeps cycling for as long as the view's skid timer runs; otherwise it gets a short tail.
-  if (s.skidAge !== null && (spec.skid.sustain || s.skidAge < specDuration(spec.skid) + SKID_TAIL))
-    return { name: 'skid', t: s.skidAge }
-  if (spec.turn && s.turnAge !== null && s.turnAge < specDuration(spec.turn)) return { name: 'turn', t: s.turnAge }
+  // The skid keeps cycling (`sustain`) for as long as the view's skid timer runs.
+  if (s.skidAge !== null) return { name: 'skid', t: s.skidAge }
+  if (s.turnAge !== null && s.turnAge < specDuration(spec.turn)) return { name: 'turn', t: s.turnAge }
   if (Math.abs(s.vx) > RUN_THRESHOLD) {
     // The cycle advances with distance (one pass per 8/14 s at full speed), so feet never slide.
     return { name: 'run', t: s.distance / RUN_SPEED }
   }
   if (s.idleTime >= WAIT_AFTER && s.idleTime - WAIT_AFTER < specDuration(spec.wait))
     return { name: 'wait', t: s.idleTime - WAIT_AFTER }
-  // New spec: the blink has the idle poses with the eyes shut, so it shares idle's time base (no pop).
-  if (spec.blink.frames === spec.idle.frames) {
-    if (s.blinkAge < BLINK_TIME) return { name: 'blink', t: s.idleTime }
-  } else if (s.blinkAge < specDuration(spec.blink)) return { name: 'blink', t: s.blinkAge }
+  // The blink shares idle's time base (no pop).
+  if (s.blinkAge < BLINK_TIME) return { name: 'blink', t: s.idleTime }
   return { name: 'idle', t: s.idleTime }
 }
 

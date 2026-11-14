@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { hamPose } from '../src/art/chars/hamster'
 import { drawHam } from '../src/art/chars/hero'
 import { PRINCESS_LOOK, drawPrincess, princessPose, sheets } from '../src/art/chars/princess'
-import { PRINCESS_NEXT } from '../src/art/contract'
+import { PRINCESS_SPEC } from '../src/art/contract'
 import { C, R } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
 import type { Sheet } from '../src/art/sheet'
@@ -21,9 +21,9 @@ const pixels = (f: Raster, colours: readonly number[]) => {
 const WATER = [R.water[0], R.water[1]]
 
 describe('princess sheet', () => {
-  test('every clip of PRINCESS_NEXT is drawn with its frame count, timing and loop', () => {
+  test('every clip of PRINCESS_SPEC is drawn with its frame count, timing and loop', () => {
     const s = princess()
-    for (const [name, spec] of Object.entries(PRINCESS_NEXT)) {
+    for (const [name, spec] of Object.entries(PRINCESS_SPEC)) {
       expect(s[name], name).toBeDefined()
       expect(s[name].frames.length, name).toBe(spec.frames)
       expect(s[name].fps, name).toBe(spec.fps)

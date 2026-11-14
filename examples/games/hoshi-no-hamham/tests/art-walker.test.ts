@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { RAT_FUR, drawRat, ratPose, walkerSheet } from '../src/art/chars/enemies/walker'
-import { ENEMY_NEXT } from '../src/art/contract'
+import { ENEMY_SPEC } from '../src/art/contract'
 import { C, R } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
 
@@ -50,7 +50,7 @@ function tailTip(f: Raster): [number, number] {
 
 describe('walker (ネズミ団員) on the rig', () => {
   test('every clip of the spec is drawn with its frame count, fps and loop', () => {
-    for (const [name, spec] of Object.entries(ENEMY_NEXT.walker)) {
+    for (const [name, spec] of Object.entries(ENEMY_SPEC.walker)) {
       const a = sheet[name as keyof typeof sheet]
       expect(a, name).toBeDefined()
       expect(a.frames.length, name).toBe(spec.frames)

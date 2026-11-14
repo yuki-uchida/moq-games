@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { hamPose } from '../src/art/chars/hamster'
 import { drawHam } from '../src/art/chars/hero'
 import { MOM_LOOK, sheets } from '../src/art/chars/mom'
-import { MOM_NEXT } from '../src/art/contract'
+import { MOM_SPEC } from '../src/art/contract'
 import { R } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
 import type { Sheet } from '../src/art/sheet'
@@ -39,9 +39,9 @@ const rows = (f: Raster, y0: number, y1: number) => {
 }
 
 describe('mom sheet', () => {
-  test('every clip of MOM_NEXT is drawn with its frame count, timing, loop and sustain', () => {
+  test('every clip of MOM_SPEC is drawn with its frame count, timing, loop and sustain', () => {
     const s = mom()
-    for (const [name, spec] of Object.entries(MOM_NEXT)) {
+    for (const [name, spec] of Object.entries(MOM_SPEC)) {
       expect(s[name], name).toBeDefined()
       expect(s[name].frames.length, name).toBe(spec.frames)
       expect(s[name].fps, name).toBe(spec.fps)

@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'vitest'
 import { drawFox, foxRig, idlePoses, movePoses } from '../src/art/chars/bosses/fox'
-import { bossSpecNext } from '../src/art/contract'
+import { bossSpec } from '../src/art/contract'
 import { sheet } from '../src/art/index'
 import { R } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
 
 const ID = 'foxBoss'
-const spec = bossSpecNext(ID)
+const spec = bossSpec(ID)
 const red = new Set<number>(R.bandana)
 const steel = new Set<number>(R.steel)
 
