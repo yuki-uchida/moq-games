@@ -102,11 +102,15 @@ describe('hero sheet', () => {
     expect(width(land, 54)).toBeGreaterThan(width(hero().idle.frames[0], 54))
   })
 
-  test('the bite reaches furthest on CHOMP, which shows the most teeth', () => {
+  test('the bite opens on the lunge and reaches furthest on CHOMP, which shows the most teeth', () => {
     const bite = hero().bite.frames
-    expect(right(bite[2]) - right(bite[0])).toBeGreaterThanOrEqual(4)
+    const chomp = 1
+    const settle = bite.length - 1
+    // No wind-up: the first frame is already lunging forward from the settled pose.
+    expect(right(bite[0]) - right(bite[settle])).toBeGreaterThanOrEqual(4)
+    expect(right(bite[chomp]) - right(bite[settle])).toBeGreaterThanOrEqual(4)
     for (const [i, f] of bite.entries())
-      if (i !== 2) expect(right(bite[2]), `frame ${i}`).toBeGreaterThanOrEqual(right(f))
+      if (i !== chomp) expect(right(bite[chomp]), `frame ${i}`).toBeGreaterThanOrEqual(right(f))
     // mouth region: the lower right part of the sprite (the eyes sit above it)
     const teeth = (f: Raster) => {
       const b = bounds(f)
@@ -115,8 +119,9 @@ describe('hero sheet', () => {
         for (let x = Math.floor(b.x + b.w * 0.4); x < b.x + b.w; x++) if (f.get(x, y) === C.white) n++
       return n
     }
-    expect(teeth(bite[2])).toBeGreaterThanOrEqual(12)
-    for (const [i, f] of bite.entries()) if (i !== 2) expect(teeth(bite[2]), `frame ${i}`).toBeGreaterThan(teeth(f))
+    expect(teeth(bite[chomp])).toBeGreaterThanOrEqual(12)
+    for (const [i, f] of bite.entries())
+      if (i !== chomp) expect(teeth(bite[chomp]), `frame ${i}`).toBeGreaterThan(teeth(f))
   })
 
   test('every knock-out frame stays inside the cell, cleanly outlined, with no stray pixel', () => {

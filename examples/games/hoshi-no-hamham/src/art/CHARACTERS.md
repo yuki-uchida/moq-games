@@ -150,7 +150,9 @@ in between are sampled, so more frames cost nothing but must still be looked at.
 
 - **Timing.** Fast out, slow in. Attacks: a held anticipation, one or two frames of travel, a held impact, a long
   settle (`hold` in the Anim, `ease.out` into poses, `ease.outBack` for overshoot). Idle: one breath per second,
-  never a metronome: offset the parts.
+  never a metronome: offset the parts. A `hold` is part of the contract: list it on the clip's spec in
+  `contract.ts` too (the view times every clip from the contract, and the contract test rejects a hold it does not
+  list). The hero's `bite` has no wind-up: a player's attack lands on the press, so it opens on the lunge.
 - **Squash and stretch** keep volume (`squash` scales x up while y goes down). Stretch into speed, squash on
   contact, overshoot on the rebound.
 - **Overlap.** Nothing soft moves with the body. Drive ears, tufts, tails, cheeks, scarves, capes, hats and held
@@ -167,6 +169,10 @@ in between are sampled, so more frames cost nothing but must still be looked at.
   bosses end out cold with something still moving (`sustain`).
 - **Smears.** One frame of a very fast move may stretch along its path (a long body, doubled paws, speed lines in
   the character's own colours) — one frame, never more.
+- **Draw for states the game really reaches.** A clip, and every frame of it, is drawn for something the
+  simulation really produces and for as long as it lasts there (the frog is on the ground for one step, so its
+  landing is one frame). `tests/view-clip-coverage.test.ts` plays every stage with the bot and fails on a clip
+  the view never selects, unless it is listed there with its reason (staging, the story pictures).
 - **No twins, no noise.** Every frame differs from its neighbours for a reason; nothing jitters by a pixel back
   and forth.
 

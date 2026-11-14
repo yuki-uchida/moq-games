@@ -59,7 +59,12 @@ describe('every sheet matches the art contract', () => {
           for (const c of f.data) if (c >= paletteSize()) throw new Error(`${id}#${name} uses colour ${c}`)
         }
         if (want.anchor) expect(anchorOf(a), `${id}#${name} anchor`).toEqual(want.anchor)
-        if (a.hold) expect(a.hold.length, `${id}#${name} hold`).toBe(want.frames)
+        // The view times clips from the contract: a clip lingers on a frame only where the contract says so.
+        expect(a.hold && [...a.hold], `${id}#${name} hold`).toEqual(want.hold && [...want.hold])
+        if (want.hold) {
+          expect(want.hold.length, `${id}#${name} hold length`).toBe(want.frames)
+          for (const ticks of want.hold) expect(Number.isInteger(ticks) && ticks >= 1, `${id}#${name} hold`).toBe(true)
+        }
       }
     })
 })

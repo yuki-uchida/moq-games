@@ -11,7 +11,17 @@ import type { Renderer } from '../src/view/renderer'
 import { Sequence, mergeClaims } from '../src/view/sequence'
 import { EMOTE_SECONDS } from '../src/view/overlay'
 import { SILENT_AUDIO } from '../src/view/sound-map'
-import { BOSS_INTRO_SECONDS, CLEAR_SECONDS, DEATH_SECONDS, STAGE_START_SECONDS } from '../src/view/staging'
+import {
+  BOSS_INTRO_SECONDS,
+  BOSS_ROAR_SECONDS,
+  CLEAR_SECONDS,
+  DEATH_SECONDS,
+  RAGE_POSE_MARGIN,
+  STAGE_START_SECONDS
+} from '../src/view/staging'
+import { bossSpec, type BossArt } from '../src/art/contract'
+import { frameAt, type Anim } from '../src/art/sheet'
+import { clipLife, specDuration } from '../src/view/clips'
 
 // ------------------------------------------------------------------------------------------------- stubs
 
@@ -335,18 +345,82 @@ describe('bosses', () => {
     expectReleased(rig)
   })
 
-  it('phase 2 holds briefly with the rage clip', () => {
+  for (const no of [3, 5, 8])
+    for (const reducedMotion of [false, true])
+      it(`stage ${no}: the roar is posed for the whole intro clip and its tail${reducedMotion ? ' (reduced motion)' : ''}`, () => {
+        const rig = started(no, { reducedMotion })
+        const art = STAGES[no - 1].boss.art as BossArt
+        wakeBoss(rig)
+        rig.run(2, () => rig.view.actors.posing('boss') === 'intro')
+        let posed = 0
+        while (rig.view.actors.posing('boss') === 'intro' && posed < 4) {
+          rig.frame()
+          posed += STEP
+        }
+        const want = Math.max(BOSS_ROAR_SECONDS, clipLife(bossSpec(art).intro))
+        expect(posed).toBeGreaterThanOrEqual(want - STEP * 1.5)
+        expect(posed).toBeLessThanOrEqual(want + STEP * 1.5)
+        // The weasel and the ape linger on key poses of their roar: their intro outlasts the minimum.
+        if (art === 'weaselBoss' || art === 'apeBoss') expect(want).toBeGreaterThan(BOSS_ROAR_SECONDS)
+      })
+
+  for (const reducedMotion of [false, true])
+    it(`phase 2 holds the fight while the whole rage clip plays${reducedMotion ? ' (reduced motion)' : ''}`, () => {
+      const rig = started(10, { reducedMotion })
+      wakeBoss(rig)
+      rig.director.skip()
+      const boss = rig.world.boss!
+      const rage = bossSpec('king').rage
+      const stand = {
+        frames: Array.from({ length: rage.frames }, () => ({})),
+        fps: rage.fps,
+        loop: rage.loop,
+        sustain: rage.sustain,
+        hold: rage.hold && [...rage.hold]
+      } as unknown as Anim
+      emit(rig, { type: 'boss-phase', phase: 2, x: boss.x, y: boss.y })
+      expect(rig.director.current).toBe('boss-phase')
+      expect(rig.director.timeScale).toBe(0)
+      expect(rig.view.actors.posing('boss')).toBe('rage')
+      const t0 = rig.world.time
+      // The frames the staged pose shows, by its age, until the pose ends; and when the fight resumed.
+      const seen: number[] = [frameAt(stand, 0)]
+      let age = 0
+      let releasedAt: number | null = null
+      while (rig.view.actors.posing('boss') === 'rage' && age < 3) {
+        rig.frame()
+        age += STEP
+        if (releasedAt === null && rig.director.current === null) releasedAt = age
+        else if (releasedAt === null) expect(rig.world.time).toBe(t0)
+        if (rig.view.actors.posing('boss') === 'rage') seen.push(frameAt(stand, age))
+      }
+      // Every frame in order, then only the burning tail.
+      let end = seen.indexOf(rage.frames - 1)
+      while (end < seen.length && seen[end] === rage.frames - 1) end++
+      const firstPass = seen.slice(0, end)
+      expect([...new Set(firstPass)]).toEqual(Array.from({ length: rage.frames }, (_, i) => i))
+      const tail = seen.slice(end)
+      for (const f of tail) expect([rage.frames - 2, rage.frames - 1]).toContain(f)
+      if (!reducedMotion) expect(new Set(tail)).toEqual(new Set([rage.frames - 2, rage.frames - 1]))
+      // The pose is still up when the fight resumes.
+      expect(releasedAt).not.toBeNull()
+      expect(releasedAt!).toBeLessThan(age)
+      expect(releasedAt!).toBeCloseTo(reducedMotion ? specDuration(rage) : clipLife(rage) - RAGE_POSE_MARGIN, 1)
+      expect(age).toBeCloseTo(reducedMotion ? specDuration(rage) + RAGE_POSE_MARGIN : clipLife(rage), 1)
+      expectReleased(rig)
+    })
+
+  it('a press does not skip phase 2: the transformation is part of the fight', () => {
     const rig = started(10)
     wakeBoss(rig)
     rig.director.skip()
     const boss = rig.world.boss!
     emit(rig, { type: 'boss-phase', phase: 2, x: boss.x, y: boss.y })
+    rig.run(0.3)
+    rig.input.press()
+    rig.frame()
     expect(rig.director.current).toBe('boss-phase')
-    expect(rig.director.timeScale).toBe(0)
     expect(rig.view.actors.posing('boss')).toBe('rage')
-    const took = rig.run(2, () => rig.director.current === null)
-    expect(took).toBeLessThanOrEqual(0.7)
-    expectReleased(rig)
   })
 
   for (const no of [5, 10])
@@ -428,6 +502,21 @@ describe('endings', () => {
     expect(rig.hud.calls.filter((c) => c.name === 'lights').at(-1)!.args[0]).toBe(false)
   })
 
+  for (const reducedMotion of [false, true])
+    it(`the death iris closes on where the body comes to lie${reducedMotion ? ' (reduced motion)' : ''}`, () => {
+      const rig = started(4, { reducedMotion })
+      const { world, view } = rig
+      world.player.invuln = 0
+      world.hurtPlayer(99, world.player.x + 100)
+      rig.run(4, () => view.overlay.irisTarget === 0)
+      expect(view.overlay.irisTarget).toBe(0)
+      // He was standing: the body comes down where it was knocked up, whether or not it is still in the air.
+      const rest = view.actors.deathRest()!
+      expect(rest.y).toBeCloseTo(world.player.y + world.player.h / 2)
+      expect(view.overlay.irisX).toBe(Math.round(rest.x - view.camera.x))
+      expect(view.overlay.irisY).toBe(Math.round(rest.y - view.camera.y))
+    })
+
   it('skipping the clear still plays the iris out before the outcome', () => {
     const rig = started(4)
     emit(rig, { type: 'clear', x: 100, y: 100 })
@@ -439,6 +528,44 @@ describe('endings', () => {
     expect(rig.view.overlay.irisTarget).toBe(0)
     const took = rig.run(2, () => rig.director.outcome !== null)
     expect(took).toBeLessThanOrEqual(0.85)
+  })
+})
+
+describe('a boss knocked out in the air', () => {
+  it('the explosions and the last burst follow the body down to where it lies', () => {
+    // Stage 2: the crow cruises above the ground.
+    const rig = started(2)
+    const { world, view } = rig
+    wakeBoss(rig)
+    rig.director.skip()
+    rig.run(0.1)
+    const boss = world.boss!
+    // Well above the ground he will fall to.
+    boss.y -= 40
+    const fell = { x: boss.x + boss.w / 2, y: boss.y + boss.h / 2 }
+    const seen: { name: string; x: number; y: number; body: { x: number; y: number } | null }[] = []
+    const spawn = view.fx.spawn.bind(view.fx)
+    view.fx.spawn = (name, x, y, o) => {
+      seen.push({ name, x, y, body: view.actors.bossBodyPoint() })
+      spawn(name, x, y, o)
+    }
+    boss.hp = 1
+    world.damageBoss(1)
+    rig.run(5, () => rig.director.current !== 'boss-defeat' && rig.director.current !== null)
+    // The ring of the last burst is centred on the body, which has come down by then.
+    const rings = seen.filter((f) => f.name === 'ring' && f.body)
+    const last = rings.at(-1)!
+    expect(last.body!.y).toBeGreaterThan(fell.y + 20)
+    expect(last.x).toBe(last.body!.x)
+    expect(last.y).toBe(last.body!.y)
+    // So are the two blasts that come with it (the last things spawned before the ring).
+    const at = seen.indexOf(last)
+    const blasts = seen.slice(at - 2, at)
+    expect(blasts.map((f) => f.name)).toEqual(['boom', 'boom'])
+    for (const blast of blasts) {
+      expect(Math.abs(blast.x - last.body!.x)).toBeLessThanOrEqual(boss.w * 0.3 + 1)
+      expect(Math.abs(blast.y - last.body!.y)).toBeLessThanOrEqual(boss.h * 0.3 + 1)
+    }
   })
 })
 
