@@ -835,3 +835,47 @@
     font-size: 12px;
   }
 }
+
+/* rule problems: the loadout cannot be saved, confirmed or taken to a match */
+.lo-problems {
+  margin-top: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px dashed var(--danger);
+  background: rgba(70, 12, 22, 0.55);
+  font-size: 13px;
+}
+.lo-problems[hidden] {
+  display: none;
+}
+.lo-problems ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.lo-problems.is-flash {
+  animation: lo-problem-flash 600ms ease-out;
+}
+.lo-board.has-problem {
+  outline: 2px dashed rgba(255, 90, 106, 0.55);
+  outline-offset: 4px;
+  border-radius: 12px;
+}
+.lo-slot.is-invalid {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px rgba(255, 90, 106, 0.6) inset;
+}
+.lo-slot.is-flash {
+  animation: lo-problem-flash 600ms ease-out;
+}
+@keyframes lo-problem-flash {
+  0%,
+  50% {
+    filter: brightness(1.8) saturate(1.6);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lo-problems.is-flash,
+  .lo-slot.is-flash {
+    animation: none;
+  }
+}

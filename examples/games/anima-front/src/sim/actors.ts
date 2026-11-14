@@ -164,14 +164,23 @@ export function inkBetween(sim: Sim, a: Vec, b: Vec): boolean {
 }
 
 /**
+ * Whether player `p` is revealed by sonar to `side` (each side only learns of its own pulses); without a side,
+ * whether any side revealed it.
+ */
+export function revealedFor(sim: Sim, p: Player, side?: number): boolean {
+  if (side === undefined) return sim.time < p.revealedUntil
+  return sim.time < (p.revealedBy?.[side] ?? 0)
+}
+
+/**
  * Whether an observer at `eye` (foe or bot of another side) can perceive player `p`: cloaked players are lost
  * beyond the antique's range unless they attacked within the last second; ink clouds block sight.
  */
-export function canPerceive(sim: Sim, eye: Vec, p: Player, needLos = true): boolean {
+export function canPerceive(sim: Sim, eye: Vec, p: Player, needLos = true, observerSide?: number): boolean {
   if (p.state !== 'alive') return false
   const c: Vec = [p.p[0], p.p[1] + p.h * 0.6, p.p[2]]
   const d = vdist(eye, c)
-  if (p.cloakOn && sim.time >= p.attackRevealUntil && sim.time >= p.revealedUntil) {
+  if (p.cloakOn && sim.time >= p.attackRevealUntil && !revealedFor(sim, p, observerSide)) {
     const u = ITEMS.leaf.use
     if (d > (u?.kind === 'cloak' ? u.loseRange : 5)) return false
   }

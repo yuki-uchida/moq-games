@@ -4,10 +4,24 @@
  * arrived are played by bots (world.setBot) and handed back when the player returns. Snapshots go out at 20 Hz
  * with the events since the previous one and, per guest, the prediction tick the state corresponds to. The host's
  * own screen is smoothed between the last two steps. A hidden tab keeps stepping from the room's worker clock.
+ *
+ * PvP (DESIGN §18): every snapshot recomputes which players each team may know about (visibility.ts), splits the
+ * view into a public part and one part per team (split.ts) and seals each team part with its key (the room's
+ * seal). The host's own screen keeps to the same boundary for its team.
  */
 import type { Session } from '../app/session'
 import type { World } from '../sim/api'
-import { neutralPlayerInput, type MatchConfig, type PlayerInput, type SimEvent, type View } from '../sim/types'
+import {
+  neutralPlayerInput,
+  type MatchConfig,
+  type PlayerInput,
+  type SimEvent,
+  type TeamId,
+  type View
+} from '../sim/types'
+import { Fog, hideUnknown } from './fog'
+import { eventForTeam, isPublicEvent, shotsForTeam, splitView, viewForTeam } from './split'
+import { TeamVisibility, type TeamSets } from './visibility'
 import type { HostRoom } from './host-room'
 import { INPUT_EXPIRY, PROTOCOL, SNAPSHOT_RATE, type SnapMsg } from './protocol'
 import { humanSeatId } from './seats'
@@ -37,8 +51,14 @@ export class HostMatch implements Session {
   private snapEvents: SimEvent[] = []
   private snapAcc = 0
   private disposed = false
-  /** Number of snapshots sent and the largest JSON size (diagnostics). */
-  readonly stats = { snapshots: 0, maxJson: 0 }
+  /** Snapshots sent, largest JSON size; PvP: split-to-sealed wall time (ms) and rays of the last snapshot. */
+  readonly stats = { snapshots: 0, maxJson: 0, secretMs: 0, secretMaxMs: 0, rays: 0 }
+  /** PvP: team visibility, the host's team and its fading. */
+  private readonly vis: TeamVisibility | null
+  private readonly myTeam: TeamId
+  private readonly fog: Fog
+  private sets: TeamSets | null = null
+  private sealing = false
 
   constructor(
     private readonly room: HostRoom,
@@ -48,6 +68,9 @@ export class HostMatch implements Session {
     private readonly startedAt: number
   ) {
     this.map = world.map
+    this.vis = config.mode === 'pvp' ? new TeamVisibility(world.map) : null
+    this.myTeam = config.players.find((p) => p.id === this.me)?.team ?? 0
+    this.fog = new Fog(this.myTeam)
     for (const p of config.players) this.isBot.set(p.id, p.bot !== undefined)
     this.smooth = new SmoothedWorld(world)
     this.snapEvents.push(...this.smooth.prime().events)
@@ -82,7 +105,7 @@ export class HostMatch implements Session {
     this.lastUpdateAt = now
     this.advance(false)
     const p = this.smooth.present(Math.min(1, this.acc / STEP))
-    const v = p ? this.withNames(p) : null
+    const v = p ? this.ownScreen(this.withNames(p)) : null
     if (v) netDebug({ role: 'host', me: this.me, code: this.room.code, view: v, steps: this.world.tick })
     return v
   }
@@ -103,7 +126,7 @@ export class HostMatch implements Session {
     }
     if (n === max && this.acc >= STEP) this.acc = 0
     this.snapAcc += n * STEP
-    if (this.snapAcc >= 1 / SNAPSHOT_RATE - 1e-6 && !this.room.busy) {
+    if (this.snapAcc >= 1 / SNAPSHOT_RATE - 1e-6 && !this.room.busy && !this.sealing) {
       this.snapAcc = 0
       this.sendSnapshot()
     }
@@ -141,6 +164,10 @@ export class HostMatch implements Session {
       const rec = seat ? this.room.members.get(memberId)?.input : undefined
       if (seat && rec) ack[seat] = [rec.nonce, rec.cursor]
     }
+    if (this.vis) {
+      this.sendSecret(cur, ack)
+      return
+    }
     const msg: SnapMsg = {
       v: PROTOCOL,
       k: 'snap',
@@ -154,6 +181,79 @@ export class HostMatch implements Session {
     this.room.queueSnapshot(msg)
   }
 
+  /** The sets for the newest view (computed with each snapshot; once before the first). */
+  private teamSets(cur: View, events: readonly SimEvent[]): TeamSets {
+    const sets = this.vis!.update(cur, events)
+    this.sets = sets
+    const full = viewForTeam(cur, this.myTeam)
+    this.fog.observe(full, this.hiddenFor(full, sets))
+    return sets
+  }
+
+  private hiddenFor(view: View, sets: TeamSets): Set<string> {
+    const known = sets.get(this.myTeam)
+    return new Set(view.players.filter((p) => p.team !== this.myTeam && !known?.has(p.id)).map((p) => p.id))
+  }
+
+  /** PvP: public part + sealed team parts. Events wait for the next snapshot while there are no keys yet. */
+  private sendSecret(cur: View, ack: SnapMsg['ack']) {
+    const t0 = performance.now()
+    const view = this.withNames({ ...cur, events: this.snapEvents })
+    const sets = this.teamSets(cur, this.snapEvents)
+    this.stats.rays = this.vis!.rays
+    const split = splitView(view, sets, ack, this.config)
+    const sealed = this.room.seal(split.parts, this.matchId, cur.tick)
+    if (!sealed) return
+    this.snapEvents = []
+    this.sealing = true
+    const over = this.world.over
+    sealed
+      .then(({ g, s }) => {
+        const ms = performance.now() - t0
+        this.stats.secretMs += ms
+        this.stats.secretMaxMs = Math.max(this.stats.secretMaxMs, ms)
+        this.stats.snapshots++
+        this.room.queueSnapshot({
+          v: PROTOCOL,
+          k: 'snap',
+          m: this.matchId,
+          over,
+          ack: {},
+          view: split.pub,
+          r: split.roster,
+          g,
+          s
+        })
+      })
+      .catch((err) => console.warn('[anima-front] could not seal a snapshot', err))
+      .finally(() => {
+        this.sealing = false
+      })
+  }
+
+  /** PvP: the host's screen shows what its team knows (sonar for its team, unseen enemies hidden and faded). */
+  private ownScreen(v: View): View {
+    if (!this.vis) return v
+    const latest = this.smooth.latest
+    if (!this.sets && latest) this.teamSets(latest, [])
+    if (!this.sets) return v
+    const known = this.sets.get(this.myTeam) ?? new Set<string>()
+    const team = viewForTeam(v, this.myTeam)
+    const hidden = this.hiddenFor(team, this.sets)
+    const shown = hideUnknown(team, this.myTeam, known, this.fog)
+    const events: SimEvent[] = []
+    for (const e of v.events) {
+      const x = isPublicEvent(e) ? e : eventForTeam(e, known)
+      if (x) events.push(x)
+    }
+    return {
+      ...this.fog.present(shown, hidden, v.time),
+      shots: shotsForTeam(v, this.myTeam, known),
+      shards: v.shards.filter((s) => s.to === undefined || known.has(s.to)),
+      events
+    }
+  }
+
   private withNames(v: View): View {
     if (!this.names.size) return v
     return { ...v, players: v.players.map((p) => (this.names.has(p.id) ? { ...p, name: this.names.get(p.id)! } : p)) }
@@ -165,7 +265,7 @@ export class HostMatch implements Session {
     if (this.world.over) {
       // Let the guests see the final state before the room goes back to the lobby.
       this.snapAcc = 1
-      if (!this.room.busy) this.sendSnapshot()
+      if (!this.room.busy && !this.sealing) this.sendSnapshot()
     }
     this.room.endMatch(this)
   }

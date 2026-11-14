@@ -66,6 +66,8 @@ export interface OnlineControls {
   takeMatch(): { phase: 'briefing' | 'match'; start: MatchStart } | null
   /** Host: back on the lobby screen (cancels a briefing that never became a match). */
   backInLobby(): void
+  /** Guest spectating PvP: the team whose view to follow (it receives that team's view only; default 0). */
+  followTeam?(team: TeamId): void
 }
 
 export interface LocalChoice {

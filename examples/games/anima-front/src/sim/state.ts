@@ -172,6 +172,8 @@ export interface Player {
   cloak: number
   attackRevealUntil: number
   revealedUntil: number
+  /** Per side: time until which sonar reveals this player to that side (revealedUntil is the latest of them). */
+  revealedBy?: number[]
   negateAt: number
   lastSpend: number
   lastHurt: number

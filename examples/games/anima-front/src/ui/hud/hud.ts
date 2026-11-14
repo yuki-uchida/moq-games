@@ -17,11 +17,13 @@ import {
   feedEntry,
   formatClock,
   hitMarkerFor,
+  CooldownRing,
   pawCard,
   type PawCard
 } from './model'
 import { createBanner, createCountdown, createKillFeed, createRadio, createScoreboard } from './overlays'
-import { nearReviveMarker, tutorialBuild, tutorialHint, TUTORIAL_REVIVE_STEP } from './tutorial'
+import { REVIVE_TIME } from '../../sim/constants'
+import { nearReviveMarker, nextReviveHold, tutorialBuild, tutorialHint, TUTORIAL_REVIVE_STEP } from './tutorial'
 import { createCrosshair, createDamageArcs, createHitMarkers, createRadar } from './widgets'
 
 export interface HudFrame {
@@ -33,6 +35,8 @@ export interface HudFrame {
   fov: number
   device: 'mouse' | 'gamepad' | 'touch'
   hints: boolean
+  /** Whether the interact button (F / X / touch 救助) is held this frame (drives the tutorial revive bar). */
+  interactHeld?: boolean
   /** Player the camera follows while spectating. */
   follow?: string
   project?: (p: V3) => { x: number; y: number; onScreen: boolean }
@@ -86,8 +90,9 @@ function paintPaw(p: PawEls, card: PawCard, keyLabel: string) {
     p.item = card.item
     p.icon.replaceChildren(card.item ? itemIconNode(card.item) : '')
     setText(p.name, card.name)
-    setText(p.cost, card.cost ? `◆ ${card.cost}` : '')
   }
+  setText(p.cost, card.cost ? `◆ ${card.cost}` : '')
+  setClass(p.el, 'is-broke', !!card.item && !card.affordable)
   setText(p.key, keyLabel)
   const cd = p.ring.querySelector('.paw-ring-cd') as SVGElement
   const ch = p.ring.querySelector('.paw-ring-ch') as SVGElement
@@ -143,6 +148,8 @@ export function createHud(): Hud {
   )
   let passiveKey = ''
 
+  const ringR = new CooldownRing()
+  const ringL = new CooldownRing()
   const pawR = pawEl('R')
   const pawL = pawEl('L')
 
@@ -219,6 +226,7 @@ export function createHud(): Hud {
   )
 
   let interactLabel: string | null = null
+  let markerHold = 0
   let lastPhase: View['phase'] | null = null
   let critical = false
 
@@ -274,8 +282,16 @@ export function createHud(): Hud {
       // paws
       const keys =
         f.device === 'gamepad' ? ['RT', 'LT'] : f.device === 'touch' ? ['', ''] : ['左クリック', '右クリック']
-      paintPaw(pawR, pawCard(me.hands[0]), keys[0])
-      paintPaw(pawL, pawCard(me.hands[1]), keys[1])
+      paintPaw(
+        pawR,
+        pawCard(me.hands[0], { passives: me.passives, online: me.passivesOnline, anima: me.anima, ring: ringR }),
+        keys[0]
+      )
+      paintPaw(
+        pawL,
+        pawCard(me.hands[1], { passives: me.passives, online: me.passivesOnline, anima: me.anima, ring: ringL }),
+        keys[1]
+      )
 
       // crosshair
       const active = me.hands[0].act !== 'idle' || me.hands[1].act === 'idle' ? me.hands[0] : me.hands[1]
@@ -299,7 +315,7 @@ export function createHud(): Hud {
       paintTop(view, me, f.device)
 
       // revive prompt
-      paintRevive(view, me, f.device)
+      paintRevive(view, me, f.device, f.dt, !!f.interactHeld)
 
       // down / away overlay and spectating
       el.dataset.state = me.state
@@ -509,7 +525,7 @@ export function createHud(): Hud {
     }
   }
 
-  function paintRevive(view: View, me: PlayerView, device: HudFrame['device']) {
+  function paintRevive(view: View, me: PlayerView, device: HudFrame['device'], dt: number, held: boolean) {
     let target: PlayerView | undefined
     if (me.state === 'alive') {
       if (me.reviving) target = view.players.find((p) => p.id === me.reviving)
@@ -531,13 +547,19 @@ export function createHud(): Hud {
       const m = view.props.find((p) => p.kind === 'tutorial')
       marker = !!m && nearReviveMarker(me.p, m.p)
     }
+    // The sim fills the marker's bar only in its own state; show the hold client-side and reset on release.
+    markerHold = nextReviveHold(markerHold, marker, held, dt, REVIVE_TIME)
     interactLabel = target || marker ? '救助' : null
     setClass(revive, 'is-on', !!target || marker)
     if (marker) {
       const key = device === 'gamepad' ? 'X' : device === 'touch' ? '' : 'F'
       setText(revive.querySelector('.rv-key')!, key)
       setText(revive.querySelector('.rv-text')!, `${key ? `${key} 長押しで` : ''}救助：倒れた仲間`)
-      setStyle(revive.querySelector('.rv-bar i') as HTMLElement, 'transform', 'scaleX(0)')
+      setStyle(
+        revive.querySelector('.rv-bar i') as HTMLElement,
+        'transform',
+        `scaleX(${(markerHold / REVIVE_TIME).toFixed(3)})`
+      )
     } else if (target) {
       const key = device === 'gamepad' ? 'X' : device === 'touch' ? '' : 'F'
       setText(revive.querySelector('.rv-key')!, key)

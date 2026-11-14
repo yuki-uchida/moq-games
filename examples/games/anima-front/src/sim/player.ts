@@ -5,7 +5,7 @@
 import { ITEMS } from '../data/items'
 import type { Hand } from '../data/loadout'
 import { BASE_JUMP_VELOCITY, BASE_SPEED, eyeHeight, GRAVITY, SPECIES, shoulderOffset } from '../data/species'
-import { drain, spend } from './anima'
+import { drain, spend, syncMaxAnima } from './anima'
 import {
   ACCEL_AIR,
   ACCEL_GROUND,
@@ -39,7 +39,7 @@ import {
   SLIDE_TIME,
   ZOOM_SPEED_FACTOR
 } from './constants'
-import { computeBuild, sanitizeLoadout } from './loadout'
+import { computeBuild, modsOf, sanitizeLoadout } from './loadout'
 import { lungeVelocity } from './items/weapons'
 import { addProp } from './props'
 import { emit, makeStats, type HandSt, type Player, type Side, type Sim } from './state'
@@ -193,7 +193,7 @@ export const wishDir = (p: Player): Vec => {
 
 export function maxSpeed(p: Player): number {
   const b = p.build
-  let k = p.species.speed * (1 + b.mods.speed + (p.online ? b.armorSpeed : 0))
+  let k = p.species.speed * (1 + modsOf(p).speed + (p.online ? b.armorSpeed : 0))
   for (const h of p.hands) {
     if (h.mode === 'shield') {
       const u = ITEMS[h.items[h.sel]]?.use
@@ -207,7 +207,7 @@ export function maxSpeed(p: Player): number {
 
 export function dashCooldown(p: Player): number {
   const shiba = p.species.trait === 'eager' ? SHIBA_DASH_FACTOR : 1
-  return Math.max(0.25, DASH_COOLDOWN * shiba * (1 + p.build.mods.dashCooldown))
+  return Math.max(0.25, DASH_COOLDOWN * shiba * (1 + modsOf(p).dashCooldown))
 }
 
 const accelToward = (v: Vec, tx: number, tz: number, a: number) => {
@@ -477,9 +477,10 @@ export function reviveTick(sim: Sim) {
       d.state = 'alive'
       d.revive = 0
       d.revivedBy = undefined
-      d.anima = Math.max(1, d.maxAnima * REVIVE_ANIMA)
+      d.anima = Math.max(1, d.build.maxAnima * REVIVE_ANIMA)
       d.invulnUntil = sim.time + REVIVE_INVULN
-      d.online = d.anima / d.maxAnima > 0.2
+      d.online = d.anima / d.build.maxAnima > 0.2
+      syncMaxAnima(d)
       emit(sim, { type: 'revive', who: d.id, by: rv.id })
     }
   }

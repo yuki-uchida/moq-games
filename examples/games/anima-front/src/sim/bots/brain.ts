@@ -2,7 +2,7 @@
  * Bot state and situation awareness (DESIGN §13): skill curves, perception with reaction time, target choice by
  * threat and distance, and the movement goal (revive, retreat, engage, objective / lanes).
  */
-import { canPerceive, targetCenter, type Target } from '../actors'
+import { canPerceive, revealedFor, targetCenter, type Target } from '../actors'
 import type { Rng } from '../rng'
 import { FOE_SIDE, type Foe, type Player, type Sim, type TargetRef } from '../state'
 import { hdist, vdist, type Vec } from '../vec'
@@ -146,7 +146,7 @@ export function perceive(sim: Sim, p: Player, range = 60): { t: Target; ref: Tar
     const d = vdist(q.p, p.p)
     if (d > range) continue
     if (inEnemyBase(sim, p, q.p, 0)) continue
-    if (!canPerceive(sim, eye, q) && sim.time >= q.revealedUntil) continue
+    if (!canPerceive(sim, eye, q, true, p.side) && !revealedFor(sim, q, p.side)) continue
     let score = d - (q.anima / q.maxAnima < 0.3 ? 6 : 0)
     // クロヅメ avatars spread their fire: each other avatar already on this animal makes it less attractive.
     if (p.foe) score += 8 * avatarsOn(sim, p, q.id)

@@ -19,7 +19,7 @@ import { ITEM_IDS, ITEMS, isWeapon, type ItemCategory, type ItemDef, type ItemId
 import { LOADOUT_SLOTS, type Hand, type Loadout, type LoadoutSlot } from '../data/loadout'
 import { SPECIES, type SpeciesId } from '../data/species'
 import type { SustainReport } from './api'
-import { REGEN_RATE } from './constants'
+import { DT, REGEN_RATE } from './constants'
 import type { Build, Mods } from './state'
 
 const ITEM_SET = new Set<string>(ITEM_IDS)
@@ -151,6 +151,56 @@ export const emptyMods = (): Mods => ({
   maxAnima: 0
 })
 
+const NO_MODS: Readonly<Mods> = Object.freeze(emptyMods())
+
+/**
+ * The enhancement mods that apply to a player right now: the build's mods while passives are online, none while
+ * they are offline (critical anima, DESIGN §5). Allocation-free; the result must not be mutated.
+ */
+export const modsOf = (p: { online: boolean; build: { mods: Mods } }): Readonly<Mods> =>
+  p.online ? p.build.mods : NO_MODS
+
+/** Sums the mod passives of a passive list (duplicates kept) into a fresh Mods object. */
+function modsFromPassives(passives: readonly ItemId[]): Mods {
+  const mods = emptyMods()
+  for (const id of passives) {
+    const p = ITEMS[id].passive
+    if (p?.kind !== 'mod') continue
+    for (const k of Object.keys(p) as (keyof typeof p)[]) {
+      if (k === 'kind') continue
+      mods[k as keyof Mods] += p[k] as number
+    }
+  }
+  return mods
+}
+
+/**
+ * Effective anima price of an active antique for a player view: `cost` per use or `drain` per second (beams,
+ * shields, ...), with the passive list's mods applied while `online` and no mods while passives are offline.
+ */
+export function effectiveCost(
+  passives: readonly ItemId[],
+  online: boolean,
+  item: ItemId
+): { cost?: number; drain?: number } {
+  const def = ITEMS[item]
+  const m = online ? modsFromPassives(passives) : NO_MODS
+  const out: { cost?: number; drain?: number } = {}
+  if (def.cost !== undefined) out.cost = itemCost(m, def, def.cost)
+  if (def.drain !== undefined) out.drain = itemCost(m, def, def.drain)
+  return out
+}
+
+/**
+ * The sim's exact usability rule (anima.ts `spend`): a per-use cost needs anima >= cost + 1, a held drain needs
+ * anima >= drain x DT + 1 for each tick. An antique with neither is always affordable.
+ */
+export function affordable(anima: number, price: { cost?: number; drain?: number }): boolean {
+  if (price.cost !== undefined && anima < price.cost + 1) return false
+  if (price.drain !== undefined && anima < price.drain * DT + 1) return false
+  return true
+}
+
 /** Multiplier on every anima cost/upkeep from ナマケモノ-style mods (never below 20 %). */
 export const costScale = (m: Mods) => Math.max(0.2, 1 + m.cost)
 /** Multiplier on cycle times from rate mods (slower when negative). */
@@ -166,15 +216,7 @@ export function itemCost(m: Mods, def: ItemDef, base = def.cost ?? def.drain ?? 
 /** Derives the build (mods, armour, upkeep, max anima) from a sanitized loadout. */
 export function computeBuild(speciesId: SpeciesId, loadout: Loadout): Build {
   const lists = handLists(loadout)
-  const mods = emptyMods()
-  for (const id of lists.passive) {
-    const p = ITEMS[id].passive
-    if (p?.kind !== 'mod') continue
-    for (const k of Object.keys(p) as (keyof typeof p)[]) {
-      if (k === 'kind') continue
-      mods[k as keyof Mods] += p[k] as number
-    }
-  }
+  const mods = modsFromPassives(lists.passive)
   const ae = 1 + mods.armorEffect
   let armorReduce = 0
   let armorSpeed = 0

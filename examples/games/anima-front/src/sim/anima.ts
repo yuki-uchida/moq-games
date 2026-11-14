@@ -17,6 +17,7 @@ import {
   SHARD_RANGE,
   SHARD_SPEED
 } from './constants'
+import { modsOf } from './loadout'
 import { emit, type Player, type Shard, type Sim } from './state'
 import { r3, vdist, type Vec } from './vec'
 
@@ -80,10 +81,17 @@ export function gain(p: Player, amount: number): number {
 }
 
 export function regenDelay(p: Player) {
-  return Math.max(MIN_REGEN_DELAY, REGEN_DELAY + p.build.mods.regenDelay)
+  return Math.max(MIN_REGEN_DELAY, REGEN_DELAY + modsOf(p).regenDelay)
 }
 export function regenRate(p: Player) {
-  return Math.max(0, REGEN_RATE + p.build.mods.regen)
+  return Math.max(0, REGEN_RATE + modsOf(p).regen)
+}
+
+/** Max anima follows the passives: enhancements (ラクダ) stop counting while offline. Never kills: floors at 1. */
+export function syncMaxAnima(p: Player) {
+  const max = p.build.maxAnima - (p.online ? 0 : p.build.mods.maxAnima)
+  if (p.maxAnima !== max) p.maxAnima = max
+  if (p.anima > p.maxAnima) p.anima = Math.max(Math.min(1, p.anima), p.maxAnima)
 }
 
 /** Per-tick anima upkeep, critical switching and regeneration for a living player. */
@@ -95,7 +103,8 @@ export function animaTick(sim: Sim, p: Player) {
     return
   }
   // Critical: passives go offline at ≤ 15 % and come back above 20 %.
-  const frac = p.anima / p.maxAnima
+  // Thresholds use the build's full max so that a ラクダ going offline (smaller effective max) cannot flap.
+  const frac = p.anima / p.build.maxAnima
   if (p.online && frac <= CRITICAL_OFF && p.build.passives.length > 0) {
     p.online = false
     emit(sim, { type: 'passives', who: p.id, online: false })
@@ -104,6 +113,7 @@ export function animaTick(sim: Sim, p: Player) {
     p.online = true
     emit(sim, { type: 'passives', who: p.id, online: true })
   }
+  syncMaxAnima(p)
   // Upkeep (does not stop regeneration).
   if (p.online && p.build.upkeep > 0) {
     const amt = Math.min(p.anima, p.build.upkeep * DT)

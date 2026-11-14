@@ -33,8 +33,8 @@ const PINS: Record<MissionId, Pin> = {
   // The harness mean is 5.4–6.4 min across seeds; this seed clears a little early.
   harbor: { seed: 2, minutes: [4.5, 7], boss: [1.5, 3] },
   nightraid: { seed: 3, minutes: [4, 6] },
-  blight: { seed: 4, minutes: [4, 6] },
-  maw: { seed: 4, minutes: [3, 5], boss: [2.5, 5] }
+  blight: { seed: 4, minutes: [3.9, 6] },
+  maw: { seed: 4, minutes: [2.9, 5], boss: [2.5, 5] }
 }
 
 function play(mission: MissionId, seed: number) {

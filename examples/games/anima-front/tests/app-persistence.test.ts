@@ -1,12 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import { PRESETS, makeLoadout } from '../src/data/loadout'
-import { repairLoadout, repairLoadoutShape, placementError, pawLists, emptyLoadout } from '../src/app/loadouts'
+import {
+  repairLoadout,
+  repairLoadoutShape,
+  placementError,
+  pawLists,
+  emptyLoadout,
+  offendingSlots,
+  safeLoadoutErrors
+} from '../src/app/loadouts'
 import {
   ARMORY_KEY,
   deleteCustom,
   emptyProgress,
   loadArmory,
   loadProgress,
+  loadoutBlocker,
+  loadoutProblems,
   missionUnlocked,
   recordMission,
   resolveLoadout,
@@ -162,14 +172,13 @@ describe('progress', () => {
 describe('armory', () => {
   it('saves three customs per animal and reloads them', () => {
     const store = memoryStore()
-    const sanitize = (l: unknown) => repairLoadoutShape(l)
-    let a = loadArmory(store, sanitize)
+    let a = loadArmory(store)
     expect(resolveLoadout(a, 'bear').name).toBe('タンク')
     const build = makeLoadout(['bee', 'claw'], ['gecko'], ['koala'])
     a = storeCustom(a, 'bear', 2, { name: '森のくまさん', loadout: build, savedAt: 1 })
     a = { ...a, species: 'bear' }
     saveArmory(store, a)
-    const back = loadArmory(store, sanitize)
+    const back = loadArmory(store)
     expect(back.species).toBe('bear')
     expect(resolveLoadout(back, 'bear')).toEqual({ loadout: build, name: '森のくまさん' })
     const cleared = deleteCustom(back, 'bear', 2)
@@ -183,7 +192,7 @@ describe('armory', () => {
       `${STORAGE_PREFIX}${ARMORY_KEY}`,
       JSON.stringify({ selected: 'owl', custom: { owl: [null, build] }, choice: { owl: { kind: 'custom', index: 1 } } })
     )
-    const a = loadArmory(store, (l) => repairLoadoutShape(l))
+    const a = loadArmory(store)
     expect(a.version).toBe(2)
     expect(a.species).toBe('owl')
     expect(a.custom.owl[1]?.name).toBe('カスタム2')
@@ -195,5 +204,64 @@ describe('armory', () => {
     writeJson(store, ARMORY_KEY, { version: 2, species: 'cat', choice: { cat: { kind: 'custom', index: 0 } } })
     const a = loadArmory(store)
     expect(a.choice.cat).toEqual({ kind: 'preset', id: 'skirmisher' })
+  })
+})
+
+describe('invalid loadouts are never saved or silently repaired', () => {
+  const passiveOnly = (): ReturnType<typeof emptyLoadout> => {
+    const l = emptyLoadout()
+    const ids = ['fang', 'fang', 'fang', 'hawk', 'hawk', 'hawk', 'rhino', 'rhino', 'rhino', 'sloth', 'sloth', 'sloth']
+    ;[...ids, 'koala', 'koala', 'koala', 'turtle'].forEach((item, i) => {
+      l.slots[i] = { item: item as never }
+    })
+    return l
+  }
+
+  it('refuses to store a loadout without a weapon', () => {
+    const a = loadArmory(memoryStore())
+    expect(() => storeCustom(a, 'bear', 0, { name: 'x', loadout: passiveOnly(), savedAt: 1 })).toThrow()
+    expect(safeLoadoutErrors(passiveOnly()).length).toBeGreaterThan(0)
+    expect(offendingSlots(passiveOnly())).toEqual([])
+  })
+
+  it('marks the later copies of a repeated antique as the offenders', () => {
+    const l = makeLoadout(['bee', 'bee'], [], ['koala', 'koala', 'koala', 'koala'])
+    expect(offendingSlots(l)).toEqual([1, 5])
+    expect(safeLoadoutErrors(l).length).toBeGreaterThan(0)
+  })
+
+  it('loads a stored invalid loadout unchanged and blocks its use', () => {
+    const store = memoryStore()
+    const bad = passiveOnly()
+    store.setItem(
+      `${STORAGE_PREFIX}${ARMORY_KEY}`,
+      JSON.stringify({
+        version: 2,
+        species: 'cat',
+        choice: { cat: { kind: 'custom', index: 1 } },
+        custom: { cat: [null, { name: '壊れ', loadout: bad, savedAt: 5 }, null] }
+      })
+    )
+    const a = loadArmory(store)
+    const resolved = resolveLoadout(a, 'cat')
+    expect(resolved.name).toBe('壊れ')
+    // slot 16 stays the same antique: no weapon was injected over it
+    expect(resolved.loadout.slots[15]).toEqual({ item: 'turtle' })
+    expect(resolved.loadout).toEqual(bad)
+    expect(loadoutProblems(a, 'cat').length).toBeGreaterThan(0)
+    expect(loadoutBlocker(a, 'cat')).toContain('壊れ')
+    // presets and valid customs are free to use
+    expect(loadoutBlocker(a, 'bear')).toBeNull()
+  })
+
+  it('does not touch a stored valid loadout', () => {
+    const store = memoryStore()
+    const good = makeLoadout(['bee', 'claw'], ['gecko'], ['koala'])
+    let a = loadArmory(store)
+    a = storeCustom(a, 'owl', 0, { name: 'ok', loadout: good, savedAt: 1 })
+    saveArmory(store, a)
+    const back = loadArmory(store)
+    expect(resolveLoadout(back, 'owl').loadout).toEqual(good)
+    expect(loadoutBlocker(back, 'owl')).toBeNull()
   })
 })

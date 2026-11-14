@@ -35,14 +35,18 @@ const query = [
   'cardlook=-3,1.12,0.05'
 ].join('&')
 
+// Vite runs directly under this Node (no shell) so stopping it really stops the server.
 const server = spawn(
-  'npx',
-  ['vite', '--config', 'vite.config.anima-front.mjs', '--port', String(port), '--strictPort'],
-  {
-    cwd: root,
-    shell: true,
-    stdio: 'ignore'
-  }
+  process.execPath,
+  [
+    resolve(root, 'node_modules/vite/bin/vite.js'),
+    '--config',
+    'vite.config.anima-front.mjs',
+    '--port',
+    String(port),
+    '--strictPort'
+  ],
+  { cwd: root, stdio: 'ignore' }
 )
 const base = `http://127.0.0.1:${port}/`
 try {
@@ -89,13 +93,4 @@ try {
   }
 } finally {
   server.kill()
-  if (process.platform === 'win32')
-    spawn(
-      'cmd',
-      [
-        '/c',
-        `for /f "tokens=5" %a in ('netstat -ano ^| findstr :${port} ^| findstr LISTENING') do taskkill /PID %a /F /T`
-      ],
-      { shell: true, stdio: 'ignore' }
-    )
 }

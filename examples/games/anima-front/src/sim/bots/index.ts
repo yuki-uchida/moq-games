@@ -7,7 +7,7 @@ import { ITEMS } from '../../data/items'
 import { targetCenter, type Target } from '../actors'
 import { MAX_PITCH } from '../constants'
 import { navGrid } from '../grid'
-import { weaponRate } from '../loadout'
+import { modsOf, weaponRate } from '../loadout'
 import { muzzleOf, pivotOf } from '../player'
 import { FOE_SIDE, type Player, type Sim } from '../state'
 import { BTN } from '../types'
@@ -329,7 +329,7 @@ export function botThink(sim: Sim, p: Player) {
       if (pick === null || choice.main === hi) return pick !== null
       if (choice.scores[hi] <= choice.scores[choice.main === 0 ? 0 : 1] - 6) return false
       const id = (hi === 0 ? p.build.R : p.build.L)[pick]
-      const cheap = !!p.foe || p.infinite || weaponRate(ITEMS[id], p.build.mods) < 1.6
+      const cheap = !!p.foe || p.infinite || weaponRate(ITEMS[id], modsOf(p)) < 1.6
       const worth =
         (ext.cluster ?? 0) >= 3 ||
         (tgt?.k === 'f' && tgt.f.def.boss && bossOpen(tgt.f)) ||

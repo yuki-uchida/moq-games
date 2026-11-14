@@ -1,13 +1,14 @@
 /**
  * Saved progress (mission unlocks and best ranks) and the armory (selected animal, chosen loadout per animal,
- * 3 custom loadouts per animal). Versioned; older shapes migrate forward; every loadout passes
- * repairLoadout (→ sanitizeLoadout) on load.
+ * 3 custom loadouts per animal). Versioned; older shapes migrate forward. Loadouts are only repaired structurally on
+ * load (unknown ids dropped, 16 slots): a stored loadout that breaks the rules is kept as it was saved and is
+ * refused for use (loadoutBlocker) until the player fixes it; nothing is silently rewritten.
  */
 import { DIFFICULTIES, type Difficulty } from '../data/enemies'
 import { PRESETS, presetById, type Loadout } from '../data/loadout'
 import { MISSION_IDS, type MissionId } from '../data/missions'
 import { SPECIES, SPECIES_IDS, type SpeciesId } from '../data/species'
-import { cloneLoadout, repairLoadout } from './loadouts'
+import { cloneLoadout, repairLoadoutShape, safeLoadoutErrors } from './loadouts'
 import { clampNumber, isRecord, readJson, writeJson, type KeyValueStore } from './storage'
 
 export const PROGRESS_KEY = 'progress'
@@ -167,7 +168,7 @@ const cleanName = (v: unknown, fallback: string) => {
  * Migrates and repairs a stored armory. Version 1 (the first prototype) stored `custom` as plain loadout
  * arrays without names and `selected` instead of `species`.
  */
-export function sanitizeArmory(raw: unknown, sanitize?: (l: unknown) => Loadout): Armory {
+export function sanitizeArmory(raw: unknown): Armory {
   const out = emptyArmory()
   if (!isRecord(raw)) return out
   const version = typeof raw.version === 'number' ? raw.version : 1
@@ -181,11 +182,11 @@ export function sanitizeArmory(raw: unknown, sanitize?: (l: unknown) => Loadout)
       if (entry == null) continue
       if (version < 2) {
         // v1: the entry is the loadout itself
-        out.custom[id][i] = { name: `カスタム${i + 1}`, loadout: repairLoadout(entry, sanitize), savedAt: 0 }
+        out.custom[id][i] = { name: `カスタム${i + 1}`, loadout: repairLoadoutShape(entry), savedAt: 0 }
       } else if (isRecord(entry)) {
         out.custom[id][i] = {
           name: cleanName(entry.name, `カスタム${i + 1}`),
-          loadout: repairLoadout(entry.loadout, sanitize),
+          loadout: repairLoadoutShape(entry.loadout),
           savedAt: clampNumber(entry.savedAt, 0, 1e15, 0)
         }
       }
@@ -203,8 +204,7 @@ export function sanitizeArmory(raw: unknown, sanitize?: (l: unknown) => Loadout)
   return out
 }
 
-export const loadArmory = (store: KeyValueStore | null, sanitize?: (l: unknown) => Loadout) =>
-  sanitizeArmory(readJson(store, ARMORY_KEY), sanitize)
+export const loadArmory = (store: KeyValueStore | null) => sanitizeArmory(readJson(store, ARMORY_KEY))
 export const saveArmory = (store: KeyValueStore | null, a: Armory) => writeJson(store, ARMORY_KEY, a)
 
 /** The loadout an animal deploys with and its display name. */
@@ -218,7 +218,23 @@ export function resolveLoadout(armory: Armory, species: SpeciesId): { loadout: L
   return { loadout: cloneLoadout(preset.loadout), name: preset.name }
 }
 
+/** Why the loadout this animal would deploy with cannot be used (empty when it can). */
+export function loadoutProblems(armory: Armory, species: SpeciesId): string[] {
+  return safeLoadoutErrors(resolveLoadout(armory, species).loadout)
+}
+
+/** One Japanese sentence for the first problem of the animal's loadout, or null when it may be used. */
+export function loadoutBlocker(armory: Armory, species: SpeciesId): string | null {
+  const problems = loadoutProblems(armory, species)
+  if (!problems.length) return null
+  const { name } = resolveLoadout(armory, species)
+  return `「${name}」の編成に問題があります：${problems[0]}。部隊編成で直してください`
+}
+
+/** Stores a custom loadout; an invalid one is refused (throws) so it can never be saved. */
 export function storeCustom(armory: Armory, species: SpeciesId, index: number, entry: CustomLoadout): Armory {
+  const problems = safeLoadoutErrors(entry.loadout)
+  if (problems.length) throw new Error(problems[0])
   const custom = { ...armory.custom, [species]: [...armory.custom[species]] }
   custom[species][index] = { name: entry.name, loadout: cloneLoadout(entry.loadout), savedAt: entry.savedAt }
   return { ...armory, custom, choice: { ...armory.choice, [species]: { kind: 'custom', index } } }

@@ -4,7 +4,8 @@
  *
  * - 防衛任務: a host and three guests fill the squad, reach the match, every guest's input reaches the host and the
  *   host's snapshots reach every guest; the host aborting and then closing the room is shown to the guests.
- * - 三つ巴演習: a host and two guests on three teams play a 12-seat match and exchange inputs and snapshots.
+ * - 三つ巴演習: a host and two guests on three teams play a 12-seat match and exchange inputs and snapshots; each
+ *   guest opens its own team's sealed part (DESIGN §18) and never another team's.
  *
  * Requires MOQ_RELAY_EXECUTABLE_PATH, OPENSSL_EXECUTABLE_PATH and PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH.
  * Run: npx playwright test --config playwright.anima-front-real-moq.config.ts
@@ -20,6 +21,8 @@ type NetHook = {
     phase: string
     players: { id: string; team: number; bot: boolean; p: [number, number, number] }[]
   }
+  /** Guest (PvP): team parts it opened. */
+  parts?: { p: { id: string; team: number; p: [number, number, number] }[] }[]
 }
 
 declare global {
@@ -187,6 +190,38 @@ async function exchange(host: Page, guests: Page[]) {
       .toBeGreaterThan(2)
 }
 
+/**
+ * PvP: the teams cannot (in general) see each other, so each guest checks the round trip on its own body as the
+ * host reports it in the guest's sealed team part: its inputs reach the host and the host's sealed snapshots
+ * reach it and open with its team key (and hold only its team's members and the enemies it may know about).
+ */
+async function exchangePvp(host: Page, guests: Page[]) {
+  const reported = (g: Page, id: string) =>
+    g.evaluate((id) => {
+      const parts = window.__animaNet?.parts ?? []
+      return parts[parts.length - 1]?.p.find((p) => p.id === id)?.p ?? null
+    }, id)
+  for (const g of guests) {
+    const me = (await hook(g))!.me!
+    const team = (await hook(g))!.view!.players.find((p) => p.id === me)!.team
+    const before = await reported(g, me)
+    expect(before).not.toBeNull()
+    await walk(g, 1200)
+    await expect.poll(async () => dist(await reported(g, me), before), { timeout: 15_000 }).toBeGreaterThan(2)
+    await g.waitForTimeout(600)
+    expect(dist(await positionOf(g, me), await reported(g, me))).toBeLessThan(2)
+    const teams = await g.evaluate(
+      () => (window.__animaNet?.parts ?? []).slice(-40).map((part) => part.p.map((p) => p.team)) as number[][]
+    )
+    expect(teams.length).toBeGreaterThan(20)
+    // every part holds this guest's whole team
+    for (const t of teams) expect(t.filter((x) => x === team)).toHaveLength(4)
+  }
+  const own = await positionOf(host, 'h0')
+  await walk(host, 1200)
+  expect(dist(await positionOf(host, 'h0'), own)).toBeGreaterThan(2)
+}
+
 const ROOM = `real-${Date.now().toString(36)}`
 
 test('防衛任務: host + 3 guests play through a real MoQ relay', async () => {
@@ -276,7 +311,7 @@ test('三つ巴演習: host + 2 guests on three teams through a real MoQ relay',
     const v = (await hook(host))!.view!
     const ids = await Promise.all([host, ...guests].map(async (p) => (await hook(p))!.me!))
     expect(ids.map((id) => v.players.find((p) => p.id === id)?.team)).toEqual([0, 1, 2])
-    await exchange(host, guests)
+    await exchangePvp(host, guests)
     expect(errors).toEqual([])
   } catch (error) {
     for (const b of browsers)

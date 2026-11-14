@@ -132,6 +132,10 @@ orange anima core on the chest that glows with the remaining anima):
 - **Upkeep**: passive antiques (armour, some gadgets, enhancements with upkeep) drain per second while online.
 - **Critical (≤ 15%)**: every passive antique goes **offline** (no effect, no upkeep) and the HUD says
   「アーマー維持限界」. They come back online above 20%.
+  This includes the **enhancement options** (タカノメ, チーター, コアラ, ナマケモノ, キバ, サイノカワ, ラクダ): their damage,
+  spread, cost, rate, regeneration, speed, dash-cooldown and max-anima bonuses all stop too, so costs and stats fall
+  back to the bare animal until anima is above 20% again (the sim reads them through `modsOf`; ラクダ's max anima
+  shrinks while offline but never below 1 current anima).
 - **Regeneration**: after 4.0 s with no spending and no damage taken, +1.5/s (enhancements add). PvP team base:
   +12/s at any time, no delay. PvE: defeated enemies drop anima shards (`ANIMA_DROP` in enemy data) that fly to
   the nearest player within 6 m; hamsters get ×1.5.
@@ -447,6 +451,19 @@ Screens (every change uses a transition, never a hard cut):
   movement (`createPredictor`) and reconcile, send input at 30 Hz with edge counters (`presses`) so no jump or
   swap is lost or doubled.
 - Up to 4 humans in PvE and 12 in PvP; extra guests spectate. A human leaving is replaced by a bot.
+- **PvP information boundary.** The relay is anonymous and the host's track is one broadcast anyone can read, so
+  a PvP snapshot carries only a public part in clear (clock, scores, map props without owners, resting shards,
+  events that name no player, the kill feed, a name/bot/KO roster) plus one part per team sealed with that team's
+  AES-GCM key (`src/net/split.ts`, `seal.ts`). A team part holds its members, the enemies it may know about, their
+  events, shots and shards, and its input acks. The host recomputes the sets for every snapshot
+  (`src/net/visibility.ts`): an enemy is known within 6 m of a living member, in line of sight (boxes, ヤドカリ
+  walls, ink; eye, aim pivot or camera to head or chest; ≤ 150 m; camouflage ≥ 0.5 only within 5 m; 0.4 s
+  hysteresis), when that team's sonar reveals it, when it fired or used an antique in the last 1.5 s within 45 m,
+  when it stands in that team's base or was hit by that team in the last second; everyone in the results. Team
+  keys reach guests wrapped with an ECDH P-256 + HKDF key (guest key in its profile, host key in the lobby state)
+  and are replaced every match and whenever a holder leaves or changes team; a spectator holds only the key of
+  the team it follows. Guests draw unknown enemies as off the field and fade enemies out of / into sight
+  (`fog.ts`); the host's own screen keeps to the same boundary. PvE snapshots stay whole and unsealed.
 
 ## 19. Performance budget
 

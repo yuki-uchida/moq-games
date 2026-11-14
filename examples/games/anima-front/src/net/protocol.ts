@@ -6,9 +6,14 @@
  *              SnapMsg (one match snapshot: the world view, events since the previous snapshot, input acks) at 20 Hz.
  * guest → host: ProfileMsg (name, animal, loadout, team, ready, which match the game screen is in) on change and
  *              at 1 Hz, InputMsg (PlayerInput with the guest's prediction tick) at 30 Hz during a match.
+ *
+ * PvP information boundary: a PvP snapshot's `view` is only the public part (src/net/split.ts); what each team may
+ * know travels sealed with that team's key in `s` (src/net/seal.ts). Team keys reach guests wrapped for each one
+ * (ECDH: the guest's `ek` in its profile, the host's `hk` in the lobby state) in RoomMsg.keys.
  */
 import type { MatchSelection, Seat } from '../app/match'
 import type { MatchConfig, PlayerInput, TeamId, View } from '../sim/types'
+import type { RosterRow } from './split'
 import type { Profile } from './validate'
 
 export const APP_ID = 'anima-front-v1'
@@ -61,6 +66,10 @@ export interface RoomMsg {
   config?: MatchConfig
   /** Members the host removed from the room. */
   kicked: string[]
+  /** Host's ECDH public key (base64, PvP key wrapping). */
+  hk?: string
+  /** PvP briefing/match: key generation and, per member id, its team key wrapped for it (seal.ts). */
+  keys?: { g: number; w: Record<string, string> }
 }
 
 export interface SnapMsg {
@@ -72,8 +81,22 @@ export interface SnapMsg {
   over: boolean
   /** Per human seat: [input session nonce, guest prediction tick that matches this view]. */
   ack: Record<string, [number, number]>
+  /** PvE: the whole view. PvP: the public part only (no players, events about nobody, the kill feed). */
   view: View
+  /** PvP: roster aligned with the config players (split.ts RosterRow). */
+  r?: RosterRow[]
+  /** PvP: team key generation of `s`. */
+  g?: number
+  /** PvP: per team, its part (players it may know, their events, its acks) sealed with the team key. */
+  s?: Partial<Record<TeamId, string>>
 }
+
+/** Additional data that binds a sealed team part to its snapshot slot. */
+export const partAad = (matchId: number, gen: number, team: TeamId, tick: number) =>
+  `anima-front-v1:part:${matchId}:${gen}:${team}:${tick}`
+
+/** Additional data that binds a wrapped team key to its generation and member. */
+export const wrapAad = (gen: number, memberId: string) => `anima-front-v1:key:${gen}:${memberId}`
 
 export interface ProfileMsg {
   v: typeof PROTOCOL
@@ -81,6 +104,10 @@ export interface ProfileMsg {
   p: Profile
   /** The guest's secret: a reconnection with a new network id keeps its seat (never broadcast). */
   key?: string
+  /** The guest's ECDH public key (base64) for team keys. */
+  ek?: string
+  /** Spectators: the team whose view to follow (default 0). */
+  f?: TeamId
 }
 
 export interface InputMsg {

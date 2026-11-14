@@ -7,7 +7,7 @@
 import type { ThemeName } from '../audio/api'
 import { createGameRenderer } from '../render'
 import type { GameRenderer } from '../render/api'
-import type { PlayerView, View } from '../sim/types'
+import { BTN, type PlayerView, type View } from '../sim/types'
 import { ControlState, PlayerInputBuilder, type UiAction } from '../input/controls'
 import { GamePad } from '../input/gamepad'
 import { attachKeyboardMouse, type KeyboardMouse } from '../input/keyboard-mouse'
@@ -16,7 +16,7 @@ import { h, nodes, setClass } from '../ui/dom'
 import { focusInitial } from '../ui/focus'
 import { createGuideCard, guideSeen, markGuideSeen, type GuideDevice } from '../ui/hud/guide'
 import { createHud, type Hud } from '../ui/hud/hud'
-import { pawAffordable, pawCard } from '../ui/hud/model'
+import { CooldownRing, pawCard } from '../ui/hud/model'
 import { controlsHelp, createSettingsPanel } from '../ui/screens/settings'
 import { SPECIES, eyeHeight } from '../data/species'
 import type { AppContext, RouteArgs, Screen } from './context'
@@ -39,6 +39,7 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
   let renderer: GameRenderer | null = null
   let km: KeyboardMouse | null = null
   let touch: TouchControls | null = null
+  const touchRings = [new CooldownRing(), new CooldownRing()] as const
   let view: View | null = null
   let mode: 'loading' | 'guide' | 'play' | 'paused' | 'error' | 'done' = 'loading'
   const isDone = () => mode === 'done'
@@ -576,21 +577,22 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
         fov: ctx.settings.fov,
         device: state.lastDevice,
         hints: ctx.settings.controlHints,
+        interactHeld: (input.held & BTN.INTERACT) !== 0,
         follow,
         project: (p) => renderer!.project(p)
       })
       if (touch && me) {
-        const paw = (hand: PlayerView['hands'][number]): TouchPaw => {
-          const c = pawCard(hand)
+        const paw = (hand: PlayerView['hands'][number], ring: CooldownRing): TouchPaw => {
+          const c = pawCard(hand, { passives: me.passives, online: me.passivesOnline, anima: me.anima, ring })
           return {
             item: c.item,
             cost: c.cost,
             cooldown: c.cooldown,
             charge: c.charge,
-            affordable: pawAffordable(me.anima, c.costValue)
+            affordable: c.affordable
           }
         }
-        touch.setPaws(paw(me.hands[0]), paw(me.hands[1]))
+        touch.setPaws(paw(me.hands[0], touchRings[0]), paw(me.hands[1], touchRings[1]))
       }
       touch?.setInteract(hud.interactLabel)
       hud.setScoreboard(scoreboardOpen && mode === 'play')
