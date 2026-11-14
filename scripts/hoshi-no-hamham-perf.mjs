@@ -110,12 +110,20 @@ const LIGHT_CATEGORIES = [
 /** What --trace adds for reading by hand: the collector's phases, the compositor and the GPU. */
 const TRACE_CATEGORIES = [...LIGHT_CATEGORIES, 'disabled-by-default-v8.gc', 'cc', 'viz', 'gpu']
 /**
- * A frame is late when it waited this many display intervals or more, and the lateness is the page's doing when
- * its main thread was busy for this share of the wait or more (an idle thread means the frame was left out by the
- * display or the machine, which the page cannot help).
+ * A frame is late when it waited this many display intervals or more. Whose doing it was is read from the trace:
+ * the page's when its main thread was busy for this share of the wait or more; else the drawing side's when a
+ * thread that draws for the page was (the GPU process's main thread or a compositor thread: what the page asked to
+ * be drawn may be behind that); else nothing in the trace explains it.
  */
 const LATE_FACTOR = 1.5
 const LATE_BUSY_SHARE = 0.4
+/** The threads that draw what a page asks for: by name, in the GPU process and in the page's own process. */
+const DRAWING_THREADS = ['CrGpuMain', 'VizCompositorThread', 'Compositor']
+/**
+ * The page's frame callback did the game's work when it took this long (microseconds on the clock). With --every
+ * the callbacks of the frames in between only count display frames, in a few microseconds.
+ */
+const FRAME_WORK_US = 300
 const out = resolve(valueOf('--out') ?? join(root, '.build/hoshi-no-hamham-perf'))
 
 // ------------------------------------------------------------------------------------------------- budgets
@@ -183,14 +191,28 @@ const BUDGETS = [
         : { value: 'not judged without --gpu', ok: null }
   },
   {
+    id: 'A1',
+    sections: ['play', 'boss'],
+    what: 'audio nodes made besides the sources of notes and effects',
+    limit: 'at most 30 % of the nodes made',
+    judge: (m) => {
+      const all = m.audio.sources + m.audio.others
+      const share = all ? m.audio.others / all : 0
+      return {
+        value: `${m.audio.others} of ${all} (${f1(share * 100)} %; ${f0(m.audio.perSecond)} nodes a second)`,
+        ok: share <= 0.3
+      }
+    }
+  },
+  {
     id: 'G1',
     sections: ['play', 'boss'],
-    what: 'major garbage collections per 1000 frames',
+    what: 'major garbage collections per 1000 frames of the game',
     limit: 'at most 2',
     judge: (m) =>
       m.trace
         ? {
-            value: `${f1(m.trace.gc.majorPer1000)} (${m.trace.gc.major} in ${m.trace.frames} frames)`,
+            value: `${f1(m.trace.gc.majorPer1000)} (${m.trace.gc.major} in ${m.trace.frames} frames of the game)`,
             ok: m.trace.gc.majorPer1000 <= 2
           }
         : { value: 'no trace', ok: null }
@@ -198,7 +220,7 @@ const BUDGETS = [
   {
     id: 'L1',
     sections: ['play', 'boss'],
-    what: 'frames in which the page was laid out',
+    what: 'frames of the game in which the page was laid out',
     limit: 'at most 5 %',
     judge: (m) =>
       m.trace
@@ -587,12 +609,28 @@ function installPerf() {
       }
     })
 
+  // Audio nodes made in the page's own, running context (the offline contexts that render effects ahead are not
+  // counted): the sources of notes and effects, and everything else (gains, filters, panners).
+  perf.nodes = { sources: 0, others: 0 }
+  if (typeof BaseAudioContext !== 'undefined' && typeof AudioContext !== 'undefined')
+    for (const name of Object.getOwnPropertyNames(BaseAudioContext.prototype)) {
+      if (!name.startsWith('create') || name === 'createBuffer' || name === 'createPeriodicWave') continue
+      const original = BaseAudioContext.prototype[name]
+      if (typeof original !== 'function') continue
+      const kind = /^create(Oscillator|BufferSource|ConstantSource)$/.test(name) ? 'sources' : 'others'
+      BaseAudioContext.prototype[name] = function (...a) {
+        if (this instanceof AudioContext) perf.nodes[kind] += 1
+        return original.apply(this, a)
+      }
+    }
+
   const snap = () => {
     const stats = window.__hamham?.stats
     return {
       t: now(),
       art: stats ? { ...stats.art } : null,
-      sfx: stats ? { ...stats.sfx } : null
+      sfx: stats ? { ...stats.sfx } : null,
+      nodes: { ...perf.nodes }
     }
   }
   perf.snap = snap
@@ -719,6 +757,8 @@ function analyze(data, { gpuRun = gpu } = {}) {
     ms: delta('art', 'ms')
   }
   const sfx = { buffered: delta('sfx', 'buffered'), live: delta('sfx', 'live'), rendered: delta('sfx', 'rendered') }
+  const nodes = { sources: delta('nodes', 'sources'), others: delta('nodes', 'others') }
+  const recorded = Math.max(0, (data.t1 - data.t0) / 1000)
 
   // Cadence: how far the picture advances from one frame to the next. The picture shows the simulation at
   // `world.time` less the part of a step that the interpolation holds back; a frame "advances" by the difference
@@ -872,6 +912,7 @@ function analyze(data, { gpuRun = gpu } = {}) {
     art,
     remote: data.remote,
     sfx,
+    audio: { ...nodes, perSecond: recorded ? (nodes.sources + nodes.others) / recorded : 0 },
     ticks: { n: ticks.length, p95: percentile(ticks, 0.95), max: ticks.at(-1) ?? 0 },
     cadence: {
       eligible,
@@ -908,6 +949,7 @@ function runMarkdown(name, m, notes = []) {
     ),
     `- art painted on the main thread: ${artText(m.art)}, ${f1(m.art.ms)} ms; art from a worker: ${m.remote ? 'yes' : 'no'}`,
     `- sound effects: ${m.sfx.buffered} started from buffers, ${m.sfx.live} built live; ${m.sfx.rendered} buffers rendered`,
+    `- audio nodes made: ${f0(m.audio.perSecond)} a second (${m.audio.sources} sources of notes and effects, ${m.audio.others} others)`,
     `- music scheduler: ${m.ticks.n} ticks, p95 ${f2(m.ticks.p95)} ms, max ${f2(m.ticks.max)} ms`,
     `- cadence (frames on time, no hit-stop, no slow motion): the picture moves every ${m.cadence.beat} frame(s)${m.cadence.interpolated ? ', drawn between simulation states' : ''}; ${m.cadence.breaks} breaks of that beat (${f1(m.cadence.perMinute)} per minute), ${m.cadence.repeats} frames that repeated the picture, ${m.cadence.jumps} that jumped, of ${m.cadence.eligible} frames; longest run of repeats ${m.cadence.longestRepeatRun}`,
     `- hit-stop (staging): ${m.hitStop.frames} frames, ${f1(m.hitStop.share * 100)} % of the run`
@@ -918,7 +960,8 @@ function runMarkdown(name, m, notes = []) {
       `- garbage collection: ${t.gc.major} major (${f1(t.gc.majorPer1000)} per 1000 frames, longest ${f1(t.gc.majorLongest)} ms, ${f0(t.gc.majorMs)} ms in all), ${t.gc.minor} minor (longest ${f1(t.gc.minorLongest)} ms, ${f0(t.gc.minorMs)} ms in all)`,
       `- style and layout: ${t.style.count} style recalculations (${f2(t.style.perFrame)} per frame, ${f0(t.style.ms)} ms), ${t.layout.count} layouts (in ${f1(t.layout.share * 100)} % of the frames, ${f0(t.layout.ms)} ms)`,
       `- shaders compiled on first use${gpu ? '' : ' (software rendering, not judged without --gpu)'}: ${t.shaders.programs} programs${t.shaders.bursts.length ? `, ${t.shaders.bursts.map((b) => `${b.programs} at ${f2(b.at)} s (${f0(b.ms)} ms)`).join(', ')}` : ''}`,
-      `- late frames (they waited ${LATE_FACTOR} display intervals or more): ${t.late.count}; the game's thread was busy through ${t.late.page} of them (the page's doing; longest wait ${f0(t.late.pageLongest)} ms) and idle in ${t.late.elsewhere} (left out by the display or the machine; longest wait ${f0(t.late.elsewhereLongest)} ms)`,
+      `- frame tasks (the page's callback and the browser's style, layout and paint for the same frame): ${t.tasks.count}; median ${f1(t.tasks.p50)} ms, 90 % ${f1(t.tasks.p90)} ms, 99 % ${f1(t.tasks.p99)} ms, longest ${f1(t.tasks.longest)} ms; ${t.tasks.over16} of 16.7 ms or more`,
+      `- late frames (they waited ${LATE_FACTOR} display intervals or more): ${t.late.count}; the game's thread was busy through ${t.late.page} of them (the page's doing; longest wait ${f0(t.late.pageLongest)} ms); in ${t.late.drawing} a thread that draws for the page was (the GPU process or a compositor thread; longest wait ${f0(t.late.drawingLongest)} ms); ${t.late.unexplained} are not explained by a thread of the page or of its drawing (longest wait ${f0(t.late.unexplainedLongest)} ms)`,
       t.held.count
         ? `- **kept from running from outside: ${t.held.count} slices of the game's thread, ${f0(t.held.ms)} ms in all, longest ${f0(t.held.longest)} ms (${t.held.at.map((h) => `${f0(h.ms)} ms at ${f2(h.at)} s in ${h.name}`).join(', ')}${t.held.count > t.held.at.length ? ', ...' : ''}). The thread had work and did not run: this run's durations are the machine's as much as the page's**`
         : `- kept from running from outside: no (the game's thread ran whenever it had work)`
@@ -1141,13 +1184,32 @@ function traceStats(buffer, rate = throttle, data = null) {
       longest: list.reduce((m, e) => Math.max(m, e.dur), 0) / 1000
     }
   }
-  // A frame is a round of animation-frame callbacks (callbacks less than 3 ms apart are one round).
-  let frames = 0
-  let last = -Infinity
-  for (const e of main.filter((x) => x.name === 'FireAnimationFrame').sort((a, b) => a.ts - b.ts)) {
-    if (e.ts - last >= 3000) frames += 1
-    last = e.ts + e.dur
+  // The frames of the game: the ones its own record has. (Without a record: the rounds of animation-frame
+  // callbacks, callbacks less than 3 ms apart being one round. With --every that would count the display's frames,
+  // twice as many or more, and every "per frame" number below would come out too small.)
+  let frames = data?.frames?.length ?? 0
+  if (!frames) {
+    let last = -Infinity
+    for (const e of main.filter((x) => x.name === 'FireAnimationFrame').sort((a, b) => a.ts - b.ts)) {
+      if (e.ts - last >= 3000) frames += 1
+      last = e.ts + e.dur
+    }
   }
+  const isTask = (e) => e.name === 'RunTask' || e.name === 'ThreadControllerImpl::RunTask'
+  const mainTasks = main.filter((e) => typeof e.dur === 'number' && isTask(e)).sort((a, b) => a.ts - b.ts)
+  // The tasks that make a frame of the game: the callback and the browser's style, layout and paint after it.
+  const frameTasks = []
+  {
+    let ti = 0
+    const fires = main.filter((e) => e.name === 'FireAnimationFrame' && e.dur >= FRAME_WORK_US)
+    for (const fire of fires.sort((a, b) => a.ts - b.ts)) {
+      while (ti < mainTasks.length && mainTasks[ti].ts + mainTasks[ti].dur < fire.ts) ti += 1
+      const task = mainTasks[ti]
+      if (task && task.ts <= fire.ts && frameTasks.at(-1) !== task) frameTasks.push(task)
+    }
+  }
+  const taskMs = frameTasks.map((e) => e.dur / 1000).sort((a, b) => a - b)
+  const taskAt = (q) => (taskMs.length ? taskMs[Math.min(taskMs.length - 1, Math.floor(taskMs.length * q))] : 0)
   const major = sum('MajorGC')
   const minor = sum('MinorGC')
   const layout = sum('Layout')
@@ -1185,49 +1247,85 @@ function traceStats(buffer, rate = throttle, data = null) {
     held.longest = Math.max(held.longest, lost)
     if (held.at.length < 5) held.at.push({ at: (e.ts - from) / 1e6, ms: lost, name: e.name })
   }
-  // Late frames: how busy the game's thread was between a late frame and the one before it. The page's clock and
-  // the trace's meet at the mark `perf:begin`, made at `data.t0`.
-  const late = { count: 0, page: 0, elsewhere: 0, pageLongest: 0, elsewhereLongest: 0, frames: [] }
+  // Late frames: which threads were busy between a late frame and the one before it. The page's clock and the
+  // trace's meet at the mark `perf:begin`, made at `data.t0`.
+  const late = {
+    count: 0,
+    page: 0,
+    drawing: 0,
+    unexplained: 0,
+    pageLongest: 0,
+    drawingLongest: 0,
+    unexplainedLongest: 0,
+    frames: []
+  }
   const stamps = (data?.frames ?? []).map((f) => f.ts)
   if (stamps.length > 2 && typeof data.t0 === 'number') {
+    // The tasks of the page's main thread, and of every thread that draws for it, by thread.
     const tasks = events
-      .filter(
-        (e) =>
-          e.ph === 'X' &&
-          key(e) === key(begin) &&
-          typeof e.dur === 'number' &&
-          (e.name === 'RunTask' || e.name === 'ThreadControllerImpl::RunTask')
-      )
+      .filter((e) => e.ph === 'X' && key(e) === key(begin) && typeof e.dur === 'number' && isTask(e))
       .sort((a, b) => a.ts - b.ts)
+    const drawing = new Map()
+    for (const e of events) {
+      if (e.ph !== 'M' || e.name !== 'thread_name' || !DRAWING_THREADS.includes(e.args?.name)) continue
+      // A compositor thread of another page is not this page's.
+      if (e.args.name === 'Compositor' && e.pid !== begin.pid) continue
+      if (e.args.name !== 'Compositor' && e.pid !== gpuPid) continue
+      drawing.set(key(e), [])
+    }
+    for (const e of events) if (e.ph === 'X' && typeof e.dur === 'number' && isTask(e)) drawing.get(key(e))?.push(e)
+    for (const list of drawing.values()) list.sort((a, b) => a.ts - b.ts)
+    /** Milliseconds of `[fromTs, toTs]` covered by the tasks of `list` (sorted by start; none overlap). */
+    const busyIn = (list, fromTs, toTs) => {
+      let lo = 0
+      let hi = list.length
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1
+        if (list[mid].ts + list[mid].dur < fromTs) lo = mid + 1
+        else hi = mid
+      }
+      let busy = 0
+      for (let j = lo; j < list.length && list[j].ts < toTs; j++)
+        busy += Math.max(0, Math.min(list[j].ts + list[j].dur, toTs) - Math.max(list[j].ts, fromTs))
+      return busy / 1000
+    }
     const gaps = stamps.slice(1).map((t, i) => t - stamps[i])
     const usual = [...gaps].sort((a, b) => a - b)[gaps.length >> 1]
-    let cursor = 0
     for (let i = 1; i < stamps.length; i++) {
       const waited = stamps[i] - stamps[i - 1]
       if (waited < usual * LATE_FACTOR) continue
       const fromTs = begin.ts + (stamps[i - 1] - data.t0) * 1000
       const toTs = begin.ts + (stamps[i] - data.t0) * 1000
-      while (cursor < tasks.length && tasks[cursor].ts + tasks[cursor].dur < fromTs) cursor += 1
-      let busy = 0
-      for (let j = cursor; j < tasks.length && tasks[j].ts < toTs; j++)
-        busy += Math.max(0, Math.min(tasks[j].ts + tasks[j].dur, toTs) - Math.max(tasks[j].ts, fromTs))
-      busy = Math.min(waited, busy / 1000)
-      const page = tasks.length > 0 && busy >= waited * LATE_BUSY_SHARE
+      const busy = Math.min(waited, busyIn(tasks, fromTs, toTs))
+      // The busiest of the drawing threads.
+      let drew = 0
+      for (const list of drawing.values()) drew = Math.max(drew, Math.min(waited, busyIn(list, fromTs, toTs)))
+      const by =
+        tasks.length > 0 && busy >= waited * LATE_BUSY_SHARE
+          ? 'page'
+          : drew >= waited * LATE_BUSY_SHARE
+            ? 'drawing'
+            : 'unexplained'
       late.count += 1
-      if (page) {
-        late.page += 1
-        late.pageLongest = Math.max(late.pageLongest, waited)
-      } else {
-        late.elsewhere += 1
-        late.elsewhereLongest = Math.max(late.elsewhereLongest, waited)
-      }
-      if (late.frames.length < 400) late.frames.push({ at: (stamps[i] - data.t0) / 1000, waited, busy, page })
+      late[by] += 1
+      late[`${by}Longest`] = Math.max(late[`${by}Longest`], waited)
+      if (late.frames.length < 400)
+        late.frames.push({ at: (stamps[i] - data.t0) / 1000, waited, busy, drew, by, page: by === 'page' })
     }
   }
   return {
     frames,
     held,
     late,
+    tasks: {
+      count: taskMs.length,
+      p50: taskAt(0.5),
+      p90: taskAt(0.9),
+      p99: taskAt(0.99),
+      longest: taskMs.at(-1) ?? 0,
+      /** Frame tasks as long as a frame at 60 frames a second, or longer: the next frame is late by them alone. */
+      over16: taskMs.filter((ms) => ms >= 1000 / 60).length
+    },
     gc: {
       major: major.count,
       majorMs: major.ms,
