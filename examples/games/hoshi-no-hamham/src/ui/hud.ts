@@ -362,6 +362,9 @@ export class Hud implements HudApi, PrimeTarget {
     if (this.primer.busy) return
     this.root.hidden = true
     this.clearTransient()
+    // Back in a menu: a layout whose walk a stage cut short, or that came with a turn of the phone during one, is
+    // walked now (the primer does nothing for a layout it has finished).
+    this.primer.whenIdle()
   }
 
   private clearTransient() {
