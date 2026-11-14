@@ -144,9 +144,9 @@ const BUDGETS = [
   {
     id: 'C1',
     sections: ['pacing'],
-    what: 'cadence anomalies (frames on time with 0 or 2 or more steps where nothing asks for it)',
+    what: 'cadence breaks (frames on time whose picture did not advance like the frames before it)',
     limit: '0',
-    judge: (m) => ({ value: String(m.cadence.anomalies), ok: m.cadence.anomalies === 0 })
+    judge: (m) => ({ value: String(m.cadence.breaks), ok: m.cadence.breaks === 0 })
   },
   {
     id: 'M1',
@@ -422,6 +422,8 @@ function installPerf() {
           cur.lk = session.director.inputLocked
           cur.cu = session.director.current ?? null
           cur.wt = session.world.time
+          // Where between the last two simulation states the picture is (older builds always show the last one).
+          cur.al = typeof session.alpha === 'number' ? session.alpha : 1
           cur.st = session.world.state
           cur.wid = worldId(session.world)
         }
@@ -545,34 +547,63 @@ function analyze(data, { gpuRun = gpu } = {}) {
   }
   const sfx = { buffered: delta('sfx', 'buffered'), live: delta('sfx', 'live'), rendered: delta('sfx', 'rendered') }
 
-  // Cadence: steps of a frame from the simulation clock; only frames where nothing asks for 0 or 2 steps count.
-  let zero = 0
-  let multi = 0
-  let eligible = 0
-  let run = 0
-  let longestZeroRun = 0
-  for (let i = 1; i < data.frames.length; i++) {
-    const f = data.frames[i]
-    const p = data.frames[i - 1]
-    if (f.scr !== 'play' || p.scr !== 'play' || f.wid === undefined || f.wid !== p.wid || f.wt < p.wt) {
-      run = 0
-      continue
+  // Cadence: how far the picture advances from one frame to the next. The picture shows the simulation at
+  // `world.time` less the part of a step that the interpolation holds back; a frame "advances" by the difference
+  // to the frame before. Only frames where nothing asks for anything else are judged: on time (a late frame
+  // legitimately catches up), no hit-stop, no slow motion, the stage being played.
+  const STEP = 1 / 60
+  const period = median / 1000
+  const shown = (f) => f.wt - (1 - (f.al ?? 1)) * STEP
+  const plain = (f, p) =>
+    f.scr === 'play' &&
+    p.scr === 'play' &&
+    f.wid !== undefined &&
+    f.wid === p.wid &&
+    f.wt >= p.wt &&
+    f.fr === 0 &&
+    p.fr === 0 &&
+    f.sc === 1 &&
+    p.sc === 1 &&
+    f.st === 'play' &&
+    f.ts - p.ts < median * 1.6
+  const advance = new Array(data.frames.length).fill(null)
+  for (let i = 1; i < data.frames.length; i++)
+    if (plain(data.frames[i], data.frames[i - 1])) advance[i] = shown(data.frames[i]) - shown(data.frames[i - 1])
+  // The beat: every how many frames the picture moves (1 at 60 Hz or with interpolation, 2 at 120 Hz without).
+  const moving = []
+  let lastMove = -1
+  for (let i = 1; i < advance.length; i++) {
+    if (advance[i] === null) lastMove = -1
+    else if (advance[i] > period * 0.2) {
+      if (lastMove >= 0) moving.push(i - lastMove)
+      lastMove = i
     }
-    // A frame that came late legitimately catches up with more steps, so only frames on time are judged.
-    if (!(f.fr === 0 && p.fr === 0 && f.sc === 1 && p.sc === 1 && f.st === 'play' && f.ts - p.ts < 25)) {
+  }
+  const beat = Math.max(1, Math.round(percentile(sortedAsc(moving), 0.5)) || 1)
+  let eligible = 0
+  let repeats = 0
+  let jumps = 0
+  let breaks = 0
+  let run = 0
+  let longestRepeatRun = 0
+  for (let i = 1; i < advance.length; i++) {
+    const a = advance[i]
+    if (a === null) {
       run = 0
       continue
     }
     eligible += 1
-    const steps = Math.round((f.wt - p.wt) * 60)
-    if (steps === 0) {
-      zero += 1
+    if (a <= period * 0.2) {
+      repeats += 1
       run += 1
-      longestZeroRun = Math.max(longestZeroRun, run)
+      longestRepeatRun = Math.max(longestRepeatRun, run)
     } else {
       run = 0
-      if (steps >= 2) multi += 1
+      if (a > period * beat * 1.65) jumps += 1
     }
+    // A break: the picture did not advance as it did one beat earlier (a frame repeated or skipped out of turn).
+    const before = i - beat >= 1 ? advance[i - beat] : null
+    if (before !== null && Math.abs(a - before) > period * 0.35) breaks += 1
   }
   const runSeconds = frames.length > 1 ? (frames.at(-1).ts - frames[0].ts) / 1000 : 0
 
@@ -667,11 +698,13 @@ function analyze(data, { gpuRun = gpu } = {}) {
     ticks: { n: ticks.length, p95: percentile(ticks, 0.95), max: ticks.at(-1) ?? 0 },
     cadence: {
       eligible,
-      zero,
-      multi,
-      anomalies: zero + multi,
-      perMinute: runSeconds ? ((zero + multi) / runSeconds) * 60 : 0,
-      longestZeroRun
+      beat,
+      interpolated: data.frames.some((f) => (f.al ?? 1) < 1),
+      repeats,
+      jumps,
+      breaks,
+      perMinute: runSeconds ? (breaks / runSeconds) * 60 : 0,
+      longestRepeatRun
     },
     hitStop: { frames: hitStop, share: frames.length ? hitStop / frames.length : 0 },
     events,
@@ -693,7 +726,7 @@ function runMarkdown(name, m, notes = []) {
     `- art painted on the main thread: ${artText(m.art)}, ${f1(m.art.ms)} ms; art from a worker: ${m.remote ? 'yes' : 'no'}`,
     `- sound effects: ${m.sfx.buffered} started from buffers, ${m.sfx.live} built live; ${m.sfx.rendered} buffers rendered`,
     `- music scheduler: ${m.ticks.n} ticks, p95 ${f2(m.ticks.p95)} ms, max ${f2(m.ticks.max)} ms`,
-    `- cadence (where nothing asks for it): ${m.cadence.zero} frames with 0 steps, ${m.cadence.multi} with 2 or more, of ${m.cadence.eligible} frames; ${f1(m.cadence.perMinute)} per minute; longest run without a step ${m.cadence.longestZeroRun}`,
+    `- cadence (frames on time, no hit-stop, no slow motion): the picture moves every ${m.cadence.beat} frame(s)${m.cadence.interpolated ? ', drawn between simulation states' : ''}; ${m.cadence.breaks} breaks of that beat (${f1(m.cadence.perMinute)} per minute), ${m.cadence.repeats} frames that repeated the picture, ${m.cadence.jumps} that jumped, of ${m.cadence.eligible} frames; longest run of repeats ${m.cadence.longestRepeatRun}`,
     `- hit-stop (staging): ${m.hitStop.frames} frames, ${f1(m.hitStop.share * 100)} % of the run`
   )
   if (m.log.length) lines.push(`- staged moments seen: ${m.log.join(', ')}`)
@@ -1117,7 +1150,7 @@ async function sectionPlay() {
       'long tasks',
       'tiles painted',
       'live sfx',
-      'cadence anomalies',
+      'cadence breaks',
       'ended'
     ],
     runs.map((m) => [
@@ -1128,7 +1161,7 @@ async function sectionPlay() {
       m.longtasks.count,
       m.art.tiles,
       `${m.sfx.live} of ${m.sfx.live + m.sfx.buffered}`,
-      m.cadence.anomalies,
+      m.cadence.breaks,
       m.ended
     ])
   )
@@ -1219,22 +1252,24 @@ async function sectionPacing() {
           'display rate',
           'frame interval median',
           'frames',
-          'frames with 0 steps',
-          'frames with 2 or more',
-          'anomalies',
+          'picture moves every',
+          'breaks of the beat',
           'per minute',
-          'longest run without a step'
+          'frames that repeated the picture',
+          'frames that jumped',
+          'longest run of repeats'
         ],
         [
           [
             `${f0(m.interval.rate)} Hz`,
             `${f1(m.interval.median)} ms`,
             m.frames,
-            m.cadence.zero,
-            m.cadence.multi,
-            m.cadence.anomalies,
+            `${m.cadence.beat} frame(s)${m.cadence.interpolated ? ', interpolated' : ''}`,
+            m.cadence.breaks,
             f1(m.cadence.perMinute),
-            m.cadence.longestZeroRun
+            m.cadence.repeats,
+            m.cadence.jumps,
+            m.cadence.longestRepeatRun
           ]
         ]
       ),

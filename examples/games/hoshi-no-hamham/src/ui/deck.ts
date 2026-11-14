@@ -34,9 +34,10 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, te
   return node
 }
 
+/** Restarts a CSS animation class on an element (a style flush, no layout). */
 function replay(node: HTMLElement, className: string) {
   node.classList.remove(className)
-  void node.offsetWidth
+  void getComputedStyle(node).animationName
   node.classList.add(className)
 }
 

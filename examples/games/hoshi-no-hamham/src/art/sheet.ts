@@ -13,22 +13,32 @@ export interface Anim {
 
 export type Sheet = Record<string, Anim>
 
+/** Ticks in one pass of the animation (the sum of `hold`, or one per frame without it). */
+function totalTicks(anim: Anim): number {
+  const hold = anim.hold
+  if (!hold) return anim.frames.length
+  let total = 0
+  for (let i = 0; i < hold.length; i++) total += hold[i]
+  return total
+}
+
 /** Frame index at `t` seconds into the animation (non-looping animations hold their last frame). */
 export function frameAt(anim: Anim, t: number) {
-  const hold = anim.hold ?? anim.frames.map(() => 1)
-  const total = hold.reduce((a, b) => a + b, 0)
+  const hold = anim.hold
+  const total = totalTicks(anim)
   let tick = Math.floor(Math.max(0, t) * anim.fps)
   if (!anim.loop && tick >= total) return anim.frames.length - 1
   tick %= total
-  for (let i = 0; i < hold.length; i++) {
-    tick -= hold[i]
+  const count = hold ? hold.length : anim.frames.length
+  for (let i = 0; i < count; i++) {
+    tick -= hold ? hold[i] : 1
     if (tick < 0) return i
   }
   return 0
 }
 
 /** Length of one pass of the animation in seconds. */
-export const duration = (anim: Anim) => (anim.hold ?? anim.frames.map(() => 1)).reduce((a, b) => a + b, 0) / anim.fps
+export const duration = (anim: Anim) => totalTicks(anim) / anim.fps
 
 /**
  * Default anchor of a frame: the feet of a character cell (64×64 → [32, 60], 96×96 → [48, 90],
@@ -41,7 +51,20 @@ export function defaultAnchor(w: number, h: number): readonly [number, number] {
   return [Math.floor(w / 2), Math.floor(h / 2)]
 }
 
-export const anchorOf = (anim: Anim) => anim.anchor ?? defaultAnchor(anim.frames[0].w, anim.frames[0].h)
+/** The default anchors already handed out, by frame size, so a frame drawn every tick does not allocate one. */
+const defaultAnchors = new Map<number, readonly [number, number]>()
+
+export const anchorOf = (anim: Anim) => {
+  if (anim.anchor) return anim.anchor
+  const { w, h } = anim.frames[0]
+  const key = w * 65536 + h
+  let anchor = defaultAnchors.get(key)
+  if (!anchor) {
+    anchor = defaultAnchor(w, h)
+    defaultAnchors.set(key, anchor)
+  }
+  return anchor
+}
 
 /** Builds an Anim from frames (helper for art modules). */
 export const anim = (frames: Raster[], fps: number, loop: boolean, extra: Partial<Anim> = {}): Anim => ({
