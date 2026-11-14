@@ -138,6 +138,59 @@ describe('a dig', () => {
     expect(after.get('4,1')?.pixels).not.toEqual(before.get('4,1')?.pixels)
   })
 
+  it('asks for the neighbours that were never drawn too, so nothing is painted when they come into view', async () => {
+    const g = grid(['..........', '.D#DDDDDD.', '.DDDDDDD#.', '##########'])
+    const { source, asked } = heldSource()
+    const view = new TerrainView(g, new Set(), source)
+    // Nothing has been drawn yet: every neighbour of the dig is out of view.
+    dig(g, view, 6, 1)
+    await settle()
+    expect(asked).toHaveLength(1)
+    const queries = asked[0].request.kind === 'tiles' ? asked[0].request.queries : []
+    for (const [tx, ty] of [
+      [5, 1],
+      [7, 1],
+      [5, 2],
+      [6, 2],
+      [7, 2]
+    ])
+      expect(
+        queries.some((q) => q.tx === tx && q.ty === ty),
+        `${tx},${ty}`
+      ).toBe(true)
+    expect(view.pending(5, 1)).toBe(true)
+    asked[0].release()
+    await settle()
+    expect(view.pending(5, 1)).toBe(false)
+    for (const q of queries) expect(hasTile(q)).toBe(true)
+    // The neighbours come into view: their pictures are here.
+    const painted = artStats.tiles
+    const shown = drawn(view)
+    for (const q of queries) expect(shown.has(`${q.tx},${q.ty}`)).toBe(true)
+    expect(shown.has('6,1')).toBe(false)
+    const neighbours = new Set(queries.map((q) => `${q.tx},${q.ty}`))
+    // Only the cells the dig did not touch were painted by this first drawing.
+    let others = 0
+    for (const cell of shown.keys()) if (!neighbours.has(cell)) others += 1
+    expect(artStats.tiles - painted).toBeLessThanOrEqual(others)
+  })
+
+  it('a neighbour that comes into view before the answer is painted here, and the answer changes nothing', async () => {
+    const g = grid(['..........', '.DD#DD#DD.', '.D#DDDDDD.', '##########'])
+    const { source, asked } = heldSource()
+    const view = new TerrainView(g, new Set(), source)
+    dig(g, view, 4, 2)
+    await settle()
+    expect(asked).toHaveLength(1)
+    const early = drawn(view)
+    expect(early.has('5,2')).toBe(true)
+    expect(view.pending(5, 2)).toBe(true)
+    asked[0].release()
+    await settle()
+    expect(view.pending(5, 2)).toBe(false)
+    expect(drawn(view).get('5,2')?.pixels).toEqual(early.get('5,2')?.pixels)
+  })
+
   it('ignores an answer that a newer dig of the same cells has overtaken, and asks again', async () => {
     const g = grid(ROWS)
     const { source, asked } = heldSource()

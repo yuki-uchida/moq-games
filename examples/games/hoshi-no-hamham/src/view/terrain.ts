@@ -132,7 +132,10 @@ export class TerrainView {
   private cache = new Map<number, HTMLCanvasElement | null>()
   private decorList: Decor[]
   private decorCache = new Map<number, DecorPick[]>()
-  /** Cells waiting for a new picture from the source, with the ticket of the newest request for each. */
+  /**
+   * Cells waiting for a new picture from the source, with the ticket of the newest request for each. One that has
+   * been drawn keeps its old picture meanwhile; one that has not is simply not here yet.
+   */
   private waiting = new Map<number, number>()
   /** Cells of the current frame's digs, asked for together once the frame's events are handled. */
   private batch = new Map<number, TileQuery>()
@@ -152,7 +155,8 @@ export class TerrainView {
 
   /**
    * A dig at (tx, ty): the dug cell stops being drawn; a neighbour whose new picture is here switches to it at once,
-   * any other one keeps its old picture until the source has painted the new one. Nothing is painted here.
+   * any other one keeps its old picture until the source has painted the new one. That goes for the neighbours out
+   * of view as well, so their pictures are here before they scroll in. Nothing is painted here.
    */
   invalidate(tx: number, ty: number) {
     for (const [x, y] of affectedBy(tx, ty)) {
@@ -162,8 +166,8 @@ export class TerrainView {
       this.waiting.delete(i)
       this.batch.delete(i)
       const q = tileQuery(this.grid, x, y)
-      // Empty now, or never drawn (looked up when it comes into view): nothing to keep.
-      if (!q || !this.cache.has(i)) {
+      if (!q) {
+        // Empty now: nothing to draw.
         this.cache.delete(i)
         continue
       }
@@ -205,7 +209,7 @@ export class TerrainView {
     )
   }
 
-  /** True while a dug cell still shows its old picture (for tests). */
+  /** True while the new picture of a cell next to a dig is still to come (for tests). */
   pending(tx: number, ty: number) {
     return this.waiting.has(ty * this.grid.w + tx)
   }
