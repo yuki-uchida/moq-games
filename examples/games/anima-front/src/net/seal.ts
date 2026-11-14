@@ -19,6 +19,32 @@ const subtle = () => {
 
 const utf8 = (text: string) => new TextEncoder().encode(text)
 
+/**
+ * Sealing work in flight. WebCrypto and the compression streams run in real time, outside any fake clock: tests
+ * that step the rooms on fake timers wait for this to drain before the next frame (`sealingIdle`).
+ */
+let inFlight = 0
+let idleWaiters: (() => void)[] = []
+
+function tracked<T>(work: Promise<T>): Promise<T> {
+  inFlight++
+  const done = () => {
+    if (--inFlight > 0) return
+    const waiters = idleWaiters
+    idleWaiters = []
+    for (const wake of waiters) wake()
+  }
+  work.then(done, done)
+  return work
+}
+
+/** True while sealing work started by this module has not finished. */
+export const sealingBusy = () => inFlight > 0
+
+/** Resolves once no sealing work is in flight. */
+export const sealingIdle = (): Promise<void> =>
+  inFlight === 0 ? Promise.resolve() : new Promise((resolve) => idleWaiters.push(resolve))
+
 export function toB64(bytes: Uint8Array): string {
   let s = ''
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
@@ -42,7 +68,9 @@ export interface EcdhPair {
   pub: string
 }
 
-export async function newEcdh(): Promise<EcdhPair> {
+export const newEcdh = (): Promise<EcdhPair> => tracked(makeEcdh())
+
+async function makeEcdh(): Promise<EcdhPair> {
   const pair = (await subtle().generateKey({ name: 'ECDH', namedCurve: 'P-256' }, false, [
     'deriveBits'
   ])) as CryptoKeyPair
@@ -57,7 +85,10 @@ export const isEcdhPub = (v: unknown): v is string => isB64(v, 120) && fromB64(v
  * The AES-GCM key that wraps team keys for one guest: HKDF over the ECDH secret between `priv` and `peerPub`,
  * salted with the room code and bound to the guest's network id. Host and guest derive the same key.
  */
-export async function wrapKey(priv: CryptoKey, peerPub: string, room: string, memberId: string): Promise<CryptoKey> {
+export const wrapKey = (priv: CryptoKey, peerPub: string, room: string, memberId: string): Promise<CryptoKey> =>
+  tracked(deriveWrapKey(priv, peerPub, room, memberId))
+
+async function deriveWrapKey(priv: CryptoKey, peerPub: string, room: string, memberId: string): Promise<CryptoKey> {
   const s = subtle()
   const pub = await s.importKey(
     'raw',
@@ -83,13 +114,15 @@ export async function wrapKey(priv: CryptoKey, peerPub: string, room: string, me
 }
 
 export function teamKey(raw: Uint8Array): Promise<CryptoKey> {
-  return subtle().importKey('raw', raw as BufferSource, 'AES-GCM', false, ['encrypt', 'decrypt'])
+  return tracked(subtle().importKey('raw', raw as BufferSource, 'AES-GCM', false, ['encrypt', 'decrypt']))
 }
 
 export const randomBytes = (n: number) => crypto.getRandomValues(new Uint8Array(n))
 
 /** AES-GCM: base64 of IV (12 bytes) + ciphertext + tag. */
-export async function seal(key: CryptoKey, data: Uint8Array, aad: string): Promise<string> {
+export const seal = (key: CryptoKey, data: Uint8Array, aad: string): Promise<string> => tracked(encrypt(key, data, aad))
+
+async function encrypt(key: CryptoKey, data: Uint8Array, aad: string): Promise<string> {
   const iv = randomBytes(12)
   const ct = new Uint8Array(
     await subtle().encrypt(
@@ -105,7 +138,10 @@ export async function seal(key: CryptoKey, data: Uint8Array, aad: string): Promi
 }
 
 /** Opens what seal() made; throws when the key, the additional data or the bytes do not match. */
-export async function unseal(key: CryptoKey, text: string, aad: string): Promise<Uint8Array> {
+export const unseal = (key: CryptoKey, text: string, aad: string): Promise<Uint8Array> =>
+  tracked(decrypt(key, text, aad))
+
+async function decrypt(key: CryptoKey, text: string, aad: string): Promise<Uint8Array> {
   const all = fromB64(text)
   if (all.length < 28) throw new Error('sealed data too short')
   const pt = await subtle().decrypt(
@@ -124,12 +160,18 @@ async function pipe(data: Uint8Array, stream: CompressionStream | DecompressionS
 /** Largest inflated team part accepted from the host. */
 const MAX_PART = 1 << 20
 
-export async function sealJson(key: CryptoKey, value: unknown, aad: string): Promise<string> {
+export const sealJson = (key: CryptoKey, value: unknown, aad: string): Promise<string> =>
+  tracked(packJson(key, value, aad))
+
+async function packJson(key: CryptoKey, value: unknown, aad: string): Promise<string> {
   const z = await pipe(utf8(JSON.stringify(value)), new CompressionStream('deflate-raw'))
   return seal(key, z, aad)
 }
 
-export async function unsealJson(key: CryptoKey, text: string, aad: string): Promise<unknown> {
+export const unsealJson = (key: CryptoKey, text: string, aad: string): Promise<unknown> =>
+  tracked(openJson(key, text, aad))
+
+async function openJson(key: CryptoKey, text: string, aad: string): Promise<unknown> {
   const z = await unseal(key, text, aad)
   const raw = await pipe(z, new DecompressionStream('deflate-raw'))
   if (raw.length > MAX_PART) throw new Error('sealed part too large')

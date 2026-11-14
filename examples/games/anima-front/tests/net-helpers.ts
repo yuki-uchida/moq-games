@@ -3,11 +3,13 @@
  * messages JSON-cloned and delivered after `latency` ms through (fake) timers, presence like the real host
  * (hello → admitted), the host leaving reported to guests as an error, and a byte counter per message.
  */
+import { setTimeout as realTimeout } from 'node:timers'
 import { deflateRawSync } from 'node:zlib'
 import { vi } from 'vitest'
 import { createOnlineLobbyProvider } from '../src/app/online'
 import type { LobbyProvider, LocalChoice } from '../src/app/lobby'
 import type { NetTransport, TransportFactory, TransportOptions } from '../src/net/protocol'
+import { sealingBusy, sealingIdle } from '../src/net/seal'
 import { makeLoadout } from '../src/data/loadout'
 import type { SpeciesId } from '../src/data/species'
 
@@ -193,11 +195,25 @@ export function choice(name: string, species: SpeciesId = 'shiba', team?: 0 | 1 
   return c
 }
 
-/** Advances fake time in small frames. */
+/**
+ * WebCrypto and the compression streams (src/net/seal.ts) run in real time while the tests step fake time. Before
+ * the next frame, the sealing work started so far, and what its results start next, is let finish, so a slow
+ * machine plays the same frames as a fast one. (The real clock only caps a wait that never ends.)
+ */
+export async function drainSealing() {
+  for (let round = 0; round < 100 && sealingBusy(); round++) {
+    await Promise.race([sealingIdle(), new Promise((resolve) => realTimeout(resolve, 2000))])
+    for (let i = 0; i < 8; i++) await Promise.resolve()
+  }
+}
+
+/** Advances fake time in small frames (sealing work finishes within its frame, see drainSealing). */
 export async function run(ms: number, frame?: () => void, step = 1000 / 60) {
   for (let t = 0; t < ms; t += step) {
     await vi.advanceTimersByTimeAsync(step)
+    await drainSealing()
     frame?.()
+    await drainSealing()
   }
 }
 
@@ -208,6 +224,9 @@ export async function settle<T>(promise: Promise<T>, limit = 20_000): Promise<T>
     done = true
   })
   watched.catch(() => undefined)
-  for (let t = 0; t < limit && !done; t += 50) await vi.advanceTimersByTimeAsync(50)
+  for (let t = 0; t < limit && !done; t += 50) {
+    await vi.advanceTimersByTimeAsync(50)
+    await drainSealing()
+  }
   return watched
 }
