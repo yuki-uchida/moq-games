@@ -387,21 +387,24 @@ describe('bosses', () => {
     expectReleased(rig)
   })
 
-  for (const no of [3, 5, 8])
+  for (const no of [3, 5, 8, 10])
     for (const reducedMotion of [false, true])
-      it(`stage ${no}: the roar is posed for the whole intro clip and its tail${reducedMotion ? ' (reduced motion)' : ''}`, () => {
+      it(`stage ${no}: the roar is posed for the whole intro clip and its tail, until the moment ends${reducedMotion ? ' (reduced motion)' : ''}`, () => {
         const rig = started(no, { reducedMotion })
         const art = STAGES[no - 1].boss.art as BossArt
         wakeBoss(rig)
         rig.run(2, () => rig.view.actors.posing('boss') === 'intro')
         let posed = 0
         while (rig.view.actors.posing('boss') === 'intro' && posed < 4) {
+          // Up on every frame of the moment (the camera's return included) ...
+          expect(rig.director.current).toBe('boss-intro')
           rig.frame()
           posed += STEP
         }
+        // ... and gone with it.
+        expect(rig.director.current).not.toBe('boss-intro')
         const want = Math.max(BOSS_ROAR_SECONDS, clipLife(bossSpec(art).intro))
         expect(posed).toBeGreaterThanOrEqual(want - STEP * 1.5)
-        expect(posed).toBeLessThanOrEqual(want + STEP * 1.5)
         // The weasel and the ape linger on key poses of their roar: their intro outlasts the minimum.
         if (art === 'weaselBoss' || art === 'apeBoss') expect(want).toBeGreaterThan(BOSS_ROAR_SECONDS)
       })
@@ -444,11 +447,14 @@ describe('bosses', () => {
       const tail = seen.slice(end)
       for (const f of tail) expect([rage.frames - 2, rage.frames - 1]).toContain(f)
       if (!reducedMotion) expect(new Set(tail)).toEqual(new Set([rage.frames - 2, rage.frames - 1]))
-      // The pose is still up when the fight resumes.
-      expect(releasedAt).not.toBeNull()
-      expect(releasedAt!).toBeLessThan(age)
-      expect(releasedAt!).toBeCloseTo(reducedMotion ? specDuration(rage) : clipLife(rage) - RAGE_POSE_MARGIN, 1)
-      expect(age).toBeCloseTo(reducedMotion ? specDuration(rage) + RAGE_POSE_MARGIN : clipLife(rage), 1)
+      // The pose ends with the moment (it is never drawn on a step the simulation runs), and on the next frame he is
+      // drawn from his raged sheet, the transformation not played again.
+      expect(releasedAt).toBe(age)
+      expect(releasedAt!).toBeCloseTo(reducedMotion ? specDuration(rage) : clipLife(rage), 1)
+      expect(rig.view.actors.bossSheet(boss)).toBe('king:raged')
+      rig.frame()
+      expect(rig.view.actors.selectBoss(boss).name).not.toBe('rage')
+      expect(rig.view.actors.bossSheet(boss)).toBe('king:raged')
       expectReleased(rig)
     })
 
@@ -653,8 +659,12 @@ describe('interruptions', () => {
     rig.run(0.1)
     expect(rig.view.overlay.irisOpen).toBeLessThan(1)
     const boss = rig.world.boss!
+    // (Put down above his floor, he is still coming down: the intro begins once he lands.)
     emit(rig, { type: 'boss-awake', x: boss.x, y: boss.y })
+    rig.run(1, () => rig.director.current === 'boss-intro')
     expect(rig.director.current).toBe('boss-intro')
+    expect(boss.onGround).toBe(true)
+    expect(rig.view.overlay.irisOpen).toBeLessThan(1)
     rig.director.skip()
     expectReleased(rig)
   })
@@ -723,4 +733,78 @@ describe('sound', () => {
     for (const cue of used) expect(SOUND_CUES).toContain(cue)
     expect(used.size).toBeGreaterThan(6)
   })
+})
+
+describe('a boss is posed only on the ground, and only while the fight is held', () => {
+  /** Runs `seconds`, checking every frame that a staged boss pose up before and after it held the simulation. */
+  const watch = (rig: Rig, seconds: number, each?: () => void) => {
+    for (let t = 0; t < seconds; t += STEP) {
+      const before = rig.view.actors.posing('boss')
+      const time = rig.world.time
+      rig.frame()
+      if (before && rig.view.actors.posing('boss')) expect(rig.world.time, `${before} at ${t.toFixed(2)} s`).toBe(time)
+      each?.()
+    }
+  }
+
+  it("stage 6: the bear, put down above the nest's floor, roars only once he has landed", () => {
+    const rig = started(6)
+    const { world } = rig
+    for (const prop of [...world.props])
+      if ((prop.kind === 'twig' || prop.kind === 'berry') && prop.state === 'idle') world.collect(prop)
+    for (const event of world.events.splice(0)) emit(rig, event)
+    const boss = world.boss!
+    expect(boss.onGround).toBe(false)
+    const clips = new Set<string>()
+    watch(rig, 5, () => {
+      if (rig.view.actors.posing('boss')) expect(boss.onGround).toBe(true)
+      else if (!boss.onGround) clips.add(rig.view.actors.selectBoss(boss).name)
+    })
+    expect(rig.director.log).toContain('boss-intro')
+    // Falling, he shows his leap's fall (never a planted pose).
+    expect([...clips]).toEqual(['air'])
+  })
+
+  it('stage 10: half health in his leap: the transformation is staged once he lands, on his plain sheet till then', () => {
+    const rig = started(10)
+    wakeBoss(rig)
+    rig.director.skip()
+    const { world } = rig
+    const boss = world.boss!
+    rig.run(15, () => boss.state === 'slam' && !boss.onGround && boss.vy < 0)
+    expect(boss.state).toBe('slam')
+    emit(rig, { type: 'boss-phase', phase: 2, x: boss.x, y: boss.y })
+    let waited = 0
+    while (!boss.onGround && waited < 2) {
+      expect(rig.director.current).toBeNull()
+      expect(rig.view.actors.posing('boss')).toBeNull()
+      expect(rig.view.actors.bossSheet(boss)).toBe('king')
+      expect(rig.view.actors.selectBoss(boss).name).not.toBe('rage')
+      rig.frame()
+      waited += STEP
+    }
+    expect(waited).toBeGreaterThan(0.1)
+    expect(waited).toBeLessThan(1.5)
+    rig.frame()
+    expect(rig.director.current).toBe('boss-phase')
+    expect(rig.view.actors.posing('boss')).toBe('rage')
+    watch(rig, 2.5)
+    expect(rig.view.actors.bossSheet(boss)).toBe('king:raged')
+  })
+
+  for (const no of [2, 5, 8, 10])
+    it(`stage ${no}: no staged boss pose is drawn on a step the simulation runs (the intro, phase 2)`, () => {
+      const rig = started(no)
+      const boss = rig.world.boss!
+      rig.world.player.x = boss.arenaX + 4
+      rig.world.player.y = boss.y + boss.h - rig.world.player.h
+      rig.world.player.invuln = 999
+      watch(rig, 4)
+      expect(rig.director.log).toContain('boss-intro')
+      if (no === 10) {
+        emit(rig, { type: 'boss-phase', phase: 2, x: boss.x, y: boss.y })
+        watch(rig, 3)
+        expect(rig.director.log).toContain('boss-phase')
+      }
+    })
 })

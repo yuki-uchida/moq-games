@@ -161,8 +161,22 @@ in between are sampled, so more frames cost nothing but must still be looked at.
 - **Arcs and weight.** Hands, feet and heads travel on curves. Small characters are quick and bouncy; bosses move
   fewer pixels per frame, sink into every landing and recover slowly.
 - **Cycles.** Walks and runs have contact, down, passing and up; the body is lowest just after contact and
-  highest at passing or push-off; arms swing against the legs; a planted foot stays on the ground row and travels
-  back at the speed of the body. Loops close: the last frame leads into the first.
+  highest at passing or push-off; arms swing against the legs. Loops close: the last frame leads into the first.
+- **A foot on the ground stays where it landed.** A ground cycle has a `stride` in `contract.ts`: the px the body
+  covers over one pass. The view plays the clip by distance covered, so on every frame the body is exactly
+  `stride / frames` px further on, whatever its speed, and the drawing must move every foot that is down back by
+  that much per frame. A foot that cannot reach further back leaves the ground: at these speeds that means two or
+  three frames down per foot and a moment in the air between steps (a run, a jog, a gallop), not a shuffle. Build
+  each foot with `footPath()` (`motion.ts`; the hamster kit wraps it as `hamGait()`), cancel any shift of the whole
+  figure in the leg, keep a swinging foot, the tail, the cape and any dust clear of the two ground rows, and
+  export where the feet are down as the module's `footfalls`. `tests/art-footfall.test.ts` holds the drawing to
+  that table, and `node scripts/hoshi-no-hamham-footfall.mjs` draws every cycle on a ground ruler (one row per
+  frame, each frame where the body is in the world): a planted foot stays on one plumb line.
+- **A clip that travels without a stride is drawn off the ground, or rolling or sliding along it** (`travel` in
+  the contract): the fox casts in a leap because he casts while walking; the king's charge is a roll because no
+  step keeps up with it, and a roll covers any ground without slipping; a skid digs its heels in. A pose with
+  planted feet is only ever shown on a body at rest, and a body in the air is never drawn standing (the piglet
+  kicks in its leap while it sinks off a ledge; a walker's legs keep going).
 - **Wind-ups are telegraphs.** The whole body commits to a direction and the pose is readable in one glance;
   the last two frames tremble (`sustain: 2`) for as long as the game holds them.
 - **Knock-outs are drawn.** Hit (stretched, eyes > <), flung back turning, the landing with a bounce, limp;

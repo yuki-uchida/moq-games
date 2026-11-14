@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { drawFox, foxRig, idlePoses, movePoses } from '../src/art/chars/bosses/fox'
+import { drawFox, footfalls, foxRig, idlePoses, movePoses, shootPoses } from '../src/art/chars/bosses/fox'
 import { bossSpec } from '../src/art/contract'
 import { sheet } from '../src/art/index'
 import { R } from '../src/art/palette'
@@ -107,10 +107,29 @@ describe('きつね旋風 (foxBoss) on the rig', () => {
       for (const [i, f] of s.idle.frames.entries()) expect(front(f), `idle ${i}`).toBeLessThan(hit - 6)
     })
 
-    test('feet stay on the anchor row in every frame', () => {
+    test('a low leap: off the ground on frames 1–4, the body higher there than on the spring and the touch-down', () => {
       const idleBottom = bottom(s.idle.frames[0])
-      for (const [i, f] of s.shoot.frames.entries())
-        expect(Math.abs(bottom(f) - idleBottom), `shoot ${i} bottom ${bottom(f)}`).toBeLessThanOrEqual(2)
+      const fs = s.shoot.frames
+      for (const i of [0, 5])
+        expect(Math.abs(bottom(fs[i]) - idleBottom), `shoot ${i} on the ground`).toBeLessThanOrEqual(1)
+      for (const i of [1, 2, 3, 4]) expect(bottom(fs[i]), `shoot ${i} in the air`).toBeLessThan(idleBottom - 1)
+      const pelvis = shootPoses().map((p) => foxRig(p).pelvis.pt(0, 0)[1])
+      for (const i of [1, 2, 3, 4])
+        for (const j of [0, 5]) expect(pelvis[i], `pelvis ${i} above ${j}`).toBeLessThan(pelvis[j] - 3)
+      // the whole figure lifts 10–14 px at the top of the leap
+      const lift = Math.max(...shootPoses().map((p) => p.rise))
+      expect(lift).toBeGreaterThanOrEqual(10)
+      expect(lift).toBeLessThanOrEqual(14)
+    })
+
+    test('the release on hit reaches further forward than every other frame, near the height the orb leaves', () => {
+      const wrist = (i: number) => {
+        const p = shootPoses()[i]
+        return foxRig(p).torso.pt(0.5 + p.armN[0], -16.5 + p.armN[1])
+      }
+      for (const i of [0, 1, 2, 4, 5]) expect(wrist(3)[0], `wrist 3 ahead of ${i}`).toBeGreaterThan(wrist(i)[0] + 6)
+      // the game spawns the orb at about 40 % of his 63 px box from the top, the box standing on row 120
+      expect(Math.abs(wrist(3)[1] - (120 - 63 * 0.6))).toBeLessThanOrEqual(8)
     })
 
     test('the fox-fire burns in frames 1–3 and is gone by frame 5', () => {
@@ -129,8 +148,19 @@ describe('きつね旋風 (foxBoss) on the rig', () => {
     })
   })
 
+  test('the run is a run: each foot down three frames, both feet off the ground on frames 3 and 7', () => {
+    const feet = footfalls.foxBoss.move.feet
+    for (const foot of feet) expect(foot.filter((x) => x !== null).length).toBe(3)
+    for (const i of [3, 7]) for (const foot of feet) expect(foot[i], `move ${i}`).toBeNull()
+    for (const [i, f] of s.move.frames.entries()) {
+      const b = box(f).y + box(f).h - 1
+      if (i % 4 === 3) expect(b, `move ${i} in flight`).toBeLessThan(119)
+      else expect(Math.abs(b - 120), `move ${i} bottom ${b}`).toBeLessThanOrEqual(1)
+    }
+  })
+
   test('grounded clips stand on the anchor row', () => {
-    for (const name of ['idle', 'move', 'recover', 'windup'])
+    for (const name of ['idle', 'recover', 'windup'])
       for (const [i, f] of s[name].frames.entries()) {
         const bottom = box(f).y + box(f).h - 1
         expect(Math.abs(bottom - 120), `${name} ${i} bottom ${bottom}`).toBeLessThanOrEqual(1)

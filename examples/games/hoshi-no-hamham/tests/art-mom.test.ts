@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { hamPose } from '../src/art/chars/hamster'
 import { drawHam } from '../src/art/chars/hero'
-import { MOM_LOOK, sheets } from '../src/art/chars/mom'
+import { MOM_LOOK, footfalls, sheets } from '../src/art/chars/mom'
 import { MOM_SPEC } from '../src/art/contract'
 import { R } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
@@ -118,12 +118,14 @@ describe('mom sheet', () => {
     const s = mom()
     for (const [name, anim] of Object.entries(s))
       anim.frames.forEach((f, i) => {
+        // Between the steps of her run both feet are off the ground (frames 3 and 7).
+        const flight = name === 'move' && footfalls.mom.move.feet.every((foot) => foot[i] === null)
         const b = f.bounds()!
         expect(b.x, `${name} ${i}`).toBeGreaterThanOrEqual(1)
         expect(b.y, `${name} ${i}`).toBeGreaterThanOrEqual(1)
         expect(b.x + b.w, `${name} ${i}`).toBeLessThanOrEqual(95)
         expect(b.y + b.h, `${name} ${i}`).toBeLessThanOrEqual(95)
-        expect(bottom(f), `${name} ${i}`).toBeGreaterThanOrEqual(88)
+        expect(bottom(f), `${name} ${i}`).toBeGreaterThanOrEqual(flight ? 82 : 88)
         expect(bottom(f), `${name} ${i}`).toBeLessThanOrEqual(93)
       })
   })

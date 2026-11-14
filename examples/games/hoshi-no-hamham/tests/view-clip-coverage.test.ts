@@ -146,7 +146,8 @@ const enemy = (kind: EnemyArt, extra: Partial<EnemySnapshot> = {}): EnemySnapsho
   hitFlash: 0,
   shootTimer: 1.5,
   landAge: 99,
-  stillTime: 0,
+  gain: 0,
+  standing: false,
   time: 0.3,
   ...extra
 })
@@ -158,7 +159,7 @@ const ENEMY_STATES: Partial<EnemySnapshot>[] = [
   { landAge: 0.02 },
   { shootTimer: 0.1 },
   { shootTimer: -0.2 },
-  { stillTime: 1 },
+  { standing: true },
   { hitFlash: 0.1 }
 ]
 
@@ -170,12 +171,18 @@ const boss = (kind: BossKind, state: BossState, extra: Partial<BossSnapshot> = {
   active: true,
   vx: 0,
   vy: 0,
+  speed: 150,
+  phase: 1,
   rageAge: null,
   hurtAge: null,
   onGround: false,
   shotTimer: 99,
-  shotAge: null,
-  summonAge: null,
+  castAge: null,
+  volleyCut: false,
+  dashAge: null,
+  dashGain: 0,
+  gain: 0,
+  standing: false,
   time: 0.4,
   ...extra
 })
@@ -190,9 +197,8 @@ const BOSS_EXTRAS: Partial<BossSnapshot>[] = [
   { hurtAge: 0.01 },
   { rageAge: 0.1 },
   { active: false },
-  { shotTimer: 0.1 },
-  { shotAge: 0.05 },
-  { summonAge: 0.05 },
+  { castAge: 0.05 },
+  { standing: true },
   { onGround: true }
 ]
 
@@ -460,7 +466,7 @@ describe('every clip that plays over a window of time shows all of its frames', 
           )
         )
     }
-    // The throws and casts: the timer runs out (wind-up), the shot leaves (release and follow-through).
+    // The throws and casts the view starts: from the lead-in through the release to the follow-through.
     for (const [kind, art] of [
       ['flyer', 'crowBoss'],
       ['swarm', 'foxBoss'],
@@ -470,9 +476,7 @@ describe('every clip that plays over a window of time shows all of its frames', 
       expectWhole(
         `${art}#shoot`,
         spec.shoot,
-        sweep(spec.shoot, 'shoot', times(0, 1), (t) =>
-          bossClip(boss(kind, 'idle', t < 0.3 ? { shotTimer: 0.3 - t } : { shotTimer: 1.5, shotAge: t - 0.3 }), art)
-        )
+        sweep(spec.shoot, 'shoot', times(0, 1), (t) => bossClip(boss(kind, 'idle', { castAge: t }), art))
       )
     }
     // Without staging (the fallback) the transformation plays once on sim time; its burning tail is staged only.
@@ -659,6 +663,29 @@ function swim(r: PlayRecorder) {
       }
 }
 
+/**
+ * A player who punishes the boss's recovery: once he has nearly stopped after his attack, the hero steps up beside
+ * him and bites (the view shows the flinch only where it plays out before he walks or winds up again).
+ */
+function punishRecovery(r: PlayRecorder, sheet: string, seconds: number) {
+  const { world } = r
+  const boss = world.boss!
+  const p = world.player
+  r.run(
+    seconds,
+    () => !boss.dead && !r.shown.get(sheet)?.has('hurt'),
+    () => {
+      if (boss.state !== 'recover' || Math.abs(boss.vx) > FLINCH_MAX_SPEED || boss.invuln > 0) return emptyInput()
+      const side = p.x + p.w / 2 < boss.x + boss.w / 2 ? -1 : 1
+      p.x = side < 0 ? boss.x - p.w + 2 : boss.x + boss.w - 2
+      p.y = boss.y + boss.h - p.h
+      p.vx = 0
+      p.facing = side < 0 ? 1 : -1
+      return hold({ bite: true, bitePressed: true })()
+    }
+  )
+}
+
 function playStage(no: number) {
   const stage = STAGES[no - 1]
   const world = new World(stage, { seed: 5 })
@@ -687,12 +714,13 @@ function playStage(no: number) {
         () => true,
         () => holdBite(fight())
       )
+      punishRecovery(r, stage.boss.art, 30)
       r.run(90, () => going() && boss.phase === 1, fight)
       // Transformed: the hero steps out of the corner where the fight has pinned them both (he cannot be hurt
-      // here) to the near side of the arena, and lets the king come and attack.
+      // here) to the near side of the arena, far enough from its gate for a charge, and lets the king come and attack.
       const gate = world.bossGate
       if (gate) {
-        world.player.x = (gate.x + 2) * TILE
+        world.player.x = (gate.x + 6) * TILE
         world.player.y = boss.y + boss.h - world.player.h
       }
       r.run(
@@ -700,6 +728,7 @@ function playStage(no: number) {
         () => true,
         () => holdBite(fight())
       )
+      punishRecovery(r, KING_RAGED, 30)
     }
     if (stage.boss.kind === 'swarm') {
       // The fox and the bee keep walking at the hero; a player bites them when they stand (after a dash). The bot
@@ -716,6 +745,13 @@ function playStage(no: number) {
         }
         return input
       }
+      // A player who first watches sees the casts and the summons, then punishes a recovery.
+      r.run(
+        8,
+        () => true,
+        () => floor(holdBite(fight()))
+      )
+      punishRecovery(r, stage.boss.art, 30)
       r.run(
         60,
         () => going() && !r.shown.get(stage.boss.art)?.has('hurt'),
@@ -738,15 +774,9 @@ function playStage(no: number) {
  * be selected at least once.
  */
 const NOT_IN_PLAY: Record<string, Record<string, string>> = {
-  mom: {
-    idle: 'the chasing parent is awake from the first frame; she stands only in staging and in the story pictures',
-    yell: 'staged at the chase start (covered above: there is no director here)'
-  },
+  mom: { yell: 'staged at the chase start (covered above: there is no director here)' },
   jumper: { idle: 'the frog hops again the moment it lands; its sitting pose is for the story pictures' },
-  bearBoss: {
-    intro: 'staged when the boss wakes (covered above)',
-    idle: 'the nest summons him awake and walking; he stands only in the staged intro (covered above)'
-  }
+  bearBoss: { intro: 'staged when the boss wakes (covered above)' }
 }
 for (const art of BOSS_ARTS) NOT_IN_PLAY[art] ??= { intro: 'staged when the boss wakes (covered above)' }
 // The phase-2 transformation is staged; without a director it plays on sim time, on the plain sheet.

@@ -54,6 +54,22 @@ export interface AnimSpec {
    * hold must list it here.
    */
   hold?: readonly number[]
+  /**
+   * A ground cycle: the body covers `stride` px over one pass of the clip. The view plays such a clip by the
+   * distance its actor has covered, not by time (`fps` is its pace in the review tools only), and the art keeps
+   * every foot that is on the ground still against the ground: from one frame to the next a planted foot moves back
+   * by stride/frames px (`tests/art-footfall.test.ts`).
+   */
+  stride?: number
+  /**
+   * How the clip is drawn against the ground, which decides when the view may show it on a body that travels.
+   * Absent: the feet are planted, so the clip shows only on a body that is (nearly) at rest, or it is a ground
+   * cycle with a `stride`. 'air': drawn off the ground (a leap, a tumble, a flier): it may travel freely.
+   * 'slide': drawn skidding, spinning or thrown (a skid, a whirl, a knock-back, a slam landing): it may travel while
+   * the body slows. 'hover': a flier drawn hovering on the spot: it may drift at its cruising speed, and gives way
+   * to a dash clip on a body that goes faster.
+   */
+  travel?: 'air' | 'slide' | 'hover'
 }
 
 type Specs = Record<string, AnimSpec>
@@ -86,20 +102,29 @@ export const HERO_SPEC: Specs = {
   blink: cell(8, 8, true),
   // fidget after standing still: looks around (held), grooms a cheek with both paws, settles
   wait: cell(12, 8, false, { hold: [1, 1, 4, 1, 1, 1, 1, 1, 2, 1, 1, 1] }),
-  run: cell(8, 14, true), // contact frames 0 and 4
-  turn: cell(2, 20, false), // facing the camera for a moment when he turns around on the spot
-  skid: cell(3, 14, false, { sustain: 2 }), // braking when reversing at speed: heels dug in, scarf thrown forward
-  jump: cell(3, 14, false, { sustain: 2 }), // launch stretch, then rising with ears and scarf pulled down
-  apex: cell(2, 10, false), // the top of the arc: frame 0 still rising (tucked), frame 1 tipping over (opening)
-  fall: cell(3, 12, true), // arms up, fur and scarf fluttering
+  // A scurry: each foot lands, carries him and pushes off (three frames on the ground, 8 px back per frame), then
+  // swings forward. Contact frames 0 and 4.
+  run: cell(8, 14, true, { stride: 64 }),
+  // facing the camera for a moment as he turns around on the spot and sets off the other way (a pivot)
+  turn: cell(2, 20, false, { travel: 'slide' }),
+  // braking when reversing at speed: heels dug in, scarf thrown forward
+  skid: cell(3, 14, false, { sustain: 2, travel: 'slide' }),
+  // launch stretch, then rising with ears and scarf pulled down
+  jump: cell(3, 14, false, { sustain: 2, travel: 'air' }),
+  // the top of the arc: frame 0 still rising (tucked), frame 1 tipping over (opening)
+  apex: cell(2, 10, false, { travel: 'air' }),
+  fall: cell(3, 12, true, { travel: 'air' }), // arms up, fur and scarf fluttering
   land: cell(4, 18, false), // squash, rebound, overshoot, settle
   // lunge (the contact frame, held by the hit-stop when the bite connects), CHOMP with the front teeth, recoil,
-  // chew, settle. A player's attack has no wind-up: the simulation bites on the frame of the press.
+  // chew, settle. A player's attack has no wind-up: the simulation bites on the frame of the press. The lunge and
+  // the chomp are thrown forward off the feet, so they also show in the air and on the run; the last three frames
+  // stand, and show only at rest (`LUNGE_FRAMES` in view/clips.ts).
   bite: cell(5, 24, false, { hit: 0 }),
-  hurt: cell(3, 12, false),
-  die: cell(8, 10, false, { sustain: 2 }), // hit, tumble ×3, bounce, flat on the back, then stars circling (sustain)
+  hurt: cell(3, 12, false, { travel: 'slide' }), // knocked back
+  // hit, tumble ×3, bounce, flat on the back, then stars circling (sustain)
+  die: cell(8, 10, false, { sustain: 2, travel: 'air' }),
   cheer: cell(8, 12, true), // victory hop with both arms up
-  swim: cell(6, 10, true) // paddling, cheeks puffed
+  swim: cell(6, 10, true, { travel: 'air' }) // paddling, cheeks puffed
 }
 
 export const PRINCESS_SPEC: Specs = {
@@ -112,27 +137,29 @@ export const PRINCESS_SPEC: Specs = {
 export const MOM_SPEC: Specs = {
   idle: mid(8, 8, true), // hands on hips, foot tapping
   yell: mid(6, 10, false, { sustain: 2 }), // stage 1 intro: 「こらーっ！」
-  move: mid(8, 14, true), // furious run, ladle raised
+  move: mid(8, 14, true, { stride: 80 }), // furious run, ladle raised: three frames on each foot, 10 px back a frame
   stunned: mid(6, 8, true), // dizzy after smashing through a tree or rock
   tired: mid(6, 6, true), // out of breath, rubbing her back
-  hurt: mid(3, 12, false)
+  hurt: mid(3, 12, false, { travel: 'slide' })
 }
 
 export const ENEMY_KINDS = ['walker', 'flyer', 'jumper', 'spitter', 'tough'] as const
 export type EnemyArt = (typeof ENEMY_KINDS)[number]
 
-const DEFEAT = cell(6, 12, false) // the blow, flung back head over heels (drawn, never a turned picture), limp
-const HURT = cell(2, 12, false)
+// the blow, flung back head over heels (drawn, never a turned picture), limp
+const DEFEAT = cell(6, 12, false, { travel: 'air' })
+const HURT = cell(2, 12, false, { travel: 'air' }) // a bite knocks an enemy off its feet for a moment
 
 export const ENEMY_SPEC: Record<EnemyArt, Specs> = {
-  walker: { idle: cell(6, 8, true), move: cell(8, 12, true), hurt: HURT, defeat: DEFEAT },
-  flyer: { move: cell(8, 16, true), hurt: HURT, defeat: DEFEAT }, // always flapping
+  // The rat's walk covers 40 px a pass (5 px a frame under a planted foot), walking or chasing.
+  walker: { idle: cell(6, 8, true), move: cell(8, 12, true, { stride: 40 }), hurt: HURT, defeat: DEFEAT },
+  flyer: { move: cell(8, 16, true, { travel: 'air' }), hurt: HURT, defeat: DEFEAT }, // always flapping
   jumper: {
     idle: cell(6, 8, true), // the throat pumps
     // The frog never rests: the moment it lands it is off again, so this clip is nearly all the player sees of
     // it. The view picks the frame by vertical speed: 0 the launch (fully stretched), 1 rising, 2 the top of the
     // hop (tucked), 3 falling, 4 bracing for the ground (legs reaching down, body starting to squash).
-    air: cell(5, 8, false),
+    air: cell(5, 8, false, { travel: 'air' }),
     // One frame, the contact squash: the frog hops again on the very next step of the simulation, so it is on the
     // ground for a single step and any further landing frame would never be seen.
     land: cell(1, 14, false),
@@ -140,7 +167,7 @@ export const ENEMY_SPEC: Record<EnemyArt, Specs> = {
     defeat: DEFEAT
   },
   spitter: { idle: cell(6, 8, true), shoot: cell(6, 12, false, { hit: 3 }), hurt: HURT, defeat: DEFEAT },
-  tough: { idle: cell(6, 8, true), move: cell(8, 10, true), hurt: HURT, defeat: DEFEAT }
+  tough: { idle: cell(6, 8, true), move: cell(8, 10, true, { stride: 40 }), hurt: HURT, defeat: DEFEAT }
 }
 
 /** How each boss fights; decides which clips its sheet needs. */
@@ -162,7 +189,8 @@ const BOSS_COMMON: Specs = {
   idle: big(6, 8, true),
   intro: big(8, 10, false, { sustain: 2 }), // the roar or pose shown when the fight begins, then held alive
   hurt: big(3, 12, false),
-  defeat: big(8, 10, false, { sustain: 2 }) // the last blow, the fall, the bounce, then out cold (stars circling)
+  // the last blow, the fall, the bounce, then out cold (stars circling)
+  defeat: big(8, 10, false, { sustain: 2, travel: 'air' })
 }
 
 const BOSS_BY_KIND: Record<(typeof BOSS_KIND)[BossArt], Specs> = {
@@ -185,8 +213,8 @@ const BOSS_BY_KIND: Record<(typeof BOSS_KIND)[BossArt], Specs> = {
   tank: {
     move: big(8, 10, true),
     windup: big(4, 10, false, { sustain: 2 }),
-    air: big(3, 8, false),
-    land: big(4, 14, false),
+    air: big(3, 8, false, { travel: 'air' }),
+    land: big(4, 14, false, { travel: 'slide' }), // he comes down with his run still in him
     recover: big(4, 6, true)
   },
   // walk (casting and summoning on the way) → windup → dash → recover
@@ -202,8 +230,8 @@ const BOSS_BY_KIND: Record<(typeof BOSS_KIND)[BossArt], Specs> = {
     move: big(8, 10, true),
     windup: big(4, 12, false, { sustain: 2 }),
     attack: big(6, 16, true),
-    air: big(3, 8, false),
-    land: big(4, 14, false),
+    air: big(3, 8, false, { travel: 'air' }),
+    land: big(4, 14, false, { travel: 'slide' }),
     shoot: big(6, 12, false, { hit: 3 }),
     recover: big(4, 6, true),
     rage: big(10, 10, false, { sustain: 2 })
@@ -214,6 +242,49 @@ const BOSS_BY_KIND: Record<(typeof BOSS_KIND)[BossArt], Specs> = {
 const BOSS_HOLD: Partial<Record<BossArt, Record<string, readonly number[]>>> = {
   weaselBoss: { intro: [1, 1, 1, 3, 1, 2, 1, 1], defeat: [1, 2, 1, 1, 1, 1, 2, 2] },
   apeBoss: { intro: [2, 1, 1, 1, 1, 3, 1, 1], land: [2, 1, 1, 2] }
+}
+
+/**
+ * The bosses' ground cycles: the px one pass of the clip covers (`AnimSpec.stride`). The walks keep a foot down for
+ * three or four frames; the three gallops (the brutes' charges) touch down for two frames a pair of legs.
+ */
+const BOSS_STRIDE: Partial<Record<BossArt, Record<string, number>>> = {
+  weaselBoss: { attack: 146 },
+  boarBoss: { attack: 138 },
+  wolfBoss: { attack: 162 },
+  bearBoss: { move: 96 },
+  foxBoss: { move: 80 },
+  apeBoss: { move: 96 },
+  king: { move: 96 }
+}
+
+/**
+ * Boss clips drawn off the ground or sliding (`AnimSpec.travel`), by boss. The crow hovers in every clip but his
+ * dive and his skim, which fly; the bee hovers in all of hers but her dash, which flies, and `recover`, where she
+ * sits on the ground. The fox's dash is a whirl and his cast a leap; the king's charge is a roll along the ground.
+ */
+const BOSS_TRAVEL: Partial<Record<BossArt, Record<string, NonNullable<AnimSpec['travel']>>>> = {
+  crowBoss: {
+    idle: 'hover',
+    intro: 'hover',
+    hurt: 'hover',
+    windup: 'hover',
+    attack: 'air',
+    sweep: 'air',
+    shoot: 'hover',
+    recover: 'hover'
+  },
+  beeBoss: {
+    idle: 'hover',
+    intro: 'hover',
+    hurt: 'hover',
+    move: 'hover',
+    windup: 'hover',
+    attack: 'air',
+    shoot: 'hover'
+  },
+  foxBoss: { attack: 'slide', shoot: 'air' },
+  king: { attack: 'slide' }
 }
 
 const bossSpecs = new Map<BossArt, Specs>()
@@ -227,6 +298,8 @@ export function bossSpec(art: BossArt): Specs {
   if (!specs) {
     specs = { ...BOSS_COMMON, ...BOSS_BY_KIND[BOSS_KIND[art]] }
     for (const [name, hold] of Object.entries(BOSS_HOLD[art] ?? {})) specs[name] = { ...specs[name], hold }
+    for (const [name, stride] of Object.entries(BOSS_STRIDE[art] ?? {})) specs[name] = { ...specs[name], stride }
+    for (const [name, travel] of Object.entries(BOSS_TRAVEL[art] ?? {})) specs[name] = { ...specs[name], travel }
     bossSpecs.set(art, specs)
   }
   return specs
@@ -275,7 +348,15 @@ const BASE_PROP_SPEC: Record<string, Specs> = {
     post: tileCell(1, 1, false),
     arm: tileCell(1, 1, false)
   },
-  'prop:animal': { sleep: tileCell(4, 3, true), wake: tileCell(3, 12, false), run: tileCell(6, 14, true) },
+  // The piglet starts up with a leap (it is already moving) and gallops 96 px a pass. Whatever stops it (a wall, a
+  // rock) leaves it sitting dazed where it is until it is gone: the simulation keeps it there for the rest of its
+  // three seconds.
+  'prop:animal': {
+    sleep: tileCell(4, 3, true),
+    wake: { ...tileCell(3, 12, false), travel: 'air' },
+    run: { ...tileCell(6, 14, true), stride: 96 },
+    daze: tileCell(6, 8, true)
+  },
   'prop:rock': { idle: tileCell(1, 1, false), cracked: tileCell(1, 1, false) },
   'prop:switch1': { off: tileCell(2, 3, true), flip: tileCell(3, 16, false), on: tileCell(2, 3, true) },
   'prop:switch2': { off: tileCell(2, 3, true), flip: tileCell(3, 16, false), on: tileCell(2, 3, true) },

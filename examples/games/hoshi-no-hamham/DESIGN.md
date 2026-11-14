@@ -152,39 +152,82 @@ The view adds, on top of the frames:
 - defeated enemies play `defeat` as a ghost after the sim has removed them; the hero's death and cheer are
   view-driven sequences;
 - a knock-out falls to the ground and stays there: the hero is knocked up a little (26 px) and falls under gravity
-  to the ground below him, his `die` clip following the body (the hit, the tumble while he is in the air, the
+  to the ground below him (to the ground he stood on, when he stood on the very edge of a ledge), his `die` clip following the body (the hit, the tumble while he is in the air, the
   bounce when he touches down, then lying dazed); a boss knocked out in the air falls to the ground below and
   lands on the first frame drawn lying there (frame 4 for the fliers and the weasel, 3 for the others), its fall
-  timed from the clip; a knocked-out enemy is flung away from the hero (facing him) and lands the same way, with
-  a 16 px hop when it was on the ground; over a pit the hero falls out of the view, a boss stays where he is and an
-  enemy keeps its arc; a clear touched in the air brings the hero down (`fall`, the landing squash) before he
-  cheers on the ground;
+  timed from the clip; a knocked-out enemy is flung away from the hero (facing him), with a 16 px hop when it was
+  on the ground (lower under a ceiling): a wall stops it, past a ledge it falls on to the ground below, and its clip
+  is stretched or squeezed so that its first lying frame begins on the step it lands; over a pit the hero falls out
+  of the view, a boss stays where he is and an enemy keeps tumbling; a clear touched in the air brings the hero
+  down (`fall`, the landing squash) before he cheers on the ground;
 - the frog's landing is a single frame (the contact squash): it hops again on the next step;
-- the rat and the mole show their standing pose only after standing still for 0.15 s (a chasing rat stopped by
-  a wall, a mole penned in), never for the single step a wall turns them round;
+- the rat and the mole show their standing pose only after gaining no ground for 0.15 s (a chasing rat stopped by
+  a wall, a mole penned in), or once they keep turning, twice within 0.4 s inside 16 px (shaken on the spot at a
+  pit, pacing to and fro on a one-tile ledge); one that turns round once at the end of its patrol walks on;
+- a woken うりぼう leaps, runs (by the ground it covers) and, stopped by a wall or a rock, sits dazed with stars over
+  its head for as long as it stays there; off a ledge (no ground within 2 px under its feet) it neither runs nor sits
+  but kicks as it sinks, between the two airborne frames of its leap, six times a second;
 - two after-images behind a boss that charges or dives faster than 260 px/s (off under reduced motion);
-- a boss hit while he stands nearly still (idle, recovering, stunned; the chasing parent in every state) flinches:
-  its `hurt` clip plays whole, from the first frame (a new hit restarts it). While he walks or runs, and in a
-  wind-up, a charge, a dive, a leap or a volley (and the landing or follow-through of one), the state's clip stays
-  and the hit shows as the white flash. In every state the sprite jolts up to 3 px away from the hero and eases
+- a boss hit while he stands nearly still (idle, recovering, stunned; the chasing parent in every state) flinches
+  when there is at least 0.1 s before he next walks or winds up: his `hurt` clip plays whole from the first frame,
+  over that time when it is shorter than the clip (a new hit restarts it with its own time); a hit later than that is
+  the flash only. While he walks or runs, and in a wind-up, a charge, a dive, a leap or a volley (and the landing
+  or follow-through of one), the state's clip stays and the hit shows as the white flash. In every state the sprite jolts up to 3 px away from the hero and eases
   back over 0.12 s, and a crash into a wall jolts it back from the wall (not under reduced motion, not in a staged
   pose; the shadow stays put); a stun shows its clip and the dizzy mark only once it has lasted 0.05 s;
-- the crow throws and the fox and the bee cast (`shoot`) from the hover or the walk: the wind-up ends with the
-  release on the step the shot leaves, then the follow-through; a summon is the same gesture from the release. The
-  crow's dive skims (`sweep`) once it has levelled out. The king is drawn from his raged sheet (`king:raged`) from
-  the end of his transformation until he falls;
-- the hero's skid lasts as long as the braking (and 0.08 s more), his bite in the air shows only the lunge and the
-  chomp, and his fidget comes back every 8 s of standing;
+- the crow throws and the fox and the bee cast (`shoot`) from the hover or the walk, when there are at least 0.1 s
+  before the shot and 0.1 s after it before his next wind-up: the wind-up is played over the time before the shot and
+  ends with the release on the step the shot leaves, then the follow-through, over its own length or the time left;
+  a summon is the same gesture from the release, fitted the same way. The wind-up begins facing exactly where the
+  simulation aims (the hero's side) and is posed only with the hero clearly to one side (more than 12 px over; on top
+  of him the aim flips with every step he takes); at the release he faces the way the shot really went. The crow's dive skims (`sweep`) once it has levelled out. The king is drawn from his raged sheet
+  (`king:raged`) from the end of his transformation until he falls;
+- the hero's skid lasts as long as the braking (and 0.08 s more), his bite away from a stand (in the air, at a run)
+  shows only the lunge and the chomp, and his fidget comes back every 8 s of standing;
 - a loaded リス団員 waiting for the hero to come into range holds the end of its wind-up (cheeks full, leaning in)
   with a small pulse, so its shot never comes out of an idle pose;
 - ground shadows under every actor that shrink with height.
 
 Bosses telegraph every attack: `windup` is visible for the whole wind-up time, with a glint or dust cue. Staged
-poses last as long as their clip: the boss's roar shows its whole `intro`, and the phase-2 hold lasts as long as
-the king's transformation (`rage` and one pass of its burning tail; under reduced motion the clip itself). A pose
-ends with the moment that set it (or its skip), and while the simulation runs the hero's own body takes over from
+poses last as long as their clip: the boss's roar shows its whole `intro` and stays on its sustained tail until the
+camera is back, and the phase-2 hold lasts as long as the king's transformation (`rage` and one pass of its
+burning tail; under reduced motion the clip itself). A boss in the air (put down above his ground, or in a leap) is
+not posed there: his roar or his transformation waits until he lands (1.5 s at most) while the fight runs on, and
+meanwhile he falls in his leap's `air` clip on his plain sheet. A pose ends with the moment that set it (or its
+skip, or a moment that cuts it), never on a step the simulation runs, and while the simulation runs the hero's own body takes over from
 a pose as soon as it moves, leaves the ground, bites or is hurt. In the story pictures a patrol faces the way it
 goes, a fleeing runner runs on the spot, and a cheer gets no hop on top.
+
+The picture agrees with the motion (`src/view/tread.ts`, checked in real play by `tests/view-play-audit.test.ts`).
+The view reads what each body really does from where it is given it, not from the simulation's own flags: whether
+it walks or stands, the way its walk has gone, and the ground its drawn body covers. A ground cycle (a clip with a
+`stride`: the hero's run, the walks, the brutes' gallop, うりぼう's run) plays by the ground covered, one pass per
+stride, so a planted foot stays put at any speed; a body that marks time (stopped, or turning again and again on the
+spot) stands until it leaves the span it kept to. The picture of a walker (a rat, a mole, a walking boss in his walk,
+ハム代 running) may then be held still in the middle of that span, but it is never more than 6 px from the body,
+it eases in and out at no more than 180 px/s apart from the body (the same at any display rate), and a frame where no
+time passes keeps a held picture where it was drawn (the body may be drawn elsewhere when a hit-stop starts or ends:
+the held picture does not move); every other body is drawn where it is. Standing is decided on the ground only: a
+body in the air walks (ハム代 hopping in a pit runs, her legs going on time), and the standing clip shows only once
+a body has stood for 0.15 s. A pose with planted feet shows
+only on a body at rest: the hero's bite gives way to his run or his jump
+after the lunge, a hard landing at a run goes straight on into the run, a boss keeps the clip of his dash (and a
+slam landing its slide, with a puff of dust) until he has nearly stopped, and a flier's hover gives way to his
+dash clip above one and a half times his cruising speed. Walkers that are going somewhere face the way their walk
+has gone (more than 3 px over its last four steps, turning on a step that goes the new way; just set off from a
+stand, the way it set off), and one that would turn twice within 0.16 s, or that shuffled to and fro before it went
+back, is marking time and stands; the others face the hero's side as the simulation aims, turning only once he is
+12 px over and not again straight away (the 0.16 s run on the screen's time, hit-stops included); a dash faces the
+way it goes, a wind-up turns with the hero, and a boss faces his shot. An action keeps the facing it began with,
+from its first frame to its last: a flinch, a landing, a throw or a cast (a squirrel's throw begins facing where the
+simulation aims it; a shot that leaves the other way at the end of a boss's flinch ends the flinch). The hero's
+hurt faces the blow: he is thrown back, away from it. One action shows at a time: it starts
+from its first frame, and once another clip has taken its place it does not come back (a bite cut by a hurt, a
+landing cut by a bite, a flinch or a cast cut by the transformation); a squirrel bitten during its throw finishes
+it under the white flash. A boss's flinch or cast is fitted to the time there is before he next walks or winds up
+(the view mirrors his state lengths, measured in the simulation by `tests/view-boss-timing.test.ts`): its whole
+clip, faster when there is less time than it takes, every frame still shown; with less than 0.1 s the hit is the
+flash and the shot leaves without a pose.
 
 ## 5. Effects
 
@@ -294,6 +337,20 @@ are a list scrolled by hand with a button that closes it.
   boil from frame to frame, and one clear pixel between the drawing and the edge of its cell. Each character also
   has its own `tests/art-<id>.test.ts` for what makes it that character (its colours, its size against the hero,
   what each clip must show).
+- `tests/art-footfall.test.ts`: feet that stay where they land. Every ground cycle (a clip with a `stride` in the
+  contract) lists where its feet are down (`footfalls` of its module), and the drawing is held to that list: a
+  foot that stays down moves back stride/frames px a frame, its sole is on the ground rows where the list says, and
+  nothing else is on them. A clip that travels without a stride is off the ground (a leap) or on it in every frame
+  (a roll, a whirl). `node scripts/hoshi-no-hamham-footfall.mjs` draws each cycle on a ground ruler.
+- `tests/view-play-audit.test.ts` (with `tests/play-audit.ts`): the picture agrees with the motion in real play.
+  The simulation runs (the bot through every stage with four seeds, every boss hit at every moment of his cycle
+  with the hero changing sides, every piglet woken both ways, the hero's and the squirrel's own overlaps) and the
+  view is driven as the game drives it (display frames at 60 Hz, and 120 and 30 Hz for some stages, positions
+  interpolated, hit-stops); every frame is checked: no planted pose carried along the ground or shown in the air,
+  no ground cycle on a body at rest, cycles that advance with the ground covered, travel that faces its way, shots
+  from their release frame, actions that start at their start, play out and keep their facing, bodies that lie on
+  the ground, no flicker, and a picture that is where its body is. `tests/view-director.test.ts` holds the staged
+  moments to the same rules (no pose in the air, none on a step the simulation runs).
 - `node scripts/hoshi-no-hamham-review.mjs` writes the review kit to `.build/hoshi-no-hamham-review/`: every screen
   at four viewports with its tallest empty band, wrapped headings, text under a focus frame and cut lines, the
   staged moments frame by frame

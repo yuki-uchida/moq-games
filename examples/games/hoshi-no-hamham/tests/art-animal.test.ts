@@ -9,7 +9,7 @@ import { LIMITS, colours, lightEdgeBlobs, loopSeam, orphans, stillness } from '.
 import type { Raster } from '../src/art/raster'
 
 const S = () => sheet('prop:animal')
-const CLIPS = { sleep: 4, wake: 3, run: 6 } as const
+const CLIPS = { sleep: 4, wake: 3, run: 6, daze: 6 } as const
 const CREAM = new Set<number>(R.cream)
 
 const box = (f: Raster) => f.bounds()!
@@ -40,8 +40,8 @@ describe('prop:animal', () => {
       }
     })
 
-  test('sleep and the landed wake frames touch the ground', () => {
-    const grounded = [...S().sleep.frames, S().wake.frames[1], S().wake.frames[2]]
+  test('sleep and the spring-up frame touch the ground', () => {
+    const grounded = [...S().sleep.frames, S().wake.frames[0]]
     for (const f of grounded) {
       expect(lowest(f)).toBeGreaterThanOrEqual(61)
       expect(lowest(f)).toBeLessThanOrEqual(63)
@@ -49,12 +49,12 @@ describe('prop:animal', () => {
   })
 
   test('asleep it lies lower than standing', () => {
-    const standing = box(S().wake.frames[2]).y
+    const standing = box(S().run.frames[0]).y
     for (const f of S().sleep.frames) expect(box(f).y).toBeGreaterThan(standing + 4)
   })
 
-  test('the jolt leaves the ground', () => {
-    expect(lowest(S().wake.frames[0])).toBeLessThanOrEqual(59)
+  test('the startled leap is in the air after the spring-up', () => {
+    for (const i of [1, 2]) expect(lowest(S().wake.frames[i])).toBeLessThanOrEqual(60)
   })
 
   test('the gallop has a flight phase and stretches', () => {
@@ -64,7 +64,20 @@ describe('prop:animal', () => {
     expect(Math.max(...widths) - Math.min(...widths)).toBeGreaterThanOrEqual(5)
   })
 
-  for (const name of ['sleep', 'run'])
+  test('daze: sits on the ground rows of run, in place, lower than standing, every frame new', () => {
+    const daze = S().daze.frames
+    const standing = box(S().run.frames[0])
+    const centres = daze.map((f) => box(f).x + box(f).w / 2)
+    for (const f of daze) {
+      expect(lowest(f)).toBeGreaterThanOrEqual(61)
+      expect(lowest(f)).toBeLessThanOrEqual(63)
+      expect(box(f).y).toBeGreaterThanOrEqual(standing.y + 2)
+    }
+    expect(Math.max(...centres) - Math.min(...centres)).toBeLessThanOrEqual(4)
+    for (let i = 0; i < daze.length; i++) expect(daze[i].data).not.toEqual(daze[(i + 1) % daze.length].data)
+  })
+
+  for (const name of ['sleep', 'run', 'daze'])
     test(`${name} loops without twins or a pop`, () => {
       const anim = S()[name]
       expect(stillness(anim)).toEqual([])

@@ -6,7 +6,7 @@
  * cracks). Parts are assembled with the Painter like the cast; the animated ones are pose-parametric.
  */
 import type { SheetModule } from '../../module'
-import { lag } from '../../motion'
+import { footPath, footfall, lag, type FootStep, type FootfallModule } from '../../motion'
 import { C, R, ramp } from '../../palette'
 import { Painter, Raster, ball, bar, farRamp, noiseAt, outline, rng, type Pt, type Ramp } from '../../raster'
 import {
@@ -467,7 +467,7 @@ const STRIPE = R.cream[2]
 const PIG = R.boarBrown
 const PIG_FAR = farRamp(R.boarBrown)
 
-type PigEyes = 'open' | 'wide' | 'angry' | 'squeeze' | 'shut'
+type PigEyes = 'open' | 'wide' | 'angry' | 'squeeze' | 'shut' | 'spinA' | 'spinB'
 
 /** Foot offset from its rest place: forward (+), lift (+), turn in degrees. */
 type Trot = readonly [number, number, number]
@@ -544,6 +544,15 @@ const PIG_EYES: Record<PigEyes, readonly [readonly string[], readonly string[]]>
   shut: [
     ['....', '....', 'i..i', '.ii.', '....'],
     ['..', '..', '.i', 'i.']
+  ],
+  // dazed: a spiral that turns a quarter between the two
+  spinA: [
+    ['.iii.', 'i...i', 'i.i.i', 'i..ii', '.iii.'],
+    ['ii', 'i.', '.i', 'ii']
+  ],
+  spinB: [
+    ['.iii.', 'i..ii', 'i.i.i', 'i...i', '.iii.'],
+    ['ii', '.i', 'i.', 'ii']
   ]
 }
 
@@ -790,88 +799,137 @@ const pigSleep = memo(() => {
   )
 })
 
-/** wake: bitten, it jolts into the air stiff-legged and wide-eyed, lands head down scowling, scrapes a trotter. */
+/**
+ * wake: bitten, it springs up out of sleep, is flung forward in the air (eyes wide, ears and tail thrown up, legs
+ * flung out), then gathers its legs for the first stride of the run. It travels 75 px while this shows, so after the
+ * first frame it never touches the ground.
+ */
 const pigWake = memo(() => [
   PP({
-    y: 9,
-    squash: -1.5,
-    lean: -6,
-    head: [0, -2],
-    nod: -10,
+    y: 3,
+    squash: -1,
+    lean: -3,
+    head: [0, -1],
+    nod: -6,
     eyes: 'wide',
     squeal: true,
-    earN: -20,
-    earF: -20,
-    fN: [5, 7, -25],
-    fF: [3, 8, -20],
-    hN: [-5, 7, 25],
-    hF: [-3, 8, 20],
-    tail: [90, 120]
+    earN: -10,
+    earF: -10,
+    fN: [3, 3, -20],
+    fF: [2, 3.5, -15],
+    hN: [-6, 0, 30],
+    hF: [-4, 1, 25],
+    tail: [80, 150]
   }),
   PP({
-    y: -1,
-    squash: 1.8,
-    lean: 6,
-    head: [1, 2],
-    nod: 12,
-    eyes: 'angry',
-    earN: 30,
-    earF: 25,
-    fN: [1, 0, 0],
-    fF: [0, 0, 0],
-    hN: [-1, 0, 0],
-    hF: [0, 0, 0],
-    tail: [60, 250]
+    y: 10,
+    squash: -2.5,
+    lean: -8,
+    head: [0.5, -2],
+    nod: -12,
+    eyes: 'wide',
+    squeal: true,
+    earN: -22,
+    earF: -22,
+    fN: [8, 12, -50],
+    fF: [10, 11, -45],
+    hN: [-8, 11, 55],
+    hF: [-6, 10, 50],
+    tail: [95, 110]
   }),
   PP({
-    y: 0,
-    squash: 0.6,
-    lean: 9,
-    head: [1.5, 2.5],
-    nod: 16,
+    y: 8,
+    squash: 0,
+    lean: -2,
+    head: [1, -1],
+    nod: 4,
     eyes: 'angry',
-    earN: 40,
-    earF: 35,
-    fN: [-7, 3.5, 35],
-    fF: [0, 0, 0],
-    hN: [0, 0, 0],
-    hF: [1, 0, 0],
-    tail: [40, 270]
+    squeal: true,
+    earN: 20,
+    earF: 15,
+    fN: [3, 9, -25],
+    fF: [5, 8, -20],
+    hN: [-4, 7, 30],
+    hF: [-2, 7, 25],
+    tail: [60, 180]
   })
 ])
 
 /**
- * run: a piglet's bounding gallop — gather (feet under the body, back arched), push-off, full extension with all
- * four trotters off the ground, the front pair lands, the hind pair swings under, gather again. Ears pressed back,
- * tail streaming, eyes squeezed into a scowl.
+ * run: a piglet's bounding gallop at 300 px/s, 16 px of ground a frame. The hind pair is down on frames 0 and 1,
+ * both pairs fly on frame 2 (full extension), the fore pair is down on frames 3 and 4 and everything is gathered in
+ * the air on frame 5. Ears pressed back, tail streaming, eyes squeezed into a scowl.
  */
+const RUN_FRAMES = 6
+const RUN_STRIDE = 96
+/** The trotter's middle lies this far right of its origin. */
+const TROT_MID = 0.3
+/** Each trotter's path: the near and far feet of a pair land 3 px apart. */
+const RUN_FEET = {
+  hN: footPath(RUN_FRAMES, RUN_STRIDE, { land: 0, contact: 2, front: 28 }),
+  hF: footPath(RUN_FRAMES, RUN_STRIDE, { land: 0, contact: 2, front: 31 }),
+  fN: footPath(RUN_FRAMES, RUN_STRIDE, { land: 3, contact: 2, front: 44 }),
+  fF: footPath(RUN_FRAMES, RUN_STRIDE, { land: 3, contact: 2, front: 41 })
+}
 const pigRun = memo(() => {
-  // fN, fF, hN, hF, y, lean, squash
-  const keys: [Trot, Trot, Trot, Trot, number, number, number][] = [
-    [[-3, 0, 0], [-1, 1.5, 10], [4, 0, 0], [2, 1.5, -10], 0, 2, -2],
-    [[3, 4, -30], [5, 3, -25], [-4, 0, 30], [-2, 0, 20], 2, -7, 0],
-    [[7, 5, -50], [9, 4, -45], [-8, 6, 50], [-6, 5, 45], 6, -2, 2.4],
-    [[5, 0, 0], [7, 1.5, -15], [-7, 5, 40], [-5, 5, 35], 3, 6, 1.4],
-    [[-1, 0, 0], [1, 0, 0], [-2, 5, 10], [0, 5, 0], 1, 7, -0.6],
-    [[-4, 3, 30], [-2, 2, 20], [3, 0, 0], [5, 1.5, -10], 2, 3, -1.8]
+  const trot = (step: FootStep, rest: number, turn: number): Trot => {
+    const u = step.x - (29 + rest + TROT_MID)
+    if (step.down) return [u, 0, 0]
+    const s = Math.sin(Math.PI * step.swing)
+    return [u, 3.5 + 3 * s, turn * s]
+  }
+  // y, lean, squash per frame: low on the landings, high in the two flights
+  const body: [number, number, number][] = [
+    [0, 2, -1],
+    [2, -5, 0],
+    [6, -2, 2.4],
+    [2, 6, 1.4],
+    [1, 7, -0.6],
+    [4, 3, -1.8]
   ]
-  const bob = keys.map((k) => k[4])
+  const bob = body.map((k) => k[0])
   const earLag = lag(bob, { stiffness: 0.4, damping: 0.5, loop: true })
-  return keys.map(([fN, fF, hN, hF, y, lean, squash], i) =>
+  return body.map(([y, lean, squash], i) =>
     PP({
       y,
       lean,
       squash,
-      fN,
-      fF,
-      hN,
-      hF,
+      fN: trot(RUN_FEET.fN[i], TROT_REST.fN, -45),
+      fF: trot(RUN_FEET.fF[i], TROT_REST.fF, -40),
+      hN: trot(RUN_FEET.hN[i], TROT_REST.hN, 45),
+      hF: trot(RUN_FEET.hF[i], TROT_REST.hF, 40),
       head: [0.5, 0.5 - earLag[i] * 0.3],
       nod: 4,
       eyes: 'angry',
       earN: 60 + earLag[i] * 6,
       earF: 55 + earLag[i] * 6,
-      tail: [10 - earLag[i] * 8, 140 + i * 0]
+      tail: [10 - earLag[i] * 8, 140]
+    })
+  )
+})
+
+/**
+ * daze: stopped by a wall, it sits back on its haunches (the folded rig, head up) and sways slowly from side to side,
+ * eyes in spirals. The ears droop and follow the sway a beat late, the tail hangs limp. It stays where it is.
+ */
+const pigDaze = memo(() => {
+  const sway = [0, 1, 2, 3, 4, 5].map((i) => Math.sin((i / 6) * Math.PI * 2))
+  const earLag = lag(sway, { stiffness: 0.35, damping: 0.5, loop: true })
+  return sway.map((w, i) =>
+    PP({
+      squash: 0.5,
+      lean: w * 5 - 11,
+      breath: 0.5 + 0.5 * Math.sin((i / 3) * Math.PI * 2),
+      head: [-1 + w * 0.8, -1 - Math.abs(w) * 0.6],
+      nod: w * 7 + 8,
+      eyes: i % 2 ? 'spinB' : 'spinA',
+      earN: 70 + earLag[i] * 12,
+      earF: 65 + earLag[i] * 12,
+      fN: null,
+      fF: null,
+      hN: null,
+      hF: null,
+      tail: [-60 + earLag[i] * 8, 40]
     })
   )
 })
@@ -879,7 +937,8 @@ const pigRun = memo(() => {
 const animalClips = () => ({
   sleep: () => pigSleep().map(drawPiglet),
   wake: () => pigWake().map(drawPiglet),
-  run: () => pigRun().map(drawPiglet)
+  run: () => pigRun().map(drawPiglet),
+  daze: () => pigDaze().map(drawPiglet)
 })
 
 // ------------------------------------------------------------------------------------------------------ rock
@@ -990,6 +1049,11 @@ const rockClips = () => ({ idle: () => [drawRock(false)], cracked: () => [drawRo
 
 // -------------------------------------------------------------------------------------------------- registry
 
+/** Where the feet of the piglet's gallop are on the ground (`tests/art-footfall.test.ts`). */
+export const footfalls: FootfallModule = {
+  'prop:animal': { run: footfall(4, RUN_FEET.hN, RUN_FEET.hF, RUN_FEET.fN, RUN_FEET.fF) }
+}
+
 export const sheets: SheetModule = {
   'prop:pipe': () => {
     const c = pipeClips()
@@ -1013,7 +1077,8 @@ export const sheets: SheetModule = {
     return {
       sleep: lazyAnim(c.sleep, 3, true, { anchor: [0, 0] }),
       wake: lazyAnim(c.wake, 12, false, { anchor: [0, 0] }),
-      run: lazyAnim(c.run, 14, true, { anchor: [0, 0] })
+      run: lazyAnim(c.run, 14, true, { anchor: [0, 0] }),
+      daze: lazyAnim(c.daze, 8, true, { anchor: [0, 0] })
     }
   },
   'prop:rock': () => {

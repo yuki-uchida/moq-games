@@ -12,7 +12,7 @@
  * lower jaw, head, face, near ear, stars.
  */
 import type { SheetModule } from '../../module'
-import { TAU, lag } from '../../motion'
+import { TAU, ease, footPath, footfall, lag, lerp, type FootStep, type FootfallModule } from '../../motion'
 import { C, R, ramp } from '../../palette'
 import { Painter, Raster, farRamp, type Pt, type Ramp } from '../../raster'
 import {
@@ -789,33 +789,80 @@ const windup = memo(() => {
   ]
 })
 
+/** How far below its origin a paw (with the pastern above it) reaches when turned by `deg`. */
+function pawDrop(deg: number, big: number) {
+  const f = Frame.at(0, 0, deg)
+  const ring = (cx: number, cy: number, rx: number, ry: number) =>
+    Array.from(
+      { length: 16 },
+      (_, i) => f.pt(cx + Math.cos((i / 16) * TAU) * rx, cy + Math.sin((i / 16) * TAU) * ry)[1]
+    )
+  return Math.max(...ring(1.8 + big, -2.4, 5 + big, 3), ...ring(-1.8, -2.8, 3.2, 2.8), f.pt(0.3, -3)[1] + 3.4)
+}
+
 /**
- * attack: the charge, a gallop — extended (all four off the ground), front contact, gather (back arched),
- * suspension, hind contact, push-off. Head stretched forward with the jaws open, tail and scarf streaming back.
+ * The charge's gallop with two flights (stride 162 over 6 frames, 27 px a frame): stretched out in the air on
+ * frame 0, both fores land on frame 1 (the near one further ahead) and carry two frames, the body gathers in the
+ * air on frame 3 with the hinds swung far under, both hinds land on frame 4 and drive two frames. Table x is px
+ * ahead of the anchor, at the middle of the pad (2 px ahead of the paw's origin).
+ */
+const PAD = 2
+const CHARGE = (() => {
+  const N = 6
+  const stride = 162
+  const paths = {
+    fN: footPath(N, stride, { land: 1, contact: 2, front: 19 }),
+    fF: footPath(N, stride, { land: 1, contact: 2, front: 14 }),
+    hN: footPath(N, stride, { land: 4, contact: 2, front: -8 }),
+    hF: footPath(N, stride, { land: 4, contact: 2, front: -3 })
+  }
+  const paw = (path: readonly FootStep[], rest: number, front: boolean): Paw[] =>
+    path.map((step) => {
+      const u = step.x - PAD - (0 - 2 + rest)
+      if (step.down) return [u, 0, 0]
+      const t = step.swing
+      // just off the ground the paw flicks back sole-up, then folds and reaches forward to land
+      const turn = lerp(front ? 110 : 100, front ? -50 : -25, ease.inOut(t))
+      const lift = Math.max(pawDrop(turn, front ? 0.4 : 0.8) + 4, (front ? 13 : 12) * Math.sin(Math.PI * t) ** 0.8)
+      return [u - 8 * Math.sin(Math.PI * t) * (1 - t), lift, turn]
+    })
+  return {
+    fN: paw(paths.fN, REST.fN, true),
+    fF: paw(paths.fF, REST.fF, true),
+    hN: paw(paths.hN, REST.hN, false),
+    hF: paw(paths.hF, REST.hF, false),
+    footfall: footfall(7, paths.fN, paths.fF, paths.hN, paths.hF)
+  }
+})()
+
+/**
+ * attack: the charge, a flat-out gallop — stretched in the air, both fores land and carry, the back arches as the
+ * body gathers in the air with the hinds under the chest, the hinds land and drive. Head stretched forward with
+ * the jaws open, tail and scarf streaming back.
  */
 const attack = memo(() => {
   const N = 6
-  const legs: [Paw, Paw, Paw, Paw, number, number, number][] = [
-    // fN, fF, hN, hF, y, lean, squash
-    [[20, 9, -70], [14, 11, -60], [-16, 11, 80], [-10, 13, 70], 6, 0, 1.8],
-    [[12, 0, -20], [18, 4, -40], [-12, 13, 110], [-8, 12, 100], 2, 3, 1.5],
-    [[0, 0, 10], [6, 0, 0], [2, 12, -20], [-2, 13, -10], 2, 6, -1.5],
-    [[-14, 8, 110], [-8, 7, 100], [18, 7, -40], [14, 8, -30], 3, 2, -3],
-    [[-6, 12, 80], [-2, 10, 70], [16, 0, -10], [20, 3, -20], 2, -5, -1.5],
-    [[10, 10, -10], [6, 9, -5], [2, 2, 30], [8, 1.5, 20], 3, -6, 1.5]
+  const body: [number, number, number][] = [
+    // y, lean, squash
+    [5, 0, 1.4],
+    [1, 4, 1],
+    [1, 5, -1.5],
+    [4, 1, -3],
+    [1, -4, -1.5],
+    [1, -3, 1.5]
   ]
-  const bob = legs.map((l) => l[4])
+  const bob = body.map((b) => b[0])
   const headLag = lag(bob, { stiffness: 0.5, damping: 0.6, loop: true })
-  return legs.map(([fN, fF, hN, hF, y, lean, squash], i) =>
+  return body.map(([y, lean, squash], i) =>
     P({
       x: 0,
       y,
       lean,
       squash,
-      fN,
-      fF,
-      hN,
-      hF,
+      fN: CHARGE.fN[i],
+      fF: CHARGE.fF[i],
+      hN: CHARGE.hN[i],
+      hF: CHARGE.hF[i],
       head: [2, 1 - headLag[i] * 0.8],
       nod: headLag[i] * 3,
       jaw: 0.7,
@@ -970,6 +1017,9 @@ const defeat = memo(() => {
 })
 
 const draw = (poses: WolfPose[]) => poses.map(drawWolf)
+
+/** Where the feet of his charge are on the ground (`tests/art-footfall.test.ts`). */
+export const footfalls: FootfallModule = { wolfBoss: { attack: CHARGE.footfall } }
 
 export const sheets: SheetModule = {
   wolfBoss: () => ({

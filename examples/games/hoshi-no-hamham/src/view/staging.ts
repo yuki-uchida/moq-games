@@ -38,10 +38,14 @@ export const DEATH_SECONDS = 1.8
 /** The boss's roar is posed at least this long (s), and longer when his `intro` clip needs it. */
 export const BOSS_ROAR_SECONDS = 1.25
 /**
- * Phase 2 holds the fight while the king transforms: the pose and the hold differ by this much (s), so the pose is
- * still up when the simulation resumes.
+ * Under reduced motion the phase-2 hold is the bare `rage` clip and its pose is given this much (s) more on its clock;
+ * either way the pose ends with the moment (so it is never drawn on a step the simulation runs).
  */
 export const RAGE_POSE_MARGIN = 0.05
+/** A staged pose that is ended by its moment is given this much (s) more on its own clock, as a backstop. */
+const POSE_SPARE = 1
+/** A boss who is in the air when his intro or his phase 2 is due is waited for this long (s) at most to land. */
+export const LAND_WAIT_SECONDS = 1.5
 const PRINCESS = { who: 'ハム姫', face: 'face_princess' }
 
 export class Staging {
@@ -71,8 +75,8 @@ export class Staging {
   }
 
   /**
-   * Stages a pose that belongs to the moment `seq`: it ends when the moment ends or is skipped (unless a later pose
-   * has replaced it), so no pose outlives its moment.
+   * Stages a pose that belongs to the moment `seq`: it ends when the moment ends, is skipped or is cancelled (unless a
+   * later pose has replaced it), so no pose outlives its moment.
    */
   private posed(
     seq: Sequence,
@@ -83,7 +87,7 @@ export class Staging {
   ) {
     const actors = this.host.view.actors
     const token = actors.pose(who, clip, seconds, options)
-    seq.onEnd(() => actors.unposeIf(who, token))
+    seq.onStop(() => actors.unposeIf(who, token))
   }
 
   /** A world point in screen pixels of the current (unshaken) view. */
@@ -270,12 +274,11 @@ export class Staging {
       camera.panTo(c.x, Math.max(c.y - 24, lowest), this.reduced ? 0 : pan)
       this.posed(seq, 'boss', 'idle', pan + 0.05)
     })
-    // The roar is posed for the whole `intro` clip and one pass of its sustained tail (holds included).
-    const intro = bossSheetSpec(boss.def.kind, boss.def.art).intro
-    const roar = Math.max(BOSS_ROAR_SECONDS, intro ? clipLife(intro) : 0)
+    // The roar is posed until the moment ends (the camera's return included): its `intro` clip plays whole and then
+    // stays alive on its sustained tail. (It always has the whole clip and one pass of the tail: see the test.)
     seq.at(pan, () => {
       const c = centre()
-      this.posed(seq, 'boss', 'intro', roar)
+      this.posed(seq, 'boss', 'intro', length - pan + POSE_SPARE)
       sound.cue('boss-roar')
       this.trauma(0.55)
       this.fx.spawn('ring', c.x, c.y, { layer: 'front' })
@@ -309,9 +312,9 @@ export class Staging {
 
   /**
    * Phase 2: the fight holds while he transforms (the flash and rings come with the event). The `rage` clip plays
-   * whole: the pose lasts the clip and one pass of its burning tail, the hold a hair less; under reduced motion the
-   * hold is the clip itself and the pose a hair longer. It is part of the fight, so it cannot be skipped: a player
-   * mashing bite would otherwise never see it.
+   * whole: the hold lasts the clip and one pass of its burning tail (under reduced motion the clip itself), and the
+   * pose ends with it. It is part of the fight, so it cannot be skipped: a player mashing bite would otherwise never
+   * see it. (The director begins it only once he stands on the ground: see `StageDirector`.)
    */
   bossPhase(): Sequence | null {
     const { sound, view, world } = this.host
@@ -319,14 +322,13 @@ export class Staging {
     if (!boss || boss.dead) return null
     const rage = bossSheetSpec(boss.def.kind, boss.def.art).rage
     const clip = rage ? specDuration(rage) : 0
-    const pose = this.reduced ? clip + RAGE_POSE_MARGIN : rage ? clipLife(rage) : 0
-    const length = Math.max(0.3, this.reduced ? clip : pose - RAGE_POSE_MARGIN)
+    const length = Math.max(0.3, this.reduced ? clip : rage ? clipLife(rage) : 0)
     const seq = new Sequence('boss-phase', length, {
       priority: PRIORITY.phase,
       claims: { scale: 0, lock: true }
     })
     seq.at(0, () => {
-      view.actors.pose('boss', 'rage', pose)
+      this.posed(seq, 'boss', 'rage', length + (this.reduced ? RAGE_POSE_MARGIN : POSE_SPARE))
       sound.cue('boss-roar')
       this.trauma(0.3)
       const x = boss.x + boss.w / 2

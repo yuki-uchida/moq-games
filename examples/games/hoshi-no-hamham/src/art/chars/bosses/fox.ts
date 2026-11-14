@@ -14,7 +14,7 @@
  * lower jaw, head, near ear, headband, face, near arm, tail (when wrapped in front), wind in front, stars.
  */
 import type { SheetModule } from '../../module'
-import { TAU, ease, lag, track } from '../../motion'
+import { TAU, footPath, footfall, lag, track, type FootStep, type FootfallModule } from '../../motion'
 import { C, R, ramp } from '../../palette'
 import { Painter, Raster, farRamp, type Pt, type Ramp } from '../../raster'
 import {
@@ -929,23 +929,46 @@ const hurt = memo(() => [
   })
 ])
 
+/**
+ * The ninja run covers `MOVE_STRIDE` px a pass (8 frames, 10 px a frame): contact (0, 4), carrying (1, 5), push-off
+ * (2, 6), flight (3, 7). Each foot is down three frames, 10 px further back on each (the ground passing under him),
+ * landing well ahead of the hips and leaving well behind them; both feet are off the ground on frames 3 and 7.
+ */
+const MOVE_STRIDE = 80
+const MOVE_N = 8
+const MOVE_X = 4
+/** The middle of the boot's sole lies this far ahead of the ball of the foot (the rig's foot point). */
+const SOLE = 2
+const MOVE_FEET = {
+  near: footPath(MOVE_N, MOVE_STRIDE, { land: 0, contact: 3, front: 22 }),
+  far: footPath(MOVE_N, MOVE_STRIDE, { land: 4, contact: 3, front: 22 })
+}
+/** The sole's turn on each frame a foot is down: flat on landing, rolling onto the toes as it pushes off. */
+const MOVE_TILT = [-4, 0, 10]
+
+/** One foot of the run as the rig's leg parameter (relative to its rest place, cancelling the figure's `x`). */
+function runLeg(step: FootStep, rest: number): Leg {
+  const u = step.x - SOLE - MOVE_X - rest
+  if (step.down) return [u, 0, MOVE_TILT[step.since] ?? 0]
+  const t = step.swing
+  // peeling off: the foot hangs back and kicks up behind, then folds under and reaches forward for the next step
+  return [u - 7 * Math.sin(Math.PI * t) * (1 - t), Math.max(4, 12 * Math.sin(Math.PI * t) ** 0.8), 55 - 70 * t]
+}
+
 /** move: the ninja run, leaning far forward with the arms trailing straight back, tail and headband streaming level. */
 const move = memo(() => {
-  const N = 8
-  const foot = (t: number): Leg => {
-    const f = ((t % 1) + 1) % 1
-    if (f < 0.45) return [11 - 22 * (f / 0.45), 0, 0]
-    const s = (f - 0.45) / 0.55
-    return [-11 + 22 * ease.inOut(s), Math.sin(Math.PI * s) * 10, Math.sin(Math.PI * s) * 30]
-  }
-  const bob = Array.from({ length: N }, (_, i) => -Math.cos(((i - 1) / 4) * TAU))
+  const N = MOVE_N
+  // low on the landing and carrying frames, up in the push-off, highest in flight
+  const bob = [-1, -1.6, 0.2, 1.4, -1, -1.6, 0.2, 1.4]
+  const squash = [1.2, 0.6, -0.4, -1, 1.2, 0.6, -0.4, -1]
   const headLag = lag(bob, { stiffness: 0.45, damping: 0.55, loop: true })
   return Array.from({ length: N }, (_, i) => {
-    const n = foot(i / N)
-    const f = foot(i / N + 0.5)
+    const n = runLeg(MOVE_FEET.near[i], REST.N)
+    const f = runLeg(MOVE_FEET.far[i], REST.F)
     return P({
-      x: 4,
+      x: MOVE_X,
       y: -3 + bob[i] * 1.5,
+      squash: squash[i],
       lean: 42,
       head: [2, 3 + headLag[i]],
       nod: -4,
@@ -957,8 +980,8 @@ const move = memo(() => {
       handN: 'open',
       armF: [-16, 4 + bob[i] * 0.5, 10, 1],
       handF: 'open',
-      legN: [n[0] - 4, n[1], n[2]],
-      legF: [f[0] + 7, f[1], f[2]],
+      legN: n,
+      legF: f,
       tail: [
         [-6, -1],
         [-17, -3],
@@ -1208,28 +1231,30 @@ const defeat = memo(() => {
 })
 
 /**
- * shoot: the ninja's cast — the hand sign before his face, fox-fire gathering at the fingertips while he coils back,
- * the thrust onto the front foot with the palm open (the game spawns the orb on `hit`), the arm swinging down, back
- * to the stance. `x` moves the whole figure; the leg offsets cancel it so the feet stay planted unless he steps.
+ * shoot: the ninja's cast, done in one low leap forward (he keeps moving while he casts): the spring with the hand
+ * coming up, the hand sign before his face as he rises with fox-fire gathering at the fingertips, the thrust at the
+ * top of the leap with the palm open (the game spawns the orb on `hit`), the arm following through as he comes down,
+ * the touch-down. `rise` lifts the whole figure off the ground; in the air the legs tuck and trail as a leaping
+ * fox's do, and the tail and headband stream a beat late.
  */
 const shoot = memo(() => [
-  // 0 — the sign: weight down, two fingers raised before the face, the tail curled up, eyes narrowed, the band hanging
+  // 0 — the spring: crouched over the near foot pushing off behind, the hand already coming up to the sign
   P({
     x: -1,
-    y: -3,
-    lean: 8,
-    squash: 1,
-    head: [0, 1],
-    nod: 5,
+    y: -6,
+    lean: 18,
+    squash: 1.5,
+    head: [1, 2],
+    nod: 6,
     eyes: 'angry',
     mouth: 'flat',
     earN: 10,
     earF: 6,
-    armN: [25, -4, -80, 1],
+    armN: [20, 0, -60, 1],
     handN: 'two',
-    armF: [-5, 14, 30, 1],
-    legN: [1, 0, 0],
-    legF: [1, 0, 0],
+    armF: [-9, 12, 30, 1],
+    legN: [-9, 0, 24],
+    legF: [4, 3, -10],
     tail: [
       [-6, -1],
       [-18, 3],
@@ -1239,43 +1264,45 @@ const shoot = memo(() => [
     ],
     sway: 0.5,
     swayAmp: 1,
-    band: [38, 26, 0.6, 0, 30]
+    band: [30, 26, 0.6, 0, 30]
   }),
-  // 1 — the flame catches; he coils back, the tail fluffs
+  // 1 — rising: stretched out of the spring, the hand sign made before the face, the flame catches, legs trailing
   P({
-    x: -3,
-    y: -4,
-    lean: -2,
-    squash: 1,
-    head: [-1, 1],
-    nod: 1,
+    x: -1,
+    y: 0,
+    rise: 8,
+    lean: 4,
+    squash: -1.2,
+    head: [0, 1],
+    nod: 3,
     eyes: 'angry',
     mouth: 'smirk',
     earN: 18,
     earF: 14,
-    armN: [25, -5, -86, 1],
+    armN: [25, -5, -84, 1],
     handN: 'two',
     armF: [-8, 12, 30, 1],
-    legN: [3, 0, 0],
-    legF: [2, 0, 0],
+    legN: [-16, 9, 70],
+    legF: [-8, 12, 50],
     tail: [
       [-6, -1],
-      [-20, 4],
-      [-34, -3],
-      [-38, -22],
-      [-27, -37]
+      [-20, 6],
+      [-33, 4],
+      [-39, -14],
+      [-31, -31]
     ],
     puff: 1.15,
     sway: 1,
     swayAmp: 1.5,
-    band: [28, 28, 1, 1, 30],
+    band: [36, 28, 1, 1, 30],
     fire: 3.2
   }),
-  // 2 — the flame grows; coiled furthest back, grinning
+  // 2 — near the top: legs tucked under him, coiled back with the flame grown, grinning
   P({
-    x: -4,
-    y: -4,
-    lean: -7,
+    x: -2,
+    y: -1,
+    rise: 12,
+    lean: -5,
     squash: 0.5,
     head: [-2, 0],
     nod: -2,
@@ -1286,8 +1313,8 @@ const shoot = memo(() => [
     armN: [24.5, -5, -90, 1],
     handN: 'two',
     armF: [-10, 10, 30, 1],
-    legN: [4, 0, 0],
-    legF: [3, 0, 0],
+    legN: [5, 11, -15],
+    legF: [-4, 9, 20],
     tail: [
       [-6, -1],
       [-21, 4],
@@ -1301,10 +1328,12 @@ const shoot = memo(() => [
     band: [22, 28, 1.2, 2, 28],
     fire: 4.6
   }),
-  // 3 (hit) — the thrust: arm at full stretch, palm open, a lunge onto the front foot, band and tail snapped straight
+  // 3 (hit) — just past the top: the thrust, arm at full stretch and palm open, the near knee driving forward and
+  // the far leg kicked out behind, band and tail snapped straight
   P({
     x: 4,
-    y: -4,
+    y: -2,
+    rise: 11,
     lean: 20,
     squash: -1,
     head: [2, 2],
@@ -1314,12 +1343,12 @@ const shoot = memo(() => [
     jaw: 0.45,
     earN: 28,
     earF: 28,
-    armN: [30, 1, -82, 1],
+    armN: [30, 3, -82, 1],
     handN: 'open',
     armF: [-15, 5, 0, 1],
     handF: 'fist',
-    legN: [4, 0, 0],
-    legF: [-5, 0, 0],
+    legN: [3, 9, -20],
+    legF: [-14, 7, 60],
     tail: [
       [-6, -1],
       [-18, -3],
@@ -1332,10 +1361,11 @@ const shoot = memo(() => [
     band: [-8, 34, 0.3, 3, 4],
     flash: 1.3
   }),
-  // 4 — follow-through: the arm swings down, the tail swishes through under him
+  // 4 — coming down: the arm swings through and down, the near foot reaching for the ground, the tail swishing under
   P({
     x: 3,
-    y: -3,
+    y: -1,
+    rise: 6,
     lean: 13,
     head: [1, 2],
     nod: 3,
@@ -1346,44 +1376,51 @@ const shoot = memo(() => [
     armN: [17, 13, -20, 1],
     handN: 'open',
     armF: [-9, 12, 20, 1],
-    legN: [5, 0, 0],
-    legF: [-4, 0, 0],
+    legN: [7, 2, -10],
+    legF: [-13, 8, 55],
     tail: [
       [-6, -1],
-      [-19, 6],
-      [-32, 4],
-      [-39, -11],
-      [-32, -28]
+      [-19, 3],
+      [-32, 1],
+      [-39, -13],
+      [-32, -29]
     ],
     puff: 1.05,
     sway: 2.4,
     swayAmp: 2,
-    band: [8, 32, 1.8, 4, 22]
+    band: [-14, 32, 1.8, 4, 22]
   }),
-  // 5 — straightening back into the stance, the hand returning to the sign at the chest
+  // 5 — touch-down on the near foot, the knees giving, the hand back at the chest, ready to run on
   P({
     x: 1,
-    y: -1,
-    lean: 6,
-    head: [0, 1],
-    nod: 1,
+    y: -4,
+    lean: 10,
+    squash: 1.2,
+    head: [0, 2],
+    nod: 3,
     eyes: 'sly',
     mouth: 'smirk',
-    earN: 6,
-    earF: 4,
+    earN: 10,
+    earF: 8,
     armN: [13, 8, -12, 1],
     handN: 'two',
     armF: [-7, 15, 30, 1],
-    legN: [2, 0, 0],
-    legF: [-1, 0, 0],
+    legN: [4, 0, 0],
+    legF: [-5, 3, 25],
     sway: 3.4,
-    band: [10, 30, 1.6, 5, 32]
+    band: [16, 30, 1.6, 5, 32]
   })
 ])
 
-/** The poses of the idle and move clips (for the tests). */
+/** The poses of the idle, move and shoot clips (for the tests). */
 export const idlePoses = () => idle()
 export const movePoses = () => move()
+export const shootPoses = () => shoot()
+
+/** Where the feet of his run are on the ground (`tests/art-footfall.test.ts`). */
+export const footfalls: FootfallModule = {
+  foxBoss: { move: footfall(5, MOVE_FEET.near, MOVE_FEET.far) }
+}
 
 export const sheets: SheetModule = {
   foxBoss: () => ({

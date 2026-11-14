@@ -16,7 +16,7 @@ import type { Camera } from './camera'
 import type { CueSink } from './cues'
 import { edgePointer, type Overlay } from './overlay'
 import { mergeClaims, type Claims, type Sequence } from './sequence'
-import { PRIORITY, Staging } from './staging'
+import { LAND_WAIT_SECONDS, PRIORITY, Staging } from './staging'
 import type { StageView } from './stage-view'
 
 /** What a director can reach. */
@@ -75,12 +75,18 @@ interface Pending {
   make: () => Sequence | null
 }
 
+/** A moment that waits for the boss to land before it is requested (for at most `LAND_WAIT_SECONDS`). */
+interface Landing extends Pending {
+  waited: number
+}
+
 export class StageDirector implements Director {
   outcome: Outcome | null = null
   /** Names of the moments that began, in order (tests). */
   readonly log: string[] = []
   private main: Sequence | null = null
   private queue: Pending[] = []
+  private landings: Landing[] = []
   private claimed: Required<Claims> = mergeClaims([])
   private barsOn = false
   private cinematicOn = false
@@ -133,10 +139,12 @@ export class StageDirector implements Director {
     switch (event.type) {
       case 'boss-awake':
         if (world.boss && world.boss.def.kind !== 'chaser')
-          this.request(PRIORITY.intro, () => this.staging.bossIntro(() => this.showBossBar()))
+          this.whenLanded(PRIORITY.intro, () => this.staging.bossIntro(() => this.showBossBar()))
         break
       case 'boss-phase':
-        this.request(PRIORITY.phase, () => this.staging.bossPhase())
+        // (The view leaves his transformation to the moment: it is not played on the simulation's time.)
+        this.host.view.actors.stageRage()
+        this.whenLanded(PRIORITY.phase, () => this.staging.bossPhase())
         break
       case 'boss-down':
         this.hideBossBar()
@@ -176,6 +184,7 @@ export class StageDirector implements Director {
     }
     this.main?.update(dt)
     this.advanceQueue()
+    this.advanceLandings(dt)
     // The stage ended without its event reaching the director: still play the ending.
     if (!this.ended && world.state !== 'play') {
       const p = world.player
@@ -225,6 +234,36 @@ export class StageDirector implements Director {
     this.refresh()
   }
 
+  /**
+   * Requests a boss's moment once he stands on the ground: one that holds him in a planted pose (his roar, his
+   * transformation) is not begun while he is in the air (the simulation runs on meanwhile). A flier hovers, and one
+   * that never lands is posed after `LAND_WAIT_SECONDS`.
+   */
+  private whenLanded(priority: number, make: () => Sequence | null) {
+    if (this.ended) return
+    if (this.landed()) this.request(priority, make)
+    else this.landings.push({ priority, make, waited: 0 })
+  }
+
+  private landed() {
+    const boss = this.host.world.boss
+    return !boss || boss.dead || boss.onGround || boss.def.kind === 'flyer'
+  }
+
+  private advanceLandings(dt: number) {
+    if (!this.landings.length) return
+    const landed = this.landed()
+    for (let i = 0; i < this.landings.length; ) {
+      const l = this.landings[i]
+      l.waited += dt * this.claimed.scale
+      if (this.ended) this.landings.splice(i, 1)
+      else if (landed || l.waited >= LAND_WAIT_SECONDS - 1e-9) {
+        this.landings.splice(i, 1)
+        this.request(l.priority, l.make)
+      } else i++
+    }
+  }
+
   private begin(make: () => Sequence | null) {
     const seq = make()
     this.main = seq
@@ -241,7 +280,11 @@ export class StageDirector implements Director {
   }
 
   private introPending() {
-    return this.main?.name === 'boss-intro' || this.queue.some((p) => p.priority === PRIORITY.intro)
+    return (
+      this.main?.name === 'boss-intro' ||
+      this.queue.some((p) => p.priority === PRIORITY.intro) ||
+      this.landings.some((p) => p.priority === PRIORITY.intro)
+    )
   }
 
   private showBossBar() {

@@ -16,7 +16,7 @@
  * mouth, lower jaw, head, face, whiskers, near ear, cap, fan in the paw, near arm, loose cap and fan, stars.
  */
 import type { SheetModule } from '../../module'
-import { TAU, lag } from '../../motion'
+import { TAU, ease, footPath, footfall, lag, lerp, type FootStep, type FootfallModule } from '../../motion'
 import { C, R, ramp } from '../../palette'
 import { Painter, Raster, farRamp, type Pt, type Ramp } from '../../raster'
 import {
@@ -820,32 +820,97 @@ const windup = memo(() => {
   ]
 })
 
-/** attack: the bounding gallop — gathered and arched, push-off, stretched flat in the air, front landing, the hind
- * paws swinging in under him. Ears back, ribbons and tail streaming. */
+/** How far below its origin a foot (with the end of the shank) reaches when turned by `deg`. */
+function footDrop(deg: number) {
+  const f = Frame.at(0, 0, deg)
+  const ring = (cx: number, cy: number, rx: number, ry: number) =>
+    Array.from(
+      { length: 16 },
+      (_, i) => f.pt(cx + Math.cos((i / 16) * TAU) * rx, cy + Math.sin((i / 16) * TAU) * ry)[1]
+    )
+  return Math.max(...ring(2.6, -2, 4.6, 2.1), ...ring(-1, -2.5, 2.6, 2.5), f.pt(-0.5, -2.5)[1] + 2.6)
+}
+
+/**
+ * The charge's half-bound with two flights (stride 146 over 6 frames, 24.33 px a frame): the far fore lands on
+ * frame 2 and the near fore on frame 3, one frame each (the short arms cannot carry further with the chest clear of
+ * the ground), the body gathers in the air on frame 4, both hinds land under the arch on frame 5 and drive two
+ * frames, and he flies stretched flat on frame 1. Table x is px ahead of
+ * the anchor at the middle of the pads: a front paw lies 1 px ahead of the wrist target's column + 1, a hind foot's
+ * pads 2 px ahead of its origin. Each frame's pose gives its own x (and hip, for the hinds) to cancel.
+ */
+const CHARGE = (() => {
+  const N = 6
+  const stride = 146
+  const paths = {
+    armN: footPath(N, stride, { land: 3, contact: 1, front: 16 }),
+    armF: footPath(N, stride, { land: 2, contact: 1, front: 20 }),
+    legN: footPath(N, stride, { land: 5, contact: 2, front: 0 }),
+    legF: footPath(N, stride, { land: 5, contact: 2, front: -3 })
+  }
+  // a front paw on the ground is drawn 1 px ahead of its wrist target; in the air the hand hangs from the target
+  const arm = (path: readonly FootStep[]) =>
+    path.map((step) => (x: number): Reach => {
+      const u = step.x - 2 - x
+      if (step.down) return [u, 0, 1]
+      const t = step.swing
+      return [u - 6 * Math.sin(Math.PI * t) * (1 - t), Math.max(4.5, 11 * Math.sin(Math.PI * t) ** 0.8), 1]
+    })
+  // a hind foot sits under the hip (near +6, far -3) plus its offset
+  const leg = (path: readonly FootStep[], near: boolean) =>
+    path.map((step) => (x: number, hip: number): Foot => {
+      const u = step.x - 2 - (x + hip + (near ? 6 : -3))
+      if (step.down) return [u, 0, 0]
+      const t = step.swing
+      // just off the ground the toes point down behind, then the foot swings under and flattens to land
+      const turn = lerp(70, -15, ease.inOut(t))
+      const lift = Math.max(footDrop(turn) + 4, 10 * Math.sin(Math.PI * t) ** 0.8)
+      return [u - 7 * Math.sin(Math.PI * t) * (1 - t), lift, turn]
+    })
+  return {
+    armN: arm(paths.armN),
+    armF: arm(paths.armF),
+    legN: leg(paths.legN, true),
+    legF: leg(paths.legF, false),
+    footfall: footfall(6, paths.armN, paths.armF, paths.legN, paths.legF)
+  }
+})()
+
+/** attack: the bounding gallop — the hinds drive, stretched flat in the air, the fores land far ahead one after the
+ * other while the back starts to rise, gathered and arched in the air, the hinds land under the arch. Ears back, ribbons and tail
+ * streaming. */
 const attack = memo(() => {
   const N = 6
-  // hip, bend, y, stretch, front paws (x, lift), hind paws (forward, lift, turn)
-  const keys: [number[], number[], number, number, Reach, Reach, Foot, Foot][] = [
-    [[-12, 22], [-60, 34, 36, -24], 0, 0.2, [8, 0, 1], [4, 1, 1], [8, 0, 0], [5, 0, 0]],
-    [[-16, 20], [-28, 16, 16, -20], 2, 1.2, [22, 6, 1], [18, 8, 1], [-6, 0, 30], [-9, 2, 40]],
-    [[-22, 17], [-4, 2, -2, -16], 6, 2.4, [34, 7, 1], [30, 9, 1], [-16, 8, 70], [-20, 10, 80]],
-    [[-22, 18], [2, 4, 8, -18], 2, 2.2, [28, 0, 1], [24, 0, 1], [-12, 10, 60], [-16, 9, 50]],
-    [[-17, 20], [-30, 18, 24, -22], 1, 1, [18, 0, 1], [16, 0, 1], [2, 9, 10], [-2, 10, 20]],
-    [[-13, 22], [-52, 30, 32, -24], 0, 0.4, [12, 3, 1], [9, 5, 1], [9, 2, 0], [6, 3, 0]]
+  // x, hip, bend, y, stretch
+  const keys: [number, number[], number[], number, number][] = [
+    // the hinds drive, the back uncurling
+    [-1, [-18, 19], [-40, 24, 24, -22], 1, 0.8],
+    // stretched flat in the air
+    [0, [-22, 18], [-4, 2, -2, -16], 4, 2.4],
+    // the fores land far ahead, the chest dips
+    [0, [-22, 18], [2, 4, 8, -18], 3, 2.2],
+    // the second fore lands and the hind end swings in: the back starts to rise, the neck lifts
+    [-1, [-18, 18], [-12, 8, 10, -40], 1, 1.6],
+    // gathered in the air, back arched, hinds swung under the chest
+    [-4, [-12, 22], [-55, 32, 34, -24], 4, 0.2],
+    // the hinds land under the arch
+    [-2, [-12, 21], [-56, 32, 34, -24], 0, 0.3]
   ]
-  const bob = keys.map((k) => k[2])
+  const bob = keys.map((k) => k[3])
   const lagged = lag(bob, { stiffness: 0.4, damping: 0.5, loop: true })
-  return keys.map(([hp, bend, y, stretch, armN, armF, legN, legF], i) =>
+  return keys.map(([x, hp, bend, y, stretch], i) =>
     P({
       ...Q,
+      x,
       hip: [hp[0], hp[1]],
       bend: [bend[0], bend[1], bend[2], bend[3]],
       y,
       stretch,
-      armN,
-      armF,
-      legN,
-      legF,
+      // stretched flat in the air the fores reach out ahead of the chest, clear of the ground
+      armN: i === 1 ? [32 - x, 11, 1] : CHARGE.armN[i](x),
+      armF: i === 1 ? [34 - x, 13, 1] : CHARGE.armF[i](x),
+      legN: CHARGE.legN[i](x, hp[0]),
+      legF: CHARGE.legF[i](x, hp[0]),
       head: [4, 3 + lagged[i]],
       nod: 4 + lagged[i] * 3,
       eyes: 'angry',
@@ -1041,6 +1106,9 @@ const defeat = memo(() => {
 })
 
 const draw = (poses: WeaselPose[]) => poses.map(drawWeasel)
+
+/** Where the feet of his charge are on the ground (`tests/art-footfall.test.ts`). */
+export const footfalls: FootfallModule = { weaselBoss: { attack: CHARGE.footfall } }
 
 export const sheets: SheetModule = {
   weaselBoss: () => ({
