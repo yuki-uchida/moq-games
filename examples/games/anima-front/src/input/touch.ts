@@ -3,7 +3,7 @@
  * right half, big 右/左 paw buttons with small cycle buttons, ジャンプ, ダッシュ, a contextual 救助 button and
  * the ≡ menu. Styles live in src/ui/styles/touch.css.
  */
-import { itemIconSvg } from '../ui/art'
+import { itemIconMarkup } from '../ui/thumbs'
 import { h, setClass, setStyle } from '../ui/dom'
 import type { ItemId } from '../data/items'
 import type { Button, ControlState, UiAction } from './controls'
@@ -183,11 +183,11 @@ export function createTouchControls(o: {
     setPaws(r, l) {
       if (r !== lastR) {
         lastR = r
-        rIcon.innerHTML = r ? itemIconSvg(r) : ''
+        rIcon.innerHTML = r ? itemIconMarkup(r) : ''
       }
       if (l !== lastL) {
         lastL = l
-        lIcon.innerHTML = l ? itemIconSvg(l) : ''
+        lIcon.innerHTML = l ? itemIconMarkup(l) : ''
       }
     },
     setInteract(label) {

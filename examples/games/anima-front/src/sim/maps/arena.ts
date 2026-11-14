@@ -59,6 +59,8 @@ export function buildArena(): MapDef {
     f(-1)
   }
   const polar = (a: number, r: number): [number, number] => [r * Math.sin(a), r * Math.cos(a)]
+  /** A point at angle `a`, radius `r` and height `y`, spread straight into `deco(kind, x, y, z)`. */
+  const polarAt = (a: number, r: number, y: number): [number, number, number] => [r * Math.sin(a), y, r * Math.cos(a)]
 
   // ------------------------------------------------------------------ base (team 0, north)
   m.boxC('ground', 0, BASE_R, 18, 18, -0.3, 0.3, { style: 3 })
@@ -130,7 +132,7 @@ export function buildArena(): MapDef {
     sq('building', wx, wz, 6, 0, 4, 7)
     blockStairs(wx - 12.6, wz, wx - 3.6, wz, 0, 4)
     for (const r of [28, 58, 70]) sq('wall', ...polar(a, r), 2.2, 0, 1.2, 4)
-    m.deco('holo', ...polar(a, 52), 3)
+    m.deco('holo', ...polarAt(a, 52, 3))
     m.tree(...polar(a + 0.1, 34), 4, 1.1)
     m.tree(...polar(a - 0.1, 62), 4, 1.1)
   }
@@ -175,24 +177,24 @@ export function buildArena(): MapDef {
   mirror((sx) => {
     const [x, z] = polar(sx * 0.62, 56)
     sq('wall', x, z, 2.4, 0, 1.3, 4)
-    m.deco('arrow', ...polar(sx * 0.55, 62), 0, { yaw: sx * 0.55 + Math.PI })
+    m.deco('arrow', ...polarAt(sx * 0.55, 62, 0), { yaw: sx * 0.55 + Math.PI })
   })
 
   // Floor arrows guiding to the plaza, holo signage and soft greenery.
   for (const r of [20, 30, 40]) m.deco('arrow', 0, 0, r, { yaw: Math.PI, s: 1.4 })
   mirror((sx) => {
-    for (const r of [30, 44, 56]) m.deco('arrow', ...polar(sx * 0.95, r), 0, { yaw: sx * 0.95 + Math.PI })
+    for (const r of [30, 44, 56]) m.deco('arrow', ...polarAt(sx * 0.95, r, 0), { yaw: sx * 0.95 + Math.PI })
     m.deco('holo', sx * 27, 12.5, 37, { s: 1.5, style: 4 })
     m.deco('holo', sx * 14, 6.6, 46, { s: 1.2, style: 5 })
-    m.deco('holo', ...polar(sx * 0.3, 79), 6, { yaw: sx * 0.3 + Math.PI, s: 3, style: 6 })
+    m.deco('holo', ...polarAt(sx * 0.3, 79, 6), { yaw: sx * 0.3 + Math.PI, s: 3, style: 6 })
     m.deco('bush', sx * 9, 0, 61)
     m.deco('grass', sx * 25.5, 0, 26)
     m.deco('flowers', sx * 18, 0, 31)
     m.deco('lamp', sx * 8, 0, 40, { yaw: sx > 0 ? -Math.PI / 2 : Math.PI / 2 })
-    m.deco('lamp', ...polar(sx * 0.5, 24), 0)
+    m.deco('lamp', ...polarAt(sx * 0.5, 24, 0))
   })
-  m.deco('holo', ...polar(TAU / 6, 70), 4, { yaw: TAU / 6 + Math.PI, s: 2, style: 7 })
-  m.deco('lamp', ...polar(TAU / 6, 40), 0)
+  m.deco('holo', ...polarAt(TAU / 6, 70, 4), { yaw: TAU / 6 + Math.PI, s: 2, style: 7 })
+  m.deco('lamp', ...polarAt(TAU / 6, 40, 0))
 
   // ------------------------------------------------------------------ copy the third at 120° and 240°
   const boxes = m.boxes.slice(b0)

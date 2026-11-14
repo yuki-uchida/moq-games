@@ -2,7 +2,8 @@
 import type { ItemId } from '../data/items'
 import type { SpeciesId } from '../data/species'
 import type { Speaker } from '../data/missions'
-import { emblemSvg, itemIconSvg, portraitSvg, speciesIconSvg } from './art'
+import { emblemSvg, portraitSvg, speciesIconSvg } from './art'
+import { itemIconNode } from './thumbs'
 import { h, svg } from './dom'
 
 export function logo(size: 'large' | 'small' = 'large'): HTMLElement {
@@ -57,11 +58,7 @@ export function speciesBadge(id: SpeciesId, size = 44): HTMLElement {
 }
 
 export function itemIcon(id: ItemId, size = 36): HTMLElement {
-  return h(
-    'span',
-    { class: 'icon item-icon', style: { width: `${size}px`, height: `${size}px` } },
-    svg(itemIconSvg(id))
-  )
+  return h('span', { class: 'icon item-icon', style: { width: `${size}px`, height: `${size}px` } }, itemIconNode(id))
 }
 
 export function portrait(who: Speaker, className = 'portrait'): HTMLElement {
