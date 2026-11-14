@@ -104,6 +104,9 @@ function slot(source: () => Anim): Slot {
       },
       get anchor() {
         return current().anchor
+      },
+      get sustain() {
+        return current().sustain
       }
     },
     ready: () => Boolean(adopted) || read,
