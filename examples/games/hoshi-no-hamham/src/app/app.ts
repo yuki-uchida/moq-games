@@ -14,6 +14,7 @@ import { deadArt, helpArt, HELP_DIRT, helpSprites, resultArt, selectArt, titleAr
 import { DomScreens, type Prepare, type Screens, type StoryInfo } from '../ui/screens'
 import { shotArt, STORY_SCENES, ENDING_SCENES, type SceneKey } from '../ui/story-scenes'
 import { installZoomGuard } from '../ui/zoom-guard'
+import { primeStagingPictures } from '../view/prime'
 import { Renderer } from '../view/renderer'
 import { SoundBoard, type SoundCue } from '../view/sound-map'
 import type { StageView } from '../view/stage-view'
@@ -555,6 +556,13 @@ export class App {
 
   private loop = (time: number) => {
     requestAnimationFrame(this.loop)
+    // The page's first frame: the staging's pictures go to the GPU once, ahead of the stage that first shows them
+    // (view/prime.ts). The canvas is cleared again at once, and what this frame draws goes over that; under reduced
+    // motion the title's still picture was drawn before the loop began and is drawn again.
+    if (this.frames === 0 && primeStagingPictures(this.renderer)) {
+      this.renderer.clear()
+      if (this.screen === 'title' && reducedMotion()) this.demo?.draw()
+    }
     const now = time / 1000
     const dt = Math.min(MAX_FRAME, Math.max(0, now - this.lastTime))
     this.lastTime = now
