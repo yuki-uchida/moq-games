@@ -173,10 +173,12 @@ const BOSS_BY_KIND: Record<(typeof BOSS_KIND)[BossArt], Specs> = {
     stunned: big(6, 8, true),
     recover: big(4, 6, true)
   },
-  // hovering idle → windup → dive → recover
+  // hovering idle (throwing from the hover) → windup → dive, levelling out along the ground → recover
   flyer: {
     windup: big(4, 10, false, { sustain: 2 }),
-    attack: big(3, 14, true),
+    attack: big(3, 14, true), // the dive: steep, wings folded back
+    sweep: big(4, 14, true), // the dive levelled out just above the ground: skimming, wings beating, dust
+    shoot: big(6, 12, false, { hit: 3 }), // the throw: a wing drawn back, flicked forward on `hit`, follow-through
     recover: big(4, 8, true)
   },
   // walk → windup (crouch) → leap (air: 0 rising, 1 the top, 2 falling) → land (slam) → recover
@@ -187,11 +189,12 @@ const BOSS_BY_KIND: Record<(typeof BOSS_KIND)[BossArt], Specs> = {
     land: big(4, 14, false),
     recover: big(4, 6, true)
   },
-  // walk → windup → dash → recover
+  // walk (casting and summoning on the way) → windup → dash → recover
   swarm: {
     move: big(8, 12, true),
     windup: big(4, 12, false, { sustain: 2 }),
     attack: big(6, 16, true),
+    shoot: big(6, 12, false, { hit: 3 }), // the cast: gathers, releases on `hit`, settles; from `hit` on for a summon
     recover: big(4, 8, true)
   },
   // walk → windup → charge | leap and slam | cast → recover; `rage` is the phase 2 transformation
@@ -228,6 +231,20 @@ export function bossSpec(art: BossArt): Specs {
   }
   return specs
 }
+
+/**
+ * The king after his transformation (phase 2): every clip of the fight again, the same poses with red eyes and dark
+ * fire around him. The view draws him from this sheet from the end of `rage` until he falls (the fall is the plain
+ * `defeat`: the fire goes out with the last blow).
+ */
+export const KING_RAGED = 'king:raged'
+export const KING_RAGED_SPEC: Specs = (() => {
+  const plain = bossSpec('king')
+  const raged: Specs = {}
+  for (const name of Object.keys(plain))
+    if (name !== 'intro' && name !== 'rage' && name !== 'defeat') raged[name] = plain[name]
+  return raged
+})()
 
 // --------------------------------------------------------------------------------------------------- props
 
@@ -430,6 +447,7 @@ export function allSheetSpecs(): Record<string, Specs> {
     mom: MOM_SPEC,
     ...ENEMY_SPEC,
     ...Object.fromEntries(BOSS_ARTS.map((art) => [art, bossSpec(art)])),
+    [KING_RAGED]: KING_RAGED_SPEC,
     ...PROP_SPEC,
     fx: FX_SPEC,
     ui: UI_SPEC

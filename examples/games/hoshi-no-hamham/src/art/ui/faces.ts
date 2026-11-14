@@ -2,8 +2,8 @@ import { UI_SPEC } from '../contract'
 import type { SheetModule } from '../module'
 import { drawHamster, hamPose, stampOn, type HamAccessory, type HamLook, type HamPose } from '../chars/hamster'
 import { HERO_LOOK } from '../chars/hero'
-import { KING_LOOK, kingPose } from '../chars/king'
-import { MOM_LOOK, momPose } from '../chars/mom'
+import { KING_LOOK, KING_PORTRAIT_ACCESSORIES, kingPose } from '../chars/king'
+import { MOM_LOOK, MOM_PORTRAIT_ACCESSORIES, momPose } from '../chars/mom'
 import { PRINCESS_LOOK, princessPose } from '../chars/princess'
 import { C, OUTLINE_OF, R, color, ramp, type Ramp } from '../palette'
 import { Painter, Raster, ball, farRamp } from '../raster'
@@ -167,7 +167,7 @@ const mom2 = () =>
       ...portraitLook(MOM_LOOK, 0.95, { eyeGap: 5.4, eyeMin: -14, eyeMax: 14, eyeV: -9.6, browV: -15.4 }),
       stamps: { ...MOM_LOOK.stamps, eyes: { ...MOM_LOOK.stamps.eyes, open: MOM_EYES } },
       // the apron strings, the apron and its bow; the curlers are redrawn for the small head, the ladle stays out
-      accessories: [...MOM_LOOK.accessories.slice(0, 3), momCurlers]
+      accessories: [...MOM_PORTRAIT_ACCESSORIES, momCurlers]
     },
     momPose({ look: -1.5 }),
     15.5
@@ -241,7 +241,7 @@ const king2 = () => {
       },
       coat: look.coat && { ...look.coat, rim: 1, tooth: 0, headLocks: [], bodyLocks: [] },
       // the cape, its high collar and its edge with the clasp; the scar and the crown are redrawn at this size
-      accessories: [...look.accessories.slice(3, 6), kingScar, kingCrown]
+      accessories: [...KING_PORTRAIT_ACCESSORIES, kingScar, kingCrown]
     },
     kingPose({ look: -2.2 }),
     16.5

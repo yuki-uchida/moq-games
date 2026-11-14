@@ -31,7 +31,7 @@ const WING_BEAT: Record<string, readonly string[]> = {
   beeBoss: ['idle', 'recover']
 }
 
-const characters: readonly string[] = ['hero', 'princess', 'mom', ...ENEMY_KINDS, ...BOSS_ARTS]
+const characters: readonly string[] = ['hero', 'princess', 'mom', ...ENEMY_KINDS, ...BOSS_ARTS, 'king:raged']
 
 const where = (list: readonly Px[], max = 8) =>
   list

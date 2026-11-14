@@ -16,13 +16,13 @@ export const GROUND = 136
 export type Motion =
   /** Stands still (the clip still plays). */
   | 'none'
-  /** Small happy hops. */
+  /** Small happy hops (not on a clip that leaves the ground itself, such as `cheer`). */
   | 'hop'
   /** Bobs up and down in the air. */
   | 'float'
   /** Trembles on the spot. */
   | 'shake'
-  /** Runs back and forth over a short track. */
+  /** Patrols back and forth over a short track, facing the way it goes (a runner who flees runs on the spot). */
   | 'pace'
   /** Drifts slowly down from above, swaying (a fall from the sky). */
   | 'fall'
@@ -128,7 +128,7 @@ const OPENING: Shot[] = [
     // 「後ろでママの怒涛の足音が近づいています」: the hero runs right, mom thunders after him.
     theme: 'meadow',
     scroll: 320,
-    figures: [mom('move', 78, { motion: 'pace', phase: 0.2 }), hero('run', 232, { motion: 'pace' })],
+    figures: [mom('move', 78, { phase: 0.2 }), hero('run', 232)],
     marks: [
       { clip: 'sweat', x: 248, lift: 58 },
       { clip: 'anger', x: 100, lift: 100 }
@@ -165,7 +165,7 @@ const STAGE_SHOTS: Record<number, Shot[]> = {
     {
       theme: 'meadow',
       scroll: 360,
-      figures: [mom('tired', 72), hero('run', 210, { motion: 'pace' })],
+      figures: [mom('tired', 72), hero('run', 210)],
       marks: [{ clip: 'sweat', x: 92, lift: 92 }]
     }
   ],
@@ -201,19 +201,19 @@ const STAGE_SHOTS: Record<number, Shot[]> = {
     {
       theme: 'night',
       scroll: 60,
-      // 「ボスにさらわれてしまった！」: the weasel bolts away to the right holding the princess up over his head, the
-      // hero left behind. She hovers clear of the weasel's crown-line, so every figure reads on its own.
+      // 「ボスにさらわれてしまった！」: the weasel gallops away to the right with the princess on his back, the hero
+      // left behind. She sits behind his shoulders, clear of his cap, so both read on their own.
       figures: [
         hero('hurt', 80),
         gang('weaselBoss', 'attack', 232, { flip: false }),
-        princess('sad', 226, { lift: 68, motion: 'float' })
+        princess('sad', 214, { lift: 36 })
       ],
       marks: [{ clip: 'alert', x: 84, lift: 70 }]
     },
     {
       theme: 'night',
       scroll: 200,
-      figures: [hero('run', 150, { motion: 'pace' })],
+      figures: [hero('run', 150)],
       marks: [{ clip: 'sparkle', x: 230, lift: 90 }]
     },
     {
@@ -260,13 +260,13 @@ const STAGE_SHOTS: Record<number, Shot[]> = {
     {
       theme: 'forest',
       scroll: 40,
-      figures: [princess('idle', 120, { phase: 0.3 }), hero('run', 180, { motion: 'pace' })]
+      figures: [princess('idle', 120, { phase: 0.3 }), hero('run', 180)]
     },
     {
       theme: 'forest',
       scroll: 160,
       // 「追っ手がすぐ後ろ！」: the wolf is right behind, the hero runs away from him.
-      figures: [gang('wolfBoss', 'windup', 82, { flip: false }), hero('run', 232, { motion: 'pace' })],
+      figures: [gang('wolfBoss', 'windup', 82, { flip: false }), hero('run', 232)],
       marks: [{ clip: 'sweat', x: 250, lift: 58 }]
     },
     {
@@ -289,7 +289,7 @@ const STAGE_SHOTS: Record<number, Shot[]> = {
         prop('prop:twig', 'idle', 142, 24),
         prop('prop:berry', 'idle', 176, 24),
         prop('prop:fruit', 'idle', 210, 24),
-        hero('cheer', 92, { motion: 'hop' })
+        hero('cheer', 92)
       ]
     },
     {
@@ -358,7 +358,7 @@ const STAGE_SHOTS: Record<number, Shot[]> = {
     {
       theme: 'fortress',
       scroll: 400,
-      figures: [prop('prop:switch2', 'on', 66), hero('cheer', 158, { motion: 'hop' }), prop('prop:pipe', 'burst', 230)]
+      figures: [prop('prop:switch2', 'on', 66), hero('cheer', 158), prop('prop:pipe', 'burst', 230)]
     }
   ],
   9: [
@@ -416,7 +416,7 @@ const ENDING: Shot[] = [
   {
     theme: 'star',
     scroll: 300,
-    figures: [hero('cheer', 120, { motion: 'hop' }), princess('cheer', 196, { flip: true, motion: 'hop', phase: 0.3 })],
+    figures: [hero('cheer', 120), princess('cheer', 196, { flip: true, phase: 0.3 })],
     marks: [
       { clip: 'sparkle', x: 80, lift: 110 },
       { clip: 'sparkle', x: 160, lift: 124 },
@@ -459,8 +459,8 @@ const ENDING: Shot[] = [
     scroll: 120,
     figures: [
       prop('prop:nest', 'open', 140),
-      hero('cheer', 100, { motion: 'hop' }),
-      princess('cheer', 168, { motion: 'hop', phase: 0.25 }),
+      hero('cheer', 100),
+      princess('cheer', 168, { phase: 0.25 }),
       mom('idle', 248, { flip: true })
     ],
     marks: [
@@ -473,8 +473,8 @@ const ENDING: Shot[] = [
     scroll: 120,
     figures: [
       prop('prop:nest', 'open', 140),
-      hero('cheer', 100, { motion: 'hop' }),
-      princess('cheer', 168, { motion: 'hop', phase: 0.25 }),
+      hero('cheer', 100),
+      princess('cheer', 168, { phase: 0.25 }),
       mom('idle', 248, { flip: true })
     ],
     marks: [

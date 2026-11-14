@@ -298,6 +298,9 @@ const ladle: HamAccessory = ({ g, pose: p, handN, handF, ground, s }) => {
 }
 
 /** ママ・ハム代's look. */
+/** What her portrait wears of the sprite's accessories (by name, so the look's own list can change freely). */
+export const MOM_PORTRAIT_ACCESSORIES: readonly HamAccessory[] = [strings, apron, bow]
+
 export const MOM_LOOK = hamLook({
   scale: 1.3,
   size: MOM_CELL,

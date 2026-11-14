@@ -5,7 +5,7 @@
  */
 import type { Anim } from '../art'
 import type { SimEvent } from '../game/events'
-import { BITE_TIME, INVULN, T, type Boss, type BossState, type Enemy, type World } from '../game/sim'
+import { BITE_TIME, GRAVITY, INVULN, T, type Boss, type BossState, type Enemy, type World } from '../game/sim'
 import { TILE } from '../game/types'
 import { blit, brush, clip, flashClip, frameIndex } from './bake'
 import {
@@ -14,18 +14,22 @@ import {
   RUN_THRESHOLD,
   STILL_SPEED,
   BOSS_DEFEAT_GROUND_FRAME,
+  ENEMY_DEFEAT_GROUND_FRAME,
   bossClip,
+  stunShown,
   clipLife,
   dieClip,
   frameStart,
   enemyClip,
+  specDuration,
   heroClip,
   isSkidding,
+  type BossSnapshot,
   type ClipChoice,
   type EnemySnapshot
 } from './clips'
 import type { FxPool } from './fx'
-import { ENEMY_SPEC, MOM_SPEC, bossSpec, type BossArt } from '../art/contract'
+import { ENEMY_SPEC, KING_RAGED, MOM_SPEC, bossSpec, type BossArt } from '../art/contract'
 
 /** Largest squash or stretch (DESIGN.md: ≤ 18 %). */
 export const MAX_SQUASH = 0.18
@@ -45,11 +49,24 @@ interface Ghost {
   end: 'puff' | 'boom' | 'none'
   clip: string
   /**
-   * A fall from feet row `y0` to the `ground` row that lands at age `at` exactly (gravity 2·height/at², on the
-   * ghost's own clock, so the body and its clip stay together).
+   * A fall from feet row `y0` to the `ground` row that lands at age `at` exactly, on the ghost's own clock so the
+   * body and its clip stay together: accelerating from rest (gravity 2·height/at²), lifted by a hop of `hop` px on
+   * the way, and travelling at `vx` from `x0` until it lands.
    */
-  fall?: { y0: number; ground: number; at: number }
+  fall?: { y0: number; ground: number; at: number; hop: number; x0: number; vx: number }
 }
+
+/** The feet row of a falling ghost at `age` (exact, so the landing does not depend on the frame rate). */
+function ghostFall(f: NonNullable<Ghost['fall']>, age: number) {
+  if (age >= f.at - 1e-6) return f.ground
+  const k = age / f.at
+  return f.y0 + (f.ground - f.y0) * k * k - 4 * f.hop * k * (1 - k)
+}
+
+/** A knocked-out enemy's ghost travels this fast (px/s) away from the hero until it lands. */
+export const ENEMY_KNOCK_SPEED = 90
+/** Knocked out on the ground, an enemy is thrown up this high (px) before it lands on its first lying frame. */
+export const ENEMY_KNOCK_HOP = 16
 
 /**
  * The hero's knocked-out body: knocked up at once by `DIE_HOP_SPEED` (px/s) and falling under `DIE_GRAVITY`
@@ -80,6 +97,9 @@ export function dieLandTime(y0: number, ground: number) {
   return (DIE_HOP_SPEED + Math.sqrt(DIE_HOP_SPEED * DIE_HOP_SPEED + 2 * DIE_GRAVITY * drop)) / DIE_GRAVITY
 }
 
+/** Seconds of the king's transformation (`rage`). */
+const specDurationOfRage = (boss: Boss) => specDuration(bossSpec(boss.def.art as BossArt).rage)
+
 /** A boss charging or diving faster than this (px/s) leaves speed ghosts. */
 export const GHOST_SPEED = 260
 /** Display frames old and opacity of the two after-images of a fast boss, oldest first. */
@@ -87,7 +107,9 @@ export const TRAIL_AGES = [4, 2] as const
 export const TRAIL_ALPHAS = [0.15, 0.3] as const
 /** The boss's defeat ghost lives this long (s) after its clip has played, so it can fade and burst. */
 export const BOSS_DEFEAT_TAIL = 0.5
-/** A hit jolts the boss's sprite this far (px) away from the hero, easing back over `BOSS_JOLT_SECONDS`. */
+/** The skid pose ends this long (s) after the braking does. */
+export const SKID_TAIL = 0.08
+/** A hit (or a crash into a wall) jolts the boss's sprite this far (px), easing back over `BOSS_JOLT_SECONDS`. */
 export const BOSS_JOLT_PX = 3
 export const BOSS_JOLT_SECONDS = 0.12
 
@@ -144,6 +166,26 @@ interface Pose {
   hopSeconds: number
 }
 
+/** A handle on a staged pose, so the moment that set it can end it (and only it). */
+export type PoseToken = object
+
+/**
+ * The hero brought down after a clear touched in the air (the simulation has stopped): he falls from where he was
+ * to the ground below, then cheers.
+ */
+interface ClearDrop {
+  x: number
+  y0: number
+  vy0: number
+  ground: number
+  age: number
+  /** When he touched down (age), or null while he falls. */
+  landAt: number | null
+}
+
+/** A clear touched this far (px) or less above the ground is not a fall. */
+const CLEAR_DROP_MIN = 2
+
 interface EnemyTimers {
   onGround: boolean
   landAge: number
@@ -172,6 +214,23 @@ const enemySnapshot: EnemySnapshot = {
   time: 0
 }
 const squash: { sx: number; sy: number } = { sx: 1, sy: 1 }
+/** What the boss's clip choice reads, refilled every frame. */
+const bossSnapshot: BossSnapshot = {
+  kind: 'brute',
+  state: 'idle',
+  prevState: null,
+  stateTime: 0,
+  active: false,
+  vx: 0,
+  vy: 0,
+  rageAge: null,
+  hurtAge: null,
+  onGround: true,
+  shotTimer: 99,
+  shotAge: null,
+  summonAge: null,
+  time: 0
+}
 
 /** The y of the ground under (x, feetY), looking down at most `maxTiles`; null over a pit. */
 export function groundBelow(world: Pick<World, 'solidAt' | 'tileAt' | 'h'>, x: number, feetY: number, maxTiles = 6) {
@@ -196,6 +255,10 @@ export class ActorsView {
   private blinkAge = 99
   private nextBlink = 2.5
   private skidAge: number | null = null
+  /** Whether the hero was braking on the last update (a new skid starts from frame 0). */
+  private skidding = false
+  private skidTail = 0
+  private clearDrop: ClearDrop | null = null
   private turnAge: number | null = null
   private lastFacing: 1 | -1 = 1
   private cheerAt: number | null = null
@@ -209,9 +272,16 @@ export class ActorsView {
   private bossPrev: BossState | null = null
   private bossLast: BossState | null = null
   private rageAt: number | null = null
-  /** View time of the last hit on the boss (a hit-stop holds the flinch and the jolt), and away from the hero. */
+  /** View time of the last hit on the boss (a hit-stop holds the flinch). */
   private bossHitAt: number | null = null
-  private bossHitDir: 1 | -1 = 1
+  /** View time and direction of the last jolt (a hit, away from the hero; a crash, away from the wall). */
+  private joltAt: number | null = null
+  private joltDir: 1 | -1 = 1
+  /** View time of the last throw or cast the boss could show (idle or recovering), and of the last summon. */
+  private shotAt: number | null = null
+  private summonAt: number | null = null
+  /** The king has transformed: once his `rage` is over he is drawn from his raged sheet. */
+  private phased = false
   /** Where the boss was over the last display frames, while it charges or dives fast (speed ghosts). */
   private trail = new PositionTrail(TRAIL_AGES[0] + 1)
   /** The last update was a hit-stop (no time passed): the speed ghosts are skipped. */
@@ -239,16 +309,23 @@ export class ActorsView {
    * over `hopSeconds`. A clip the actor's sheet does not have is ignored when drawing. A staged pose that shows a
    * clip should last at least `clipLife` of it, so none of its frames is cut.
    */
-  pose(who: PoseTarget, clip: string, seconds: number, options: { hop?: number; hopSeconds?: number } = {}) {
-    this.poses[who] = {
+  pose(who: PoseTarget, clip: string, seconds: number, options: { hop?: number; hopSeconds?: number } = {}): PoseToken {
+    const pose: Pose = {
       clip,
       start: this.realTime,
       until: this.realTime + Math.max(0, seconds),
       hop: options.hop ?? 0,
       hopSeconds: options.hopSeconds ?? 0.35
     }
+    this.poses[who] = pose
     // The phase-2 transformation is staged: the sim-time rage clip must not play a second time afterwards.
     if (who === 'boss' && clip === 'rage') this.rageAt = null
+    return pose
+  }
+
+  /** Ends the pose `token` stands for, if it is still up (a later pose is left alone). */
+  unposeIf(who: PoseTarget, token: PoseToken) {
+    if (this.poses[who] === token) delete this.poses[who]
   }
 
   /** Ends a staged pose early (or every pose). */
@@ -282,6 +359,29 @@ export class ActorsView {
   deathRest(): { x: number; y: number } | null {
     const d = this.death
     return d && d.ground !== null ? { x: d.x, y: d.ground - d.h / 2 } : null
+  }
+
+  /**
+   * The centre of the hero's body: where he stands, or where a clear touched in the air brings him down to (null
+   * after his knock-out: see `deathPoint`).
+   */
+  heroPoint(): { x: number; y: number } | null {
+    const p = this.world.player
+    if (this.death) return null
+    const drop = this.clearDrop
+    return drop ? { x: drop.x, y: this.dropFeet(drop) - p.h / 2 } : { x: p.x + p.w / 2, y: p.y + p.h / 2 }
+  }
+
+  /** Where the hero comes to stand after a clear (his centre): on the ground below a clear touched in the air. */
+  heroRest(): { x: number; y: number } {
+    const p = this.world.player
+    const drop = this.clearDrop
+    return drop ? { x: drop.x, y: drop.ground - p.h / 2 } : { x: p.x + p.w / 2, y: p.y + p.h / 2 }
+  }
+
+  private dropFeet(d: ClearDrop) {
+    if (d.landAt !== null) return d.ground
+    return Math.min(d.ground, d.y0 + d.vy0 * d.age + 0.5 * GRAVITY * d.age * d.age)
   }
 
   /** The centre of the knocked-out boss's body as it falls and lies (null when there is none). */
@@ -325,8 +425,19 @@ export class ActorsView {
       case 'bite':
         this.squash = -0.1
         break
-      case 'clear':
+      case 'clear': {
         this.cheerAt = this.time
+        // Touched in the air: he comes down first (the simulation has stopped), then cheers.
+        const x = p.x + p.w / 2
+        const feet = p.y + p.h
+        const ground = groundBelow(this.world, x, feet, this.world.h)
+        if (ground !== null && ground - feet > CLEAR_DROP_MIN)
+          this.clearDrop = { x, y0: feet, vy0: Math.max(0, p.vy), ground, age: 0, landAt: null }
+        break
+      }
+      case 'hurt':
+        // The player's own body takes over from a staged pose (see `update`).
+        if (this.world.state === 'play') delete this.poses.hero
         break
       case 'dead': {
         const x = p.x + p.w / 2
@@ -346,19 +457,39 @@ export class ActorsView {
         const enemy = this.world.enemies.find((e) => e.id === event.id)
         const w = enemy?.w ?? 44
         const h = enemy?.h ?? 40
+        const x = enemy ? enemy.x + w / 2 : event.x
+        const y = enemy ? enemy.y + h : event.y + h / 2
+        // Flung away from the hero (from the two centres; the event's `dir` is the enemy's own walking direction),
+        // facing him, so the clip's "flung backwards" is backwards.
+        const dir = x >= p.x + p.w / 2 ? 1 : -1
+        const spec = ENEMY_SPEC[event.kind].defeat
+        // It lands on the first frame drawn lying on the ground and stays there; over a pit, the old arc.
+        const ground = groundBelow(this.world, x, y, this.world.h)
+        const fall =
+          ground !== null
+            ? {
+                y0: y,
+                ground,
+                at: frameStart(spec, ENEMY_DEFEAT_GROUND_FRAME[event.kind]),
+                hop: ground - y <= CLEAR_DROP_MIN ? ENEMY_KNOCK_HOP : 0,
+                x0: x,
+                vx: dir * ENEMY_KNOCK_SPEED
+              }
+            : undefined
         this.ghosts.push({
           sheet: event.kind,
           clip: 'defeat',
-          x: enemy ? enemy.x + w / 2 : event.x,
-          y: enemy ? enemy.y + h : event.y + h / 2,
-          vx: event.dir * 90,
+          x,
+          y,
+          vx: dir * ENEMY_KNOCK_SPEED,
           vy: -170,
           gravity: 700,
           age: 0,
-          life: clipLife(ENEMY_SPEC[event.kind].defeat),
-          flip: enemy ? enemy.facing < 0 : event.dir > 0,
+          life: clipLife(spec),
+          flip: dir > 0,
           h,
-          end: 'puff'
+          end: 'puff',
+          fall
         })
         this.enemyTimers.delete(event.id)
         break
@@ -375,7 +506,7 @@ export class ActorsView {
         const groundFrame = BOSS_DEFEAT_GROUND_FRAME[boss.def.art as BossArt]
         const fall =
           ground !== null && ground > y + 0.5 && spec.defeat && groundFrame !== undefined
-            ? { y0: y, ground, at: frameStart(spec.defeat, groundFrame) }
+            ? { y0: y, ground, at: frameStart(spec.defeat, groundFrame), hop: 0, x0: x, vx: 0 }
             : undefined
         this.ghosts.push({
           sheet: boss.def.art,
@@ -397,11 +528,31 @@ export class ActorsView {
       case 'boss-hit': {
         const boss = this.world.boss
         this.bossHitAt = this.time
-        if (boss) this.bossHitDir = boss.x + boss.w / 2 >= p.x + p.w / 2 ? 1 : -1
+        this.joltAt = this.time
+        if (boss) this.joltDir = boss.x + boss.w / 2 >= p.x + p.w / 2 ? 1 : -1
+        break
+      }
+      case 'boss-crash':
+        // The body answers the crash, stunned or not: a jolt back from the wall it ran into.
+        this.joltAt = this.time
+        this.joltDir = event.dir > 0 ? -1 : 1
+        break
+      case 'boss-shoot': {
+        const boss = this.world.boss
+        // Shown only where the boss can show it; a shot in a wind-up or an attack leaves without a pose.
+        this.shotAt = boss && (boss.state === 'idle' || boss.state === 'recover') ? this.time : null
+        break
+      }
+      case 'minion': {
+        const boss = this.world.boss
+        // As for a shot: a summon in a wind-up or an attack leaves without a gesture (its tail must not pop in
+        // when that state ends).
+        this.summonAt = boss && (boss.state === 'idle' || boss.state === 'recover') ? this.time : null
         break
       }
       case 'boss-phase':
         this.rageAt = this.time
+        this.phased = true
         break
       default:
         break
@@ -431,11 +582,16 @@ export class ActorsView {
       this.blinkAge = 0
       this.nextBlink = 2 + this.fx.rand() * 2
     }
-    if (isSkidding({ onGround: p.onGround, vx: p.vx, facing: p.facing })) this.skidAge = (this.skidAge ?? -dt) + dt
+    // The skid lasts as long as the braking, plus a short tail; a new braking starts it again from frame 0.
+    const skidding = isSkidding(p)
+    if (skidding) this.skidAge = this.skidding && this.skidAge !== null ? this.skidAge + dt : 0
     else if (this.skidAge !== null) {
+      this.skidTail += dt
       this.skidAge += dt
-      if (this.skidAge > 0.3) this.skidAge = null
+      if (this.skidTail > SKID_TAIL) this.skidAge = null
     }
+    if (skidding) this.skidTail = 0
+    this.skidding = skidding
     // The hero turns on the spot when his facing flips on the ground without a skid.
     if (p.facing !== this.lastFacing) {
       if (p.onGround && !isSkidding({ onGround: true, vx: p.vx, facing: p.facing })) this.turnAge = 0
@@ -445,6 +601,11 @@ export class ActorsView {
       if (!p.onGround || this.turnAge > 0.5) this.turnAge = null
     }
     this.waterTime = p.inWater ? this.waterTime + dt : 0
+    // While the simulation runs, a staged hero pose ends as soon as his own body does something else.
+    const pose = this.poses.hero
+    if (pose && dt > 0 && world.state === 'play' && (Math.abs(p.vx) > RUN_THRESHOLD || !p.onGround || p.biteTimer > 0))
+      delete this.poses.hero
+    if (this.clearDrop) this.updateDrop(this.clearDrop, dt)
     // enemies
     for (const enemy of world.enemies) {
       if (enemy.dead) continue
@@ -470,8 +631,8 @@ export class ActorsView {
     for (const g of this.ghosts) {
       g.age += dt
       if (g.fall) {
-        const { y0, ground, at } = g.fall
-        g.y = g.age >= at - 1e-6 ? ground : y0 + (ground - y0) * (g.age / at) ** 2
+        g.y = ghostFall(g.fall, g.age)
+        g.x = g.fall.x0 + g.fall.vx * Math.min(g.age, g.fall.at)
       } else {
         g.vy += g.gravity * dt
         g.x += g.vx * dt
@@ -499,6 +660,27 @@ export class ActorsView {
         if (d.age >= at - 1e-6) d.landAt = Math.min(at, d.age)
       }
     }
+  }
+
+  /** Brings the hero down after a clear touched in the air; the cheer starts from its first frame on the ground. */
+  private updateDrop(d: ClearDrop, dt: number) {
+    d.age += dt
+    if (d.landAt !== null) return
+    if (d.y0 + d.vy0 * d.age + 0.5 * GRAVITY * d.age * d.age < d.ground) return
+    d.landAt = d.age
+    const speed = d.vy0 + GRAVITY * d.age
+    this.squash = -MAX_SQUASH * Math.max(0.35, Math.min(1, speed / 900))
+    this.cheerAt = this.time
+    const pose = this.poses.hero
+    if (pose?.clip === 'cheer') {
+      pose.until += this.realTime - pose.start
+      pose.start = this.realTime
+    }
+  }
+
+  /** Whether the hero is still coming down after a clear touched in the air. */
+  private dropping() {
+    return this.clearDrop !== null && this.clearDrop.landAt === null
   }
 
   /** The hero's death clip for the body as it is now. */
@@ -558,6 +740,7 @@ export class ActorsView {
     let choice: ClipChoice | null
     if (this.death) choice = this.deathChoice(this.death)
     else if (p.dead) choice = null
+    else if (this.dropping()) choice = { name: 'fall', t: this.clearDrop!.age }
     else {
       const pose = this.posing('hero')
       choice = pose ? { name: pose, t: this.realTime - this.poses.hero!.start } : this.heroSnapshot()
@@ -576,9 +759,9 @@ export class ActorsView {
       return
     }
     if (p.dead) return
-    const x = p.x + p.w / 2
-    const y = p.y + p.h
-    const staged = this.activePose('hero', 'hero')
+    const x = this.clearDrop ? this.clearDrop.x : p.x + p.w / 2
+    const y = this.clearDrop ? this.dropFeet(this.clearDrop) : p.y + p.h
+    const staged = this.dropping() ? null : this.activePose('hero', 'hero')
     if (staged) {
       this.heroChoice = { name: this.poses.hero!.clip, t: staged.age }
       this.lastRunFrame = -1
@@ -673,31 +856,43 @@ export class ActorsView {
     return this.bossChoice(boss)
   }
 
+  /**
+   * The sheet the live boss is drawn from: the king's raged sheet once his transformation (the staged pose or the
+   * sim-time `rage`) is over, else his art.
+   */
+  bossSheet(boss: Boss): string {
+    if (!this.phased || boss.def.kind !== 'final') return boss.def.art
+    if (this.posing('boss') === 'rage') return boss.def.art
+    if (this.rageAt !== null && this.time - this.rageAt < specDurationOfRage(boss)) return boss.def.art
+    return KING_RAGED
+  }
+
   private bossChoice(boss: Boss): ClipChoice {
-    return bossClip(
-      {
-        kind: boss.def.kind,
-        state: boss.state,
-        prevState: this.bossPrev,
-        stateTime: boss.stateTime,
-        active: boss.active,
-        vx: boss.vx,
-        vy: boss.vy,
-        rageAge: this.rageAt === null ? null : this.time - this.rageAt,
-        hurtAge: this.bossHitAt === null ? null : this.time - this.bossHitAt,
-        time: this.time
-      },
-      boss.def.art
-    )
+    const s = bossSnapshot
+    s.kind = boss.def.kind
+    s.state = boss.state
+    s.prevState = this.bossPrev
+    s.stateTime = boss.stateTime
+    s.active = boss.active
+    s.vx = boss.vx
+    s.vy = boss.vy
+    s.rageAge = this.rageAt === null ? null : this.time - this.rageAt
+    s.hurtAge = this.bossHitAt === null ? null : this.time - this.bossHitAt
+    s.onGround = boss.onGround
+    s.shotTimer = boss.shotTimer
+    s.shotAge = this.shotAt === null ? null : this.time - this.shotAt
+    s.summonAge = this.summonAt === null ? null : this.time - this.summonAt
+    s.time = this.time
+    return bossClip(s, boss.def.art)
   }
 
   private drawLiveBoss(ctx: CanvasRenderingContext2D, boss: Boss) {
     const choice = this.bossChoice(boss)
-    const sheet = boss.def.art
+    const sheet = this.bossSheet(boss)
     const centre = boss.x + boss.w / 2
     const y = boss.y + boss.h
     const flip = boss.facing < 0
-    const staged = this.activePose('boss', sheet)
+    const staged = this.activePose('boss', boss.def.art)
     if (staged) {
       this.drawShadow(ctx, centre, y, boss.w * 1.1)
       blit(ctx, staged.anim, staged.age, centre, y - staged.lift, brush(flip))
@@ -706,9 +901,8 @@ export class ActorsView {
     const anim = clip(sheet, choice.name)
     if (!anim) return
     this.drawShadow(ctx, centre, y, boss.w * 1.1)
-    // A hit jolts the sprite (and its flash) away from the hero; the shadow stays put.
-    const jolt =
-      this.reducedMotion || this.bossHitAt === null ? 0 : bossJolt(this.time - this.bossHitAt, this.bossHitDir)
+    // A hit jolts the sprite (and its flash) away from the hero, a crash away from the wall; the shadow stays put.
+    const jolt = this.reducedMotion || this.joltAt === null ? 0 : bossJolt(this.time - this.joltAt, this.joltDir)
     const x = centre + jolt
     if (!this.held && !this.reducedMotion)
       for (let i = 0; i < TRAIL_AGES.length; i++) {
@@ -721,7 +915,7 @@ export class ActorsView {
       const white = flashClip(sheet, choice.name)
       if (white) blit(ctx, white, choice.t, x, y, brush(flip, Math.min(1, boss.hitFlash * 7), choice.frame))
     }
-    if (boss.state === 'stunned' || boss.state === 'tired') {
+    if (stunShown(boss.state, boss.stateTime) || boss.state === 'tired') {
       const dizzy = clip('fx', 'dizzy')
       if (dizzy) blit(ctx, dizzy, this.time, centre, boss.y - 8)
     }

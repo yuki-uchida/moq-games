@@ -83,7 +83,9 @@ the emotion (big eyes with one highlight, brows, mouth, blush).
 Every member of the gang (ばくろ団) wears the gang's red somewhere (neckerchief, head scarf, cap band, armband,
 sash) so they read as one gang. The four hamsters are one build drawn by one function (`chars/hamster.ts`).
 The twelve portraits (`ui/faces.ts`) are drawn from the same ramps and shapes as their sprites: the portrait is
-the character. うりぼう, the sleeping piglet, is a prop in the code and a member of the cast in the drawing.
+the character. うりぼう, the sleeping piglet, is a prop in the code and a member of the cast in the drawing. The
+king has a second sheet (`king:raged`) for the second half of his fight: the same clips with red eyes and dark fire
+around him.
 
 ### World themes
 
@@ -153,23 +155,36 @@ The view adds, on top of the frames:
   to the ground below him, his `die` clip following the body (the hit, the tumble while he is in the air, the
   bounce when he touches down, then lying dazed); a boss knocked out in the air falls to the ground below and
   lands on the first frame drawn lying there (frame 4 for the fliers and the weasel, 3 for the others), its fall
-  timed from the clip; over a pit the hero falls out of the view and a boss stays where he is;
+  timed from the clip; a knocked-out enemy is flung away from the hero (facing him) and lands the same way, with
+  a 16 px hop when it was on the ground; over a pit the hero falls out of the view, a boss stays where he is and an
+  enemy keeps its arc; a clear touched in the air brings the hero down (`fall`, the landing squash) before he
+  cheers on the ground;
 - the frog's landing is a single frame (the contact squash): it hops again on the next step;
 - the rat and the mole show their standing pose only after standing still for 0.15 s (a chasing rat stopped by
   a wall, a mole penned in), never for the single step a wall turns them round;
 - two after-images behind a boss that charges or dives faster than 260 px/s (off under reduced motion);
-- a boss hit outside a warning or an attack (standing, walking, recovering, stunned; the chasing parent in every
-  state) flinches: its `hurt` clip plays whole, from the first frame (a new hit restarts it). In a wind-up, a
-  charge, a dive, a leap or a volley (and the landing or follow-through of one) the state's clip stays readable and
-  the hit shows as the white flash. In every state the sprite jolts up to 3 px away from the hero and eases back
-  over 0.12 s (not under reduced motion, not in a staged pose; the shadow stays put);
+- a boss hit while he stands nearly still (idle, recovering, stunned; the chasing parent in every state) flinches:
+  its `hurt` clip plays whole, from the first frame (a new hit restarts it). While he walks or runs, and in a
+  wind-up, a charge, a dive, a leap or a volley (and the landing or follow-through of one), the state's clip stays
+  and the hit shows as the white flash. In every state the sprite jolts up to 3 px away from the hero and eases
+  back over 0.12 s, and a crash into a wall jolts it back from the wall (not under reduced motion, not in a staged
+  pose; the shadow stays put); a stun shows its clip and the dizzy mark only once it has lasted 0.05 s;
+- the crow throws and the fox and the bee cast (`shoot`) from the hover or the walk: the wind-up ends with the
+  release on the step the shot leaves, then the follow-through; a summon is the same gesture from the release. The
+  crow's dive skims (`sweep`) once it has levelled out. The king is drawn from his raged sheet (`king:raged`) from
+  the end of his transformation until he falls;
+- the hero's skid lasts as long as the braking (and 0.08 s more), his bite in the air shows only the lunge and the
+  chomp, and his fidget comes back every 8 s of standing;
 - a loaded リス団員 waiting for the hero to come into range holds the end of its wind-up (cheeks full, leaning in)
   with a small pulse, so its shot never comes out of an idle pose;
 - ground shadows under every actor that shrink with height.
 
 Bosses telegraph every attack: `windup` is visible for the whole wind-up time, with a glint or dust cue. Staged
 poses last as long as their clip: the boss's roar shows its whole `intro`, and the phase-2 hold lasts as long as
-the king's transformation (`rage` and one pass of its burning tail; under reduced motion the clip itself).
+the king's transformation (`rage` and one pass of its burning tail; under reduced motion the clip itself). A pose
+ends with the moment that set it (or its skip), and while the simulation runs the hero's own body takes over from
+a pose as soon as it moves, leaves the ground, bites or is hurt. In the story pictures a patrol faces the way it
+goes, a fleeing runner runs on the spot, and a cheer gets no hop on top.
 
 ## 5. Effects
 

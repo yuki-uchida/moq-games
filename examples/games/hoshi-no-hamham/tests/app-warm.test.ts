@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { runSteps, stageArt, stageWarmSteps, TILES_PER_STEP, type WarmStep } from '../src/app/warm'
 import { sheet, tileKey } from '../src/art'
-import { THEMES, allSheetSpecs, themedProp, type ThemeId } from '../src/art/contract'
+import { KING_RAGED, THEMES, allSheetSpecs, themedProp, type ThemeId } from '../src/art/contract'
 import type { ArtReply, ArtRequest, ArtSource } from '../src/art/remote'
 import { TILE, World } from '../src/game/sim'
 import { STAGES } from '../src/game/stages'
@@ -55,6 +55,9 @@ describe('what a stage draws', () => {
       it('lists the boss and the shots it throws', () => {
         expect(art.sheets).toContain(stage.boss.art)
         expect(art.flash).toContain(stage.boss.art)
+        // The king fights on in his raged sheet after phase 2: it is painted before play, flash included.
+        expect(art.sheets.includes(KING_RAGED)).toBe(stage.boss.kind === 'final')
+        expect(art.flash.includes(KING_RAGED)).toBe(stage.boss.kind === 'final')
         if (stage.boss.shockwave) expect(art.sheets).toContain('prop:shock')
         if (stage.boss.projectiles > 0)
           expect(art.sheets.some((id) => ['prop:seed', 'prop:feather', 'prop:stinger', 'prop:orb'].includes(id))).toBe(

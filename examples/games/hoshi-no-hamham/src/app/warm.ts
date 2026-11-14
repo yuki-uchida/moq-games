@@ -11,7 +11,7 @@
  */
 import { backdrop, backdropReady, clipReady, decor, flashReady, hasTile, sheet, tile, type ThemeId } from '../art'
 import type { TileQuery } from '../art/contract'
-import { themedProp } from '../art/contract'
+import { KING_RAGED, themedProp } from '../art/contract'
 import { adopt, sharedArtSource, type ArtHurry, type ArtReply, type ArtRequest, type ArtSource } from '../art/remote'
 import { TILE, World } from '../game/sim'
 import type { StageDef } from '../game/types'
@@ -43,6 +43,11 @@ export function stageArt(stage: StageDef): StageArt {
   }
   sheets.add(boss.art)
   flash.add(boss.art)
+  // The king is drawn from his raged sheet after his transformation (view/actors.ts).
+  if (boss.kind === 'final') {
+    sheets.add(KING_RAGED)
+    flash.add(KING_RAGED)
+  }
 
   for (const prop of world.props) {
     switch (prop.kind) {
