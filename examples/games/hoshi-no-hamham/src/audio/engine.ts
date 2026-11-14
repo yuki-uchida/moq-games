@@ -18,8 +18,6 @@ const LOOKAHEAD = 0.5
 const LOOKAHEAD_HIDDEN = 1.6
 /** The most main-thread time one scheduling pass may spend on the music, in milliseconds. */
 const TICK_BUDGET_MS = 3
-/** A new song schedules only what sounds within this many seconds at once; the timer does the rest. */
-const FIRST_PUMP = 0.1
 
 export class AudioEngine {
   readonly mixer: Mixer
@@ -137,10 +135,9 @@ export class AudioEngine {
     const p = new MusicPlayer(this.mixer, this.noise, song, l, startAt, this.live)
     if (old) p.fadeIn(jingle ? 0.05 : 1.2)
     this.player = p
-    if (this.live) {
-      p.pump(this.audible() ? startAt + FIRST_PUMP : this.ctx.currentTime, TICK_BUDGET_MS, !this.audible())
-      this.continueSoon()
-    } else p.pump(startAt + this.lookahead)
+    // Building the player was this task's work; its first notes are scheduled by the next one, a pass at a time.
+    if (this.live) this.continueSoon()
+    else p.pump(startAt + this.lookahead)
   }
 
   /** Synchronously schedules a whole stretch of the current music (offline rendering). */

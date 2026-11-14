@@ -49,6 +49,8 @@ class WebAudio implements GameAudio {
   private prepTimer: ReturnType<typeof setTimeout> | undefined
   private theme: ThemeName | null = null
   private layer = 0
+  /** The task that hands the latest wish for music to the engine (see `setMusic`). */
+  private musicTimer: ReturnType<typeof setTimeout> | undefined
   private duck = 0
   private readonly volumes = { master: 1, music: 0.7, sfx: 0.9 }
   private disposed = false
@@ -174,10 +176,19 @@ class WebAudio implements GameAudio {
     })
   }
 
+  /**
+   * The engine changes the music in a task of its own, not in the one that asked: a stage asks in the frame the boss
+   * wakes, the hero falls or the goal is reached, and building the new music's player (a dozen parts, each a few
+   * audio nodes) is several milliseconds on a phone. Asked again before that task runs, it does the latest wish.
+   */
   setMusic(theme: ThemeName | null, layer = 0): void {
     this.theme = theme
     this.layer = layer
-    this.safe(() => this.engine?.setMusic(theme, layer))
+    if (this.musicTimer !== undefined || this.disposed) return
+    this.musicTimer = setTimeout(() => {
+      this.musicTimer = undefined
+      this.safe(() => this.engine?.setMusic(this.theme, this.layer))
+    }, 0)
   }
 
   sfx(name: SfxName, options?: SfxOptions): void {
@@ -228,6 +239,8 @@ class WebAudio implements GameAudio {
     this.disposed = true
     if (this.prepTimer !== undefined) clearTimeout(this.prepTimer)
     this.prepTimer = undefined
+    if (this.musicTimer !== undefined) clearTimeout(this.musicTimer)
+    this.musicTimer = undefined
     this.steps = null
     this.bank?.stop()
     this.stopSongs?.()
