@@ -63,6 +63,7 @@ export function createPredictor(map: MapDef, player: PlayerConfig): Predictor {
     nextShot: 1,
     nextProp: 1,
     nextShard: 1,
+    departedDowns: 0,
     humans: 1
   } as unknown as Sim
   const frog = ITEMS.frog.use

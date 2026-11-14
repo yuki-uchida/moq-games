@@ -16,6 +16,9 @@ export interface KeyboardMouseOptions {
   onLockLost: () => void
   /** False while the pause menu or results are open (keys then belong to the menus). */
   active: () => boolean
+  /** While true the wheel scrolls the scoreboard (`onScroll`) instead of cycling the weapon. */
+  scoreboardOpen?: () => boolean
+  onScroll?: (dy: number) => void
   /** Whether a click on the target takes the pointer (default yes; a spectator has nothing to aim). */
   pointerLock?: () => boolean
 }
@@ -120,6 +123,10 @@ export function attachKeyboardMouse(o: KeyboardMouseOptions): KeyboardMouse {
   const onWheel = (e: WheelEvent) => {
     if (!o.active()) return
     e.preventDefault()
+    if (o.scoreboardOpen?.()) {
+      o.onScroll?.(e.deltaY)
+      return
+    }
     if (Math.abs(e.deltaY) < 1) return
     state.command({ type: 'cycle', hand: 'R', dir: e.deltaY > 0 ? 1 : -1 })
   }

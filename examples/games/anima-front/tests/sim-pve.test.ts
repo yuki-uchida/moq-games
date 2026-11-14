@@ -91,6 +91,34 @@ describe('pve rules', () => {
     expect(m.events.some((e) => e.type === 'objective' && e.what === 'destroyed')).toBe(true)
   })
 
+  it('a drop-in replacing a downed seat keeps the squad downs in the result; its own stats start at zero', () => {
+    const lose = (replace: boolean) => {
+      const m = mission('sakura', idle(), 'easy', 0)
+      m.step(10)
+      m.sim.players[0].stats.downs = 1
+      if (replace) m.world.replace('h0', playerCfg('h0', { loadout: makeLoadout(['bee'], [], []) }))
+      expect(m.sim.players[0].stats.downs).toBe(replace ? 0 : 1)
+      const lh = m.sim.props.find((r) => r.kind === 'lighthouse')!
+      damageProp(m.sim, lh, { amount: 5000, kind: 'ranged', side: FOE_SIDE, at: lh.p, from: lh.p })
+      m.step(2)
+      return m.world.view().pve!.result!
+    }
+    const kept = lose(false)
+    const replaced = lose(true)
+    expect(replaced.score).toBe(kept.score)
+    expect(replaced.rank).toBe(kept.rank)
+    // the downs penalty is really in the score (0 downs would score higher)
+    const none = (() => {
+      const m = mission('sakura', idle(), 'easy', 0)
+      m.step(10)
+      const lh = m.sim.props.find((r) => r.kind === 'lighthouse')!
+      damageProp(m.sim, lh, { amount: 5000, kind: 'ranged', side: FOE_SIDE, at: lh.p, from: lh.p })
+      m.step(2)
+      return m.world.view().pve!.result!
+    })()
+    expect(none.score).toBeGreaterThan(kept.score)
+  })
+
   it('downs, revive window, warp, tickets and defeat when nobody can come back', () => {
     const m = mission('sakura', idle(), 'hard', 0)
     m.step(5)

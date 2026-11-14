@@ -1110,8 +1110,9 @@
   top: 50%;
   transform: translate(-50%, -50%) scale(0.97);
   width: min(760px, 92vw);
-  max-height: 80vh;
+  max-height: 94vh;
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 18px 20px;
   opacity: 0;
   transition:
@@ -1122,6 +1123,109 @@
 .hud-scoreboard.is-on {
   opacity: 1;
   transform: translate(-50%, -50%);
+}
+/* PvP: one block per team side by side on wide screens (12 rows stay in view); stacked and compact otherwise. */
+.sb-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+}
+.sb-grid[data-cols='3'] {
+  gap: 4px;
+}
+@media (min-width: 800px) {
+  .hud-scoreboard:has(.sb-grid[data-cols='3']) {
+    width: min(1180px, 97vw);
+  }
+  .sb-grid[data-cols='3'] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .sb-grid[data-cols='3'] .sb-table th,
+  .sb-grid[data-cols='3'] .sb-table td {
+    padding: 6px 5px;
+  }
+  .sb-grid[data-cols='3'] .sb-table {
+    font-size: 12px;
+  }
+}
+@media (max-height: 700px) {
+  .hud-scoreboard {
+    padding: 8px 10px;
+  }
+  .hud-scoreboard .sb-head {
+    margin-bottom: 4px;
+  }
+  .hud-scoreboard .sb-team {
+    padding: 2px 10px;
+  }
+  .hud-scoreboard .sb-table {
+    font-size: 11px;
+  }
+  .hud-scoreboard .sb-table th,
+  .hud-scoreboard .sb-table td {
+    padding: 3px 5px;
+  }
+  .hud-scoreboard .sb-name .badge {
+    width: 16px !important;
+    height: 16px !important;
+  }
+  .hud-scoreboard .sb-name small {
+    display: none;
+  }
+  .hud-scoreboard .sb-name {
+    gap: 4px;
+  }
+  .hud-scoreboard .sb-grid[data-cols='3'] .sb-table {
+    font-size: 10px;
+  }
+  .hud-scoreboard .sb-grid[data-cols='3'] .sb-table th,
+  .hud-scoreboard .sb-grid[data-cols='3'] .sb-table td {
+    padding: 3px 2px;
+    letter-spacing: 0;
+  }
+}
+@media (max-height: 420px) {
+  .hud-scoreboard {
+    padding: 6px 8px;
+  }
+  .hud-scoreboard .sb-table {
+    font-size: 10px;
+    line-height: 1.1;
+  }
+  .hud-scoreboard .sb-table thead th {
+    font-size: 9px;
+    letter-spacing: 0;
+  }
+  .hud-scoreboard .sb-name .badge {
+    display: none;
+  }
+  .hud-scoreboard .sb-team b {
+    font-size: 14px;
+  }
+  .hud-scoreboard .sb-grid .sb-table th,
+  .hud-scoreboard .sb-grid .sb-table td,
+  .hud-scoreboard .sb-grid[data-cols='3'] .sb-table th,
+  .hud-scoreboard .sb-grid[data-cols='3'] .sb-table td {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  .hud-scoreboard .sb-grid[data-cols='3'] {
+    gap: 2px;
+  }
+}
+@media (max-width: 799px) {
+  .hud-scoreboard {
+    width: 96vw;
+  }
+  .hud-scoreboard .sb-table th,
+  .hud-scoreboard .sb-table td {
+    padding: 1px 4px;
+  }
+  .hud-scoreboard .sb-table thead th {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
 }
 .sb-head {
   display: flex;
@@ -1466,6 +1570,10 @@
 }
 .game-click small {
   color: var(--muted);
+}
+/* The scoreboard (Tab) is read over the field: the click prompt steps aside while it is open. */
+.screen.game:has(.hud-scoreboard.is-on) .game-click {
+  display: none;
 }
 
 /* ---- compact landscape (phones) ---- */

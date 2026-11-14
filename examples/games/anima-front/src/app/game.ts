@@ -18,7 +18,7 @@ import { createGuideCard, guideSeen, markGuideSeen, type GuideDevice } from '../
 import { createHud, type Hud } from '../ui/hud/hud'
 import { CooldownRing, pawCard } from '../ui/hud/model'
 import { controlsHelp, createSettingsPanel } from '../ui/screens/settings'
-import { createSpectatorBar, watchedPlayer } from '../ui/spectator'
+import { createSpectatorBar, hudYaw, watchedPlayer } from '../ui/spectator'
 import { SPECIES, eyeHeight } from '../data/species'
 import type { AppContext, RouteArgs, Screen } from './context'
 import { setMatchProbe } from './debug'
@@ -592,7 +592,9 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
           if (mode === 'play') openPause()
         },
         active: () => mode === 'play',
-        pointerLock: () => !spectator
+        pointerLock: () => !spectator,
+        scoreboardOpen: () => hud.scoreboardOpen,
+        onScroll: (dy) => hud.scrollScoreboard(dy)
       })
       el.addEventListener('mousedown', () => {
         if (mode === 'play') setClass(clickToPlay, 'is-on', false)
@@ -656,7 +658,14 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
         renderer.setOptions(rendererOptionsFrom(ctx.settings))
       }
       if (mode === 'play') {
-        for (const a of pad.poll(state, dt, ctx.settings.gamepadSensitivity, ctx.settings.invertY, assistFor(view)))
+        for (const a of pad.poll(
+          state,
+          dt,
+          ctx.settings.gamepadSensitivity,
+          ctx.settings.invertY,
+          assistFor(view),
+          hud.scoreboardOpen ? (dy) => hud.scrollScoreboard(dy) : undefined
+        ))
           onUi(a)
         if (pad.connected) setClass(clickToPlay, 'is-on', false)
       }
@@ -735,7 +744,7 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
         view: next,
         me: viewer,
         dt,
-        yaw: spectator && me ? me.yaw : builder.yaw,
+        yaw: hudYaw(next, follow, builder.yaw),
         fov: ctx.settings.fov,
         device: state.lastDevice,
         hints: ctx.settings.controlHints && !spectator,

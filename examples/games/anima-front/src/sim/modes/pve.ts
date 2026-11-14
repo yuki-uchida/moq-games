@@ -85,7 +85,7 @@ export function createPve(cfg: MatchConfig): ModeCtl {
   function finish(sim: Sim, win: boolean) {
     if (isOver(sim)) return
     const time = sim.time - started
-    const downs = sim.players.reduce((n, p) => n + p.stats.downs, 0)
+    const downs = sim.players.reduce((n, p) => n + p.stats.downs, sim.departedDowns)
     let share = 0
     if (obj.kind === 'defend' || obj.kind === 'escort')
       share = main && main.hp !== undefined ? main.hp / (main.maxHp ?? 1) : 0

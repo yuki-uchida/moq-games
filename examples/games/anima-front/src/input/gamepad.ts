@@ -108,6 +108,8 @@ const BUTTON_MAP: [number, Button][] = [
   [PAD.X, 'interact']
 ]
 
+const BOARD_SCROLL_PX_PER_S = 700
+
 /** In-game gamepad: writes into the shared ControlState. */
 export class GamePad {
   private prev: boolean[] = []
@@ -123,7 +125,15 @@ export class GamePad {
    * @param assist 0..1 slowdown of look speed (aim assist over a target), 0 = none.
    * @returns UI actions (pause / scoreboard) triggered this frame.
    */
-  poll(state: ControlState, dt: number, sensitivity: number, invertY: boolean, assist = 0): UiAction[] {
+  poll(
+    state: ControlState,
+    dt: number,
+    sensitivity: number,
+    invertY: boolean,
+    assist = 0,
+    /** Set while the scoreboard is open: the right stick scrolls it (px/s) instead of turning the camera. */
+    scrollBoard?: (dy: number) => void
+  ): UiAction[] {
     const pad = firstPad()
     const ui: UiAction[] = []
     if (!pad) {
@@ -153,7 +163,11 @@ export class GamePad {
     state.setStick('pad', mx, -my)
     const [lx, ly] = responseCurve(...applyDeadZone(pad.axes[2] ?? 0, pad.axes[3] ?? 0, LOOK_DEAD_ZONE), LOOK_EXPONENT)
     if (lx || ly || mx || my) used = true
-    const speed = STICK_RAD_PER_S * sensitivity * (1 - Math.max(0, Math.min(0.8, assist))) * dt
+    if (scrollBoard) {
+      scrollBoard(ly * BOARD_SCROLL_PX_PER_S * dt)
+      if (ly) used = true
+    }
+    const speed = scrollBoard ? 0 : STICK_RAD_PER_S * sensitivity * (1 - Math.max(0, Math.min(0.8, assist))) * dt
     state.look(lx * speed, (invertY ? ly : -ly) * speed * 0.75)
     if (used || ui.length) state.lastDevice = 'gamepad'
     this.prev = now

@@ -370,6 +370,8 @@ export interface Sim {
   nextShot: number
   nextProp: number
   nextShard: number
+  /** Downs of occupants who left their seat (a drop-in replaced them): squad totals stay cumulative. */
+  departedDowns: number
   diff: (typeof DIFFICULTIES)[keyof typeof DIFFICULTIES]
   mode: ModeCtl
   foeHash: SpatialHash<Foe>
