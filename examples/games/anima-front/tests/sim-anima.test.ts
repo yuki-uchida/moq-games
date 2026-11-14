@@ -1,7 +1,11 @@
 /** Anima economy (DESIGN §5). */
 import { describe, expect, it } from 'vitest'
-import { dropShards } from '../src/sim/anima'
+import { ITEMS, type ItemId } from '../src/data/items'
+import { dropShards, regenDelay, regenRate } from '../src/sim/anima'
 import { damagePlayer } from '../src/sim/combat'
+import { costOf, meleeMul, periodOf, rangedMul, spreadMul } from '../src/sim/items/common'
+import { affordable, effectiveCost, modsOf } from '../src/sim/loadout'
+import { dashCooldown, maxSpeed } from '../src/sim/player'
 import { FOE_SIDE } from '../src/sim/state'
 import { rig } from './sim-helpers'
 
@@ -137,5 +141,100 @@ describe('anima', () => {
     expect(r.of('fire').length).toBe(5)
     expect(p.anima).toBe(p.maxAnima)
     expect(r.world.view().training?.infinite).toBe(true)
+  })
+})
+
+describe('critical anima turns enhancement options offline too (DESIGN §5)', () => {
+  const setFrac = (r: ReturnType<typeof rig>, f: number) => {
+    const p = r.player()
+    p.anima = p.build.maxAnima * f
+    p.lastHurt = r.sim.time + 100
+    r.step(1)
+  }
+  /** Reads `probe` at full anima, while critical (10 %), at 19 % (still offline) and after recovery (50 %). */
+  const phases = <T>(passive: ItemId[], probe: (r: ReturnType<typeof rig>) => T, r_: ItemId[] = ['bee']) => {
+    const r = rig({ r: r_, passive })
+    r.step(1)
+    const before = probe(r)
+    setFrac(r, 0.1)
+    expect(r.player().online).toBe(false)
+    const offline = probe(r)
+    setFrac(r, 0.19)
+    expect(r.player().online).toBe(false)
+    expect(probe(r)).toEqual(offline)
+    setFrac(r, 0.5)
+    expect(r.player().online).toBe(true)
+    return { before, offline, after: probe(r) }
+  }
+  const cases: [string, ItemId[], (r: ReturnType<typeof rig>) => number, number][] = [
+    ['hawk ranged damage', ['hawk', 'hawk'], (r) => rangedMul(r.player()), 1],
+    ['hawk spread', ['hawk', 'hawk'], (r) => spreadMul(r.player()), 1],
+    ['hawk ranged cost', ['hawk', 'hawk'], (r) => costOf(r.player(), ITEMS.bee), 1],
+    ['sloth cost', ['sloth'], (r) => costOf(r.player(), ITEMS.bee), 1],
+    ['sloth rate', ['sloth'], (r) => periodOf(r.player(), 1), 1],
+    ['fang melee damage', ['fang'], (r) => meleeMul(r.player()), 1],
+    ['cheetah speed', ['cheetah'], (r) => maxSpeed(r.player()), 1],
+    ['cheetah dash cooldown', ['cheetah'], (r) => dashCooldown(r.player()), 1],
+    ['koala regen', ['koala'], (r) => regenRate(r.player()), 1],
+    ['koala regen delay', ['koala'], (r) => regenDelay(r.player()), 1],
+    ['rhino armour effect', ['rhino', 'turtle'], (r) => modsOf(r.player()).armorEffect, 1],
+    ['camel max anima', ['camel'], (r) => r.player().maxAnima, 1]
+  ]
+  for (const [name, passive, probe] of cases) {
+    it(`${name}: active, off while critical, back above 20 %`, () => {
+      const { before, offline, after } = phases(passive, probe)
+      expect(offline).not.toBeCloseTo(before)
+      expect(after).toBeCloseTo(before)
+    })
+  }
+
+  it('offline values equal a build without those enhancements', () => {
+    const bare = rig({ r: ['bee'] })
+    const r = rig({ r: ['bee'], passive: ['hawk', 'cheetah', 'koala', 'sloth', 'fang', 'camel'] })
+    r.step(1)
+    setFrac(r, 0.1)
+    const a = r.player()
+    const b = bare.player()
+    expect(rangedMul(a)).toBe(rangedMul(b))
+    expect(spreadMul(a)).toBe(spreadMul(b))
+    expect(meleeMul(a)).toBe(meleeMul(b))
+    expect(costOf(a, ITEMS.bee)).toBe(costOf(b, ITEMS.bee))
+    expect(maxSpeed(a)).toBe(maxSpeed(b))
+    expect(dashCooldown(a)).toBe(dashCooldown(b))
+    expect(regenRate(a)).toBe(regenRate(b))
+    expect(regenDelay(a)).toBe(regenDelay(b))
+    expect(a.maxAnima).toBe(b.maxAnima)
+  })
+
+  it('camel offline shrinks max anima without killing or flapping', () => {
+    const r = rig({ r: ['bee'], passive: ['camel'] })
+    r.step(1)
+    const p = r.player()
+    const full = p.build.maxAnima
+    p.anima = full * 0.15
+    p.lastHurt = r.sim.time + 100
+    r.step(5)
+    expect(p.online).toBe(false)
+    expect(p.maxAnima).toBe(full - p.build.mods.maxAnima)
+    expect(p.anima).toBeGreaterThan(0)
+    expect(p.anima).toBeLessThanOrEqual(p.maxAnima)
+  })
+
+  it('effectiveCost matches the sim: hippo with 3 hawks 4.6 online, 4 offline; eel usable at 2 anima', () => {
+    const hawks: ItemId[] = ['hawk', 'hawk', 'hawk']
+    expect(effectiveCost(hawks, true, 'hippo').cost).toBeCloseTo(4.6)
+    expect(effectiveCost(hawks, false, 'hippo').cost).toBe(4)
+    const r = rig({ r: ['hippo'], passive: hawks })
+    r.step(1)
+    expect(costOf(r.player(), ITEMS.hippo)).toBeCloseTo(effectiveCost(hawks, true, 'hippo').cost!)
+    setFrac(r, 0.1)
+    expect(costOf(r.player(), ITEMS.hippo)).toBe(effectiveCost(hawks, false, 'hippo').cost)
+    // A held drain needs anima >= drain x DT + 1, a use needs anima >= cost + 1.
+    expect(affordable(2, effectiveCost([], false, 'eel'))).toBe(true)
+    expect(affordable(1.01, effectiveCost([], false, 'eel'))).toBe(false)
+    expect(affordable(5, effectiveCost(hawks, false, 'hippo'))).toBe(true)
+    expect(affordable(5.5, effectiveCost(hawks, true, 'hippo'))).toBe(false)
+    expect(affordable(5.7, effectiveCost(hawks, true, 'hippo'))).toBe(true)
+    expect(affordable(0, {})).toBe(true)
   })
 })

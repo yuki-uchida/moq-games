@@ -232,6 +232,7 @@ class Renderer implements GameRenderer {
     this.gl.toneMappingExposure = this.env.theme.exposure
     this.grid = new BoxGrid(map)
     this.rig.setGrid(this.grid)
+    this.markers.setGrid(this.grid)
     this.rig.setObstacles(this.env.plan.canopies)
     this.props.setMap(map)
     this.effects.setMap(this.env.theme, this.env.emitters)

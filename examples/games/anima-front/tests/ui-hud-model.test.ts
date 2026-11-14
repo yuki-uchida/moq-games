@@ -9,6 +9,7 @@ import {
   formatAnima,
   formatClock,
   hitMarkerFor,
+  CooldownRing,
   pawCard,
   pickMvp,
   placings,
@@ -17,7 +18,10 @@ import {
   typedLength
 } from '../src/ui/hud/model'
 import { demoView } from '../src/ui/hud/demo-view'
-import type { SimEvent } from '../src/sim/types'
+import { ITEMS, type ItemId } from '../src/data/items'
+import type { Loadout } from '../src/data/loadout'
+import { computeBuild, emptyMods, itemCost } from '../src/sim/loadout'
+import type { HandView, SimEvent } from '../src/sim/types'
 
 describe('formatting', () => {
   it('formats clocks and anima', () => {
@@ -166,5 +170,81 @@ describe('events', () => {
       { team: 2, score: 5, place: 2 }
     ])
     expect(pickMvp(view)).toBeDefined()
+  })
+})
+
+describe('paw cards match the sim', () => {
+  const hand = (items: HandView['items'], cooldown = 0): HandView => ({
+    items,
+    sel: 0,
+    swap: 0,
+    act: 'idle',
+    charge: 0,
+    cooldown,
+    uses: 0,
+    combo: 0
+  })
+  const ctx = (passives: ItemId[], online: boolean, anima: number, ring?: CooldownRing) => ({
+    passives,
+    online,
+    anima,
+    ring
+  })
+  /** The sim's own number for a player carrying these passives (build mods while online, none offline). */
+  const simCost = (item: ItemId, passives: ItemId[], online: boolean) => {
+    const slots = passives.map((id) => ({ item: id, hand: 'R' as const }))
+    const build = computeBuild('hamster', { slots: [...slots, ...Array(16 - slots.length).fill(null)] } as Loadout)
+    const def = ITEMS[item]
+    return itemCost(online ? build.mods : emptyMods(), def, def.cost ?? def.drain ?? 0)
+  }
+
+  it('shows the enhanced cost while online and the base cost offline', () => {
+    const three: ItemId[] = ['hawk', 'hawk', 'hawk']
+    const on = pawCard(hand(['hippo']), ctx(three, true, 50))
+    expect(on.costValue).toBeCloseTo(4.6)
+    expect(on.cost).toBe('4.6')
+    expect(on.costValue).toBeCloseTo(simCost('hippo', three, true))
+    const off = pawCard(hand(['hippo']), ctx(three, false, 50))
+    expect(off.costValue).toBe(4)
+    expect(off.costValue).toBeCloseTo(simCost('hippo', three, false))
+    // ナマケモノ lowers every cost; drains show per second.
+    const sloth = pawCard(hand(['eel']), ctx(['sloth', 'sloth'], true, 50))
+    expect(sloth.costValue).toBeCloseTo(simCost('eel', ['sloth', 'sloth'], true))
+    expect(sloth.cost).toBe('2/秒')
+  })
+
+  it('uses the sim affordability rule', () => {
+    // Per-use antiques need anima >= cost + 1.
+    expect(pawCard(hand(['hippo']), ctx([], true, 5)).affordable).toBe(true)
+    expect(pawCard(hand(['hippo']), ctx([], true, 4.99)).affordable).toBe(false)
+    expect(pawCard(hand(['hippo']), ctx(['hawk', 'hawk', 'hawk'], true, 5.5)).affordable).toBe(false)
+    expect(pawCard(hand(['hippo']), ctx(['hawk', 'hawk', 'hawk'], true, 5.6)).affordable).toBe(true)
+    // Held drains need only one tick: drain/60 + 1.
+    expect(pawCard(hand(['eel']), ctx([], true, 2)).affordable).toBe(true)
+    expect(pawCard(hand(['eel']), ctx([], true, 1.03)).affordable).toBe(false)
+    expect(pawCard(hand(['armadillo']), ctx([], true, 1.01)).affordable).toBe(true)
+  })
+
+  it('sweeps the cooldown ring from the total of the current cooldown', () => {
+    const ring = new CooldownRing()
+    const sweep = (remaining: number) => pawCard(hand(['wood'], remaining), ctx([], true, 50, ring)).cooldown
+    expect(sweep(0)).toBe(0)
+    // A rapid-fire interval of 0.1 s starts full and drains smoothly instead of staying pinned.
+    expect(sweep(0.1)).toBe(1)
+    expect(sweep(0.075)).toBeCloseTo(0.75)
+    expect(sweep(0.025)).toBeCloseTo(0.25)
+    expect(sweep(0)).toBe(0)
+    // A longer cooldown afterwards uses its own total.
+    expect(sweep(2)).toBe(1)
+    expect(sweep(1)).toBeCloseTo(0.5)
+    // A fresh use while still cooling restarts the sweep.
+    expect(sweep(1.9)).toBe(1)
+  })
+
+  it('keeps one ring per paw and resets it when the antique changes', () => {
+    const ring = new CooldownRing()
+    expect(ring.update('hippo', 2)).toBe(1)
+    expect(ring.update('hippo', 1)).toBeCloseTo(0.5)
+    expect(ring.update('bat', 4)).toBe(1)
   })
 })

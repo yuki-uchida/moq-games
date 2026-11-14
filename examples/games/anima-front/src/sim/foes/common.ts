@@ -74,7 +74,7 @@ export function pickTarget(sim: Sim, f: Foe): TargetInfo | null {
       if (p.state !== 'alive') continue
       const d = Math.hypot(p.p[0] - f.p[0], p.p[2] - f.p[2])
       if (d >= bd) continue
-      if (!canPerceive(sim, e, p, d > 3)) continue
+      if (!canPerceive(sim, e, p, d > 3, FOE_SIDE)) continue
       bd = d
       best = { k: 'p', id: p.id }
     }
@@ -89,7 +89,7 @@ export function pickTarget(sim: Sim, f: Foe): TargetInfo | null {
     for (const p of sim.players) {
       if (p.state !== 'alive') continue
       // Cloaked players far away stay hidden.
-      if (!canPerceive(sim, e, p, false)) continue
+      if (!canPerceive(sim, e, p, false, FOE_SIDE)) continue
       const d = Math.hypot(p.p[0] - f.p[0], p.p[2] - f.p[2])
       if (d < bd) {
         bd = d

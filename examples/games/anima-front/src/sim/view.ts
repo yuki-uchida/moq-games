@@ -5,7 +5,7 @@
 import { burnOf } from './anima'
 import { SWAP_TIME } from './constants'
 import { sideTeam, type Foe, type HandSt, type Player, type Prop, type Sim } from './state'
-import type { FoeView, HandView, PlayerStats, PlayerView, PropView, ShardView, ShotView, View } from './types'
+import type { FoeView, HandView, PlayerStats, PlayerView, PropView, ShardView, ShotView, TeamId, View } from './types'
 import { r2, r2v, r3, r3v } from './vec'
 
 function handView(sim: Sim, h: HandSt): HandView {
@@ -72,6 +72,11 @@ export function playerView(sim: Sim, p: Player): PlayerView {
     stats: statsView(p.stats)
   }
   if (p.reviving) v.reviving = p.reviving
+  if (p.revealedBy) {
+    const to: TeamId[] = []
+    for (let s = 0; s < 3; s++) if (sim.time < (p.revealedBy[s] ?? 0)) to.push(s as TeamId)
+    if (to.length) v.revealedTo = to
+  }
   return v
 }
 

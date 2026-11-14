@@ -54,7 +54,7 @@ const idle = () => [playerCfg('h0', { loadout: makeLoadout(['bee'], [], []) })]
 describe('missions played by bots on 訓練', () => {
   for (const [id, limit] of [
     ['sakura', 300],
-    ['harbor', 420],
+    ['harbor', 450],
     ['nightraid', 300],
     ['blight', 360],
     ['maw', 240]

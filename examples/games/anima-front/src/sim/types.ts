@@ -171,8 +171,13 @@ export interface PlayerView {
   passivesOnline: boolean
   /** 0..1 camouflage. */
   cloak: number
-  /** Revealed to the other side by sonar. */
+  /**
+   * Revealed by sonar: in a world's own view, to any other side (see revealedTo); in a view made for one team
+   * (online snapshots, the local PvP screen), to that team.
+   */
   revealed: boolean
+  /** Teams sonar currently reveals this player to (omitted when none; never sent to guests). */
+  revealedTo?: TeamId[]
   /** Anima lost or spent during the last 3 s (the gauge's burn ghost). */
   burn: number
   /** Seconds until the dash is ready. */

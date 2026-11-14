@@ -3,11 +3,15 @@
  * after ROOM_SEARCH seconds), keeps the host informed of the local profile (on change and at 1 Hz, since messages
  * sent before the host subscribed are lost), follows the lobby state and hands match snapshots to the GuestMatch.
  * A host that goes quiet is waited for; a host that leaves, a kick or a lost relay closes the room.
+ *
+ * PvP (DESIGN §18): the guest sends an ECDH public key in its profile, unwraps the team key the host wraps for it
+ * (RoomMsg.keys) and opens only its team's part of each snapshot; spectators choose the team they follow.
  */
 import type { LocalChoice, MatchStart } from '../app/lobby'
 import type { Seat } from '../app/match'
 import { getMap } from '../sim/api'
-import { netLog } from './debug'
+import type { TeamId } from '../sim/types'
+import { netLog, netPart } from './debug'
 import { GuestMatch } from './guest-match'
 import { profileOf, type RoomStatus } from './host-room'
 import {
@@ -19,6 +23,8 @@ import {
   ROOM_SEARCH,
   randomPeerId,
   translateError,
+  partAad,
+  wrapAad,
   type InputMsg,
   type NetTransport,
   type ProfileMsg,
@@ -28,6 +34,8 @@ import {
   type TransportFactory,
   type WireMember
 } from './protocol'
+import { isB64, isEcdhPub, newEcdh, teamKey, unseal, unsealJson, wrapKey, type EcdhPair } from './seal'
+import type { TeamPart } from './split'
 import { cleanName, validateConfig, validateSeat, validateSelection, validId, type Profile } from './validate'
 
 /** How often a guest whose admission never arrived reconnects (see reconnect). */
@@ -96,6 +104,14 @@ export function validateRoom(raw: unknown): RoomMsg | undefined {
     seats,
     kicked: Array.isArray(r.kicked) ? r.kicked.filter(validId).slice(0, 64) : []
   }
+  if (isEcdhPub(r.hk)) msg.hk = r.hk
+  const keys = r.keys as { g?: unknown; w?: unknown } | undefined
+  if (keys && typeof keys === 'object' && Number.isSafeInteger(keys.g) && keys.w && typeof keys.w === 'object') {
+    const w: Record<string, string> = {}
+    for (const [id, blob] of Object.entries(keys.w as Record<string, unknown>).slice(0, 16))
+      if (validId(id) && isB64(blob, 200)) w[id] = blob
+    msg.keys = { g: keys.g as number, w }
+  }
   if (phase !== 'lobby') {
     const config = validateConfig(r.config)
     if (!config) return undefined
@@ -129,6 +145,16 @@ export class GuestRoom {
   /** One guest message at a time (see sendInput). */
   private sending = false
   private closedByUs = false
+  /** ECDH key pair for team keys (null without WebCrypto). */
+  private readonly ecdh: Promise<EcdhPair | null>
+  private ek?: string
+  /** Spectating: the team whose view to follow. */
+  private follow: TeamId = 0
+  /** Unwrapped team keys by generation (the newest few). */
+  private readonly teamKeys = new Map<number, { team: TeamId; key: CryptoKey }>()
+  private readonly unwrapping = new Set<string>()
+  /** Sealed snapshots are opened one after the other. */
+  private opening: Promise<void> = Promise.resolve()
 
   constructor(private readonly opts: GuestRoomOptions) {
     this.code = opts.code
@@ -137,6 +163,19 @@ export class GuestRoom {
     this.lastHeard = this.now()
     this.profile = profileOf(opts.me, false)
     this.transport = this.makeTransport(opts.peerId)
+    this.ecdh = newEcdh().then(
+      (pair) => {
+        this.ek = pair.pub
+        this.profileDirty = true
+        // Before the connection is up, open() sends the profile once it is.
+        if (this.beat) this.flushProfile()
+        return pair
+      },
+      (err) => {
+        netLog(`guest ECDH unavailable: ${String(err)}`)
+        return null
+      }
+    )
   }
 
   private makeTransport(peerId: string): NetTransport {
@@ -264,6 +303,25 @@ export class GuestRoom {
     return this.profile.ready
   }
 
+  /** Spectators (PvP): the team whose view (and only that one) this guest receives. */
+  setFollowTeam(team: TeamId) {
+    if (this.follow === team) return
+    this.follow = team
+    this.profileDirty = true
+    this.flushProfile()
+    this.emit()
+  }
+
+  get followTeam(): TeamId {
+    return this.follow
+  }
+
+  /** The team whose snapshot part this guest can open now (undefined: none yet). */
+  get keyTeam(): TeamId | undefined {
+    const g = this.room?.keys?.g
+    return g === undefined ? undefined : this.teamKeys.get(g)?.team
+  }
+
   /** Tells the host whether the game screen is in a match (0: not). */
   setInMatch(matchId: number) {
     if (this.profile.inMatch === matchId) return
@@ -281,8 +339,13 @@ export class GuestRoom {
     const seat = this.mySeat
     const seated = seat && config.players.some((p) => p.id === seat) ? seat : null
     // Spectators follow the host's seat (or the first human one).
+    const team = config.mode === 'pvp' ? this.follow : undefined
     const follow =
       seated ??
+      (team !== undefined
+        ? (config.players.find((p) => p.team === team && p.bot === undefined)?.id ??
+          config.players.find((p) => p.team === team)?.id)
+        : undefined) ??
       room.members.find((m) => m.host && m.seat)?.seat ??
       config.players.find((p) => p.bot === undefined)?.id ??
       config.players[0].id
@@ -320,6 +383,8 @@ export class GuestRoom {
     if (!this.profileDirty || this.sending || this.status.kind === 'closed') return
     this.profileDirty = false
     const msg: ProfileMsg = { v: PROTOCOL, k: 'profile', p: this.profile, key: this.key }
+    if (this.ek) msg.ek = this.ek
+    if (this.follow) msg.f = this.follow
     this.send(msg, () => {
       this.profileDirty = true
     })
@@ -327,13 +392,18 @@ export class GuestRoom {
 
   private send(msg: ProfileMsg | InputMsg, failed?: () => void) {
     this.sending = true
-    this.transport
-      .sendInput(msg)
-      .catch(() => failed?.())
-      .finally(() => {
+    this.transport.sendInput(msg).then(
+      () => {
         this.sending = false
         this.flushProfile()
-      })
+      },
+      () => {
+        // A failed send is retried by the 1 Hz heartbeat, never at once: a network that rejects immediately
+        // (not connected yet) would otherwise spin in microtasks and freeze the page.
+        this.sending = false
+        failed?.()
+      }
+    )
   }
 
   private receive(raw: unknown) {
@@ -347,7 +417,10 @@ export class GuestRoom {
     }
     if (k === 'snap') {
       const msg = raw as SnapMsg
-      if (this.match && msg.v === PROTOCOL && msg.m === this.match.matchId) this.match.receive(msg)
+      const match = this.match
+      if (!match || msg.v !== PROTOCOL || msg.m !== match.matchId) return
+      if (msg.s !== undefined) this.opening = this.opening.then(() => this.openSnapshot(msg, match))
+      else match.receive(msg)
       return
     }
     const room = validateRoom(raw)
@@ -357,9 +430,46 @@ export class GuestRoom {
       return
     }
     this.room = room
+    this.unwrapKey(room)
     if (this.status.kind === 'connecting') this.status = { kind: 'online', text: 'オンライン' }
     this.found?.()
     this.emit()
+  }
+
+  /** Unwraps the team key the host wrapped for this connection (once per generation). */
+  private unwrapKey(room: RoomMsg) {
+    const keys = room.keys
+    const hk = room.hk
+    const id = this.myId
+    const blob = keys?.w[id]
+    if (!keys || !hk || !blob || this.teamKeys.has(keys.g)) return
+    const job = `${keys.g}:${id}:${blob}`
+    if (this.unwrapping.has(job)) return
+    this.unwrapping.add(job)
+    void (async () => {
+      const pair = await this.ecdh
+      if (!pair) return
+      const wk = await wrapKey(pair.priv, hk, this.code, id)
+      const raw = await unseal(wk, blob, wrapAad(keys.g, id))
+      if (raw.length !== 33 || raw[0] > 2) throw new Error('bad team key')
+      this.teamKeys.set(keys.g, { team: raw[0] as TeamId, key: await teamKey(raw.subarray(1)) })
+      for (const g of [...this.teamKeys.keys()].sort((a, b) => a - b).slice(0, -4)) this.teamKeys.delete(g)
+      netLog(`guest ${id} team key generation ${keys.g} (team ${raw[0]})`)
+    })().catch((err) => netLog(`guest could not unwrap the team key: ${String(err)}`))
+  }
+
+  /** Opens this guest's team part of a PvP snapshot and hands the merged view to the match. */
+  private async openSnapshot(msg: SnapMsg, match: GuestMatch) {
+    const k = typeof msg.g === 'number' ? this.teamKeys.get(msg.g) : undefined
+    const sealed = k && msg.s ? msg.s[k.team] : undefined
+    if (!k || !isB64(sealed, 1 << 22) || typeof msg.view?.tick !== 'number') return
+    try {
+      const part = await unsealJson(k.key, sealed, partAad(msg.m, msg.g!, k.team, msg.view.tick))
+      netPart(part)
+      if (this.match === match) match.receiveSealed(msg, part as TeamPart, k.team)
+    } catch (err) {
+      netLog(`guest could not open a snapshot: ${String(err)}`)
+    }
   }
 
   private pulse() {

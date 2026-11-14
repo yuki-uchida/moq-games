@@ -6,21 +6,20 @@ import { ITEMS, type ItemDef, type ItemId } from '../../data/items'
 import { rayActors } from '../actors'
 import { spend } from '../anima'
 import { AIM_RANGE, AVATAR_DAMAGE, BEAR_MELEE, EMPTY_GAP, SHOT_RADIUS } from '../constants'
-import { itemCost, periodScale } from '../loadout'
+import { itemCost, modsOf, periodScale } from '../loadout'
 import { aimOf, muzzleOf, pivotOf } from '../player'
 import { spawnShot, type ShotSpec } from '../projectiles'
 import { emit, type HandSt, type Player, type Sim } from '../state'
 import { deg, jitterDir, r3, r3v, vnorm, type Vec } from '../vec'
 
-export const costOf = (p: Player, def: ItemDef, base?: number) => itemCost(p.build.mods, def, base)
-export const periodOf = (p: Player, base: number, def?: ItemDef) =>
-  base * periodScale(p.build.mods) + (def?.cooldown ?? 0)
+export const costOf = (p: Player, def: ItemDef, base?: number) => itemCost(modsOf(p), def, base)
+export const periodOf = (p: Player, base: number, def?: ItemDef) => base * periodScale(modsOf(p)) + (def?.cooldown ?? 0)
 /** クロヅメ avatars hit with the difficulty multiplier × AVATAR_DAMAGE (they come in numbers). */
 const foeMul = (p: Player) => (p.foe ? p.foe.dmgMul * AVATAR_DAMAGE : 1)
 export const meleeMul = (p: Player) =>
-  (1 + p.build.mods.meleeDamage) * (p.species.trait === 'strong' ? BEAR_MELEE : 1) * foeMul(p)
-export const rangedMul = (p: Player) => (1 + p.build.mods.rangedDamage) * foeMul(p)
-export const spreadMul = (p: Player) => Math.max(0, 1 + p.build.mods.spread)
+  (1 + modsOf(p).meleeDamage) * (p.species.trait === 'strong' ? BEAR_MELEE : 1) * foeMul(p)
+export const rangedMul = (p: Player) => (1 + modsOf(p).rangedDamage) * foeMul(p)
+export const spreadMul = (p: Player) => Math.max(0, 1 + modsOf(p).spread)
 
 export const isReady = (sim: Sim, h: HandSt) => sim.time >= h.readyAt - 1e-9
 

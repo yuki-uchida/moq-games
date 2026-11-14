@@ -10,8 +10,10 @@ import {
   costLines,
   emptyLoadout,
   itemsInCategory,
+  offendingSlots,
   pawLists,
-  placementError
+  placementError,
+  safeLoadoutErrors
 } from '../../app/loadouts'
 import { CUSTOM_SLOTS, defaultChoice, resolveLoadout, storeCustom, type LoadoutChoice } from '../../app/saves'
 import { CATEGORY_NAMES, ITEMS, type ItemCategory, type ItemId } from '../../data/items'
@@ -22,6 +24,9 @@ import { h, setText, svg } from '../dom'
 import { createTurntable, type Turntable } from '../turntable'
 import { hintBar, itemIcon, screenHead, speciesBadge } from '../widgets'
 import { createStatsPanel, economyCard } from './loadout-stats'
+
+/** The loadout may be saved, confirmed or taken to a match only without problems. */
+const problemsOf = (l: Loadout) => safeLoadoutErrors(l)
 
 const sameLoadout = (a: Loadout, b: Loadout) => JSON.stringify(a.slots) === JSON.stringify(b.slots)
 
@@ -183,7 +188,25 @@ export function createLoadoutScreen(ctx: AppContext, args?: { back?: RouteRef })
     return r === 'discard'
   }
 
+  /** Refuses an action with a message and flashes the offending slots; returns true when it was refused. */
+  function refuseInvalid(action: string): boolean {
+    const problems = problemsOf(working)
+    if (!problems.length) return false
+    ctx.sfx('uiError')
+    ctx.toast(`${problems[0]}。この編成では${action}できません`, 'error')
+    for (const i of offendingSlots(working)) {
+      slotEls[i].classList.remove('is-flash')
+      void slotEls[i].offsetWidth
+      slotEls[i].classList.add('is-flash')
+    }
+    problemBox.classList.remove('is-flash')
+    void problemBox.offsetWidth
+    problemBox.classList.add('is-flash')
+    return true
+  }
+
   async function saveFlow(): Promise<boolean> {
+    if (refuseInvalid('保存')) return false
     const customs = ctx.armory.custom[species]
     const nameInput = h('input', {
       class: 'text-input',
@@ -207,6 +230,11 @@ export function createLoadoutScreen(ctx: AppContext, args?: { back?: RouteRef })
             attrs: { type: 'button', 'data-save-slot': String(i), 'data-sfx': 'uiEquip' },
             on: {
               click: () => {
+                if (problemsOf(working).length) {
+                  close(false)
+                  refuseInvalid('保存')
+                  return
+                }
                 const name = nameInput.value.trim() || `カスタム${i + 1}`
                 const armory = storeCustom(ctx.armory, species, i, { name, loadout: working, savedAt: Date.now() })
                 ctx.setArmory(armory)
@@ -302,6 +330,24 @@ export function createLoadoutScreen(ctx: AppContext, args?: { back?: RouteRef })
   }
   board.addEventListener('dragover', (e) => e.preventDefault())
 
+  const problemBox = h('div', { class: 'lo-problems', attrs: { role: 'alert', 'aria-live': 'polite' } })
+
+  function paintProblems() {
+    const problems = problemsOf(working)
+    const bad = new Set(offendingSlots(working))
+    problemBox.hidden = problems.length === 0
+    board.classList.toggle('has-problem', problems.length > 0)
+    problemBox.replaceChildren(
+      ...(problems.length
+        ? [
+            h('b', null, 'この編成は保存・決定・出撃できません'),
+            h('ul', null, ...problems.map((p) => h('li', null, p)))
+          ]
+        : [])
+    )
+    slotEls.forEach((b, i) => b.classList.toggle('is-invalid', bad.has(i)))
+  }
+
   function paintBoard() {
     const lists = pawLists(working)
     working.slots.forEach((s, i) => {
@@ -331,6 +377,7 @@ export function createLoadoutScreen(ctx: AppContext, args?: { back?: RouteRef })
     setText(countP, String(lists.passive.length))
     setText(countAll, `${working.slots.filter(Boolean).length} / 16`)
     stats.update(species, working)
+    paintProblems()
     paintSaves()
     // the turntable holds the first antique of each paw, or the selected slot's antique in its paw
     let r = lists.R[0] ?? null
@@ -592,6 +639,7 @@ export function createLoadoutScreen(ctx: AppContext, args?: { back?: RouteRef })
     'panel lo-board-panel',
     h('div', 'lo-board-head', h('div', 'lo-current', h('small', null, '編成'), nameLabel, dirtyChip), countAll),
     board,
+    problemBox,
     h(
       'div',
       'lo-board-legend',
@@ -610,7 +658,7 @@ export function createLoadoutScreen(ctx: AppContext, args?: { back?: RouteRef })
     {
       class: 'btn btn-primary lo-done',
       attrs: { type: 'button', 'data-sfx': 'uiSelect' },
-      on: { click: () => void leaveScreen() }
+      on: { click: () => void confirmScreen() }
     },
     args?.back?.name === 'lobby' ? 'ロビーへ戻る' : '決定'
   )
@@ -634,6 +682,12 @@ export function createLoadoutScreen(ctx: AppContext, args?: { back?: RouteRef })
     ])
   )
 
+  /** 決定: leaves with the loadout in the editor, which must be free of problems. */
+  async function confirmScreen() {
+    if (refuseInvalid('決定')) return
+    await leaveScreen()
+  }
+
   async function leaveScreen() {
     if (dirty()) {
       const r = await ctx.confirm({
@@ -648,6 +702,15 @@ export function createLoadoutScreen(ctx: AppContext, args?: { back?: RouteRef })
       if (r === 'save' && !(await saveFlow())) return
     }
     const back = args?.back
+    // The lobby takes the saved loadout into the match: a stored loadout with problems must be fixed first.
+    if (back?.name === 'lobby') {
+      const stored = problemsOf(saved.loadout)
+      if (stored.length) {
+        ctx.sfx('uiError')
+        ctx.toast(`「${saved.name}」の編成に問題があります：${stored[0]}。直すか、別の編成を選んでください`, 'error')
+        return
+      }
+    }
     if (back) ctx.open(back.name, back.args as never)
     else ctx.open('title')
   }

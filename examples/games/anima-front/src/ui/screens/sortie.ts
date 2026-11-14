@@ -3,7 +3,7 @@ import type { AppContext, Screen } from '../../app/context'
 import type { LocalChoice } from '../../app/lobby'
 import type { MatchSelection } from '../../app/match'
 import { MODE_LABELS } from '../../app/match'
-import { resolveLoadout } from '../../app/saves'
+import { loadoutBlocker, resolveLoadout } from '../../app/saves'
 import { SPECIES } from '../../data/species'
 import { h } from '../dom'
 import { hintBar, screenHead } from '../widgets'
@@ -13,6 +13,18 @@ export function localChoice(ctx: AppContext): LocalChoice {
   const species = ctx.armory.species
   const { loadout, name } = resolveLoadout(ctx.armory, species)
   return { name: SPECIES[species].name, species, loadout, loadoutName: name }
+}
+
+/**
+ * Refuses a sortie (and says why) while the loadout this animal would deploy with breaks the rules. A saved
+ * loadout is never repaired behind the player's back, so a stored one with problems must be fixed first.
+ */
+export function refuseBlockedLoadout(ctx: AppContext): boolean {
+  const message = loadoutBlocker(ctx.armory, ctx.armory.species)
+  if (!message) return false
+  ctx.sfx('uiError')
+  ctx.toast(message, 'error')
+  return true
 }
 
 const MODES = [
@@ -116,6 +128,7 @@ export function createRoomScreen(ctx: AppContext, args: { selection: MatchSelect
       avail.ok ? null : h('span', 'chip room-soon', avail.reason)
     )
   const solo = () => {
+    if (refuseBlockedLoadout(ctx)) return
     const lobby = ctx.lobbies.solo(sel, localChoice(ctx))
     ctx.open('lobby', { selection: sel, lobby })
   }
@@ -250,6 +263,10 @@ function openRoomDialog(ctx: AppContext, screen: HTMLElement, kind: 'host' | 'jo
   }
   async function submit() {
     if (busy) return
+    if (refuseBlockedLoadout(ctx)) {
+      setNote(loadoutBlocker(ctx.armory, ctx.armory.species) ?? '', true)
+      return
+    }
     const code = validate(true)
     if (!code) {
       ctx.sfx('uiError')
@@ -306,6 +323,7 @@ export function createTrainingScreen(ctx: AppContext): Screen {
     h('span', 'switch', h('i'))
   )
   const start = (tutorial: boolean) => {
+    if (refuseBlockedLoadout(ctx)) return
     const selection: MatchSelection = { mode: 'training', training: { tutorial, infiniteAnima: !tutorial && infinite } }
     const lobby = ctx.lobbies.solo(selection, localChoice(ctx))
     ctx.open('briefing', { selection, lobby, start: lobby.start() })

@@ -2,6 +2,11 @@
  * The host's room (DESIGN §18): membership from the network's presence and the guests' profiles, seats, the
  * lobby state broadcast, kicks and team moves, the match start, late joiners and leavers. The match itself (the
  * world stepped at 60 Hz, guest inputs, snapshots) is HostMatch in host-match.ts.
+ *
+ * PvP team keys (DESIGN §18): from the start of a PvP match the room holds one AES-GCM key per team and wraps it
+ * for every guest allowed to read that team's snapshot part (its seat's team; a spectator's chosen team). The
+ * keys are replaced (a new generation) for every match and whenever a holder leaves or changes team, so a key
+ * never outlives its holder's right to read.
  */
 import type { LocalChoice, MatchStart } from '../app/lobby'
 import { botSkill, matchConfig, type MatchSelection, type Seat } from '../app/match'
@@ -12,6 +17,8 @@ import { netLog } from './debug'
 import { HostClock, type PulseClock } from './host-clock'
 import { InputBuffer } from './input-buffer'
 import { HostMatch } from './host-match'
+import { isEcdhPub, newEcdh, randomBytes, seal, sealJson, teamKey, wrapKey, type EcdhPair } from './seal'
+import type { TeamPart } from './split'
 import {
   APP_ID,
   ARRIVAL_GRACE,
@@ -19,6 +26,8 @@ import {
   ONLINE_COUNTDOWN,
   PROTOCOL,
   translateError,
+  partAad,
+  wrapAad,
   type InputMsg,
   type NetTransport,
   type RoomMsg,
@@ -38,6 +47,22 @@ export interface RoomMember extends SeatMember {
   key?: string
   /** Room time it left (kept a while in the lobby in case it reconnects). */
   goneAt?: number
+  /** ECDH public key (base64) from its profile. */
+  ek?: string
+  /** Spectating: the team it follows. */
+  follow?: TeamId
+}
+
+/** One generation of PvP team keys. */
+interface KeySet {
+  gen: number
+  raw: Uint8Array[]
+  keys: Promise<CryptoKey>[]
+  /** Member id → team whose key it holds. */
+  grants: Map<string, TeamId>
+  /** Member id → wrapped key (base64) once ready. */
+  wrapped: Map<string, string>
+  started: Set<string>
 }
 
 /** A guest whose match inputs stopped this long ago (and whose profile left the match) is played by a bot. */
@@ -124,6 +149,11 @@ export class HostRoom {
   private pendingSnap: SnapMsg | null = null
   private closedByUs = false
   oversizeWarned = false
+  private readonly ecdh: Promise<EcdhPair | null>
+  private ecdhPub?: string
+  private keySet: KeySet | null = null
+  private keyGen = 0
+  private readonly wrapKeys = new Map<string, Promise<CryptoKey>>()
 
   constructor(private readonly opts: HostRoomOptions) {
     this.code = opts.code
@@ -155,6 +185,17 @@ export class HostRoom {
       }
     })
     this.clock = (opts.clock ?? ((tick) => new HostClock(tick)))((dt) => this.pulse(dt, true))
+    this.ecdh = newEcdh().then(
+      (pair) => {
+        this.ecdhPub = pair.pub
+        this.changed()
+        return pair
+      },
+      (err) => {
+        netLog(`host ECDH unavailable: ${String(err)}`)
+        return null
+      }
+    )
   }
 
   /** Connects to the relay; rejects with a Japanese message. */
@@ -265,6 +306,8 @@ export class HostRoom {
     this.matchId++
     this.phase = 'briefing'
     for (const m of this.members.values()) m.input = undefined
+    // Every match gets new team keys.
+    this.keySet = null
     this.changed()
     const matchId = this.matchId
     return { config, me: humanSeatId(0), connect: () => this.beginMatch(matchId) }
@@ -275,6 +318,7 @@ export class HostRoom {
     if (this.phase !== 'briefing' || this.match) return
     this.phase = 'lobby'
     this.config = undefined
+    this.keySet = null
     this.changed()
   }
 
@@ -297,6 +341,7 @@ export class HostRoom {
     this.match = null
     this.phase = 'lobby'
     this.config = undefined
+    this.keySet = null
     const me = this.members.get(this.myId)!
     me.profile = { ...me.profile, inMatch: 0 }
     for (const [id, m] of this.members) if (!m.host && !m.present) this.members.delete(id)
@@ -359,11 +404,11 @@ export class HostRoom {
     if (!raw || typeof raw !== 'object') return
     const msg = raw as Record<string, unknown>
     if (msg.v !== PROTOCOL) return
-    if (msg.k === 'profile') this.receiveProfile(id, msg.p, msg.key)
+    if (msg.k === 'profile') this.receiveProfile(id, msg.p, msg.key, msg.ek, msg.f)
     else if (msg.k === 'input') this.receiveInput(id, msg as Partial<InputMsg>)
   }
 
-  private receiveProfile(id: string, raw: unknown, key: unknown) {
+  private receiveProfile(id: string, raw: unknown, key: unknown, ek?: unknown, follow?: unknown) {
     const profile = validateProfile(raw)
     if (!profile) return
     const secret = typeof key === 'string' && /^[a-z0-9]{16,64}$/.test(key) ? key : undefined
@@ -379,8 +424,18 @@ export class HostRoom {
       this.members.set(id, m)
     } else m.profile = profile
     m.present = true
+    let keysChanged = false
+    if (isEcdhPub(ek) && ek !== m.ek) {
+      m.ek = ek
+      keysChanged = true
+    }
+    const f: TeamId = follow === 1 || follow === 2 ? follow : 0
+    if (m.follow !== f) {
+      m.follow = f
+      keysChanged = true
+    }
     if (this.phase !== 'lobby' && !this.matchSeatOf.has(id)) this.seatLateJoiner(m)
-    if (JSON.stringify(m.profile) !== before) this.changed()
+    if (JSON.stringify(m.profile) !== before || keysChanged) this.changed()
   }
 
   /** A guest that reconnected with a new network id: the member (order, seat, match seat) moves to the new id. */
@@ -485,11 +540,107 @@ export class HostRoom {
       kicked: this.kicked.slice()
     }
     if (this.config && this.phase !== 'lobby') msg.config = this.config
+    if (this.ecdhPub) msg.hk = this.ecdhPub
+    if (this.keySet) msg.keys = { g: this.keySet.gen, w: Object.fromEntries(this.keySet.wrapped) }
     return msg
+  }
+
+  // ---- PvP team keys
+
+  /** The team each guest may read now: its seat's team, or the team a spectator follows. */
+  private readers(): Map<string, TeamId> {
+    const out = new Map<string, TeamId>()
+    const config = this.config
+    if (!config) return out
+    for (const [id, seat] of this.matchSeatOf) {
+      const m = this.members.get(id)
+      if (!m || m.host || !m.present || !m.ek) continue
+      const team = seat ? config.players.find((p) => p.id === seat)?.team : (m.follow ?? 0)
+      if (team !== undefined) out.set(id, team)
+    }
+    return out
+  }
+
+  /** Keeps the team keys in step with who may read what (PvP briefing and match). */
+  private refreshKeys() {
+    if (this.selection.mode !== 'pvp' || this.phase === 'lobby' || !this.config) {
+      this.keySet = null
+      return
+    }
+    const want = this.readers()
+    let ks = this.keySet
+    const revoked = !!ks && [...ks.grants].some(([id, team]) => want.get(id) !== team)
+    if (!ks || revoked) {
+      const raw = [randomBytes(32), randomBytes(32), randomBytes(32)]
+      ks = {
+        gen: ++this.keyGen,
+        raw,
+        keys: raw.map((r) => teamKey(r)),
+        grants: new Map(),
+        wrapped: new Map(),
+        started: new Set()
+      }
+      for (const k of ks.keys) k.catch(() => undefined)
+      this.keySet = ks
+      netLog(`host team keys generation ${ks.gen}`)
+    }
+    for (const [id, team] of want) ks.grants.set(id, team)
+    for (const id of ks.grants.keys()) if (!ks.started.has(id)) void this.wrapFor(ks, id)
+  }
+
+  private async wrapFor(ks: KeySet, id: string) {
+    ks.started.add(id)
+    const m = this.members.get(id)
+    const team = ks.grants.get(id)
+    if (!m?.ek || team === undefined) return
+    try {
+      const pair = await this.ecdh
+      if (!pair) return
+      const cacheKey = `${id}:${m.ek}`
+      let wk = this.wrapKeys.get(cacheKey)
+      if (!wk) {
+        wk = wrapKey(pair.priv, m.ek, this.code, id)
+        this.wrapKeys.set(cacheKey, wk)
+      }
+      const blob = new Uint8Array(33)
+      blob[0] = team
+      blob.set(ks.raw[team], 1)
+      const wrapped = await seal(await wk, blob, wrapAad(ks.gen, id))
+      if (this.keySet !== ks || ks.grants.get(id) !== team) return
+      ks.wrapped.set(id, wrapped)
+      this.changed()
+    } catch (err) {
+      netLog(`host could not wrap a team key for ${id}: ${String(err)}`)
+    }
+  }
+
+  /** True when PvP snapshots can be sealed now. */
+  get canSeal(): boolean {
+    return !!this.keySet
+  }
+
+  /** Seals each team part with the current keys (captured now); null when there are none. */
+  seal(
+    parts: ReadonlyMap<TeamId, TeamPart>,
+    matchId: number,
+    tick: number
+  ): Promise<{ g: number; s: Partial<Record<TeamId, string>> }> | null {
+    const ks = this.keySet
+    if (!ks) return null
+    return (async () => {
+      const s: Partial<Record<TeamId, string>> = {}
+      await Promise.all(
+        [...parts].map(async ([team, part]) => {
+          s[team] = await sealJson(await ks.keys[team], part, partAad(matchId, ks.gen, team, tick))
+        })
+      )
+      return { g: ks.gen, s }
+    })()
   }
 
   /** Marks the lobby state changed: listeners now, the network on the next send slot. */
   changed() {
+    this.refreshKeys()
     this.roomDirty = true
     this.flush()
     for (const fn of this.listeners) fn()

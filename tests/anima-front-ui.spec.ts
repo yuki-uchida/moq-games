@@ -137,6 +137,88 @@ test.describe('アニマフロント front-end', () => {
     await expect(page.locator('[data-custom="1"]')).toContainText('はちみつ部隊')
   })
 
+  test('loadout: a loadout with problems cannot be saved or confirmed and nothing is stored', async ({ page }) => {
+    await openTitle(page)
+    await page.click('[data-menu="loadout"]')
+    await expect(current(page, 'loadout')).toBeVisible()
+    await page.click('[data-species="bear"]')
+    await page.getByRole('button', { name: '全部外す' }).click()
+    await page.click('[data-tab="enhance"]')
+    // 16 passive slots and no weapon
+    const plan: [string, number][] = [
+      ['fang', 3],
+      ['hawk', 3],
+      ['rhino', 3],
+      ['sloth', 3],
+      ['koala', 3],
+      ['cheetah', 1]
+    ]
+    let slot = 0
+    for (const [item, n] of plan) {
+      await page.click(`[data-item="${item}"]`)
+      for (let k = 0; k < n; k++) await page.click(`[data-slot="${slot++}"]`)
+    }
+    await expect(page.locator('.lo-count')).toContainText('16 / 16')
+    await expect(page.locator('.lo-problems')).toBeVisible()
+    await expect(page.locator('.lo-problems')).toContainText('武器')
+    await page.click('.lo-save')
+    await expect(page.locator('.toast.is-error').last()).toContainText('保存できません')
+    await expect(page.locator('.lo-save-modal')).toHaveCount(0)
+    await page.click('.lo-done')
+    await expect(page.locator('.toast.is-error').last()).toContainText('決定できません')
+    await expect(current(page, 'loadout')).toBeVisible()
+    // picking the animal is stored, but no custom loadout is
+    const stored = await page.evaluate(() => localStorage.getItem('anima-front-v1:armory'))
+    expect(JSON.parse(stored ?? '{"custom":{"bear":[null,null,null]}}').custom.bear).toEqual([null, null, null])
+  })
+
+  test('loadout: a stored loadout with problems loads unchanged and blocks the sortie', async ({ page }) => {
+    await page.goto('/')
+    const passives = [
+      'fang',
+      'fang',
+      'fang',
+      'hawk',
+      'hawk',
+      'hawk',
+      'rhino',
+      'rhino',
+      'rhino',
+      'sloth',
+      'sloth',
+      'sloth'
+    ]
+    const items = [...passives, 'koala', 'koala', 'koala', 'cheetah']
+    const armory = {
+      version: 2,
+      species: 'bear',
+      choice: { bear: { kind: 'custom', index: 0 } },
+      custom: {
+        bear: [{ name: '壊れた編成', loadout: { slots: items.map((item) => ({ item })) }, savedAt: 1 }, null, null]
+      }
+    }
+    await page.evaluate((a) => localStorage.setItem('anima-front-v1:armory', JSON.stringify(a)), armory)
+    const before = await page.evaluate(() => localStorage.getItem('anima-front-v1:armory'))
+    await page.reload()
+    await openTitle(page)
+    // the editor shows it as it was saved, with its problems, and a koala (not a bee) stays in slot 16
+    await page.click('[data-menu="loadout"]')
+    await expect(page.locator('[data-slot="15"]')).toContainText('チーター')
+    await expect(page.locator('[data-slot="14"]')).toContainText('コアラ')
+    await expect(page.locator('.lo-problems')).toBeVisible()
+    await expect(page.locator('.lo-count')).toContainText('16 / 16')
+    await page.keyboard.press('Escape')
+    await expect(current(page, 'title')).toBeVisible()
+    // the sortie refuses it with a message instead of repairing it
+    await page.click('[data-menu="sortie"]')
+    await page.click('[data-mode="pve"]')
+    await page.click('[data-go]')
+    await page.click('[data-room="solo"]')
+    await expect(page.locator('.toast.is-error').last()).toContainText('壊れた編成')
+    await expect(current(page, 'room')).toBeVisible()
+    expect(await page.evaluate(() => localStorage.getItem('anima-front-v1:armory'))).toBe(before)
+  })
+
   test('settings persist across reload', async ({ page }) => {
     await openTitle(page)
     await page.click('[data-menu="settings"]')

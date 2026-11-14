@@ -3,6 +3,7 @@
  */
 import { FOES } from '../../data/enemies'
 import { ITEMS, type ItemId } from '../../data/items'
+import { affordable, effectiveCost } from '../../sim/loadout'
 import { SPEAKERS, type Speaker } from '../../data/missions'
 import { SPECIES, type SpeciesId } from '../../data/species'
 import type { ActorRef, HandView, PlayerView, ShotKind, SimEvent, V3, View } from '../../sim/types'
@@ -98,38 +99,104 @@ export interface PawCard {
   item: ItemId | null
   name: string
   cost: string
-  /** Anima per use (or per second for draining antiques); 0 when free. */
+  /** Effective anima per use (or per second for draining antiques); 0 when free. */
   costValue: number
-  /** 0..1 of the cooldown ring still to go (0 = ready). */
+  /** True for held antiques that drain per second (beam, camouflage, shield). */
+  drains: boolean
+  /** 0..1 of the cooldown ring still to go (0 = ready): remaining / total of the current cooldown. */
   cooldown: number
   /** 0..1 charge / zoom / lock / guard. */
   charge: number
   swapping: boolean
+  /** Whether the sim would let this use happen now (anima rule, DESIGN §5). */
+  affordable: boolean
   list: { item: ItemId; active: boolean }[]
 }
 
-export function pawCard(hand: HandView | undefined): PawCard {
-  if (!hand || hand.sel < 0 || hand.items.length === 0) {
-    return { item: null, name: '—', cost: '', costValue: 0, cooldown: 0, charge: 0, swapping: false, list: [] }
-  }
-  const item = hand.items[Math.min(hand.sel, hand.items.length - 1)]
-  const def = ITEMS[item]
-  const total = def.cooldown ?? useInterval(item)
-  return {
-    item,
-    name: def.name,
-    cost: def.cost != null ? trim(def.cost) : def.drain != null ? `${trim(def.drain)}/秒` : '',
-    costValue: def.cost ?? def.drain ?? 0,
-    cooldown: total > 0 ? clamp01(hand.cooldown / total) : hand.cooldown > 0 ? 1 : 0,
-    charge: clamp01(hand.charge),
-    swapping: hand.swap > 0,
-    list: hand.items.map((id, i) => ({ item: id, active: i === hand.sel }))
+/** What the sim's build applies to costs: the enhancement mods only while the passives are online. */
+export interface PawContext {
+  passives: readonly ItemId[]
+  online: boolean
+  anima: number
+  /** One tracker per paw so a cooldown remembers its own total. */
+  ring?: CooldownRing
+}
+
+/** Effective cost (per use, or per second for drains) with the player's enhancement mods, as the sim charges it. */
+export function pawCost(item: ItemId, passives: readonly ItemId[], online: boolean): number {
+  const c = effectiveCost(passives, online, item)
+  return c.cost ?? c.drain ?? 0
+}
+
+/** The sim's affordability rule, straight from the sim module. */
+export function pawCanUse(item: ItemId, anima: number, passives: readonly ItemId[], online: boolean): boolean {
+  return affordable(anima, effectiveCost(passives, online, item))
+}
+
+/** Remembers the total of the cooldown that is currently running so the ring sweeps from full to empty. */
+export class CooldownRing {
+  private total = 0
+  private last = 0
+  private item: ItemId | null = null
+  update(item: ItemId | null, remaining: number): number {
+    if (item !== this.item) {
+      this.item = item
+      this.total = 0
+      this.last = 0
+    }
+    if (remaining <= 0) {
+      this.total = 0
+      this.last = 0
+      return 0
+    }
+    // A new cooldown starts (from ready) or restarts (the value jumped up): its first value is the total.
+    if (this.last <= 0 || remaining > this.last + 1e-4) this.total = remaining
+    this.last = remaining
+    return clamp01(remaining / Math.max(1e-4, this.total))
   }
 }
 
-/** The paw cannot be used when the anima would drop below 1 after paying (the sim keeps 1 to stay armoured). */
-export function pawAffordable(anima: number, costValue: number): boolean {
-  return costValue <= 0 || anima >= costValue + 1
+export function pawCard(hand: HandView | undefined, ctx?: PawContext): PawCard {
+  if (!hand || hand.sel < 0 || hand.items.length === 0) {
+    ctx?.ring?.update(null, 0)
+    return {
+      item: null,
+      name: '—',
+      cost: '',
+      costValue: 0,
+      drains: false,
+      cooldown: 0,
+      charge: 0,
+      swapping: false,
+      affordable: true,
+      list: []
+    }
+  }
+  const item = hand.items[Math.min(hand.sel, hand.items.length - 1)]
+  const def = ITEMS[item]
+  const passives = ctx?.passives ?? []
+  const online = ctx?.online ?? true
+  const priced = def.cost != null || def.drain != null
+  const value = priced ? pawCost(item, passives, online) : 0
+  const drains = def.cost == null && def.drain != null
+  let cooldown: number
+  if (ctx?.ring) cooldown = ctx.ring.update(item, hand.cooldown)
+  else {
+    const total = def.cooldown ?? useInterval(item)
+    cooldown = total > 0 ? clamp01(hand.cooldown / total) : hand.cooldown > 0 ? 1 : 0
+  }
+  return {
+    item,
+    name: def.name,
+    cost: priced ? (drains ? `${trim(value)}/秒` : trim(value)) : '',
+    costValue: value,
+    drains,
+    cooldown,
+    charge: clamp01(hand.charge),
+    swapping: hand.swap > 0,
+    affordable: ctx ? pawCanUse(item, ctx.anima, passives, online) : true,
+    list: hand.items.map((id, i) => ({ item: id, active: i === hand.sel }))
+  }
 }
 
 function useInterval(item: ItemId): number {

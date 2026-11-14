@@ -5,6 +5,7 @@
 import { createWorld, getMap, type World } from '../sim/api'
 import type { MapDef, MatchConfig, PlayerInput, View } from '../sim/types'
 import { SmoothedWorld } from '../net/smooth'
+import { viewForTeam } from '../net/split'
 
 /** Fixed simulation step (DESIGN §2). */
 export const STEP = 1 / 60
@@ -76,6 +77,8 @@ export function createLocalSession(
   const inputs = new Map<string, PlayerInput>()
   let paused = false
   let last: View | null = null
+  // PvP: sonar reveals show only when the local player's team made them.
+  const team = config.mode === 'pvp' ? config.players.find((p) => p.id === me)?.team : undefined
   return {
     kind: 'local',
     me,
@@ -94,7 +97,8 @@ export function createLocalSession(
       if (paused) return last ? { ...last, events: [] } : null
       if (!smooth.latest) smooth.prime()
       stepper.advance(dt, () => smooth.step(inputs))
-      last = smooth.present(stepper.alpha)
+      const v = smooth.present(stepper.alpha)
+      last = v && team !== undefined ? viewForTeam(v, team) : v
       return last
     },
     setPaused(value) {

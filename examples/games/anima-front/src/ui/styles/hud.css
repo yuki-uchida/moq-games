@@ -1542,3 +1542,17 @@
 .pause-list {
   max-width: none;
 }
+
+/* anima < cost + 1: the sim would refuse this use */
+.hud-paw.is-broke .paw-main {
+  border-style: dashed;
+  border-color: #ff6b7a;
+  background: rgba(70, 12, 22, 0.6);
+}
+.hud-paw.is-broke .paw-icon {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+.hud-paw.is-broke .paw-cost {
+  color: #ff8a96;
+}

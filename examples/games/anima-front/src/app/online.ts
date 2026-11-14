@@ -169,7 +169,8 @@ function guestLobby(room: GuestRoom): Lobby {
         entered = msg.matchId
         return { phase: msg.phase, start }
       },
-      backInLobby: () => undefined
+      backInLobby: () => undefined,
+      followTeam: (team) => room.setFollowTeam(team)
     }
   }
 }

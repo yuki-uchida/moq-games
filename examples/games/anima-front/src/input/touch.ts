@@ -19,7 +19,7 @@ export interface TouchPaw {
   cooldown: number
   /** 0..1 charge / lock progress. */
   charge: number
-  /** False when anima < cost + 1. */
+  /** False when the sim would refuse the use (anima < cost + 1, or a held drain cannot pay its next tick). */
   affordable: boolean
 }
 

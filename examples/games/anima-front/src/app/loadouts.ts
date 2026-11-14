@@ -101,10 +101,36 @@ export function safeLoadoutErrors(l: Loadout): string[] {
   const out: string[] = []
   if (!hasWeapon(l)) out.push('武器（近接か遠隔）をどちらかの手に1つ以上入れてください')
   try {
-    for (const e of loadoutErrors(l)) if (!out.includes(e)) out.push(e)
+    // The sim words the missing weapon its own way; the local line above already says it.
+    for (const e of loadoutErrors(l))
+      if (!out.includes(e) && !(e === '武器が1つもありません' && out.length)) out.push(e)
   } catch {
     // the sim's validator is unavailable; the local rules above still apply
   }
+  return out
+}
+
+/**
+ * Slots that break a placement rule (a repeated active antique in one paw, an enhancement or passive beyond its
+ * stack limit): the later copies are the offenders. A missing weapon has no slot to blame, so it is not listed.
+ */
+export function offendingSlots(l: Loadout): number[] {
+  const out: number[] = []
+  const active: Record<Hand, Set<ItemId>> = { R: new Set(), L: new Set() }
+  const passive = new Map<ItemId, number>()
+  l.slots.forEach((s, i) => {
+    if (!s) return
+    const def = ITEMS[s.item]
+    if (def.active) {
+      const hand: Hand = s.hand === 'L' ? 'L' : 'R'
+      if (active[hand].has(s.item)) out.push(i)
+      active[hand].add(s.item)
+    } else {
+      const n = (passive.get(s.item) ?? 0) + 1
+      passive.set(s.item, n)
+      if (n > def.stack) out.push(i)
+    }
+  })
   return out
 }
 

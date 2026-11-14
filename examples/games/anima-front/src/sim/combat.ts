@@ -10,6 +10,7 @@ import { recordBurn } from './anima'
 import { BEAR_KNOCK, BLAST_EDGE, CREDIT_WINDOW, OBJECTIVE_ARMOR } from './constants'
 import { bossHitModifier } from './foes/bosses'
 import { onFoeDeath } from './foes/index'
+import { modsOf } from './loadout'
 import { emit, FOE_SIDE, sideTeam, type Foe, type Player, type Prop, type Side, type Sim } from './state'
 import type { ActorRef, HitSurface, ShotKind } from './types'
 import { angleFromYaw, deg, r3, r3v, vdist, type Vec } from './vec'
@@ -123,7 +124,7 @@ export function damagePlayer(sim: Sim, t: Player, d: DamageInfo): number {
       break
     }
     if (u.kind === 'shield' && h.mode === 'shield' && ang <= deg(u.arc) / 2) {
-      const ae = 1 + t.build.mods.armorEffect
+      const ae = 1 + modsOf(t).armorEffect
       amount = (amount * u.blockCostFactor) / ae
       surface = 'shield'
       blocked = true

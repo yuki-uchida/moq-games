@@ -2,7 +2,8 @@
  * アニマフロント online play in the browser: ルームを作る / ルームに参加 with a BroadcastChannel stand-in for
  * CooperativeNetwork (served in place of rabbiters/src/network.ts), several pages of one browser context as the
  * players. Covers a PvE host + 2 guests reaching the match and seeing each other move, a PvP room with three
- * humans on three teams, a guest leaving (its seat becomes a bot) and the host leaving (the guests' card).
+ * humans on three teams, the PvP information boundary (a guest never receives a hidden enemy, raw messages
+ * intercepted in the stand-in), a guest leaving (its seat becomes a bot) and the host leaving (the guests' card).
  */
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 
@@ -12,13 +13,24 @@ type NetHook = {
   code?: string
   view?: {
     phase: string
-    players: { id: string; name: string; team: number; bot: boolean; p: [number, number, number] }[]
+    players: {
+      id: string
+      name: string
+      team: number
+      bot: boolean
+      state: string
+      p: [number, number, number]
+    }[]
   }
+  /** Team parts this guest opened (dev hook). */
+  parts?: { p: { id: string }[] }[]
 }
 
 declare global {
   interface Window {
     __animaNet?: NetHook
+    /** Every raw host message this page received (the stand-in network keeps the newest 600). */
+    __raw?: unknown[]
   }
 }
 
@@ -48,7 +60,12 @@ export class CooperativeNetwork {
           this.admitted = data.ids.includes(this.playerId);
           if (this.admitted && !was) o.onStatus('ready', 'Connected to host');
         }
-        if (data.type === 'snapshot' && this.admitted) o.onSnapshot(data.state);
+        if (data.type === 'snapshot' && this.admitted) {
+          const raw = (globalThis.__raw ??= []);
+          raw.push(data.state);
+          if (raw.length > 600) raw.shift();
+          o.onSnapshot(data.state);
+        }
         if (data.type === 'host-up') this.channel.postMessage({ type: 'hello', id: this.playerId });
         if (data.type === 'bye') o.onStatus('error', 'Error: Host left the room. Create a new connection to retry.');
       }
@@ -229,6 +246,89 @@ test.describe('アニマフロント online (BroadcastChannel stand-in)', () => 
     expect(v.players.filter((p) => !p.bot)).toHaveLength(3)
     // online matches do not pause
     await expect(h.locator('.game-pause.is-on')).toHaveCount(0)
+    expect(errors).toEqual([])
+  })
+
+  test('PvP: a guest never receives an enemy its team cannot see, and sees it once in view', async ({ context }) => {
+    const errors: string[] = []
+    const [h, g1, g2] = await players(context, 3, errors)
+    await host(h, 'pvp', 'arena-7004')
+    await join(g1, 'pvp', 'arena-7004')
+    await join(g2, 'pvp', 'arena-7004')
+    await g1.click('[data-team="1"]')
+    await g2.click('[data-team="2"]')
+    await g1.click('.lobby-go')
+    await g2.click('.lobby-go')
+    await expect(h.locator('.seat:not(.is-bot) .seat-ready')).toHaveCount(3)
+    await h.click('.lobby-go')
+    for (const p of [h, g1, g2]) await expect(current(p, 'briefing')).toBeVisible({ timeout: 30_000 })
+    for (const p of [g1, g2, h]) await p.click('.brief-go')
+    for (const p of [g1, g2])
+      await expect.poll(async () => (await hook(p))?.view?.phase, { timeout: 120_000 }).toBe('play')
+    const yellow = (await hook(g2))!.me!
+    // The yellow guest stands still in its base (out of the blue team's sight); look at what blue gets.
+    const at = await positionOf(g2, yellow)
+    await g1.evaluate(() => {
+      window.__raw = []
+      if (window.__animaNet) window.__animaNet.parts = []
+    })
+    await g1.waitForTimeout(4000)
+    expect(dist(await positionOf(g2, yellow), at)).toBeLessThan(0.5)
+    const report = await g1.evaluate(
+      ({ id, at }) => {
+        const triples = (v: unknown, out: number[][] = []): number[][] => {
+          if (Array.isArray(v)) {
+            if (v.length === 3 && v.every((n) => typeof n === 'number')) out.push(v as number[])
+            for (const x of v) triples(x, out)
+          } else if (v && typeof v === 'object') for (const x of Object.values(v)) triples(x, out)
+          return out
+        }
+        const near = (v: unknown) =>
+          triples(v).filter((t) => Math.hypot(t[0] - at[0], t[2] - at[2]) < 2 && Math.abs(t[1] - at[1]) < 3).length
+        const raw = (window.__raw ?? []) as {
+          k?: string
+          view?: { props?: { kind: string }[]; events?: { type: string }[] }
+        }[]
+        const snaps = raw.filter((m) => m.k === 'snap')
+        // Public parts, without the fixed map fixtures (bases, pads) and the kill feed.
+        const pub = snaps.map((m) => ({
+          ...m,
+          view: {
+            ...m.view,
+            props: (m.view?.props ?? []).filter((x) => x.kind !== 'base' && x.kind !== 'pad'),
+            events: (m.view?.events ?? []).filter((e) => e.type !== 'ko')
+          }
+        }))
+        const parts = window.__animaNet?.parts ?? []
+        return {
+          snaps: snaps.length,
+          parts: parts.length,
+          rawMentions: pub.filter((m) => JSON.stringify(m).includes(`"${id}"`)).length,
+          rawNear: near(pub),
+          partMentions: parts.filter((p) => JSON.stringify(p).includes(`"${id}"`)).length,
+          partNear: near(parts),
+          shown: window.__animaNet?.view?.players.find((p) => p.id === id)?.state
+        }
+      },
+      { id: yellow, at: at! }
+    )
+    expect(report.snaps).toBeGreaterThan(40)
+    expect(report.parts).toBeGreaterThan(40)
+    expect(report).toMatchObject({ rawMentions: 0, rawNear: 0, partMentions: 0, partNear: 0, shown: 'away' })
+    // The yellow guest walks out toward the plaza until the blue team sees it; blue then draws it where it is.
+    let seen = false
+    for (let i = 0; i < 30 && !seen; i++) {
+      await walk(g2, 1500)
+      const mine = await positionOf(g2, yellow)
+      const v = (await hook(g1))?.view
+      const there = v?.players.find((p) => p.id === yellow)
+      seen = there?.state === 'alive' && dist(there.p, mine) < 4
+      if (!seen) await g1.waitForTimeout(300)
+    }
+    expect(seen).toBe(true)
+    expect(
+      await g1.evaluate((id) => (window.__animaNet?.parts ?? []).some((p) => p.p.some((x) => x.id === id)), yellow)
+    ).toBe(true)
     expect(errors).toEqual([])
   })
 

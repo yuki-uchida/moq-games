@@ -4,7 +4,7 @@
  */
 import { ITEMS, isWeapon, type ItemDef, type ItemId } from '../../data/items'
 import { canPay } from '../anima'
-import { itemCost, weaponRate } from '../loadout'
+import { itemCost, modsOf, weaponRate } from '../loadout'
 import type { Player, Sim } from '../state'
 import { BTN } from '../types'
 import type { Brain } from './brain'
@@ -149,7 +149,7 @@ function scoreWeapon(p: Player, def: ItemDef, d: number, targets: number, cluste
   const u = def.use
   if (!u) return -Infinity
   const s = weaponStats(def)
-  if (!canPay(p, itemCost(p.build.mods, def) + 0.2)) return -Infinity
+  if (!canPay(p, itemCost(modsOf(p), def) + 0.2)) return -Infinity
   let score = Math.min(8, s.dps / 10) + Math.min(4, s.hit / 25)
   if (s.melee) {
     if (d <= s.reach + 1) score += 6
@@ -163,7 +163,7 @@ function scoreWeapon(p: Player, def: ItemDef, d: number, targets: number, cluste
     if ((u.kind === 'lob' || u.kind === 'charge') && d < 5) score -= 5
     if (u.kind === 'spread') score += d < 12 ? 5 : -4
   }
-  const rate = p.foe ? 0 : weaponRate(def, p.build.mods)
+  const rate = p.foe ? 0 : weaponRate(def, modsOf(p))
   // Expensive weapons lose value as anima runs low; skilled bots are thriftier all the time.
   score -= rate * (low ? 3 : 0.15 + 0.35 * Math.max(0, (p.bot ?? 0.5) - 0.5))
   return score
@@ -276,7 +276,7 @@ export function pawControl(
       else holdBit(p, hi)
       return
     }
-    if (fire && aimOk && ready && canPay(p, itemCost(p.build.mods, def) + 0.2)) {
+    if (fire && aimOk && ready && canPay(p, itemCost(modsOf(p), def) + 0.2)) {
       press(p, hi)
       holdBit(p, hi)
       ctl.holding = true
@@ -320,7 +320,7 @@ export function planGadget(sim: Sim, p: Player, b: Brain, ctx: GadgetCtx) {
     if (!g) return false
     const def = ITEMS[g.id]
     if ((b.gadgetAt[g.id] ?? -100) > sim.time) return false
-    if (!canPay(p, itemCost(p.build.mods, def) + 2)) return false
+    if (!canPay(p, itemCost(modsOf(p), def) + 2)) return false
     b.gadgetAt[g.id] = sim.time + Math.max(minGap, def.cooldown ?? 0)
     b.gadget = {
       hand: g.hand,

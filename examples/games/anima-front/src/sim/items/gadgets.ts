@@ -135,8 +135,13 @@ export function gadget(sim: Sim, p: Player, h: HandSt, def: ItemDef) {
         if (!f.dead && vdist(f.p, c) <= u.radius) f.revealedUntil = sim.time + u.duration
       }
       for (const q of sim.players) {
-        if (q.side !== p.side && q.state === 'alive' && vdist(q.p, c) <= u.radius)
-          q.revealedUntil = sim.time + u.duration
+        if (q.side !== p.side && q.state === 'alive' && vdist(q.p, c) <= u.radius) {
+          // Revealed to the sonar user's side only (online, the other sides never learn of it).
+          const until = sim.time + u.duration
+          const by = (q.revealedBy ??= [])
+          by[p.side] = Math.max(by[p.side] ?? 0, until)
+          q.revealedUntil = Math.max(q.revealedUntil, until)
+        }
       }
       emit(sim, { type: 'reveal', who: owner, at: r3v(p.p), radius: u.radius })
       break

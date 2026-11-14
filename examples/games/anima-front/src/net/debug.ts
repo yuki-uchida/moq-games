@@ -16,6 +16,8 @@ export interface NetDebug {
   steps?: number
   /** Recent connection events (status reports, reconnections), newest last. */
   log?: string[]
+  /** Guest (PvP): the team parts it opened, newest last (what this guest could read of each snapshot). */
+  parts?: unknown[]
 }
 
 /** The hook exists only on the Vite dev server (pure so the gate is unit-testable). */
@@ -29,6 +31,16 @@ export function netDebug(patch: Partial<NetDebug>) {
   if (!netDebugEnabled(IS_DEV, typeof window !== 'undefined')) return
   const w = window as unknown as { __animaNet?: NetDebug }
   w.__animaNet = Object.assign(w.__animaNet ?? {}, patch)
+}
+
+/** Guest (PvP): keeps an opened team part (at most 600). */
+export function netPart(part: unknown) {
+  if (!netDebugEnabled(IS_DEV, typeof window !== 'undefined')) return
+  const w = window as unknown as { __animaNet?: NetDebug }
+  const parts = w.__animaNet?.parts ?? []
+  parts.push(part)
+  if (parts.length > 600) parts.splice(0, parts.length - 600)
+  netDebug({ parts })
 }
 
 /** Appends a connection event to `__animaNet.log` (at most 60 kept). */
