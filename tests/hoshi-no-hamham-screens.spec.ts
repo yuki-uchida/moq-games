@@ -594,6 +594,8 @@ for (const viewport of VIEWPORTS)
     await page.waitForTimeout(300)
     await checkLayout(page, label, '#story-screen')
     await page.locator('#story-skip').click()
+    // The stage starts once its art is here: at once, or after the loading card.
+    await page.waitForFunction(() => Boolean((window as unknown as { __hamham: { world: unknown } }).__hamham.world))
     await page.waitForTimeout(400)
     await page.keyboard.press('Escape')
     await expect(page.locator('#pause-screen')).toBeVisible()
