@@ -8,7 +8,11 @@ import { frameAt, sheet } from '../art'
 import { BITE_COOLDOWN, type World } from '../game/sim'
 import type { StageDef } from '../game/types'
 import {
+  BAR_GLIDE_SECONDS,
+  biteRow,
+  BITE_ROWS,
   bossRatio,
+  heartBeat,
   collectText,
   heartStates,
   hintForInput,
@@ -18,11 +22,13 @@ import {
   settleHeart,
   ZONES,
   stepBossBar,
+  stepMeterClock,
   type BossBarState,
   type HeartState
 } from './hud-model'
-import { clipRaster, drawRaster, makeSprite, plateUrl, rasterUrl } from './hud-sprites'
+import { clipRaster, drawRaster, makeSprite, plateUrl, rasterUrl, type Tone } from './hud-sprites'
 import { Deck } from './deck'
+import { HudPrimer, type PrimeTarget } from './hud-prime'
 import { removeClass, replay } from './replay'
 import { buildTouchControls } from './touch'
 
@@ -69,14 +75,23 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, te
 /** The boss bar's fill and trail are drawn in steps of this fraction of the bar (finer than a pixel of it). */
 const BAR_STEPS = 512
 
-/** The bite gauge's steps before the tooth has been measured. */
-const BITE_STEPS = 64
+/** The flash of the full gauge: this many steps, this long each. */
+const FLASH_STEPS = 5
+const FLASH_STEP_SECONDS = 0.07
+
+/** The unlit tooth: the lit one, darker and greyer. */
+const DIM_TONE: Tone = { brightness: 0.38, saturate: 0.6 }
+
+/** The tooth's flash when the gauge is full again: the lit tooth at twice its brightness. */
+const FLASH_TONE: Tone = { brightness: 2 }
 
 /** `value` (0..1) on a grid of `steps`; 0 and 1 stay exactly 0 and 1. */
 const snap = (value: number, steps: number) => Math.round(value * steps) / steps
 
-export class Hud implements HudApi {
-  private root = document.querySelector<HTMLElement>('#hud')!
+export class Hud implements HudApi, PrimeTarget {
+  readonly root = document.querySelector<HTMLElement>('#hud')!
+  /** Rasters the HUD ahead of the first stage (hud-prime.ts). */
+  private primer = new HudPrimer(this)
   private heartsEl: HTMLElement
   private heartSlots: HeartSlot[] = []
   private tagEmblem: HTMLCanvasElement
@@ -85,6 +100,7 @@ export class Hud implements HudApi {
   private collectEl: HTMLElement
   private collectText: HTMLElement
   private biteEl: HTMLElement
+  private biteMask: HTMLElement
   private biteLit: HTMLCanvasElement
   private bossBar: HTMLElement
   private bossFace: HTMLCanvasElement
@@ -114,9 +130,23 @@ export class Hud implements HudApi {
   private bossShown = false
   private bossFaceArt = ''
   private biteReady = true
-  /** The gauge's fill as last written (NaN: nothing written yet) and its steps (one per device pixel of its height). */
-  private biteFill = Number.NaN
-  private biteSteps = BITE_STEPS
+  /** The cooldown of the previous update (a rise is a bite) and the rows of the gauge as last written. */
+  private cooldownSeen = 0
+  private biteRows: number = BITE_ROWS
+  private tooth: HTMLElement
+  /** Seconds since the gauge filled (the tooth's flash steps down while this runs) and the step on show (0: none). */
+  private flashAge = Number.POSITIVE_INFINITY
+  private flashStep = 0
+  /** Seconds of low health, for the beat of the hearts, and whether they are swollen now. */
+  private beatTime = 0
+  private beating = false
+  /** Seconds the meters have waited for their next write, and whether the next update writes them regardless. */
+  private meterWait = 0
+  private meterFresh = true
+  /** Seconds since the previous tick. */
+  private tickTime = 0
+  /** Seconds the boss bar still glides between its ticks after a hit (0: it is written in steps). */
+  private glideLeft = 0
   /** Last written bar fills, and whether the bar carries `is-stamina` (null: not set yet). */
   private fillShown = 1
   private trailShown = 1
@@ -170,12 +200,19 @@ export class Hud implements HudApi {
     this.biteEl.setAttribute('role', 'img')
     this.biteEl.setAttribute('aria-label', 'かじる準備')
     const tooth = el('div', 'hudx-tooth')
+    this.tooth = tooth
     const dim = makeSprite('is-dim')
     this.biteLit = makeSprite('is-lit')
+    const flash = makeSprite('is-flash')
     const toothRaster = clipRaster('ui', 'tooth')
-    drawRaster(dim, toothRaster)
+    drawRaster(dim, toothRaster, DIM_TONE)
     drawRaster(this.biteLit, toothRaster)
-    tooth.append(dim, this.biteLit)
+    drawRaster(flash, toothRaster, FLASH_TONE)
+    // The lit tooth shows through a window that rises row by row (`--bite` rows are lit): the window and the tooth
+    // in it move by `transform`, so the page paints nothing when the gauge moves.
+    this.biteMask = el('div', 'hudx-lit')
+    this.biteMask.append(this.biteLit)
+    tooth.append(dim, this.biteMask, flash)
     this.biteEl.append(tooth)
     row.append(this.collectEl, this.biteEl)
     left.append(this.heartsEl, tag, row)
@@ -269,7 +306,10 @@ export class Hud implements HudApi {
       this.observer.observe(root)
     }
     if (typeof matchMedia === 'function')
-      matchMedia('(orientation: portrait)').addEventListener?.('change', () => this.placeButtons())
+      matchMedia('(orientation: portrait)').addEventListener?.('change', () => {
+        this.placeButtons()
+        this.primer.layoutChanged()
+      })
   }
 
   // ------------------------------------------------------------------------------------------------ layout
@@ -283,9 +323,6 @@ export class Hud implements HudApi {
     this.root.style.setProperty('--s', String(s))
     this.root.style.setProperty('--bk', s >= 2 ? '3' : '2')
     this.root.classList.toggle('is-narrow', width < 520)
-    const tooth = this.biteLit.getBoundingClientRect().height
-    if (tooth > 0) this.biteSteps = Math.max(1, Math.round(tooth * (window.devicePixelRatio || 1)))
-    this.biteFill = Number.NaN
     this.placeButtons()
   }
 
@@ -299,12 +336,30 @@ export class Hud implements HudApi {
     focused?.focus({ preventScroll: true })
   }
 
+  /** Once the title is up: lets the page raster the HUD while nobody can see it, so a stage's first frame does not. */
+  primeWhenIdle() {
+    this.primer.whenIdle()
+  }
+
   show() {
+    this.primer.interrupt()
+    this.reveal()
+  }
+
+  /** Puts the HUD on screen (what `show` does, without ending a walk of the priming). */
+  reveal() {
     this.root.hidden = false
     this.measure()
   }
 
+  /** True while the HUD is on screen. */
+  get shown() {
+    return !this.root.hidden
+  }
+
   hide() {
+    // The menus put the HUD away on their way; a walk of the priming is out of sight already and carries on.
+    if (this.primer.busy) return
     this.root.hidden = true
     this.clearTransient()
   }
@@ -313,7 +368,9 @@ export class Hud implements HudApi {
     this.timers = []
     this.bossShown = false
     this.bossBar.hidden = true
-    removeClass(this.bossBar, 'is-breaking', 'is-hit')
+    removeClass(this.bossBar, 'is-breaking', 'is-hit', 'is-stamina', 'is-gliding')
+    this.glideLeft = 0
+    this.staminaShown = null
     for (const node of [this.banner, this.call, this.plate, this.toast]) removeClass(node, 'is-show')
     this.root.classList.remove('is-cinematic', 'is-dark')
   }
@@ -321,13 +378,19 @@ export class Hud implements HudApi {
   // ------------------------------------------------------------------------------------------------ state
 
   setStage(stage: StageDef) {
+    this.primer.interrupt()
     this.stage = stage
     this.hp = -1
     this.maxHp = -1
     this.lastCollected = -1
     this.bossBarState = null
     this.biteReady = true
-    this.biteFill = Number.NaN
+    this.cooldownSeen = 0
+    this.setBiteRows(BITE_ROWS)
+    // The tooth flashes as the stage opens, as it does whenever the gauge is full again.
+    this.flashAge = 0
+    this.setFlash(reducedMotion() ? 0 : 1)
+    this.meterFresh = true
     this.root.classList.remove('is-dark')
     this.tagNo.textContent = String(stage.no)
     this.tagName.textContent = stage.name
@@ -403,9 +466,23 @@ export class Hud implements HudApi {
   }
 
   update(world: World, dt: number) {
+    this.primer.interrupt()
+    this.step(world, dt)
+  }
+
+  /** What `update` does; the priming calls it so that whatever wraps `update` from outside does not see the walk. */
+  step(world: World, dt: number) {
     const p = world.player
     this.updateHearts(p.hp, p.maxHp, dt)
-    this.deck.update(world, dt)
+    // The meters that move continuously are written together, a few times a second; events show in their own frame.
+    const wait = stepMeterClock(this.meterWait, dt)
+    this.tickTime += dt
+    this.meterWait = wait.waited
+    const tick = wait.due || this.meterFresh
+    this.meterFresh = false
+    const tickSeconds = this.tickTime
+    if (tick) this.tickTime = 0
+    this.deck.update(world, dt, tick)
 
     if (this.stage?.objective === 'collect' && world.collected !== this.lastCollected) {
       if (this.lastCollected >= 0) replay(this.collectEl, 'is-pop')
@@ -413,18 +490,10 @@ export class Hud implements HudApi {
       this.collectText.textContent = collectText(world.collected, this.stage.collect ?? 0)
     }
 
-    const bite = Math.max(0, Math.min(1, 1 - p.biteCooldown / BITE_COOLDOWN))
-    // Written only when the lit part moves by a device pixel; a full gauge is written once, when it fills.
-    const lit = bite >= 1 ? 1 : snap(bite, this.biteSteps)
-    if (lit !== this.biteFill) {
-      this.biteFill = lit
-      this.biteLit.style.setProperty('--fill', String(lit))
-    }
-    const ready = bite >= 1
-    if (ready !== this.biteReady) {
-      this.biteEl.classList.toggle('is-ready', ready)
-      if (ready) replay(this.biteEl, 'is-ready')
-      this.biteReady = ready
+    this.updateBite(p.biteCooldown, tick)
+    if (tick) {
+      this.updateBeat(tickSeconds)
+      this.stepFlash(tickSeconds)
     }
 
     const boss = world.boss
@@ -441,15 +510,19 @@ export class Hud implements HudApi {
           this.staminaShown = stamina
           this.bossBar.classList.toggle('is-stamina', stamina)
         }
+        // A hit shows in its own frame (the flash and the fill's first drop together); the rest moves on the ticks.
+        let hit = false
         if (!this.bossBarState) this.bossBarState = newBossBar(target)
-        else if (stepBossBar(this.bossBarState, target, dt) && !reducedMotion()) replay(this.bossBar, 'is-hit')
+        else hit = stepBossBar(this.bossBarState, target, dt)
+        if (hit && !reducedMotion()) replay(this.bossBar, 'is-hit')
+        this.glide(hit, dt)
         const fill = snap(this.bossBarState.fill, BAR_STEPS)
         const trail = snap(this.bossBarState.trail, BAR_STEPS)
-        if (fill !== this.fillShown) {
+        if ((tick || hit) && fill !== this.fillShown) {
           this.fillShown = fill
           this.bossFill.style.transform = `scaleX(${fill})`
         }
-        if (trail !== this.trailShown) {
+        if (tick && trail !== this.trailShown) {
           this.trailShown = trail
           this.bossTrail.style.transform = `scaleX(${trail})`
         }
@@ -464,15 +537,84 @@ export class Hud implements HudApi {
     }
   }
 
+  /** A hit makes the boss bar glide between its ticks for a moment (see `is-gliding` in hud.css). */
+  private glide(hit: boolean, dt: number) {
+    if (hit) {
+      if (this.glideLeft <= 0) this.bossBar.classList.add('is-gliding')
+      this.glideLeft = BAR_GLIDE_SECONDS
+    } else if (this.glideLeft > 0) {
+      this.glideLeft -= dt
+      if (this.glideLeft <= 0) this.bossBar.classList.remove('is-gliding')
+    }
+  }
+
+  // ------------------------------------------------------------------------------------------------ hearts
+
+  /** At low health the hearts swell and settle in turn; the swell is a class, not a CSS animation. */
+  private updateBeat(dt: number) {
+    const low = this.heartsEl.classList.contains('is-low') && !reducedMotion()
+    this.beatTime = low ? this.beatTime + dt : 0
+    const beating = low && heartBeat(this.beatTime)
+    if (beating !== this.beating) {
+      this.beating = beating
+      this.heartsEl.classList.toggle('is-beat', beating)
+    }
+  }
+
+  // ------------------------------------------------------------------------------------------------ bite gauge
+
+  /**
+   * The gauge shows the cooldown in rows. A bite and the end of the cooldown show at once; the rows in between are
+   * written with the other meters, on the tick.
+   */
+  private updateBite(cooldown: number, tick: boolean) {
+    const bitten = cooldown > this.cooldownSeen + 1e-6
+    this.cooldownSeen = cooldown
+    const ready = cooldown <= 0
+    if (tick || bitten || ready) this.setBiteRows(biteRow(cooldown, BITE_COOLDOWN))
+    if (ready !== this.biteReady) {
+      this.biteEl.classList.toggle('is-ready', ready)
+      this.biteReady = ready
+      if (ready && !reducedMotion()) {
+        this.flashAge = 0
+        this.setFlash(1)
+      } else this.setFlash(0)
+    }
+  }
+
+  /** The tooth's flash when the gauge is full again: five steps of 70 ms, the tooth shrinking and the glow fading. */
+  private stepFlash(dt: number) {
+    if (!this.flashStep) return
+    this.flashAge += dt
+    const step = Math.floor(this.flashAge / FLASH_STEP_SECONDS) + 1
+    this.setFlash(step > FLASH_STEPS ? 0 : step)
+  }
+
+  private setFlash(step: number) {
+    if (step === this.flashStep) return
+    this.flashStep = step
+    if (step) this.tooth.dataset.flash = String(step)
+    else delete this.tooth.dataset.flash
+  }
+
+  private setBiteRows(rows: number) {
+    if (rows === this.biteRows) return
+    this.biteRows = rows
+    if (rows >= BITE_ROWS) this.tooth.style.removeProperty('--bite')
+    else this.tooth.style.setProperty('--bite', String(rows))
+  }
+
   // ------------------------------------------------------------------------------------------------ boss bar
 
   showBoss(name: string, title: string) {
+    this.primer.interrupt()
     this.bossName.textContent = name
     this.bossTitle.textContent = title
     this.bossBarState = null
     this.bossShown = true
     this.timers = this.timers.filter((timer) => timer.run !== this.finishBreak)
-    removeClass(this.bossBar, 'is-breaking', 'is-hit')
+    removeClass(this.bossBar, 'is-breaking', 'is-hit', 'is-gliding')
+    this.glideLeft = 0
     this.bossBar.hidden = false
     replay(this.bossBar, 'is-in')
     // A fresh bar must not flash a stale fill for one frame.
@@ -488,6 +630,7 @@ export class Hud implements HudApi {
   }
 
   hideBoss() {
+    if (this.primer.busy) return
     this.bossShown = false
     if (this.bossBar.hidden) return
     if (this.root.hidden) {
@@ -501,6 +644,7 @@ export class Hud implements HudApi {
   // ------------------------------------------------------------------------------------------------ staging
 
   showBanner(title: string, sub = '', seconds = 1.1) {
+    this.primer.interrupt()
     this.bannerTitle.textContent = title
     this.bannerSub.textContent = sub
     this.bannerSub.hidden = !sub
@@ -511,6 +655,7 @@ export class Hud implements HudApi {
   }
 
   showToast(text: string) {
+    this.primer.interrupt()
     // In portrait the stage is small: the toast goes to the deck's hint line instead.
     if (this.deck.active) {
       removeClass(this.toast, 'is-show')
@@ -523,6 +668,7 @@ export class Hud implements HudApi {
   }
 
   showCall(text: string, tone: 'gold' | 'pink' | 'red' = 'gold') {
+    this.primer.interrupt()
     this.call.textContent = text
     this.call.dataset.tone = tone
     removeClass(this.banner, 'is-show')
@@ -530,6 +676,7 @@ export class Hud implements HudApi {
   }
 
   showNameplate(name: string, title: string, face = '', seconds = 3) {
+    this.primer.interrupt()
     this.plateName.textContent = name
     this.plateTitle.textContent = title
     const art = face ? sheet('ui')[face] : undefined
@@ -540,10 +687,12 @@ export class Hud implements HudApi {
   }
 
   cinematic(on: boolean) {
+    this.primer.interrupt()
     this.root.classList.toggle('is-cinematic', on)
   }
 
   speak(text: string, who: string, face: string, seconds: number, tone: 'say' | 'yell' = 'say'): boolean {
+    this.primer.interrupt()
     if (!this.deck.active || this.root.hidden) return false
     removeClass(this.toast, 'is-show')
     this.deck.speak(text, who, face, seconds, tone)
@@ -551,6 +700,7 @@ export class Hud implements HudApi {
   }
 
   lights(on: boolean) {
+    this.primer.interrupt()
     this.root.classList.toggle('is-dark', !on)
   }
 }

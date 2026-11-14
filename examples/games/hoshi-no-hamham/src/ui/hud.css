@@ -88,7 +88,29 @@
   position: relative;
 }
 
+/*
+ * While hud-prime.ts walks the HUD through its states ahead of the first stage (at the title, where nobody should see
+ * it): nearly transparent and out of the way. The root reads as `visibility: hidden` to anything that asks whether
+ * the HUD is on screen, its parts are painted all the same.
+ */
+#hud.hudx.is-priming {
+  visibility: hidden;
+  opacity: 0.004;
+}
+
+#hud.hudx.is-priming * {
+  visibility: visible;
+  pointer-events: none;
+}
+
 /* ------------------------------------------------------------------ layout */
+
+.hudx-top,
+.hudx-left,
+.hudx-right,
+.hudx-center {
+  will-change: transform;
+}
 
 .hudx-top {
   position: absolute;
@@ -147,8 +169,17 @@
   border-radius: 0;
 }
 
+#hearts.hudx-hearts {
+  will-change: transform;
+}
+
 #hearts.hudx-hearts.is-hit {
   animation: hudx-shake 0.3s steps(2) 1;
+}
+
+/* At low health the hearts swell and settle (hud.ts toggles `is-beat` on the beat). */
+#hearts.is-low.is-beat .heart.is-full {
+  transform: scale(1.18);
 }
 
 #hearts .heart {
@@ -164,22 +195,6 @@
 
 #hearts .heart.is-full {
   background: none;
-}
-
-#hearts.is-low .heart.is-full {
-  animation: hudx-beat 0.8s steps(1) infinite;
-}
-
-@keyframes hudx-beat {
-  0%,
-  45%,
-  100% {
-    transform: scale(1);
-  }
-  15%,
-  30% {
-    transform: scale(1.18);
-  }
 }
 
 @keyframes hudx-shake {
@@ -249,6 +264,10 @@
   -webkit-text-stroke: calc(var(--s) * 2px) var(--ink);
 }
 
+.hudx-collect b {
+  will-change: transform;
+}
+
 .hudx-collect.is-pop b {
   animation: hudx-pop 0.4s steps(4) 1;
 }
@@ -267,38 +286,80 @@
   padding: calc(var(--s) * 2px) calc(var(--s) * 3px);
 }
 
+/*
+ * The tooth is three canvases drawn ahead (dim, lit, and a flash at twice the brightness), so nothing here needs a
+ * CSS filter. The lit one shows through a window that rises with the cooldown: hud.ts sets `--bite`, the rows that
+ * are lit (16 when it is over), and the window and the tooth in it move by `transform`, which paints nothing.
+ */
 .hudx-tooth {
   position: relative;
   width: calc(16px * var(--s));
   height: calc(16px * var(--s));
+  overflow: hidden;
+  will-change: transform;
 }
 
-.hudx-tooth canvas {
+.hudx-tooth canvas,
+.hudx-lit {
   position: absolute;
   inset: 0;
 }
 
-.hudx-tooth .is-dim {
-  filter: brightness(0.38) saturate(0.6);
+.hudx-lit {
+  overflow: hidden;
+  will-change: transform;
+  transform: translateY(calc((16 - var(--bite, 16)) / 16 * 100%));
 }
 
 .hudx-tooth .is-lit {
-  clip-path: inset(calc((1 - var(--fill, 0)) * 100%) 0 0 0);
+  will-change: transform;
+  transform: translateY(calc((var(--bite, 16) - 16) / 16 * 100%));
 }
 
-.hudx-bite.is-ready .hudx-tooth {
-  animation: hudx-ready 0.35s steps(5) 1;
+.hudx-tooth .is-flash {
+  opacity: 0;
+  will-change: opacity;
 }
 
-@keyframes hudx-ready {
-  0% {
-    transform: scale(1.5);
-    filter: brightness(2);
-  }
-  100% {
-    transform: scale(1);
-    filter: none;
-  }
+/* The flash when the gauge is full again: hud.ts steps `data-flash` from 1 to 5 (70 ms each). */
+.hudx-tooth[data-flash='1'] {
+  transform: scale(1.5);
+}
+
+.hudx-tooth[data-flash='2'] {
+  transform: scale(1.4);
+}
+
+.hudx-tooth[data-flash='3'] {
+  transform: scale(1.3);
+}
+
+.hudx-tooth[data-flash='4'] {
+  transform: scale(1.2);
+}
+
+.hudx-tooth[data-flash='5'] {
+  transform: scale(1.1);
+}
+
+.hudx-tooth[data-flash='1'] .is-flash {
+  opacity: 1;
+}
+
+.hudx-tooth[data-flash='2'] .is-flash {
+  opacity: 0.8;
+}
+
+.hudx-tooth[data-flash='3'] .is-flash {
+  opacity: 0.6;
+}
+
+.hudx-tooth[data-flash='4'] .is-flash {
+  opacity: 0.4;
+}
+
+.hudx-tooth[data-flash='5'] .is-flash {
+  opacity: 0.2;
 }
 
 /* ------------------------------------------------------------------ boss bar */
@@ -316,6 +377,10 @@
   gap: calc(var(--s) * 4px);
   width: min(100%, calc(var(--s) * 240px));
   padding: calc(var(--s) * 4px) calc(var(--s) * 8px) calc(var(--s) * 4px) calc(var(--s) * 4px);
+}
+
+#boss-bar.hudx-boss {
+  will-change: transform, opacity;
 }
 
 #boss-bar.hudx-boss.is-in {
@@ -403,6 +468,19 @@
   position: absolute;
   inset: 0;
   transform-origin: 0 50%;
+  will-change: transform;
+}
+
+/*
+ * hud.ts writes the two fills fifteen times a second. After a hit they move far in each step (the fill drops, then
+ * the trail follows): for that moment the compositor glides each from where it is to where it was written, over
+ * the time of one tick, so the bar moves at the display's rate without the page painting. The slow drain of a
+ * stamina bar moves about a pixel in a step and is written as it is; a transition that never ends would make the
+ * page recalculate its style in every frame of the stage.
+ */
+#boss-bar.is-gliding .hudx-trail,
+#boss-bar.is-gliding .hudx-fill {
+  transition: transform 0.0667s linear;
 }
 
 .hudx-trail {
@@ -413,8 +491,17 @@
   background: linear-gradient(var(--hi) 0 25%, var(--base) 25% 75%, var(--lo) 75%);
 }
 
-#boss-bar.is-hit .hudx-fill {
-  filter: brightness(1.9);
+/* A hit: the fill's colours at 1.9 times their brightness (what `filter: brightness(1.9)` gave, without the filter). */
+#boss-bar.is-hit {
+  --hi: #fff;
+  --base: #ffb5ff;
+  --lo: #ff6ec9;
+}
+
+#boss-bar.is-stamina.is-hit {
+  --hi: #fff;
+  --base: #b5ffff;
+  --lo: #50ffff;
 }
 
 .hudx-ticks {
@@ -540,6 +627,13 @@
   border: calc(8px * var(--s)) solid transparent;
   border-image: var(--panel) 8 fill / calc(8px * var(--s)) stretch;
   image-rendering: pixelated;
+}
+
+.hudx-banner,
+.hudx-call,
+.hudx-plate,
+.hudx-toast {
+  will-change: transform, opacity;
 }
 
 .hudx-banner.is-show {
@@ -899,10 +993,8 @@
 /* ------------------------------------------------------------------ reduced motion */
 
 @media (prefers-reduced-motion: reduce) {
-  #hearts.is-low .heart.is-full,
   #hearts.hudx-hearts.is-hit,
   #boss-bar.hudx-boss.is-hit,
-  .hudx-bite.is-ready .hudx-tooth,
   .hudx-collect.is-pop b {
     animation: none;
   }

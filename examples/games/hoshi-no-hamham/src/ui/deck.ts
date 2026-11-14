@@ -17,13 +17,16 @@ import {
   stepHold,
   type DeckHold,
   HINT_SECONDS,
+  goalBob,
   hintIndex,
+  starFlying,
+  twinkleStep,
   hintForInput,
   hintLine,
   trackRatio,
   type AimTone
 } from './hud-model'
-import { clipRaster, drawRaster, makeSprite, rasterUrl } from './hud-sprites'
+import { clipRaster, drawRaster, makeSprite, rasterUrl, type Tone } from './hud-sprites'
 import { replay } from './replay'
 import { formatClock } from './rules'
 import type { Raster } from '../art/raster'
@@ -141,6 +144,17 @@ function drawMoon(canvas: HTMLCanvasElement) {
   canvas.style.setProperty('--h', String(n * 2))
 }
 
+/** The boss's face on the track while it sleeps: darker and greyer. */
+const ASLEEP_TONE: Tone = { brightness: 0.55, saturate: 0.6 }
+
+/** The reduced-motion preference: asked on every tick, so the query is made once and read after that. */
+let motionQuery: MediaQueryList | null = null
+const reducedMotion = () => {
+  if (typeof matchMedia !== 'function') return false
+  motionQuery ??= matchMedia('(prefers-reduced-motion: reduce)')
+  return motionQuery.matches
+}
+
 const portrait = () => typeof matchMedia === 'function' && matchMedia('(orientation: portrait)').matches
 
 function cap(content: string | Raster, wide = false): HTMLElement {
@@ -195,6 +209,14 @@ export class Deck {
   private bossPx = Number.NaN
   private bossHidden: boolean | null = null
   private bossAsleep: boolean | null = null
+  /** The sky's window and what moves in it by the clock (see `hud-model.ts`). */
+  private sky: HTMLElement
+  private ambient = 0
+  private twinkle = 0
+  private shooting = false
+  private bob = 0
+  /** The star that crosses the sky. */
+  private star: HTMLElement
   /** What the aim line was last worked out from; it is worked out again only when one of these changes. */
   private aimSeen: AimSeen | null = null
 
@@ -262,6 +284,7 @@ export class Deck {
     const mid = el('div', 'hudd-mid')
     mid.setAttribute('aria-hidden', 'true')
     const sky = el('div', 'hudd-window')
+    this.sky = sky
     sky.style.setProperty('--sky', skyUrl(0))
     sky.style.setProperty('--sky-2', skyUrl(1))
     sky.style.setProperty('--hills', hillsUrl())
@@ -292,7 +315,8 @@ export class Deck {
     this.hero = makeSprite('hudd-hero')
     drawRaster(this.hero, sheet('ui').face_hero.frames[0])
     track.append(groove, start, this.goal, this.bossFace, this.hero)
-    sky.append(moon, el('i', 'hudd-shoot'), stats, track)
+    this.star = el('i', 'hudd-shoot')
+    sky.append(moon, this.star, stats, track)
     mid.append(sky)
 
     // The lower part: speaker grille, and the key legend for players without touch.
@@ -348,7 +372,7 @@ export class Deck {
   /**
    * Moves the markers and the groove's fill to where the hero, the goal and the boss are. A marker is moved by
    * `translate` (its share of the track's width, on a device pixel), never by `left`, so a moving marker costs no
-   * layout; it is written only on the step where it moves by a device pixel.
+   * layout; it is written only when it has moved by a device pixel.
    */
   private place() {
     const px = (at: number) => Math.round(at * this.trackWidth * this.dpr) / this.dpr
@@ -400,6 +424,7 @@ export class Deck {
     this.heroAt = this.goalAt = this.bossAt = Number.NaN
     this.bossHidden = null
     this.bossAsleep = null
+    this.ambient = 0
     this.showHint(0)
   }
 
@@ -447,7 +472,8 @@ export class Deck {
     }
   }
 
-  update(world: World, dt: number) {
+  /** `tick`: this frame also writes the meters (the clock, the markers and the groove's fill). */
+  update(world: World, dt: number, tick = true) {
     const stage = this.stage
     if (!stage) return
 
@@ -495,7 +521,7 @@ export class Deck {
 
     // The run's clock and the defeated count.
     const tenths = Math.floor(world.time * 10)
-    if (tenths !== this.clockTenths) {
+    if (tick && tenths !== this.clockTenths) {
       this.clockTenths = tenths
       this.clock.textContent = formatClock(tenths / 10)
     }
@@ -520,18 +546,41 @@ export class Deck {
       this.bossFace.hidden = hideBoss
     }
     if (boss && !hideBoss) {
-      if (boss.def.art !== this.bossArt) {
+      if (boss.def.art !== this.bossArt || !boss.active !== this.bossAsleep) {
         this.bossArt = boss.def.art
-        const face = sheet('ui')[`face_${boss.def.art}`]
-        if (face) drawRaster(this.bossFace, face.frames[0])
-      }
-      if (!boss.active !== this.bossAsleep) {
         this.bossAsleep = !boss.active
-        this.bossFace.classList.toggle('is-asleep', !boss.active)
+        const face = sheet('ui')[`face_${boss.def.art}`]
+        if (face) drawRaster(this.bossFace, face.frames[0], boss.active ? undefined : ASLEEP_TONE)
       }
       this.bossAt = trackRatio(boss.x + boss.w / 2, width)
     }
+    this.ambient += dt
+    if (!tick) return
     this.place()
+    this.moveAmbient()
+  }
+
+  /**
+   * The sky's twinkle and the open goal's bob follow the clock, a step at a time; the shooting star is sent off by
+   * the clock and flies by itself (one CSS animation on its own layer, which the page does not paint for).
+   */
+  private moveAmbient() {
+    if (reducedMotion()) return
+    const twinkle = twinkleStep(this.ambient)
+    if (twinkle !== this.twinkle) {
+      this.twinkle = twinkle
+      this.sky.dataset.sky = String(twinkle)
+    }
+    const flying = starFlying(this.ambient)
+    if (flying !== this.shooting) {
+      this.shooting = flying
+      this.star.classList.toggle('is-flying', flying)
+    }
+    const bob = this.goalOpen ? goalBob(this.ambient) : 0
+    if (bob !== this.bob) {
+      this.bob = bob
+      this.goal.dataset.bob = String(bob)
+    }
   }
 
   /** Words the aim line again and, if it now says something else, shows it. */
