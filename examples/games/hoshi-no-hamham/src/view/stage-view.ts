@@ -3,6 +3,7 @@
  * actors, particles and overlay, answers every simulation event (`handle`), advances them (`update`) and draws
  * them in order (`draw`). Hit-stop is a `freeze` time: while it runs the app does not step the simulation.
  */
+import { sharedArtSource, type ArtSource } from '../art/remote'
 import type { SimEvent } from '../game/events'
 import type { World } from '../game/sim'
 import { TILE } from '../game/types'
@@ -21,6 +22,8 @@ export interface StageViewOptions {
   reducedMotion?: boolean
   /** The run cycle's foot contact (for the footstep sound). */
   onFootstep?: () => void
+  /** Where a dig's new terrain pictures come from (default: the app's art source, if the boot made one). */
+  art?: ArtSource
 }
 
 /** Cells that hold a prop when the stage starts (no decoration grows into them). */
@@ -71,7 +74,7 @@ export class StageView {
     this.camera.snap(world.player)
     this.fx = new FxPool(world.stage.no * 7919 + 211)
     this.overlay = new Overlay(this.reducedMotion)
-    this.terrain = new TerrainView(world, propCells(world))
+    this.terrain = new TerrainView(world, propCells(world), options.art ?? sharedArtSource())
     this.backdrop = new BackdropView(world.theme, this.camera.y, this.reducedMotion)
     this.water = new WaterView(world)
     this.props = new PropsView(world, this.fx)

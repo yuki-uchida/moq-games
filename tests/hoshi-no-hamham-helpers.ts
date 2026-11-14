@@ -54,3 +54,19 @@ export async function reloadGame(page: Page): Promise<void> {
   await page.reload()
   await waitForGame(page)
 }
+
+/**
+ * Taps through an open story (the opening, or a stage's) to its end. The button can leave the screen between the
+ * look and the click: the last page starts the stage, at once or after a loading card, and the page does not block
+ * while the stage's art is made. A click that finds the button gone or covered is therefore not an error; what
+ * comes after the story is for the caller to check.
+ */
+export async function pageThroughStory(page: Page, pages = 10): Promise<void> {
+  for (let i = 0; i < pages; i++) {
+    const next = page.locator('#story-next')
+    if (!(await next.isVisible())) break
+    // Play waits behind the loading card: there is nothing more to tap.
+    if (await page.locator('.warm-note:not([hidden])').isVisible()) break
+    await next.click({ timeout: 5000 }).catch(() => undefined)
+  }
+}

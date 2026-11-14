@@ -1,17 +1,22 @@
 /**
  * Warm-up: the game's pixel art is drawn by code the first time it is used, which costs a few to tens of
- * milliseconds per clip. Everything a screen or a stage will draw is built here instead, in slices with a yield to the
- * browser between them, so a splash or a story page keeps moving and the first frames of play stay cheap.
+ * milliseconds per clip and a few per terrain tile. Everything a screen or a stage will draw is made ready here
+ * instead: painted by the art workers and adopted and baked on the page in small slices (or, without workers,
+ * painted on the page in slices with a yield to the browser between them), so a splash or a story page keeps moving
+ * and play never paints.
  *
  * `stageArt` lists what a stage draws (pure, unit-tested against the stage data and the art contract),
  * `stageWarmSteps` turns it into slices, `runSteps` runs slices and reports progress, `warmStage` ties them
  * together and remembers a finished or running warm-up per stage.
  */
-import { backdrop, sheet, type ThemeId } from '../art'
+import { backdrop, backdropReady, clipReady, decor, flashReady, hasTile, sheet, tile, type ThemeId } from '../art'
 import { themedProp } from '../art/contract'
-import { World } from '../game/sim'
+import { adopt, sharedArtSource, type ArtHurry, type ArtReply, type ArtRequest, type ArtSource } from '../art/remote'
+import { TILE, World } from '../game/sim'
 import type { StageDef } from '../game/types'
-import { bakeBackdrop, warmClip } from '../view/bake'
+import { bake, bakeBackdrop, warmClip } from '../view/bake'
+import { warmOverlayText } from '../view/overlay'
+import { stageTileQueries } from '../view/terrain'
 
 /** What a stage draws: sheet ids, which of them also need hit-flash silhouettes, and the world's backdrop. */
 export interface StageArt {
@@ -60,9 +65,19 @@ export function stageArt(stage: StageDef): StageArt {
         sheets.add('prop:hive')
         sheets.add('prop:bee')
         break
+      case 'rock':
+        // A broken rock may drop a fruit.
+        sheets.add('prop:rock')
+        sheets.add('prop:fruit')
+        break
       default:
         sheets.add(`prop:${prop.kind}`)
     }
+  }
+  // On the nest stage digging and felled trees drop building material.
+  if (stage.objective === 'collect') {
+    sheets.add('prop:twig')
+    sheets.add('prop:berry')
   }
   if (boss.kind !== 'chaser') sheets.add('prop:gate')
   if (boss.projectiles > 0) sheets.add(`prop:${bossShot(boss.art)}`)
@@ -72,28 +87,89 @@ export function stageArt(stage: StageDef): StageArt {
   return { sheets: [...sheets], flash: [...flash], backdrop: stage.theme }
 }
 
-/** One slice of warm-up work: drawing one animation clip (and its hit-flash silhouette) and baking the result. */
+/** Sheets the App draws as soon as it is built, besides its first stage's (the nest-material icon of the HUD). */
+export const APP_SHEETS = ['prop:twig']
+
+/** One slice of warm-up work: one animation clip, the backdrop, the decorations or a batch of terrain tiles. */
 export interface WarmStep {
   label: string
   /** Rough cost relative to a small clip, so the progress bar moves evenly in time. */
   weight: number
+  /** Bakes the step's art; whatever was not adopted from a worker is painted here first. */
   run: () => void
+  /** What a worker can paint for this step (adopted before `run`). */
+  request?: ArtRequest
+  /** True when the step's art is already here, so nothing has to be asked for. */
+  ready?: () => boolean
 }
 
 /** Relative cost of drawing one clip of a sheet (measured: a boss or king clip 20–80 ms, a small clip a few ms). */
 const clipWeight = (id: string) => (id.endsWith('Boss') || id === 'king' ? 4 : 1)
 
-/** One slice per clip of every sheet the stage draws, then the backdrop; no slice is longer than a clip. */
+/** Tiles asked for per request: enough to keep a worker busy, few enough that progress moves. */
+export const TILES_PER_STEP = 32
+/** A batch of tiles costs about as much as a few small clips (a dirt tile 4–5 ms, a solid one about 1 ms). */
+const TILES_WEIGHT = 6
+
+/** One slice per clip of the sheets (with hit-flash silhouettes for those in `flash`). */
+export function clipSteps(sheets: readonly string[], flash: readonly string[] = []): WarmStep[] {
+  return sheets.flatMap((id) =>
+    Object.keys(sheet(id)).map((name) => {
+      const withFlash = flash.includes(id)
+      return {
+        label: `${id}.${name}`,
+        weight: clipWeight(id),
+        run: () => void warmClip(id, name, withFlash),
+        request: { kind: 'clip', sheet: id, clip: name, flash: withFlash } as const,
+        ready: () => clipReady(id, name) && (!withFlash || flashReady(id, name))
+      }
+    })
+  )
+}
+
+/**
+ * One slice per clip of every sheet the stage draws, then the backdrop, the world's decorations and every terrain
+ * tile of the map as it starts (nearest to the hero first); no slice is longer than a clip.
+ */
 export function stageWarmSteps(stage: StageDef): WarmStep[] {
   const art = stageArt(stage)
-  const steps: WarmStep[] = art.sheets.flatMap((id) =>
-    Object.keys(sheet(id)).map((name) => ({
-      label: `${id}.${name}`,
-      weight: clipWeight(id),
-      run: () => void warmClip(id, name, art.flash.includes(id))
-    }))
-  )
-  steps.push({ label: `backdrop:${art.backdrop}`, weight: 3, run: () => void bakeBackdrop(backdrop(art.backdrop)) })
+  const theme = art.backdrop
+  const steps = clipSteps(art.sheets, art.flash)
+  steps.push({
+    label: `backdrop:${theme}`,
+    weight: 3,
+    run: () => void bakeBackdrop(backdrop(theme)),
+    request: { kind: 'backdrop', theme },
+    ready: () => backdropReady(theme)
+  })
+  steps.push({
+    label: `decor:${theme}`,
+    weight: 1,
+    // Small: drawn and baked here.
+    run: () => {
+      for (const d of decor(theme)) bake(d.image)
+    }
+  })
+  steps.push({
+    label: 'text',
+    weight: 1,
+    // The fonts of the popups and speech bubbles, so the first 「+1」 does not pay for them in the frame of a hit.
+    run: () => void warmOverlayText()
+  })
+  const world = new World(stage, { seed: stage.no * 7919 + 101 })
+  const queries = stageTileQueries(world, Math.floor(world.player.x / TILE))
+  for (let from = 0; from < queries.length; from += TILES_PER_STEP) {
+    const batch = queries.slice(from, from + TILES_PER_STEP)
+    steps.push({
+      label: `tiles:${theme}:${from / TILES_PER_STEP}`,
+      weight: TILES_WEIGHT,
+      run: () => {
+        for (const q of batch) bake(tile(q))
+      },
+      request: { kind: 'tiles', queries: batch },
+      ready: () => batch.every(hasTile)
+    })
+  }
   return steps
 }
 
@@ -123,22 +199,52 @@ export type Progress = (fraction: number) => void
  */
 export const SLICE_BUDGET_MS = 8
 
+interface Asked {
+  request: ArtRequest
+  promise: Promise<ArtReply>
+  settled: boolean
+}
+
 /**
  * Runs the slices one after another, yielding to the browser whenever `budgetMs` has passed since the last
  * yield (and once at the end); reports the finished weight as 0..1.
+ *
+ * With a `source`, every request goes out at once (the workers work through them meanwhile) and each answer is
+ * adopted and baked here in order as it arrives. A step whose art is already here asks for nothing; one whose
+ * request fails is painted here by its `run`.
  */
 export async function runSteps(
   steps: readonly WarmStep[],
   onProgress?: Progress,
   yielder: () => Promise<void> = yieldToBrowser,
   budgetMs = SLICE_BUDGET_MS,
-  now: () => number = () => performance.now()
+  now: () => number = () => performance.now(),
+  source?: ArtSource,
+  hurry?: ArtHurry
 ): Promise<void> {
   const total = steps.reduce((sum, step) => sum + step.weight, 0) || 1
+  const asked = steps.map((step): Asked | undefined => {
+    if (!source || !step.request || step.ready?.()) return undefined
+    const entry: Asked = { request: step.request, promise: source.request(step.request, hurry), settled: false }
+    const settle = () => void (entry.settled = true)
+    entry.promise.then(settle, settle)
+    return entry
+  })
   let done = 0
   let sliceStart = now()
   onProgress?.(0)
   for (const [index, step] of steps.entries()) {
+    const entry = asked[index]
+    if (entry) {
+      // Waiting for a worker is not work: the answer arrives in a task of its own, which starts a new slice.
+      const waited = !entry.settled
+      try {
+        adopt(entry.request, await entry.promise)
+      } catch {
+        // Painted here by `run` below.
+      }
+      if (waited) sliceStart = now()
+    }
     step.run()
     mark(`hamham:warm:${step.label}`)
     done += step.weight
@@ -154,15 +260,23 @@ export async function runSteps(
 const warming = new Map<number, Promise<void>>()
 const listeners = new Map<number, Set<Progress>>()
 const finished = new Set<number>()
+/** Stages whose warm-up was started in the background and has not been asked for in earnest yet. */
+const waiting = new Set<number>()
+const groupOf = (stage: StageDef) => `stage:${stage.no}`
 
-/** True once the stage's warm-up has completed. */
+/** True once the stage's warm-up has completed: everything it draws, terrain tiles included, is baked. */
 export const isWarm = (stage: StageDef) => finished.has(stage.no)
 
 /**
- * Warms everything a stage will draw. Safe to call again for the same stage (a story screen and a retry may
- * both ask): the running or finished warm-up is shared, and every caller gets progress reports.
+ * Warms everything a stage will draw, through the app's art source when the boot has made one. Safe to call again
+ * for the same stage (a story screen and a retry may both ask): the running or finished warm-up is shared, and
+ * every caller gets progress reports.
+ *
+ * `background` is for a stage nobody has asked for yet (the title demo's next one): its art waits behind every
+ * other request. Asking again without it (the player picked the stage) brings what is still waiting forward.
  */
-export function warmStage(stage: StageDef, onProgress?: Progress): Promise<void> {
+export function warmStage(stage: StageDef, onProgress?: Progress, background = false): Promise<void> {
+  if (!background && waiting.delete(stage.no)) sharedArtSource()?.promote?.(groupOf(stage))
   const subscribers = listeners.get(stage.no) ?? new Set<Progress>()
   listeners.set(stage.no, subscribers)
   if (onProgress) {
@@ -171,16 +285,30 @@ export function warmStage(stage: StageDef, onProgress?: Progress): Promise<void>
   }
   let promise = warming.get(stage.no)
   if (!promise) {
-    promise = runSteps(stageWarmSteps(stage), (fraction) => {
-      for (const subscriber of subscribers) subscriber(fraction)
-    }).then(
+    const source = sharedArtSource()
+    if (background) waiting.add(stage.no)
+    promise = runSteps(
+      stageWarmSteps(stage),
+      (fraction) => {
+        for (const subscriber of subscribers) subscriber(fraction)
+      },
+      yieldToBrowser,
+      SLICE_BUDGET_MS,
+      () => performance.now(),
+      source,
+      { background, group: groupOf(stage) }
+    ).then(
       () => {
         finished.add(stage.no)
+        waiting.delete(stage.no)
         subscribers.clear()
+        // The page holds everything now: the workers need not keep their copies.
+        if (source?.remote) void source.request({ kind: 'trim' }).catch(() => {})
       },
       (error) => {
         // A failed warm-up can be asked for again; the stage still plays (art then builds on first use).
         warming.delete(stage.no)
+        waiting.delete(stage.no)
         subscribers.clear()
         throw error
       }

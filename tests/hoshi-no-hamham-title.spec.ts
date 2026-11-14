@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { openGame, reloadGame } from './hoshi-no-hamham-helpers'
+import { openGame, pageThroughStory, reloadGame } from './hoshi-no-hamham-helpers'
 
 /**
  * The title on upright phones (a night scene under the stage), the wide title that must not move, the game over
@@ -276,11 +276,7 @@ async function playStage3(page: Page) {
   await boot(page, ALL_OPEN)
   await page.locator('#continue').click()
   await page.locator('.stage-card').nth(2).click()
-  for (let i = 0; i < 10; i++) {
-    const next = page.locator('#story-next')
-    if (!(await next.isVisible())) break
-    await next.click()
-  }
+  await pageThroughStory(page)
   await page.waitForFunction(() => {
     const h = (window as unknown as { __hamham?: Hook }).__hamham
     return h?.app.screen === 'play' && h.app.session !== null && h.app.session.director.current === null

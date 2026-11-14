@@ -192,6 +192,8 @@ export const SILENT_AUDIO: GameAudio = {
   prepare() {},
   unlock() {},
   playing() {},
+  ahead: true,
+  whenAhead: () => Promise.resolve(),
   setMusic() {},
   sfx() {},
   loop() {},

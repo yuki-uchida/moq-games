@@ -13,6 +13,9 @@
  * (src/audio/bank.ts). For every effect this pass renders the stereo result twice through `AudioEngine`, once built
  * live and once played from a bank buffer rendered with the same seed and pitch 1, and compares the two sample by
  * sample. The largest absolute difference per effect must stay within BANK_TOLERANCE or the script fails.
+ * The bank renders several effects one after another in one context (a batch) and plays each from its own stretch
+ * of the batch's buffer. The pass therefore also renders the effects in batches of BATCH_SIZE and compares each
+ * one, played from its stretch at the time it lies at in the batch, with the effect built live at that same time.
  *
  * Environment: PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH selects the Chromium binary. Exits non-zero on any page error.
  *
@@ -58,6 +61,8 @@ const FLOOR = 0.001
 /** General limits flagged in the report (the per-effect limits live in tests/audio-sfx.test.ts). */
 /** Largest sample difference allowed between a live effect and the same effect played from the bank. */
 const BANK_TOLERANCE = 1e-6
+/** Effects per batch in the batch part of the bank pass (the bank's own limit). */
+const BATCH_SIZE = 16
 const LIMITS = { peak: 0.95, highShare: 0.6, normTolerance: 1.5, minFingerprintDistance: 0.2, maxSeconds: 1.8 }
 
 const args = process.argv.slice(2)
@@ -423,6 +428,52 @@ async function pageSetup() {
       }
       return { failed: false, buffered, max, peak, at, length: made.buffer.length, variety: made.variety }
     },
+    /**
+     * The effects rendered as one batch; each is then played from its stretch of the batch's buffer at the time it
+     * lies at in the batch, and compared with the same effect built live at that time (same seed, pitch 1).
+     */
+    async compareBatch(names) {
+      const seed = Math.floor(Math.random() * 2 ** 31)
+      const bank = new bankModule.SfxBank({ sampleRate: 44100 })
+      const takes = await bank.renderTogether(names.map((name) => ({ name, pitch: 1, seed })))
+      const rows = []
+      for (const [i, name] of names.entries()) {
+        const take = takes[i]
+        if (!take) {
+          rows.push({ name, failed: true })
+          continue
+        }
+        const at = Math.round(take.start * 44100)
+        const frames = at + Math.round((take.length + 0.5) * 44100)
+        const live = new OfflineAudioContext(2, frames, 44100)
+        new engine.AudioEngine(live, false).sfx(name, {}, at / 44100)
+        const a = await live.startRendering()
+        const one = new bankModule.SfxBank({ sampleRate: 44100 })
+        one.add(name, 1, [take])
+        const played = new OfflineAudioContext(2, frames, 44100)
+        const before = stats.sfxStats.buffered
+        new engine.AudioEngine(played, false, one).sfx(name, {}, at / 44100)
+        const buffered = stats.sfxStats.buffered - before === 1
+        const b = await played.startRendering()
+        let max = 0
+        let peak = 0
+        let where = 0
+        for (let c = 0; c < 2; c++) {
+          const x = a.getChannelData(c)
+          const y = b.getChannelData(c)
+          for (let k = 0; k < x.length; k++) {
+            const d = Math.abs(x[k] - y[k])
+            if (d > max) {
+              max = d
+              where = k
+            }
+            peak = Math.max(peak, Math.abs(x[k]))
+          }
+        }
+        rows.push({ name, failed: false, buffered, max, peak, at, where, slot: i, shared: take.buffer.length })
+      }
+      return rows
+    },
     async renderSong(theme, layer, seconds) {
       const ctx = new OfflineAudioContext(2, Math.round(seconds * 44100), 44100)
       const eng = new engine.AudioEngine(ctx, false)
@@ -605,6 +656,43 @@ async function main() {
         `bank pass: ${names.length - bankFailures}/${names.length} effects match the live render within ${BANK_TOLERANCE}; largest difference ${worst.max.toExponential(2)} (${worst.name})`
       )
       if (bankFailures) errors.push(`bank pass: ${bankFailures} effect(s) differ from the live render, see the report`)
+
+      lines.push(
+        '',
+        '## Batch equivalence',
+        '',
+        `The effects rendered ${BATCH_SIZE} to a context, one after another. Each is played from its stretch of the shared buffer at the time it lies at in the batch and compared with the effect built live at that time (same seed, pitch 1), stereo; largest absolute sample difference must be at most ${BANK_TOLERANCE}.`,
+        '',
+        '| effect | batch | place | starts at frame | peak | max diff | at sample | result |',
+        '| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |'
+      )
+      let batchFailures = 0
+      let batchWorst = { name: '', max: 0 }
+      let batches = 0
+      for (let from = 0; from < names.length; from += BATCH_SIZE) {
+        batches++
+        const rows = await page.evaluate(
+          (list) => window.__audio.compareBatch(list),
+          names.slice(from, from + BATCH_SIZE)
+        )
+        for (const r of rows) {
+          const ok = !r.failed && r.buffered && r.max <= BANK_TOLERANCE
+          if (!ok) batchFailures++
+          if (!r.failed && r.max > batchWorst.max) batchWorst = { name: r.name, max: r.max }
+          lines.push(
+            r.failed
+              ? `| ${r.name} | ${batches} |  |  |  |  |  | FAILED to render |`
+              : `| ${r.name} | ${batches} | ${r.slot + 1} | ${r.at} | ${r.peak.toFixed(3)} | ${r.max.toExponential(2)} | ${r.where} | ${ok ? 'same' : r.buffered ? 'DIFFERENT' : 'not played from the bank'} |`
+          )
+        }
+      }
+      lines.push('', `Largest difference over all effects: ${batchWorst.max.toExponential(2)} (${batchWorst.name}).`)
+      console.log(
+        `batch pass: ${names.length - batchFailures}/${names.length} effects in ${batches} batches match the live render at their time within ${BANK_TOLERANCE}; largest difference ${batchWorst.max.toExponential(2)} (${batchWorst.name})`
+      )
+      if (batchFailures)
+        errors.push(`batch pass: ${batchFailures} effect(s) differ from the live render at their time, see the report`)
+      bankFailures += batchFailures
     }
 
     if (write) {
