@@ -9,6 +9,7 @@ import type { World } from '../game/sim'
 import { TILE } from '../game/types'
 import { ActorsView } from './actors'
 import { BackdropView } from './backdrop'
+import { setBaseTransform } from './bake'
 import { Camera } from './camera'
 import { FxPool } from './fx'
 import { playFx, type FxApi } from './fx-map'
@@ -140,10 +141,14 @@ export class StageView {
     const r = this.renderer
     const ctx = r.ctx
     const v = this.viewPosition(this.lastView)
+    const k = r.k
     r.clear()
     r.screen()
+    setBaseTransform(ctx, k, 0, 0)
     this.backdrop.drawBack(ctx, v.x, v.y)
     r.world(v.x, v.y)
+    // The renderer's world transform, so that a sprite's own transform is undone exactly.
+    setBaseTransform(ctx, k, Math.round(-v.x * k), Math.round(-v.y * k))
     this.terrain.drawTiles(ctx, v.x, v.y)
     this.terrain.drawDecor(ctx, v.x, v.y)
     this.props.drawProps(ctx)
@@ -157,9 +162,11 @@ export class StageView {
     this.water.draw(ctx, v.x, v.y)
     this.fx.draw(ctx, 'front')
     r.screen()
+    setBaseTransform(ctx, k, 0, 0)
     this.backdrop.drawFront(ctx, v.x, v.y)
-    this.overlay.drawPopups(ctx, v.x, v.y, r.k)
+    this.overlay.drawPopups(ctx, v.x, v.y, k)
     this.overlay.drawScreen(ctx)
+    setBaseTransform(null)
   }
 
   /** World point → canvas backing-store pixel in the last drawn frame (for tests). */

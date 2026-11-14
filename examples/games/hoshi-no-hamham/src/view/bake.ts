@@ -111,9 +111,24 @@ export function brush(
 
 const NO_OPTIONS: BlitCall = {}
 
+/** The transform the frame's own code last set on a context, so that a sprite's transform can be undone exactly. */
+const base = { ctx: null as CanvasRenderingContext2D | null, k: 1, e: 0, f: 0 }
+
+/**
+ * Tells `blitRaster` that `ctx` now carries the transform (k, 0, 0, k, e, f), or (with null) that it no longer knows
+ * it. A transformed sprite then puts exactly that matrix back; without it, the inverse of the sprite's own matrix
+ * is applied, which can leave a drift of a few millionths of a pixel on a canvas that keeps matrices as floats.
+ */
+export function setBaseTransform(ctx: CanvasRenderingContext2D | null, k = 1, e = 0, f = 0) {
+  base.ctx = ctx
+  base.k = k
+  base.e = e
+  base.f = f
+}
+
 /**
  * Draws a raster with its anchor pixel on (x, y), placed on whole art pixels. A flipped, scaled or rotated draw
- * moves the context's transform by the sprite's own matrix and back by its inverse, which costs no saved state.
+ * moves the context's transform by the sprite's own matrix and back again, which costs no saved state.
  */
 export function blitRaster(
   ctx: CanvasRenderingContext2D,
@@ -138,16 +153,16 @@ export function blitRaster(
   else if (sx !== 0 && sy !== 0) {
     const pivot = o.flip ? (o.pivotX ?? ax) : ax
     const e = x - ax + pivot
-    const cos = angle ? Math.cos(angle) : 1
-    const sin = angle ? Math.sin(angle) : 0
-    // translate(e, y) · rotate(angle) · scale(sx, sy), then its inverse.
-    ctx.transform(cos * sx, sin * sx, -sin * sy, cos * sy, e, y)
+    ctx.translate(e, y)
+    if (angle) ctx.rotate(angle)
+    ctx.scale(sx, sy)
     ctx.drawImage(image, -pivot, -ay)
-    const ia = cos / sx
-    const ib = -sin / sy
-    const ic = sin / sx
-    const id = cos / sy
-    ctx.transform(ia, ib, ic, id, -(ia * e + ic * y), -(ib * e + id * y))
+    if (base.ctx === ctx) ctx.setTransform(base.k, 0, 0, base.k, base.e, base.f)
+    else {
+      ctx.scale(1 / sx, 1 / sy)
+      if (angle) ctx.rotate(-angle)
+      ctx.translate(-e, -y)
+    }
   }
   if (alpha < 1) ctx.globalAlpha = 1
 }
