@@ -8,6 +8,7 @@ import { FOES } from '../data/enemies'
 import { SPECIES } from '../data/species'
 import type { BoxGrid } from './core/box-grid'
 import type { PlayerView, PropView, TeamId, V3, View } from '../sim/types'
+import { hermitWallBox } from '../sim/wall-box'
 
 export const TEAM_COLORS = ['#e5484d', '#3e8ed0', '#f2b33d'] as const
 export const ARK_COLOR = '#ffb45c'
@@ -24,37 +25,74 @@ interface DamageNumber {
   drift: number
 }
 
+/** An axis-aligned box that blocks a marker's line (a placed ヤドカリ wall). */
+export interface LineBox {
+  min: readonly number[]
+  max: readonly number[]
+}
+
+/** The ヤドカリ walls in a view: they hide markers like the map's boxes. */
+export const placedWalls = (props: readonly PropView[]): LineBox[] =>
+  props.filter((r) => r.kind === 'hermit').map(hermitWallBox)
+
+/** Distance along the unit ray (o, d) where it enters the box, or Infinity when it misses or starts inside. */
+function enterBox(o: readonly number[], d: readonly number[], b: LineBox): number {
+  let t0 = 0
+  let t1 = Infinity
+  for (let i = 0; i < 3; i++) {
+    if (Math.abs(d[i]) < 1e-12) {
+      if (o[i] < b.min[i] || o[i] > b.max[i]) return Infinity
+      continue
+    }
+    let a = (b.min[i] - o[i]) / d[i]
+    let c = (b.max[i] - o[i]) / d[i]
+    if (a > c) [a, c] = [c, a]
+    t0 = Math.max(t0, a)
+    t1 = Math.min(t1, c)
+    if (t0 > t1) return Infinity
+  }
+  return t0 > 0 ? t0 : Infinity
+}
+
 /**
- * True when the straight line from the camera to (x, y, z) is not cut by a solid box. Enemy markers use it so
- * a tag never reveals someone standing behind a wall.
+ * True when the straight line from the camera to (x, y, z) is not cut by a solid box of the map nor by a placed
+ * wall. Enemy markers use it so a tag never reveals someone standing behind a wall.
  */
 export function clearLine(
   grid: Pick<BoxGrid, 'raycast'> | null,
   cam: { x: number; y: number; z: number },
   x: number,
   y: number,
-  z: number
+  z: number,
+  walls: readonly LineBox[] = []
 ): boolean {
-  if (!grid) return true
   const dx = x - cam.x
   const dy = y - cam.y
   const dz = z - cam.z
   const d = Math.hypot(dx, dy, dz)
   if (d < 0.5) return true
-  return grid.raycast(cam.x, cam.y, cam.z, dx / d, dy / d, dz / d, d) >= d - 0.25
+  const o = [cam.x, cam.y, cam.z]
+  const dir = [dx / d, dy / d, dz / d]
+  for (const w of walls) if (enterBox(o, dir, w) < d - 0.25) return false
+  if (!grid) return true
+  return grid.raycast(cam.x, cam.y, cam.z, dir[0], dir[1], dir[2], d) >= d - 0.25
 }
 
-/** Whether an opposing unit may be marked: revealed to the local side, or seen at the head or the chest. */
+/**
+ * Whether an opposing unit may be marked: revealed to the local side, or seen at the head or the chest past the
+ * map's boxes and the placed walls.
+ */
 export function enemyMarkable(
   grid: Pick<BoxGrid, 'raycast'> | null,
   cam: { x: number; y: number; z: number },
   revealed: boolean,
   feet: V3,
-  headY: number
+  headY: number,
+  walls: readonly LineBox[] = []
 ): boolean {
   if (revealed) return true
   const chest = feet[1] + (headY - feet[1]) * 0.55
-  return clearLine(grid, cam, feet[0], headY, feet[2]) || clearLine(grid, cam, feet[0], chest, feet[2])
+  return clearLine(grid, cam, feet[0], headY, feet[2], walls) || clearLine(grid, cam, feet[0], chest, feet[2], walls)
 }
 
 const BIG_FOES = new Set(['oagos', 'ashinaga', 'tategami', 'harigane', 'kurozume'])
@@ -159,6 +197,7 @@ export class Markers {
     const myTeam: TeamId | undefined = mine?.team
     const pvp = view.mode === 'pvp'
     const cam = camera.position
+    const walls = placedWalls(view.props)
 
     // Name tags and revive markers.
     for (const p of view.players) {
@@ -168,7 +207,7 @@ export class Markers {
       if (!ally && !(d < 14 || p.revealed)) continue
       if (!ally && p.cloak > 0.5 && !p.revealed) continue
       const top = headTop(p.id) ?? [p.p[0], p.p[1] + SPECIES[p.species].height + 0.35, p.p[2]]
-      if (!ally && !enemyMarkable(this.grid, cam, p.revealed, p.p, top[1])) continue
+      if (!ally && !enemyMarkable(this.grid, cam, p.revealed, p.p, top[1], walls)) continue
       const front = this.project(camera, top[0], top[1] + 0.25, top[2])
       const color = pvp ? TEAM_COLORS[p.team] : ally ? ARK_COLOR : '#ff5a5a'
       if (p.state === 'down' && ally) {
@@ -190,7 +229,7 @@ export class Markers {
           this.chevron(c, this.v.x, this.v.y, '#d58aff')
       }
       if (!BIG_FOES.has(f.kind) || f.hp >= f.maxHp || d > 45) continue
-      if (!f.revealed && !enemyMarkable(this.grid, cam, false, f.p, f.p[1] + def.height)) continue
+      if (!f.revealed && !enemyMarkable(this.grid, cam, false, f.p, f.p[1] + def.height, walls)) continue
       if (!this.project(camera, f.p[0], f.p[1] + def.height + 0.35, f.p[2])) continue
       this.bar(c, this.v.x, this.v.y, Math.max(26, 60 - d), f.hp / f.maxHp, f.shielded ? '#7ae8ff' : '#ff6a5a')
     }

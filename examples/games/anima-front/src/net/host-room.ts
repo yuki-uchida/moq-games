@@ -17,8 +17,8 @@
 import type { LocalChoice, MatchStart } from '../app/lobby'
 import { botSkill, matchConfig, type MatchSelection, type Seat } from '../app/match'
 import { cloneLoadout } from '../app/loadouts'
-import { createWorld, type World } from '../sim/api'
-import type { MatchConfig, PlayerInput, TeamId } from '../sim/types'
+import { createWorld, sanitizeLoadout, type World } from '../sim/api'
+import type { MatchConfig, PlayerConfig, PlayerInput, TeamId } from '../sim/types'
 import { netLog } from './debug'
 import { HostClock, type PulseClock } from './host-clock'
 import { InputBuffer } from './input-buffer'
@@ -341,7 +341,7 @@ export class HostRoom {
     this.keySet = null
     this.changed()
     const matchId = this.matchId
-    return { config, me: humanSeatId(0), connect: () => this.beginMatch(matchId) }
+    return { config, me: humanSeatId(0), spectator: false, connect: () => this.beginMatch(matchId) }
   }
 
   /** The host went back to the lobby from a briefing it never left for the match. */
@@ -557,35 +557,57 @@ export class HostRoom {
   }
 
   /**
-   * A member that arrived after the start: in PvP it takes over a bot's seat (its own team first, else the team
-   * with the fewest players) or the seat of a player who left; in PvE (or a full PvP match) it spectates.
+   * A member that arrived after the start (DESIGN §18) drops into a free seat — a bot's, or one whose player
+   * left — with its own animal, loadout and name: in PvP on its own team first, else the team with the fewest
+   * players; in PvE the squad. Only when every seat is held by a player does it spectate.
    */
   private seatLateJoiner(m: RoomMember) {
-    if (this.selection.mode === 'pvp') {
-      const owner = new Map<string, string>()
-      for (const [mid, sid] of this.matchSeatOf) if (sid) owner.set(sid, mid)
-      const held = (s: Seat) => {
-        const o = owner.get(s.id)
-        const om = o ? this.members.get(o) : undefined
-        return !!om && (om.host || om.present)
-      }
-      const free = this.matchSeats.filter((s) => !held(s))
-      if (free.length) {
-        const players = (t: TeamId) => this.matchSeats.filter((s) => s.team === t && held(s)).length
-        const seat =
-          free.find((s) => s.team === m.profile.team) ??
-          free.reduce((a, b) => (players(b.team) < players(a.team) ? b : a))
-        const old = owner.get(seat.id)
-        if (old) this.matchSeatOf.delete(old)
-        seat.bot = undefined
-        seat.name = m.profile.name
-        seat.ready = true
-        this.matchSeatOf.set(m.id, seat.id)
-        this.match?.rename(seat.id, m.profile.name)
-        return
-      }
+    const owner = new Map<string, string>()
+    for (const [mid, sid] of this.matchSeatOf) if (sid) owner.set(sid, mid)
+    const held = (s: Seat) => {
+      const o = owner.get(s.id)
+      const om = o ? this.members.get(o) : undefined
+      return !!om && (om.host || om.present)
     }
-    this.matchSeatOf.set(m.id, null)
+    const free = this.config ? this.matchSeats.filter((s) => !held(s)) : []
+    if (!free.length) {
+      this.matchSeatOf.set(m.id, null)
+      return
+    }
+    let seat = free[0]
+    if (this.selection.mode === 'pvp') {
+      const players = (t: TeamId) => this.matchSeats.filter((s) => s.team === t && held(s)).length
+      seat =
+        free.find((s) => s.team === m.profile.team) ??
+        free.reduce((a, b) => (players(b.team) < players(a.team) ? b : a))
+    }
+    const old = owner.get(seat.id)
+    if (old) this.matchSeatOf.delete(old)
+    this.matchSeatOf.set(m.id, seat.id)
+    this.takeSeat(seat, m.profile)
+  }
+
+  /** The seat (and the match config the guests read) becomes this player's: its animal, loadout and name. */
+  private takeSeat(seat: Seat, profile: Profile) {
+    const loadout = sanitizeLoadout(profile.loadout)
+    seat.bot = undefined
+    seat.name = profile.name
+    seat.species = profile.species
+    seat.loadout = cloneLoadout(loadout)
+    seat.loadoutName = profile.loadoutName
+    seat.ready = true
+    const config = this.config
+    const i = config ? config.players.findIndex((p) => p.id === seat.id) : -1
+    if (!config || i < 0) return
+    const pc: PlayerConfig = {
+      id: seat.id,
+      name: profile.name,
+      species: profile.species,
+      loadout: cloneLoadout(loadout),
+      team: config.players[i].team
+    }
+    config.players[i] = pc
+    this.match?.replace(pc)
   }
 
   private receiveInput(id: string, msg: Partial<InputMsg>) {
@@ -649,7 +671,12 @@ export class HostRoom {
         seat: seatOf.get(m.id) ?? null,
         name: m.profile.name,
         species: m.profile.species,
-        team: seats.find((s) => s.id === seatOf.get(m.id))?.team ?? m.profile.team,
+        // Seated: its seat's team; a PvP spectator in a match: the team it watches.
+        team:
+          seats.find((s) => s.id === seatOf.get(m.id))?.team ??
+          (this.phase !== 'lobby' && this.selection.mode === 'pvp' && seatOf.get(m.id) === null
+            ? (m.follow ?? 0)
+            : m.profile.team),
         ready: m.host || m.profile.ready,
         host: m.host,
         inMatch: this.matchId > 0 && m.profile.inMatch === this.matchId && this.phase === 'match'

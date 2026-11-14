@@ -35,7 +35,7 @@ import {
 } from '../src/net/seal'
 import { Fog, FADE } from '../src/net/fog'
 import { hiddenPlayer, mergeView, splitView, type TeamPart } from '../src/net/split'
-import { TeamVisibility } from '../src/net/visibility'
+import { TeamVisibility, type ObjectSets } from '../src/net/visibility'
 import { createWorld, type World } from '../src/sim/api'
 import {
   neutralPlayerInput,
@@ -283,9 +283,10 @@ describe('snapshot split', () => {
     const { pub, roster, parts } = splitView(base, sets, { a: [1, 2], e: [3, 4] }, config)
     expect(pub.players).toEqual([])
     expect(pub.shots).toEqual([])
-    expect(pub.props[0].owner).toBeUndefined()
-    expect(pub.shards.map((s) => s.id)).toEqual([5])
-    expect(pub.events.map((e) => e.type)).toEqual(['ko', 'impact'])
+    // e's wall, the resting shard and the impact are not public
+    expect(pub.props).toEqual([])
+    expect(pub.shards).toEqual([])
+    expect(pub.events.map((e) => e.type)).toEqual(['ko'])
     expect(roster.map((r) => r[0])).toEqual(['a', 'e', 'f'])
     const red = parts.get(0)!
     expect(red.p.map((p) => p.id)).toEqual(['a', 'f'])
@@ -296,8 +297,9 @@ describe('snapshot split', () => {
       [3, 'f']
     ])
     expect(red.d).toBeUndefined()
-    // the hit on a stays (without the hidden shooter); e's fire is dropped
-    expect(red.e.map((e) => e.type)).toEqual(['hit', 'jump'])
+    expect(red.r).toBeUndefined()
+    // the hit on a stays (without the hidden shooter); e's fire is dropped; the impact is next to a
+    expect(red.e.map((e) => e.type)).toEqual(['hit', 'impact', 'jump'])
     expect('by' in red.e[0]).toBe(false)
     // sonar: a is revealed to team 0's view only as far as team 0 made it; no one learns who else did
     expect(red.p[0].revealed).toBe(true)
@@ -305,6 +307,86 @@ describe('snapshot split', () => {
     expect(parts.get(2)!.p.find((p) => p.id === 'e')!.revealed).toBe(true)
     expect(parts.get(1)!.p.find((p) => p.id === 'e')!.revealed).toBe(false)
     expect(JSON.stringify(red)).not.toMatch(/"(id|owner|by|to|who|target|reviving)":"e"/)
+  })
+
+  it('player-placed props, resting shards and positional effects reach only the teams that may know them', () => {
+    const at = (x: number, z: number): V3 => [x, 1, z]
+    const view: View = {
+      ...base,
+      shots: [],
+      props: [
+        { id: 7, kind: 'base', p: [0, 0, -150], yaw: 0, team: 0, r: 8, t: 1 },
+        { id: 9, kind: 'hermit', p: [10, 0, 10], yaw: 0, team: 1, t: 1, owner: 'e' },
+        { id: 10, kind: 'frog', p: [80, 0, 80], yaw: 0, team: 1, t: 1, owner: 'e' },
+        { id: 11, kind: 'leafDecoy', p: [90, 0, 90], yaw: 0, team: 1, t: 1, owner: 'f', species: 'fox' },
+        { id: 12, kind: 'honey', p: [1, 0, 1], yaw: 0, team: 0, t: 1, owner: 'a', r: 3 }
+      ],
+      shards: [
+        { id: 4, p: [49, 1, 49], amount: 1, to: 'e' },
+        { id: 5, p: [20, 0, 20], amount: 1 },
+        { id: 6, p: [90, 0, 90], amount: 1 }
+      ],
+      events: [
+        ev({ type: 'impact', at: at(100, 100), normal: [0, 1, 0], surface: 'ground', item: 'mammoth', by: 'e' }, 1),
+        ev({ type: 'impact', at: at(20, 20), normal: [0, 1, 0], surface: 'ground', item: 'bee', by: 'e' }, 2),
+        ev({ type: 'impact', at: at(2, 2), normal: [0, 1, 0], surface: 'ground', item: 'bee', by: 'a' }, 3),
+        ev({ type: 'blast', at: at(60, 0), radius: 20, item: 'puffer', team: 1, by: 'e' }, 4),
+        ev({ type: 'blast', at: at(120, 0), radius: 4, item: 'puffer', team: 1, by: 'e' }, 5),
+        ev({ type: 'propHit', prop: 10, amount: 5, at: at(80, 80) }, 6),
+        ev({ type: 'propBreak', prop: 9, kind: 'hermit', at: at(10, 10) }, 7),
+        ev({ type: 'propHit', prop: 7, amount: 5, at: at(0, -150) }, 8),
+        ev({ type: 'hit', target: 10, targetKind: 'prop', by: 'f', amount: 5, at: at(80, 80), surface: 'prop' }, 9),
+        ev({ type: 'hit', target: 9, targetKind: 'prop', by: 'e', amount: 5, at: at(10, 10), surface: 'prop' }, 10)
+      ]
+    }
+    // team 0 knows a and f (not e); it saw e's wall (9) and the shard 5; team 1 knows everyone of its own
+    const sets = new Map<TeamId, Set<string>>([
+      [0, new Set(['a', 'f'])],
+      [1, new Set(['e', 'f'])]
+    ])
+    const objects: ObjectSets = {
+      props: new Map([
+        [0, new Set([9, 12])],
+        [1, new Set([9, 10, 11])]
+      ]),
+      mapProps: new Set([7]),
+      shards: new Map([
+        [0, new Set([5])],
+        [1, new Set([5, 6])]
+      ])
+    }
+    const { pub, parts } = splitView(view, sets, {}, config, objects)
+    // public: the map's base and the hit on it; nothing else that has a place
+    expect(pub.props.map((r) => r.id)).toEqual([7])
+    expect(pub.shards).toEqual([])
+    expect(pub.events.map((e) => e.id)).toEqual([8])
+    const red = parts.get(0)!
+    // its own honey with the owner; e's wall it saw, without the owner (e unknown); not e's pad nor f's decoy
+    expect(red.r!.map((r) => [r.id, r.owner])).toEqual([
+      [9, undefined],
+      [12, 'a']
+    ])
+    expect(red.d!.map((s) => s.id)).toEqual([5])
+    // its own impact; e's impact at 20,20 (within 45 m of a) without by; the blast reaching within 45 m + 20 of a;
+    // the break of the wall it knew and the hit on it (without by); not e's far impact, far blast, or the pad hits
+    expect(red.e.map((e) => e.id)).toEqual([2, 3, 4, 7, 10])
+    for (const e of red.e) if (e.id !== 3) expect('by' in e).toBe(false)
+    expect((red.e.find((e) => e.id === 3) as { by?: string }).by).toBe('a')
+    expect(JSON.stringify(red)).not.toMatch(/80,0,80|90,0,90|100,1,100|120,1,0/)
+    const blue = parts.get(1)!
+    expect(blue.r!.map((r) => [r.id, r.owner])).toEqual([
+      [9, 'e'],
+      [10, 'e'],
+      [11, 'f']
+    ])
+    expect(blue.d!.map((s) => s.id)).toEqual([4, 5, 6])
+    // a's impact lands next to f: incoming fire, without the unknown shooter
+    expect(blue.e.map((e) => e.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 9, 10])
+    expect('by' in blue.e.find((e) => e.id === 3)!).toBe(false)
+    // a guest merges its props and shards with the public ones
+    const m = mergeView(pub, [], red, config, () => undefined)
+    expect(m.view.props.map((r) => r.id)).toEqual([7, 9, 12])
+    expect(m.view.shards.map((s) => s.id)).toEqual([5])
   })
 
   it('a guest merges the parts; unseen enemies are off the field and fade instead of popping', () => {
@@ -811,7 +893,7 @@ describe('PvP snapshot cost with 12 players', () => {
       if (tick % 3) continue
       const t0 = performance.now()
       const sets = vis.update(v, events)
-      const split = splitView({ ...v, events }, sets, {}, config)
+      const split = splitView({ ...v, events }, sets, {}, config, vis.objects)
       const t1 = performance.now()
       const s: Partial<Record<TeamId, string>> = {}
       for (const [team, part] of split.parts) s[team] = await sealJson(keys[team], part, partAad(1, 1, team, v.tick))

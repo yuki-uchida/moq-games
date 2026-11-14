@@ -29,17 +29,20 @@ export interface AnimaGauge {
   /** Where the burn ghost ends (fraction + burn share). */
   ghost: number
   critical: boolean
+  /** Warning banner: passives are really offline (DESIGN §5 hysteresis) or the share is critical. */
+  warn: boolean
   label: string
   max: string
 }
 
-export function animaGauge(p: Pick<PlayerView, 'anima' | 'maxAnima' | 'burn'>): AnimaGauge {
+export function animaGauge(p: Pick<PlayerView, 'anima' | 'maxAnima' | 'burn' | 'passivesOnline'>): AnimaGauge {
   const max = Math.max(1, p.maxAnima)
   const fraction = clamp01(p.anima / max)
   return {
     fraction,
     ghost: clamp01((p.anima + Math.max(0, p.burn)) / max),
     critical: fraction <= CRITICAL_FRACTION,
+    warn: !p.passivesOnline || fraction <= CRITICAL_FRACTION,
     label: formatAnima(p.anima),
     max: String(Math.round(max))
   }

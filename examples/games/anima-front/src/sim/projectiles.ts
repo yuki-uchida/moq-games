@@ -7,7 +7,7 @@ import type { FoeAttack } from '../data/enemies'
 import type { ItemId } from '../data/items'
 import type { Hand } from '../data/loadout'
 import { hitTarget, rayActors, type Target } from './actors'
-import { blast, damagePlayer, damageProp } from './combat'
+import { blast, byPlayer, damagePlayer, damageProp } from './combat'
 import { ACID_PUDDLE_DPS, ACID_PUDDLE_TIME, DT, PUFFER_FALLOFF } from './constants'
 import { addProp } from './props'
 import { emit, findProp, type Hazard, type Shot, type Side, type Sim } from './state'
@@ -107,7 +107,7 @@ function explode(sim: Sim, s: Shot, at: Vec) {
       until: sim.time + 8,
       owner: typeof s.owner === 'string' ? s.owner : undefined
     })
-    emit(sim, { type: 'impact', at: r3v(at), normal: [0, 1, 0], surface: 'ground', item: s.kind })
+    emit(sim, { type: 'impact', at: r3v(at), normal: [0, 1, 0], surface: 'ground', item: s.kind, ...byPlayer(s.owner) })
     return
   }
   if (!s.blast) return
@@ -189,7 +189,14 @@ export function shotsTick(sim: Sim) {
         continue
       } else {
         s.gone = true
-        emit(sim, { type: 'impact', at: r3v(at), normal: wall.normal, surface: wall.surface, item: s.kind })
+        emit(sim, {
+          type: 'impact',
+          at: r3v(at),
+          normal: wall.normal,
+          surface: wall.surface,
+          item: s.kind,
+          ...byPlayer(s.owner)
+        })
         if (wall.box === -3 && wall.tag !== undefined) {
           const r = findProp(sim, wall.tag)
           if (r)

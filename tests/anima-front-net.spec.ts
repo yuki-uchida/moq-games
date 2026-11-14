@@ -18,6 +18,7 @@ type NetHook = {
       name: string
       team: number
       bot: boolean
+      species?: string
       state: string
       p: [number, number, number]
     }[]
@@ -365,6 +366,64 @@ test.describe('アニマフロント online (BroadcastChannel stand-in)', () => 
     await g1.click('[data-closed-back]')
     await expect(current(g1, 'room')).toBeVisible()
     expect(errors.filter((e) => !e.startsWith('host') && !e.startsWith('guest2'))).toEqual([])
+  })
+
+  test('PvE: a guest joining a running mission drops into a bot seat with its own animal and plays it', async ({
+    context
+  }) => {
+    const errors: string[] = []
+    const [h, g] = await players(context, 2, errors)
+    await host(h, 'pve', 'drop-7004')
+    // the host starts alone: three bots fill the squad
+    await h.click('.lobby-go')
+    await expect(current(h, 'briefing')).toBeVisible({ timeout: 30_000 })
+    await h.click('.brief-go')
+    await expect(current(h, 'game')).toBeVisible()
+    await expect.poll(async () => (await hook(h))?.view?.phase, { timeout: 120_000 }).toBe('play')
+    const squad = (await hook(h))!.view!.players
+    const bots = squad.filter((p) => p.bot).map((p) => p.id)
+    expect(bots).toHaveLength(3)
+    // both pages start from the same default animal; the bots are other animals
+    const hostSpecies = squad.find((p) => p.id === 'h0')!.species
+    const botSpecies = new Map(squad.map((p) => [p.id, p.species]))
+    // the guest joins the running room and goes straight into the match on a bot's seat
+    await toRoom(g, 'pve')
+    await g.click('[data-room="join"]')
+    await g.locator('.room-code-input').fill('drop-7004')
+    await g.click('[data-room-go="join"]')
+    await expect(current(g, 'game')).toBeVisible({ timeout: 60_000 })
+    await expect.poll(async () => (await hook(g))?.view?.phase, { timeout: 120_000 }).toBe('play')
+    const me = (await hook(g))!.me!
+    expect(bots).toContain(me)
+    const mine = (await hook(g))!.view!.players.find((p) => p.id === me)!
+    await expect
+      .poll(async () => (await hook(h))?.view?.players.find((p) => p.id === me)?.bot, { timeout: 30_000 })
+      .toBe(false)
+    const onHost = (await hook(h))!.view!.players.find((p) => p.id === me)!
+    expect(onHost.species).toBe(mine.species)
+    expect(onHost.species).toBe(hostSpecies)
+    expect(onHost.species).not.toBe(botSpecies.get(me))
+    expect(onHost.name).toBe(mine.name)
+    // its keys move its own animal on the host
+    const before = await positionOf(h, me)
+    await walk(g, 1500)
+    await expect.poll(async () => dist(await positionOf(h, me), before), { timeout: 10_000 }).toBeGreaterThan(3)
+    // the host's menu lists everyone; removing the guest (after a confirmation) hands its seat back to a bot
+    await h.keyboard.press('Escape')
+    await expect(h.locator('.game-pause.is-on')).toBeVisible()
+    await h.click('[data-pause="members"]')
+    await expect(h.locator('.pause-member')).toHaveCount(2)
+    await expect(h.locator('.pause-member [data-kick]')).toHaveCount(1)
+    await h.screenshot({ path: test.info().outputPath('host-members.png') })
+    await h.click('.pause-member [data-kick]')
+    await h.locator('.modal-veil .btn-primary').click()
+    await expect(h.locator('.pause-member')).toHaveCount(1)
+    await expect(g.locator('.game-error.is-on')).toBeVisible({ timeout: 30_000 })
+    await expect(g.locator('.game-error')).toContainText('ホストによってルームから外されました')
+    await expect
+      .poll(async () => (await hook(h))?.view?.players.find((p) => p.id === me)?.bot, { timeout: 30_000 })
+      .toBe(true)
+    expect(errors).toEqual([])
   })
 
   test('joining a room that does not exist says so', async ({ context }) => {

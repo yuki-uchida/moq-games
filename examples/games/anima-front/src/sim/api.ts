@@ -26,6 +26,13 @@ export interface World {
   /** Hands a player to a bot (skill 0..1) or back to a human (undefined). */
   setBot(playerId: string, skill: number | undefined): void
   addPlayer(cfg: PlayerConfig): void
+  /**
+   * A player dropping into a running match takes this seat (DESIGN §18): a fresh character from `cfg` (animal,
+   * loadout, name; human-controlled) replaces the seat's one, keeping its id, team and scoreboard numbers. A living
+   * one warps out and respawns (PvE next to the squad, PvP at its base with the usual protection); a downed or
+   * away one keeps waiting.
+   */
+  replace(playerId: string, cfg: PlayerConfig): void
   removePlayer(id: string): void
 }
 

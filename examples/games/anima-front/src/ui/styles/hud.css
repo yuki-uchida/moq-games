@@ -866,7 +866,7 @@
   letter-spacing: 0.1em;
   display: none;
 }
-.hud-anima.is-critical .ag-warn {
+.hud-anima.is-warn .ag-warn {
   display: block;
   animation: pulse 0.7s ease-in-out infinite;
 }
@@ -878,6 +878,13 @@
 }
 .hud-anima.is-critical .ag-value {
   color: #ff8f9a;
+}
+.hud-anima.is-offline {
+  border-color: rgba(255, 90, 106, 0.55);
+}
+.hud-anima.is-offline .ag-passives {
+  opacity: 0.55;
+  filter: grayscale(1);
 }
 
 .hud-paw {
@@ -1034,7 +1041,9 @@
   margin-right: 4px;
 }
 .hud[data-state='down'] .hud-hints,
-.hud[data-state='away'] .hud-hints {
+.hud[data-state='away'] .hud-hints,
+.hud.is-spectator .hud-hints,
+.hud.is-spectator .paw-key {
   display: none;
 }
 .hud-spectate {

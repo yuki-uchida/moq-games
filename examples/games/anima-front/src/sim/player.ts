@@ -550,6 +550,25 @@ export function respawn(sim: Sim, p: Player, at: { p: Vec; yaw: number }, protec
   emit(sim, { type: 'respawn', who: p.id, at: r3v(p.p) })
 }
 
+/**
+ * Where a player dropping into a running match appears (DESIGN §18): PvE next to a living squadmate (a free spot
+ * on a ring around it), PvP / training the mode's own spawn (the team's base), as a respawn would.
+ */
+export function dropInSpot(sim: Sim, p: Player): { p: Vec; yaw: number } {
+  if (sim.cfg.mode === 'pve') {
+    const mates = sim.players.filter((q) => q !== p && q.state === 'alive')
+    for (const m of mates) {
+      for (let i = 0; i < 8; i++) {
+        const a = m.yaw + Math.PI + (i * Math.PI) / 4
+        const at = settle(sim, [m.p[0] + Math.sin(a) * 2, m.p[1], m.p[2] + Math.cos(a) * 2], p.r)
+        if (Math.abs(at[1] - m.p[1]) > 1.5 || sim.phys.overlaps(at, p.r, p.h)) continue
+        return { p: at, yaw: m.yaw }
+      }
+    }
+  }
+  return sim.mode.spawnFor(sim, p)
+}
+
 /** Squad/team spawn points from the map (with a ring fallback around the first base or the origin). */
 export function spawnPoints(sim: Sim, team: number | 'squad'): { p: Vec; yaw: number }[] {
   const list = sim.map.spawns.filter((s) => s.team === team)

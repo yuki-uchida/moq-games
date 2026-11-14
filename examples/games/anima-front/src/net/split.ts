@@ -4,13 +4,17 @@
  * events about them and its members' input acks). The host seals each team part with the team's key
  * (src/net/seal.ts); a guest opens its own and merges it with the public part (mergeView).
  *
- * Public: tick/time/phase/clock, scores, props (without owners), resting shards, events that name no player, the
- * kill feed (`ko`: names, no positions) and a roster aligned with the match config (name, bot flag, KOs, assists,
- * downs) for the scoreboard. Per team: its known players, shots fired by them (or by nobody) plus any shot within
- * SHOT_NEAR of a living member (incoming fire), shards flying to them, events about them, its acks. Enemies a
- * team cannot see are drawn from the roster as players waiting off the field (`state: 'away'`).
+ * Public: tick/time/phase/clock, scores, map props (no owner), events that are neither about a player nor
+ * positional, the kill feed (`ko`: names, no positions) and a roster aligned with the match config (name, bot
+ * flag, KOs, assists, downs) for the scoreboard. Per team: its known players, shots fired by them (or by nobody)
+ * plus any shot within SHOT_NEAR of a living member (incoming fire), the player-placed props and resting shards it
+ * may know about (visibility.ts `objects`; an enemy prop keeps its owner only when that owner is known), shards
+ * flying to known players, events about them, impacts and blasts of known players (others' only near a living
+ * member, without `by`), hits on the props it knows, its acks. Enemies a team cannot see are drawn from the
+ * roster as players waiting off the field (`state: 'away'`).
  */
-import type { MatchConfig, PlayerView, ShardView, ShotView, SimEvent, TeamId, View } from '../sim/types'
+import type { MatchConfig, PlayerView, PropView, ShardView, ShotView, SimEvent, TeamId, View } from '../sim/types'
+import type { ObjectSets } from './visibility'
 
 /** Shots by unseen enemies reach a team only this close to one of its living members (metres). */
 export const SHOT_NEAR = 45
@@ -27,8 +31,10 @@ export interface TeamPart {
   a: Acks
   /** Shots this team may see. */
   s?: ShotView[]
-  /** Shards flying to its known players. */
+  /** Shards flying to its known players and the resting shards it may know about. */
   d?: ShardView[]
+  /** Player-placed props it may know about. */
+  r?: PropView[]
 }
 
 /** One row per config player (same order): name, bot (0/1), KOs, assists, downs. */
@@ -59,8 +65,34 @@ function refsOf(e: SimEvent): { subject?: string; others: 'by'[] } | null {
   return { subject, others }
 }
 
+/** Where a team is and which props it knows: for events that carry a position. */
+export interface EventScope {
+  /** Within SHOT_NEAR + `extra` of one of the team's members on the field (incoming fire). */
+  near(at: readonly number[], extra: number): boolean
+  /** The team may know this prop (map props and its own team's included). */
+  prop(id: number): boolean
+}
+
+/** The prop an event is about, if any. */
+function propOf(e: SimEvent): number | undefined {
+  if (e.type === 'propHit' || e.type === 'propBreak') return e.prop
+  if (e.type === 'hit' && e.targetKind === 'prop' && typeof e.target === 'number') return e.target
+  return undefined
+}
+
 /** Events for a team that knows the players in `known`, or undefined when the event must not reach it. */
-export function eventForTeam(e: SimEvent, known: ReadonlySet<string>): SimEvent | undefined {
+export function eventForTeam(e: SimEvent, known: ReadonlySet<string>, scope: EventScope): SimEvent | undefined {
+  if (e.type === 'impact' || e.type === 'blast') {
+    const by = e.by
+    if (typeof by === 'string' && known.has(by)) return e
+    if (!scope.near(e.at, e.type === 'blast' ? e.radius : 0)) return undefined
+    if (typeof by !== 'string') return e
+    const out = { ...e }
+    delete out.by
+    return out
+  }
+  const prop = propOf(e)
+  if (prop !== undefined && !scope.prop(prop)) return undefined
   const refs = refsOf(e)
   if (!refs) return e
   if (refs.subject !== undefined && !known.has(refs.subject)) return undefined
@@ -74,8 +106,17 @@ export function eventForTeam(e: SimEvent, known: ReadonlySet<string>): SimEvent 
   return (out ?? e) as SimEvent
 }
 
-/** True when the event names no player, or is the kill feed (no positions): it goes in the public part. */
-export const isPublicEvent = (e: SimEvent) => e.type === 'ko' || refsOf(e) === null
+/**
+ * True when the event goes in the public part: the kill feed (no positions), or an event that names no player
+ * and says nothing about where one is or was (impacts and blasts never; prop damage only on map props).
+ */
+export function isPublicEvent(e: SimEvent, mapProps: ReadonlySet<number>): boolean {
+  if (e.type === 'ko') return true
+  if (e.type === 'impact' || e.type === 'blast') return false
+  const prop = propOf(e)
+  if (prop !== undefined && !mapProps.has(prop)) return false
+  return refsOf(e) === null
+}
 
 /** A visible player with references to unknown players (locks, the revive target) taken out. */
 function scrubPlayer(p: PlayerView, known: ReadonlySet<string>, team: TeamId): PlayerView {
@@ -114,18 +155,67 @@ export function shotsForTeam(view: View, team: TeamId, known: ReadonlySet<string
   return out
 }
 
+/** Map props (no owner) of this view and those the visibility already knew (events about gone ones). */
+export function mapPropsOf(view: View, objects?: ObjectSets): Set<number> {
+  const out = new Set(objects?.mapProps)
+  for (const r of view.props) if (r.owner === undefined) out.add(r.id)
+  return out
+}
+
+/**
+ * What one team may see of the player-placed props, the shards and the positional events: its own team's props,
+ * enemy props in its `objects` set (the owner kept only when known), resting shards in its set, shards flying to
+ * known players. Without `objects` (no visibility memory yet): own team's props and props of known owners only.
+ */
+export function teamObjects(
+  view: View,
+  team: TeamId,
+  known: ReadonlySet<string>,
+  mapProps: ReadonlySet<number>,
+  objects?: ObjectSets
+): { props: PropView[]; shards: ShardView[]; scope: EventScope } {
+  const seenProps = objects?.props.get(team)
+  const seenShards = objects?.shards.get(team)
+  const props: PropView[] = []
+  const mine = new Set<number>()
+  for (const r of view.props) {
+    if (r.owner === undefined) continue
+    const own = r.team === team
+    if (own) mine.add(r.id)
+    if (!own && !(seenProps ? seenProps.has(r.id) : known.has(r.owner))) continue
+    if (known.has(r.owner)) props.push(r)
+    else {
+      const out = { ...r }
+      delete out.owner
+      props.push(out)
+    }
+  }
+  const shards = view.shards.filter((s) => (s.to === undefined ? !!seenShards?.has(s.id) : known.has(s.to)))
+  const members = view.players.filter((p) => p.team === team && p.state !== 'away')
+  const scope: EventScope = {
+    near: (at, extra) =>
+      members.some((m) => Math.hypot(m.p[0] - at[0], m.p[1] - at[1], m.p[2] - at[2]) <= SHOT_NEAR + extra),
+    prop: (id) => mapProps.has(id) || mine.has(id) || !!seenProps?.has(id)
+  }
+  return { props, shards, scope }
+}
+
 export interface Split {
   pub: View
   roster: RosterRow[]
   parts: Map<TeamId, TeamPart>
 }
 
-/** Splits a PvP view (its `events` are the events since the previous snapshot). */
+/**
+ * Splits a PvP view (its `events` are the events since the previous snapshot). `objects`: the props and resting
+ * shards each team may know about (TeamVisibility.objects for the same update).
+ */
 export function splitView(
   view: View,
   visible: ReadonlyMap<TeamId, ReadonlySet<string>>,
   acks: Acks,
-  config: MatchConfig
+  config: MatchConfig,
+  objects?: ObjectSets
 ): Split {
   const byId = new Map(view.players.map((p) => [p.id, p]))
   const roster: RosterRow[] = config.players.map((c) => {
@@ -134,18 +224,14 @@ export function splitView(
       ? [p.name, p.bot ? 1 : 0, p.stats.kos, p.stats.assists, p.stats.downs]
       : [c.name, c.bot !== undefined ? 1 : 0, 0, 0, 0]
   })
+  const mapProps = mapPropsOf(view, objects)
   const pub: View = {
     ...view,
     players: [],
     shots: [],
-    props: view.props.map((r) => {
-      if (r.owner === undefined) return r
-      const out = { ...r }
-      delete out.owner
-      return out
-    }),
-    shards: view.shards.filter((s) => s.to === undefined),
-    events: view.events.filter(isPublicEvent)
+    props: view.props.filter((r) => r.owner === undefined),
+    shards: [],
+    events: view.events.filter((e) => isPublicEvent(e, mapProps))
   }
   if (pub.pvp?.mvp !== undefined && !['victory', 'defeat', 'draw'].includes(view.phase)) {
     pub.pvp = { ...pub.pvp }
@@ -156,10 +242,11 @@ export function splitView(
   for (const [team, known] of visible) {
     const a: Acks = {}
     for (const [seat, ack] of Object.entries(acks)) if (teamOf.get(seat) === team) a[seat] = ack
+    const { props, shards, scope } = teamObjects(view, team, known, mapProps, objects)
     const e: SimEvent[] = []
     for (const ev of view.events) {
-      if (isPublicEvent(ev)) continue
-      const x = eventForTeam(ev, known)
+      if (isPublicEvent(ev, mapProps)) continue
+      const x = eventForTeam(ev, known, scope)
       if (x) e.push(x)
     }
     const s = shotsForTeam(view, team, known)
@@ -169,8 +256,8 @@ export function splitView(
       a
     }
     if (s.length) part.s = s
-    const d = view.shards.filter((x) => x.to !== undefined && known.has(x.to))
-    if (d.length) part.d = d
+    if (shards.length) part.d = shards
+    if (props.length) part.r = props
     parts.set(team, part)
   }
   return { pub, roster, parts }
@@ -283,5 +370,9 @@ export function mergeView(
   const events = [...pub.events, ...part.e].sort((a, b) => a.id - b.id)
   const shots = Array.isArray(part.s) ? part.s : []
   const shards = Array.isArray(part.d) ? [...pub.shards, ...part.d] : pub.shards
-  return { view: { ...pub, players, events, shots, shards }, hidden }
+  const props =
+    Array.isArray(part.r) && Array.isArray(pub.props)
+      ? [...pub.props, ...part.r].sort((a, b) => a.id - b.id)
+      : pub.props
+  return { view: { ...pub, players, events, shots, shards, props }, hidden }
 }

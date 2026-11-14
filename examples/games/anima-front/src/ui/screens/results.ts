@@ -31,14 +31,21 @@ const BANNER: Record<string, Record<Outcome, [string, string]>> = {
 
 const PLACE_LABEL = ['', '1位', '2位', '3位']
 
+const SPECTATED: [string, string] = ['観戦終了', 'SPECTATED']
+
 export function createResultsScreen(ctx: AppContext, args: ResultsArgs): Screen {
-  const { view, me, selection, lobby } = args
-  const outcome = outcomeOf(args)
-  const [ja, en] = BANNER[view.mode][outcome]
+  const { view, selection, lobby } = args
+  const spectator = !!args.spectator
+  // A spectator's results name nobody as「あなた」 (it followed one of them).
+  const me = spectator ? '' : args.me
+  // PvE: the squad's result; PvP: a spectator has no side to win or lose.
+  const neutral = spectator && view.mode === 'pvp'
+  const outcome = neutral ? 'draw' : outcomeOf({ view, me: args.me })
+  const [ja, en] = neutral ? SPECTATED : BANNER[view.mode][outcome]
   const rows = statRows(view)
   const mvp = pickMvp(view)
   const mine = rows.find((r) => r.id === me)
-  const myTeam = view.players.find((p) => p.id === me)?.team ?? 0
+  const myTeam = view.players.find((p) => p.id === (spectator ? args.me : me))?.team ?? 0
 
   const banner = h('div', `res-banner is-${outcome}`, h('small', null, en), h('h1', null, ja))
   const top: (Node | null)[] = []
@@ -71,8 +78,11 @@ export function createResultsScreen(ctx: AppContext, args: ResultsArgs): Screen 
           h(
             'div',
             'res-chips',
-            args.newBest ? h('span', 'chip chip-anima', '自己ベスト更新') : null,
-            args.unlocked
+            spectator
+              ? h('span', { class: 'chip', attrs: { 'data-spectated': '' } }, '観戦のため記録されません')
+              : null,
+            args.newBest && !spectator ? h('span', 'chip chip-anima', '自己ベスト更新') : null,
+            args.unlocked && !spectator
               ? h(
                   'span',
                   'chip res-unlock',
@@ -104,7 +114,7 @@ export function createResultsScreen(ctx: AppContext, args: ResultsArgs): Screen 
               'span',
               'res-place-name',
               h('b', null, t.name),
-              p.team === myTeam ? h('small', null, 'あなたの隊') : null,
+              p.team === myTeam ? h('small', null, spectator ? '観戦した隊' : 'あなたの隊') : null,
               h('i', 'res-place-meter', h('i', null))
             ),
             h('span', 'res-place-score', `${p.score}`, h('small', null, '点'))
@@ -231,7 +241,14 @@ export function createResultsScreen(ctx: AppContext, args: ResultsArgs): Screen 
       'res-actions',
       mine
         ? h('span', 'res-me', h('b', null, 'あなた'), `撃破 ${mine.kos}・救助 ${mine.revives}・ダメージ ${mine.damage}`)
-        : null,
+        : spectator
+          ? h(
+              'span',
+              { class: 'res-me', attrs: { 'data-spectated': '' } },
+              h('b', null, '観戦'),
+              '戦績・進行には記録されません'
+            )
+          : null,
       h('div', 'grow'),
       toTitle,
       toLobby,
@@ -252,7 +269,7 @@ export function createResultsScreen(ctx: AppContext, args: ResultsArgs): Screen 
     back: () => ctx.open('title'),
     enter() {
       ctx.sfx(outcome === 'victory' ? 'victory' : outcome === 'defeat' ? 'defeat' : 'uiSelect')
-      ctx.backdrop?.setCast(resultsCast(view, me, outcome))
+      ctx.backdrop?.setCast(resultsCast(view, spectator ? args.me : me, outcome))
     },
     frame(dt) {
       t += dt

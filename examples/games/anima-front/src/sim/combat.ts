@@ -383,6 +383,9 @@ export function destroyProp(sim: Sim, r: Prop, by: ActorRef | undefined) {
 // ---------------------------------------------------------------------------------------------------------------
 // Area damage
 
+/** `by` for impact / blast events: the acting player (PvP routes them per team); foes' effects leave it out. */
+export const byPlayer = (by: ActorRef | undefined): { by?: string } => (typeof by === 'string' ? { by } : {})
+
 /** Radial damage with linear falloff to 40 % at the edge; walls block it. */
 export function blast(
   sim: Sim,
@@ -394,7 +397,8 @@ export function blast(
   item: ShotKind | FoeAttack,
   opts: { knock?: number; knockUp?: number; event?: boolean } = {}
 ) {
-  if (opts.event !== false) emit(sim, { type: 'blast', at: r3v(at), radius: r3(radius), item, team: sideTeam(side) })
+  if (opts.event !== false)
+    emit(sim, { type: 'blast', at: r3v(at), radius: r3(radius), item, team: sideTeam(side), ...byPlayer(by) })
   const fall = (d: number) => damage * (1 - (1 - BLAST_EDGE) * Math.min(1, d / radius))
   const center = (p: Vec, h: number): Vec => [p[0], Math.min(Math.max(at[1], p[1]), p[1] + h), p[2]]
   const los = (a: Vec, b: Vec) => sim.phys.clear(a, b, side)

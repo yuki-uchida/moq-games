@@ -14,13 +14,14 @@ import type { World } from '../sim/api'
 import {
   neutralPlayerInput,
   type MatchConfig,
+  type PlayerConfig,
   type PlayerInput,
   type SimEvent,
   type TeamId,
   type View
 } from '../sim/types'
 import { Fog, hideUnknown } from './fog'
-import { eventForTeam, isPublicEvent, shotsForTeam, splitView, viewForTeam } from './split'
+import { eventForTeam, isPublicEvent, mapPropsOf, shotsForTeam, splitView, teamObjects, viewForTeam } from './split'
 import { TeamVisibility, type TeamSets } from './visibility'
 import type { HostRoom } from './host-room'
 import { INPUT_EXPIRY, PROTOCOL, SNAPSHOT_RATE, type SnapMsg } from './protocol'
@@ -94,6 +95,16 @@ export class HostMatch implements Session {
   /** A seat taken over by a late joiner shows the joiner's name. */
   rename(seatId: string, name: string) {
     this.names.set(seatId, name)
+  }
+
+  /**
+   * A late joiner takes a seat with its own animal, loadout and name (DESIGN §18): the world swaps the seat's
+   * character; the seat is human now, and the next step hands it to the joiner (or to a bot until it arrives).
+   */
+  replace(cfg: PlayerConfig) {
+    this.world.replace(cfg.id, cfg)
+    this.names.delete(cfg.id)
+    this.isBot.set(cfg.id, false)
   }
 
   update(): View | null {
@@ -201,7 +212,7 @@ export class HostMatch implements Session {
     const view = this.withNames({ ...cur, events: this.snapEvents })
     const sets = this.teamSets(cur, this.snapEvents)
     this.stats.rays = this.vis!.rays
-    const split = splitView(view, sets, ack, this.config)
+    const split = splitView(view, sets, ack, this.config, this.vis!.objects)
     const sealed = this.room.seal(split.parts, this.matchId, cur.tick)
     if (!sealed) return
     this.snapEvents = []
@@ -241,15 +252,19 @@ export class HostMatch implements Session {
     const team = viewForTeam(v, this.myTeam)
     const hidden = this.hiddenFor(team, this.sets)
     const shown = hideUnknown(team, this.myTeam, known, this.fog)
+    const objects = this.vis.objects
+    const mapProps = mapPropsOf(v, objects)
+    const own = teamObjects(v, this.myTeam, known, mapProps, objects)
     const events: SimEvent[] = []
     for (const e of v.events) {
-      const x = isPublicEvent(e) ? e : eventForTeam(e, known)
+      const x = isPublicEvent(e, mapProps) ? e : eventForTeam(e, known, own.scope)
       if (x) events.push(x)
     }
     return {
       ...this.fog.present(shown, hidden, v.time),
       shots: shotsForTeam(v, this.myTeam, known),
-      shards: v.shards.filter((s) => s.to === undefined || known.has(s.to)),
+      props: [...v.props.filter((r) => r.owner === undefined), ...own.props].sort((a, b) => a.id - b.id),
+      shards: own.shards,
       events
     }
   }

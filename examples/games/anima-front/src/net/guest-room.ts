@@ -372,6 +372,7 @@ export class GuestRoom {
     return {
       config,
       me: follow,
+      spectator: !seated,
       connect: () => {
         if (this.status.kind === 'closed') throw new Error(this.status.text)
         if (this.room?.matchId !== matchId || this.room.phase === 'lobby') throw new Error('この出撃は取り消されました')
