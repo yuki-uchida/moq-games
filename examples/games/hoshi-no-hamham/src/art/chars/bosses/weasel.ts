@@ -189,14 +189,7 @@ const footShape = (grounded: boolean, len: number): Shape => {
 }
 
 /** A path from `from` heading in direction `deg` (0 = back, + down), bending by `curl` degrees along its length. */
-function bentPath(
-  from: Pt,
-  deg: number,
-  curl: number,
-  len: number,
-  wobble: (s: number) => number,
-  hook = 1
-): Pt[] {
+function bentPath(from: Pt, deg: number, curl: number, len: number, wobble: (s: number) => number, hook = 1): Pt[] {
   const pts: Pt[] = [from]
   let [x, y] = from
   const n = 6
@@ -252,7 +245,11 @@ function drawFan(l: Raster, f: Frame, open: number) {
   smooth(l)
   cel(l, { shade: 2.4, rim: 1.4 })
   // the lit outer half of the spread feathers is white
-  within(l, (m) => fill(m, f, overlap(oval(-1.5, -1.5, len - 2.5), minus(oval(0, 0, 100), oval(0, 0, len * 0.42))), CREAM[0]), true)
+  within(
+    l,
+    (m) => fill(m, f, overlap(oval(-1.5, -1.5, len - 2.5), minus(oval(0, 0, 100), oval(0, 0, len * 0.42))), CREAM[0]),
+    true
+  )
   dimEdge(l)
   // the quills down the middle of every other feather
   if (open > 0.3)
@@ -511,7 +508,12 @@ export function drawWeasel(p: WeaselPose): Raster {
   const headAt = head.pt(0, -2)
   g.add(4, (l) => {
     fill(l, head, headShape, FUR[1])
-    tint(l, head, union(oval(4.5, -1.2, 4.4, 3.4), capsule([5, 4.4], [16, 4], 2.6, 1.6), oval(-2, 6.5, 6, 3.2)), CREAM[1])
+    tint(
+      l,
+      head,
+      union(oval(4.5, -1.2, 4.4, 3.4), capsule([5, 4.4], [16, 4], 2.6, 1.6), oval(-2, 6.5, 6, 3.2)),
+      CREAM[1]
+    )
     stampAt(l, head, TUFT_BACK, -9.5, 5, { f: FUR[1] })
     stampAt(l, head, TUFT_DOWN, -3.5, 9.5, { f: CREAM[1] })
     smooth(l)
@@ -1027,7 +1029,14 @@ const defeat = memo(() => {
     P({ ...lying, y: -1, stretch: 1.5, eyes: 'shut', capFree: [2, 72, -300], tails: [-70, 0, 4, 18] }),
     P({ ...lying, y: 3, stretch: 0.6, head: [-12, 0], capFree: [-2, 46, -340], tails: [-95, 20, 5, 18] }),
     P({ ...lying, capFree: [-6, 25, -360], stars: 0, tails: [-84, 6, 6, 18] }),
-    P({ ...lying, capFree: [-6, 25.5, -362], stars: 1 / 6, breath: 0.6, tail: [-166, 44, 0.8, 30], tails: [-82, 4, 7, 18] })
+    P({
+      ...lying,
+      capFree: [-6, 25.5, -362],
+      stars: 1 / 6,
+      breath: 0.6,
+      tail: [-166, 44, 0.8, 30],
+      tails: [-82, 4, 7, 18]
+    })
   ]
 })
 

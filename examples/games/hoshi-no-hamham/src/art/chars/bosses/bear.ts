@@ -15,7 +15,7 @@
 import type { SheetModule } from '../../module'
 import { TAU, lag } from '../../motion'
 import { C, R, ramp } from '../../palette'
-import { Painter, Raster, ball, farRamp, type Pt, type Ramp } from '../../raster'
+import { Painter, Raster, farRamp, type Pt, type Ramp } from '../../raster'
 import {
   Frame,
   capsule,
@@ -610,7 +610,16 @@ const intro = memo(() => {
       fur: 0.5
     }),
     P({ ...roar, gourd: 2, leaves: -40 }),
-    P({ ...roar, y: 1.4, fur: 1.4, jaw: 0.9, gourd: -6, leaves: -24, armN: [-26, -14, -1, -56], armF: [26, -16, 1, -74] }),
+    P({
+      ...roar,
+      y: 1.4,
+      fur: 1.4,
+      jaw: 0.9,
+      gourd: -6,
+      leaves: -24,
+      armN: [-26, -14, -1, -56],
+      armF: [26, -16, 1, -74]
+    }),
     P({ ...crouch, y: -4.5, squash: 3.5, gourd: 4, leaves: 16 }),
     P({ ...crouch, breath: 1, gourd: 26, leaves: -6 }),
     P({ ...crouch, y: -2.6, breath: 0.2, gourd: 32, leaves: 4 })
@@ -1014,16 +1023,6 @@ const defeat = memo(() => {
 })
 
 const draw = (poses: BearPose[]) => poses.map(drawBear)
-
-/**
- * A small cloud of dust: three overlapping ball-shaded puffs. Kept for the legacy apeBoss sheet, which still
- * imports it from here until its own redraw.
- */
-export function puff(l: Raster, x: number, y: number, r: number) {
-  ball(l, x, y, r, r * 0.85, R.paper, false)
-  ball(l, x + r * 0.9, y + r * 0.25, r * 0.7, r * 0.6, R.paper, false)
-  ball(l, x - r * 0.8, y + r * 0.3, r * 0.6, r * 0.55, R.paper, false)
-}
 
 export const sheets: SheetModule = {
   bearBoss: () => ({
