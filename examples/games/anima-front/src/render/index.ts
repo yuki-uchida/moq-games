@@ -470,6 +470,11 @@ class Renderer implements GameRenderer {
     return { x, y, onScreen: inFront && x >= 0 && y >= 0 && x <= this.width && y <= this.height, distance }
   }
 
+  cameraYaw(): number {
+    this.rig.camera.getWorldDirection(this.v)
+    return Math.atan2(this.v.x, this.v.z)
+  }
+
   stats(): RendererStats {
     return { ...this.lastStats }
   }

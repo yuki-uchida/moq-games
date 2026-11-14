@@ -251,7 +251,7 @@ class WorldImpl implements World {
     const { bot: _bot, ...rest } = cfg
     void _bot
     const fresh = createPlayer(sim, { ...rest, id: p.id, team: p.team }, { p: p.p, yaw: p.yaw }, p.side)
-    Object.assign(p, fresh, { stats: p.stats, spawnP: p.spawnP, spawnYaw: p.spawnYaw, infinite: p.infinite })
+    Object.assign(p, fresh, { spawnP: p.spawnP, spawnYaw: p.spawnYaw, infinite: p.infinite })
     for (const q of sim.players) if (q.reviving === p.id) q.reviving = undefined
     this.sim.humans = Math.max(1, sim.players.filter((q) => q.bot === undefined).length)
     if (was.state === 'alive') {

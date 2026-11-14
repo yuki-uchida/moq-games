@@ -445,6 +445,48 @@ test.describe('アニマフロント online (BroadcastChannel stand-in)', () => 
     await expect(current(w, 'game')).toBeVisible({ timeout: 60_000 })
     await expect(w.locator('.spectate-bar')).toBeVisible({ timeout: 60_000 })
     await expect(w.locator('[data-take-seat]')).toBeHidden()
+    // the spectator's camera looks where the watched animal looks (a spectator's own look never moves)
+    const humans = [h, g1, g2, g3]
+    const probeOf = (p: Page) =>
+      p.evaluate(() => {
+        const a = (
+          window as unknown as {
+            __anima?: { match?: { me: string; watching?: () => string; cameraYaw: () => number | null } }
+          }
+        ).__anima?.match
+        return a ? { me: a.me, watching: a.watching?.() ?? null, yaw: a.cameraYaw() } : null
+      })
+    let owner: Page | undefined
+    for (let i = 0; i < 6 && !owner; i++) {
+      const watching = (await probeOf(w))?.watching
+      for (const p of humans) if ((await probeOf(p))?.me === watching) owner = p
+      if (!owner) await w.click('[data-watch-next]')
+    }
+    expect(owner).toBeDefined()
+    const turnTo = async (dx: number, want: number) => {
+      await owner!.evaluate((d) => {
+        const a = (
+          window as unknown as {
+            __anima: {
+              match: { me: string; view(): { players: { id: string; p: number[] }[] }; aimAt(p: number[]): void }
+            }
+          }
+        ).__anima.match
+        const me = a.view().players.find((q) => q.id === a.me)!
+        a.aimAt([me.p[0] + d, me.p[1], me.p[2]])
+      }, dx)
+      await expect
+        .poll(
+          async () => {
+            const yaw = (await probeOf(w))?.yaw ?? NaN
+            return Math.abs(Math.atan2(Math.sin(yaw - want), Math.cos(yaw - want)))
+          },
+          { timeout: 20_000 }
+        )
+        .toBeLessThan(0.35)
+    }
+    await turnTo(10, Math.PI / 2)
+    await turnTo(-10, -Math.PI / 2)
     // guest 1 closes its tab: its seat goes to a bot and the spectator is offered it
     await expect.poll(async () => (await hook(g1))?.me, { timeout: 30_000 }).toMatch(/^h/)
     const freed = (await hook(g1))!.me!

@@ -56,6 +56,8 @@ export function viewForTeam(view: View, team: TeamId): View {
 
 /** The player ids an event names: the subject (dropped when unknown) and others (removed when unknown). */
 function refsOf(e: SimEvent): { subject?: string; others: 'by'[] } | null {
+  // A radio line is spoken by the operator (a Speaker), not by a player: it names no one.
+  if (e.type === 'radio') return null
   const r = e as Record<string, unknown>
   let subject: string | undefined
   if (typeof r.who === 'string') subject = r.who
