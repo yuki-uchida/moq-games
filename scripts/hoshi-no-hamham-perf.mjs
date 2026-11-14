@@ -78,17 +78,13 @@ const gpu = flag('--gpu')
 const check = flag('--check')
 const raw = flag('--raw')
 const trace = flag('--trace')
-/** Trace categories: the timeline's own, V8's garbage collector, top-level tasks, the compositor and the GPU. */
-const TRACE_CATEGORIES = [
-  'devtools.timeline',
-  'v8',
-  'disabled-by-default-v8.gc',
-  'blink.user_timing',
-  'toplevel',
-  'cc',
-  'viz',
-  'gpu'
-]
+/**
+ * What every recorded run is traced with, to count garbage collections, style and layout work and shader
+ * compilation: the timeline's own events, V8's, Skia's shader events and the page's marks.
+ */
+const LIGHT_CATEGORIES = ['devtools.timeline', 'v8', 'blink.user_timing', 'disabled-by-default-skia.shaders']
+/** What --trace adds for reading by hand: the collector's phases, top-level tasks, the compositor and the GPU. */
+const TRACE_CATEGORIES = [...LIGHT_CATEGORIES, 'disabled-by-default-v8.gc', 'toplevel', 'cc', 'viz', 'gpu']
 const out = resolve(valueOf('--out') ?? join(root, '.build/hoshi-no-hamham-perf'))
 
 // ------------------------------------------------------------------------------------------------- budgets
@@ -153,6 +149,45 @@ const BUDGETS = [
     judge: (m) =>
       gpu
         ? { value: String(m.interval.overMedian), ok: m.interval.overMedian === 0 }
+        : { value: 'not judged without --gpu', ok: null }
+  },
+  {
+    id: 'G1',
+    sections: ['play', 'boss'],
+    what: 'major garbage collections per 1000 frames',
+    limit: 'at most 2',
+    judge: (m) =>
+      m.trace
+        ? {
+            value: `${f1(m.trace.gc.majorPer1000)} (${m.trace.gc.major} in ${m.trace.frames} frames)`,
+            ok: m.trace.gc.majorPer1000 <= 2
+          }
+        : { value: 'no trace', ok: null }
+  },
+  {
+    id: 'L1',
+    sections: ['play', 'boss'],
+    what: 'frames in which the page was laid out',
+    limit: 'at most 5 %',
+    judge: (m) =>
+      m.trace
+        ? {
+            value: `${f1(m.trace.layout.share * 100)} % (${m.trace.layout.count} layouts)`,
+            ok: m.trace.layout.share <= 0.05
+          }
+        : { value: 'no trace', ok: null }
+  },
+  {
+    id: 'S1',
+    sections: ['play', 'boss'],
+    what: 'longest stall for compiling shaders on first use (only with --gpu)',
+    limit: 'at most 16 ms',
+    judge: (m) =>
+      gpu && m.trace
+        ? {
+            value: `${f0(m.trace.shaders.longest)} ms (${m.trace.shaders.programs} programs in ${m.trace.shaders.bursts.length} bursts)`,
+            ok: m.trace.shaders.longest <= 16
+          }
         : { value: 'not judged without --gpu', ok: null }
   },
   {
@@ -519,10 +554,12 @@ function installPerf() {
     perf.startSnap = snap()
     perf.logStart = session ? session.director.log.length : 0
     perf.on = true
+    performance.mark('perf:begin')
     return done
   }
 
   perf.end = () => {
+    performance.mark('perf:end')
     perf.on = false
     perf.cur = null
     const end = snap()
@@ -759,6 +796,7 @@ function analyze(data, { gpuRun = gpu } = {}) {
     phases,
     worst,
     painted: (data.painted ?? []).map((x) => ({ kind: x.kind, at: (x.t - data.t0) / 1000, stack: x.stack })),
+    trace: data.trace ?? null,
     log: data.log
   }
 }
@@ -778,6 +816,14 @@ function runMarkdown(name, m, notes = []) {
     `- cadence (frames on time, no hit-stop, no slow motion): the picture moves every ${m.cadence.beat} frame(s)${m.cadence.interpolated ? ', drawn between simulation states' : ''}; ${m.cadence.breaks} breaks of that beat (${f1(m.cadence.perMinute)} per minute), ${m.cadence.repeats} frames that repeated the picture, ${m.cadence.jumps} that jumped, of ${m.cadence.eligible} frames; longest run of repeats ${m.cadence.longestRepeatRun}`,
     `- hit-stop (staging): ${m.hitStop.frames} frames, ${f1(m.hitStop.share * 100)} % of the run`
   )
+  if (m.trace) {
+    const t = m.trace
+    lines.push(
+      `- garbage collection: ${t.gc.major} major (${f1(t.gc.majorPer1000)} per 1000 frames, longest ${f1(t.gc.majorLongest)} ms, ${f0(t.gc.majorMs)} ms in all), ${t.gc.minor} minor (longest ${f1(t.gc.minorLongest)} ms, ${f0(t.gc.minorMs)} ms in all)`,
+      `- style and layout: ${t.style.count} style recalculations (${f2(t.style.perFrame)} per frame, ${f0(t.style.ms)} ms), ${t.layout.count} layouts (in ${f1(t.layout.share * 100)} % of the frames, ${f0(t.layout.ms)} ms)`,
+      `- shaders compiled on first use${gpu ? '' : ' (software rendering, not judged without --gpu)'}: ${t.shaders.programs} programs${t.shaders.bursts.length ? `, ${t.shaders.bursts.map((b) => `${b.programs} at ${f2(b.at)} s (${f0(b.ms)} ms)`).join(', ')}` : ''}`
+    )
+  }
   for (const p of m.painted.slice(0, 4))
     lines.push(
       `- painted on the main thread at ${f2(p.at)} s (${p.kind}), asked from: ${p.stack.map((s) => `\`${s}\``).join(' < ')}`
@@ -964,9 +1010,84 @@ async function waitCalm(page) {
   await page.waitForFunction(() => window.__perf.calm >= 30, null, { timeout: 90_000, polling: 100 })
 }
 
+/**
+ * What a trace says about the stretch between the page's marks `perf:begin` and `perf:end`: the main thread's
+ * garbage collections, its style and layout work, and the shaders the GPU process compiled.
+ */
+function traceStats(buffer) {
+  let events
+  try {
+    const parsed = JSON.parse(buffer.toString('utf8'))
+    events = Array.isArray(parsed) ? parsed : parsed.traceEvents
+  } catch {
+    return null
+  }
+  const key = (e) => `${e.pid}:${e.tid}`
+  const begin = events.findLast((e) => e.name === 'perf:begin')
+  const end = events.findLast((e) => e.name === 'perf:end')
+  if (!begin) return null
+  const from = begin.ts
+  const to = end && end.ts > from ? end.ts : Infinity
+  // The game's thread is the one that marked the run.
+  const main = events.filter((e) => e.ph === 'X' && key(e) === key(begin) && e.ts >= from && e.ts < to)
+  const sum = (name) => {
+    const list = main.filter((e) => e.name === name)
+    return {
+      count: list.length,
+      ms: list.reduce((s, e) => s + e.dur, 0) / 1000,
+      longest: list.reduce((m, e) => Math.max(m, e.dur), 0) / 1000
+    }
+  }
+  // A frame is a round of animation-frame callbacks (callbacks less than 3 ms apart are one round).
+  let frames = 0
+  let last = -Infinity
+  for (const e of main.filter((x) => x.name === 'FireAnimationFrame').sort((a, b) => a.ts - b.ts)) {
+    if (e.ts - last >= 3000) frames += 1
+    last = e.ts + e.dur
+  }
+  const major = sum('MajorGC')
+  const minor = sum('MinorGC')
+  const layout = sum('Layout')
+  const style = sum('UpdateLayoutTree')
+  const gpuPid = events.find((e) => e.ph === 'M' && e.name === 'process_name' && e.args?.name === 'GPU Process')?.pid
+  const compiles = events
+    .filter((e) => e.pid === gpuPid && e.ph === 'X' && e.name === 'shader_compile' && e.ts >= from && e.ts < to)
+    .sort((a, b) => a.ts - b.ts)
+  // Compilations less than 50 ms apart stall the GPU process as one.
+  const bursts = []
+  for (const e of compiles) {
+    const burst = bursts.at(-1)
+    if (burst && e.ts - burst.end < 50_000) {
+      burst.end = e.ts + e.dur
+      burst.programs += 1
+      burst.ms += e.dur / 1000
+    } else bursts.push({ at: (e.ts - from) / 1e6, end: e.ts + e.dur, programs: 1, ms: e.dur / 1000 })
+  }
+  return {
+    frames,
+    gc: {
+      major: major.count,
+      majorMs: major.ms,
+      majorLongest: major.longest,
+      majorPer1000: frames ? (major.count / frames) * 1000 : 0,
+      minor: minor.count,
+      minorMs: minor.ms,
+      minorLongest: minor.longest
+    },
+    layout: { count: layout.count, ms: layout.ms, share: frames ? Math.min(1, layout.count / frames) : 0 },
+    style: { count: style.count, ms: style.ms, perFrame: frames ? style.count / frames : 0 },
+    shaders: {
+      programs: compiles.length,
+      longest: bursts.reduce((m, b) => Math.max(m, b.ms), 0),
+      bursts: bursts.map((b) => ({ at: b.at, programs: b.programs, ms: b.ms }))
+    }
+  }
+}
+
 /** Records `ms` of play (or less when the stage ends) and returns the raw data; `name` names the trace file. */
 async function recordFor(page, ms, options, name = 'run') {
-  if (trace) await browser.startTracing(page, { categories: TRACE_CATEGORIES })
+  await browser.startTracing(page, { categories: trace ? TRACE_CATEGORIES : LIGHT_CATEGORIES })
+  let buffer = null
   try {
     const moved = await page.evaluate((o) => window.__perf.begin(o), options)
     if (!moved) {
@@ -978,10 +1099,13 @@ async function recordFor(page, ms, options, name = 'run') {
       await sleep(Math.min(1000, Math.max(50, ms - (Date.now() - started))))
       if ((await screenOf(page)) !== 'play') break
     }
-    return await page.evaluate(() => window.__perf.end())
+    const data = await page.evaluate(() => window.__perf.end())
+    buffer = await browser.stopTracing()
+    data.trace = traceStats(buffer)
+    return data
   } finally {
-    if (trace) {
-      const buffer = await browser.stopTracing()
+    if (!buffer) buffer = await browser.stopTracing().catch(() => null)
+    if (trace && buffer) {
       mkdirSync(out, { recursive: true })
       writeFileSync(join(out, `trace-${slug(name)}.json`), buffer)
     }
