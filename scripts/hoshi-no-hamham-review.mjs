@@ -257,14 +257,25 @@ const finishTyping = (page) =>
     window.__hamham.app.screens.typer?.finish()
   })
 
-/** Clicks through story pages until the screen changes; `onPage(index)` runs with the text complete. */
+/**
+ * Clicks through story pages until the screen changes; `onPage(index)` runs with the text complete. A story that
+ * ends before its stage's art is ready leaves the story up behind a loading card: there is nothing more to tap
+ * then, only the stage to wait for (and, with `markStart`, the series starts when it comes).
+ */
 async function walkStory(page, touch, { fromScreen = 'story', onPage = null, markStart = false } = {}) {
   for (let index = 0; index < 40; index++) {
     if ((await screenOf(page)) !== fromScreen) return index
+    if (await page.locator('.warm-note:not([hidden])').isVisible()) {
+      await page.waitForFunction((from) => window.__hamham.app.screen !== from, fromScreen, { timeout: 60_000 })
+      if (markStart) await page.evaluate(() => window.__rk.start())
+      return index
+    }
     await finishTyping(page)
     if (onPage) await onPage(index)
     if (markStart) await page.evaluate(() => window.__rk.start())
-    await press(page, touch, '#story-next')
+    // The button can leave between the look and the tap (the last page hands over to the stage): not an error.
+    const next = page.locator('#story-next').first()
+    await (touch ? next.tap({ timeout: 5000 }) : next.click({ timeout: 5000 })).catch(() => undefined)
     await page.waitForTimeout(markStart ? 60 : 280)
   }
   throw new Error('the story never ended')
