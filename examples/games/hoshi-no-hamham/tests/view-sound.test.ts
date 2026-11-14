@@ -46,6 +46,8 @@ function recorder() {
     prepare() {},
     unlock() {},
     playing: (on) => rec.playing.push(on),
+    ahead: true,
+    whenAhead: () => Promise.resolve(),
     setMusic: (theme, layer = 0) => rec.music.push({ theme, layer }),
     sfx: (name, options) => rec.sfx.push({ name, options }),
     loop: (id, name, options) => rec.loops.push({ id, name, options }),

@@ -14,6 +14,8 @@
  *   --gpu       full Chromium with the GPU on, so frame intervals mean something (see the README)
  *   --check     exit code 1 when any budget fails
  *   --raw       also write the per-frame log of every run to raw-<run>.json
+ *   --trace     also write a Chromium trace of every recorded run to trace-<run>.json (large; what the main thread
+ *               and the GPU process did in a slow frame: garbage collection, layout, paint, commits)
  *   --out       output folder (default .build/hoshi-no-hamham-perf/, ignored by Git)
  *
  * Output: report.md (command, environment, the budget summary, one part per section) and report.json (the same
@@ -75,6 +77,18 @@ const dev = flag('--dev')
 const gpu = flag('--gpu')
 const check = flag('--check')
 const raw = flag('--raw')
+const trace = flag('--trace')
+/** Trace categories: the timeline's own, V8's garbage collector, top-level tasks, the compositor and the GPU. */
+const TRACE_CATEGORIES = [
+  'devtools.timeline',
+  'v8',
+  'disabled-by-default-v8.gc',
+  'blink.user_timing',
+  'toplevel',
+  'cc',
+  'viz',
+  'gpu'
+]
 const out = resolve(valueOf('--out') ?? join(root, '.build/hoshi-no-hamham-perf'))
 
 // ------------------------------------------------------------------------------------------------- budgets
@@ -264,6 +278,8 @@ function installPerf() {
     longtasks: [],
     lafs: [],
     ticks: [],
+    painted: [],
+    watched: false,
     wrapped: new WeakSet(),
     worlds: new WeakMap()
   }
@@ -288,9 +304,40 @@ function installPerf() {
     obj[name] = wrapped
   }
 
+  /** Notes where every piece of art painted on the main thread is asked from (the counters are plain fields). */
+  const watchArt = () => {
+    const art = window.__hamham?.stats?.art
+    if (!art || perf.watched) return
+    perf.watched = true
+    for (const kind of ['clips', 'tiles', 'backdrops', 'decor']) {
+      let value = art[kind]
+      Object.defineProperty(art, kind, {
+        enumerable: true,
+        configurable: true,
+        get: () => value,
+        set: (next) => {
+          if (next > value && perf.painted.length < 400) {
+            const stack = String(new Error().stack)
+              .split('\n')
+              .slice(2, 10)
+              .map((line) =>
+                line
+                  .trim()
+                  .replace(/^at /, '')
+                  .replace(/https?:\/\/[^/]+\//, '')
+              )
+            perf.painted.push({ kind, t: now(), stack })
+          }
+          value = next
+        }
+      })
+    }
+  }
+
   const instrument = () => {
     const app = window.__hamham?.app
     if (!app) return
+    watchArt()
     const session = app.session
     if (session && !perf.wrapped.has(session)) {
       perf.wrapped.add(session)
@@ -498,6 +545,7 @@ function installPerf() {
       maxK: renderer.maxK,
       canvas: [renderer.canvas.width, renderer.canvas.height],
       css: [renderer.canvas.clientWidth, renderer.canvas.clientHeight],
+      painted: perf.painted.filter((x) => x.t >= start.t && x.t < end.t),
       log: session ? session.director.log.slice(perf.logStart) : [],
       screen: app.screen
     }
@@ -710,6 +758,7 @@ function analyze(data, { gpuRun = gpu } = {}) {
     events,
     phases,
     worst,
+    painted: (data.painted ?? []).map((x) => ({ kind: x.kind, at: (x.t - data.t0) / 1000, stack: x.stack })),
     log: data.log
   }
 }
@@ -729,6 +778,11 @@ function runMarkdown(name, m, notes = []) {
     `- cadence (frames on time, no hit-stop, no slow motion): the picture moves every ${m.cadence.beat} frame(s)${m.cadence.interpolated ? ', drawn between simulation states' : ''}; ${m.cadence.breaks} breaks of that beat (${f1(m.cadence.perMinute)} per minute), ${m.cadence.repeats} frames that repeated the picture, ${m.cadence.jumps} that jumped, of ${m.cadence.eligible} frames; longest run of repeats ${m.cadence.longestRepeatRun}`,
     `- hit-stop (staging): ${m.hitStop.frames} frames, ${f1(m.hitStop.share * 100)} % of the run`
   )
+  for (const p of m.painted.slice(0, 4))
+    lines.push(
+      `- painted on the main thread at ${f2(p.at)} s (${p.kind}), asked from: ${p.stack.map((s) => `\`${s}\``).join(' < ')}`
+    )
+  if (m.painted.length > 4) lines.push(`- ... and ${m.painted.length - 4} more`)
   if (m.log.length) lines.push(`- staged moments seen: ${m.log.join(', ')}`)
   if (m.frames < m.seconds * 20)
     lines.push(
@@ -890,9 +944,14 @@ async function enterStage(page, stageNo, { storyWait = 2500 } = {}) {
   await finishStory(page)
 }
 
+/** True while the story's last page has been confirmed and play waits behind the loading card. */
+const loadingCardUp = (page) => page.evaluate(() => Boolean(document.querySelector('.warm-note:not([hidden])')))
+
 async function finishStory(page) {
   for (let index = 0; index < 40; index++) {
     if ((await screenOf(page)) !== 'story') break
+    // Nothing more to tap: the stage starts by itself once it is ready.
+    if (await loadingCardUp(page)) break
     await page.evaluate(() => window.__hamham.app.screens.typer?.finish())
     await tap(page, '#story-next', 'story next')
     await page.waitForTimeout(280)
@@ -905,19 +964,28 @@ async function waitCalm(page) {
   await page.waitForFunction(() => window.__perf.calm >= 30, null, { timeout: 90_000, polling: 100 })
 }
 
-/** Records `ms` of play (or less when the stage ends) and returns the raw data. */
-async function recordFor(page, ms, options) {
-  const moved = await page.evaluate((o) => window.__perf.begin(o), options)
-  if (!moved) {
-    await page.evaluate(() => window.__perf.end())
-    throw new Error(`the move "${options.action}" could not be made (stage 2 has no boss?)`)
+/** Records `ms` of play (or less when the stage ends) and returns the raw data; `name` names the trace file. */
+async function recordFor(page, ms, options, name = 'run') {
+  if (trace) await browser.startTracing(page, { categories: TRACE_CATEGORIES })
+  try {
+    const moved = await page.evaluate((o) => window.__perf.begin(o), options)
+    if (!moved) {
+      await page.evaluate(() => window.__perf.end())
+      throw new Error(`the move "${options.action}" could not be made (stage 2 has no boss?)`)
+    }
+    const started = Date.now()
+    while (Date.now() - started < ms) {
+      await sleep(Math.min(1000, Math.max(50, ms - (Date.now() - started))))
+      if ((await screenOf(page)) !== 'play') break
+    }
+    return await page.evaluate(() => window.__perf.end())
+  } finally {
+    if (trace) {
+      const buffer = await browser.stopTracing()
+      mkdirSync(out, { recursive: true })
+      writeFileSync(join(out, `trace-${slug(name)}.json`), buffer)
+    }
   }
-  const started = Date.now()
-  while (Date.now() - started < ms) {
-    await sleep(Math.min(1000, Math.max(50, ms - (Date.now() - started))))
-    if ((await screenOf(page)) !== 'play') break
-  }
-  return page.evaluate(() => window.__perf.end())
 }
 
 function rawFile(name, data) {
@@ -1026,6 +1094,7 @@ async function sectionMenus() {
     await step('story idle 4 s', async () => {}, 4000)
     for (let i = 1; i <= 40; i++) {
       if ((await screenOf(page)) !== 'story') break
+      if (await loadingCardUp(page)) break
       await step(
         `story next ${i}`,
         async () => {
@@ -1125,7 +1194,7 @@ async function sectionPlay() {
         await enterStage(run.page, stageNo)
         await run.page.evaluate(() => window.__hamham.autopilot(true))
         await waitCalm(run.page)
-        const data = await recordFor(run.page, seconds * 1000, HIT)
+        const data = await recordFor(run.page, seconds * 1000, HIT, `play ${name}`)
         rawFile(`play-${name}`, data)
         const m = analyze(data)
         runs.push({ name, ...m })
@@ -1185,7 +1254,7 @@ async function sectionBoss() {
       { name: 'boss defeat', ms: 5000, action: 'killBoss' }
     ]
     for (const phase of phases) {
-      const data = await recordFor(run.page, phase.ms, { ...HIT, action: phase.action })
+      const data = await recordFor(run.page, phase.ms, { ...HIT, action: phase.action }, phase.name)
       rawFile(phase.name, data)
       const m = analyze(data)
       runs.push({ name: phase.name, ...m })
@@ -1235,7 +1304,7 @@ async function sectionPacing() {
     await enterStage(run.page, 2)
     await run.page.evaluate(() => window.__hamham.autopilot(true))
     await waitCalm(run.page)
-    const data = await recordFor(run.page, 20_000, { topUp: true })
+    const data = await recordFor(run.page, 20_000, { topUp: true }, 'pacing')
     rawFile('pacing', data)
     const m = analyze(data)
     const summary = BUDGETS.filter((b) => b.sections.includes('pacing')).map((b) => ({

@@ -1,7 +1,8 @@
 /**
  * Boot: the page already shows the splash from index.html (night sky, the hero's portrait, a progress bar).
- * After that first paint this loads the code (importing an art module draws nothing), warms the title's art one
- * animation clip per slice (moving the bar between slices), builds the App, and fades the splash out once the title's first frame has been drawn.
+ * After that first paint this loads the code (importing an art module draws nothing), starts the art workers, warms
+ * the title's art through them (adopting and baking one piece per slice, moving the bar between slices), builds the
+ * App, and fades the splash out once the title's first frame has been drawn.
  */
 import type { App } from './app'
 
@@ -53,15 +54,28 @@ export async function boot(canvas: HTMLCanvasElement): Promise<App> {
     performance.mark?.('hamham:boot-start')
     await nextFrame()
     await yieldToBrowser()
-    const { runSteps, stageWarmSteps, mark } = await import('./warm')
+    const {
+      APP_SHEETS,
+      clipSteps,
+      mark,
+      runSteps,
+      warmStage,
+      yieldToBrowser: slice,
+      SLICE_BUDGET_MS
+    } = await import('./warm')
+    const { artSource } = await import('../art/remote')
     const { stageByNo } = await import('../game/stages')
     const { App, DEMO_STAGES } = await import('./app')
     setProgress(LOAD_SHARE)
     await yieldToBrowser()
+    // The workers paint from here on; the page adopts and bakes.
+    const source = artSource()
     // The demo behind the title plays DEMO_STAGES[0] first: that stage's art is what the title needs.
-    await runSteps(stageWarmSteps(stageByNo(DEMO_STAGES[0])), (fraction) =>
+    await warmStage(stageByNo(DEMO_STAGES[0]), (fraction) =>
       setProgress(LOAD_SHARE + fraction * (ART_SHARE - LOAD_SHARE))
     )
+    // And what the App draws as soon as it is built, beyond the stage.
+    await runSteps(clipSteps(APP_SHEETS), undefined, slice, SLICE_BUDGET_MS, () => performance.now(), source)
     mark('hamham:app-start')
     const app = new App(canvas)
     mark('hamham:app-built')

@@ -176,6 +176,16 @@ class WebAudio implements GameAudio {
     this.safe(() => this.bank?.setPlaying(on))
   }
 
+  get ahead(): boolean {
+    // Without a bank yet (no `prepare()`), or muted, a stage has nothing to wait for.
+    return this.muted || !this.bank || this.bank.baseReady
+  }
+
+  whenAhead(timeoutMs: number): Promise<void> {
+    if (this.ahead || !this.bank) return Promise.resolve()
+    return this.bank.whenBaseReady(timeoutMs)
+  }
+
   setDuck(amount: number): void {
     this.duck = Math.max(0, Math.min(1, Number.isFinite(amount) ? amount : 0))
     this.safe(() => this.engine?.setDuck(this.duck))

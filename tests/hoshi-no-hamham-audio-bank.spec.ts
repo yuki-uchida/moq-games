@@ -1,12 +1,20 @@
 import { expect, test, type Page } from '@playwright/test'
-import { openGame, reloadGame } from './hoshi-no-hamham-helpers'
+import { openGame, pageThroughStory, reloadGame } from './hoshi-no-hamham-helpers'
 
 /** The parts of the audio these tests look inside (private at compile time, plain fields at run time). */
 interface HamAudio {
   muted: boolean
   ctx: { state: string; currentTime: number } | null
   engine: unknown
-  bank: { done: boolean; unavailable: boolean; size: number; samples: number; startedAt: number; finishedAt: number }
+  bank: {
+    done: boolean
+    unavailable: boolean
+    size: number
+    samples: number
+    batches: number
+    startedAt: number
+    finishedAt: number
+  }
   unlock(): void
   setMuted(muted: boolean): void
 }
@@ -94,6 +102,7 @@ test('the effects are rendered before any click, and the engine is ready for the
       unavailable: b.unavailable,
       size: b.size,
       samples: b.samples,
+      batches: b.batches,
       startedAt: b.startedAt,
       finishedAt: b.finishedAt
     }
@@ -102,9 +111,14 @@ test('the effects are rendered before any click, and the engine is ready for the
   expect(bank.unavailable).toBe(false)
   expect(rendered).toBe(bank.size)
   expect(rendered).toBeGreaterThan(77)
+  // Several effects share an offline context: far fewer contexts than buffers.
+  expect(bank.batches).toBeGreaterThan(0)
+  expect(bank.batches).toBeLessThan(rendered / 4)
   const seconds = (bank.finishedAt - bank.startedAt) / 1000
   const megabytes = (bank.samples * 4) / 1024 / 1024
-  console.log(`[bank] ${rendered} buffers rendered in ${seconds.toFixed(1)} s, ${megabytes.toFixed(1)} MB`)
+  console.log(
+    `[bank] ${rendered} buffers rendered in ${bank.batches} contexts in ${seconds.toFixed(1)} s, ${megabytes.toFixed(1)} MB`
+  )
   // The engine was built in slices before the click.
   expect(await page.evaluate(() => window.__hamham!.app.audio.engine !== null)).toBe(true)
   expect(errors).toEqual([])
@@ -194,11 +208,7 @@ test('in a stage the bot hits are played from buffers', async ({ page }) => {
   await page.locator('.stage-card').first().click()
   await page.waitForFunction(() => window.__hamham!.app.audio.bank?.done === true, null, { timeout: 100_000 })
   await page.evaluate(() => window.__hamham!.autopilot(true))
-  for (let i = 0; i < 10; i++) {
-    const next = page.locator('#story-next')
-    if (!(await next.isVisible())) break
-    await next.click()
-  }
+  await pageThroughStory(page)
   await expect(page.locator('#hud')).toBeVisible()
   await page.waitForFunction(() => Boolean(window.__hamham?.world))
 

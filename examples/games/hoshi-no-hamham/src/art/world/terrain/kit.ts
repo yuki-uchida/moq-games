@@ -166,12 +166,9 @@ export function scatter(
  */
 export function memoTile(build: (q: TileQuery) => Raster) {
   const cache = new Map<string, Raster>()
+  memos.push(cache)
   return (q: TileQuery): Raster => {
-    const mask = q.around.reduce((m: number, n, i) => m | (kindBits(n) << (i * 3)), 0)
-    const key =
-      q.kind === 'platform' || q.kind === 'spike'
-        ? `${q.kind}:${mask}:${wrap(q.tx, 4)}`
-        : `${q.kind}:${mask}:${wrap(q.tx, WRAP_X)}:${wrap(q.ty, WRAP_Y)}`
+    const key = tileKey(q)
     let tile = cache.get(key)
     if (!tile) {
       tile = counted('tiles', () => build(q))
@@ -179,6 +176,21 @@ export function memoTile(build: (q: TileQuery) => Raster) {
     }
     return tile
   }
+}
+
+const memos: Map<string, Raster>[] = []
+
+/** Empties every theme's tile cache (a worker that has sent its tiles need not keep them). */
+export function clearTileMemos() {
+  for (const cache of memos) cache.clear()
+}
+
+/** The cache key of a tile within its theme: two queries with the same key get the same picture. */
+export function tileKey(q: TileQuery): string {
+  const mask = q.around.reduce((m: number, n, i) => m | (kindBits(n) << (i * 3)), 0)
+  return q.kind === 'platform' || q.kind === 'spike'
+    ? `${q.kind}:${mask}:${wrap(q.tx, 4)}`
+    : `${q.kind}:${mask}:${wrap(q.tx, WRAP_X)}:${wrap(q.ty, WRAP_Y)}`
 }
 
 const KIND_BITS: Record<TileKind | 'empty', number> = { empty: 0, solid: 1, dirt: 2, platform: 3, spike: 4 }

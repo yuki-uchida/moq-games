@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { runSteps, stageArt, stageWarmSteps, type WarmStep } from '../src/app/warm'
-import { sheet } from '../src/art'
+import { runSteps, stageArt, stageWarmSteps, TILES_PER_STEP, type WarmStep } from '../src/app/warm'
+import { sheet, tileKey } from '../src/art'
 import { THEMES, allSheetSpecs, themedProp, type ThemeId } from '../src/art/contract'
-import { World } from '../src/game/sim'
+import type { ArtReply, ArtRequest, ArtSource } from '../src/art/remote'
+import { TILE, World } from '../src/game/sim'
 import { STAGES } from '../src/game/stages'
+import { stageTileQueries, tileQuery } from '../src/view/terrain'
 
 /** The sheet a prop kind is drawn from, written out independently of warm.ts. */
 function propSheets(kind: string, data: number, theme: ThemeId): string[] {
@@ -68,10 +70,40 @@ describe('what a stage draws', () => {
         expect(new Set(art.sheets).size).toBe(art.sheets.length)
       })
 
-      it('turns into one slice per clip of each sheet plus the backdrop', () => {
+      it('lists what the stage can spawn while it runs', () => {
+        // A broken rock may drop a fruit; on the nest stage digging and felled trees drop twigs and berries.
+        if (world.props.some((prop) => prop.kind === 'rock')) expect(art.sheets).toContain('prop:fruit')
+        if (stage.objective === 'collect')
+          expect(art.sheets).toEqual(expect.arrayContaining(['prop:twig', 'prop:berry']))
+        // Spitters shoot seeds.
+        if (world.enemies.some((enemy) => enemy.kind === 'spitter') || stage.boss.minions.includes('spitter'))
+          expect(art.sheets).toContain('prop:seed')
+      })
+
+      it('turns into one slice per clip of each sheet, the backdrop, the decorations and the terrain tiles', () => {
         const steps = stageWarmSteps(stage)
         const clips = art.sheets.flatMap((id) => Object.keys(sheet(id)).map((name) => `${id}.${name}`))
-        expect(steps.map((step) => step.label)).toEqual([...clips, `backdrop:${art.backdrop}`])
+        const queries = stageTileQueries(world, Math.floor(world.player.x / TILE))
+        const batches = Array.from(
+          { length: Math.ceil(queries.length / TILES_PER_STEP) },
+          (_, i) => `tiles:${stage.theme}:${i}`
+        )
+        expect(steps.map((step) => step.label)).toEqual([
+          ...clips,
+          `backdrop:${art.backdrop}`,
+          `decor:${art.backdrop}`,
+          'text',
+          ...batches
+        ])
+        // The tile slices ask for the picture of every non-empty cell of the map.
+        const asked = new Set(
+          steps.flatMap((step) => (step.request?.kind === 'tiles' ? step.request.queries.map(tileKey) : []))
+        )
+        for (let ty = 0; ty < world.h; ty++)
+          for (let tx = 0; tx < world.w; tx++) {
+            const q = tileQuery(world, tx, ty)
+            if (q) expect(asked.has(tileKey(q))).toBe(true)
+          }
       })
     })
   }
@@ -143,5 +175,123 @@ describe('runSteps', () => {
       async () => {}
     )
     expect(progress.at(-1)).toBe(1)
+  })
+})
+
+describe('runSteps through an art source', () => {
+  /** A source that answers when the test says so; replies are local (nothing to adopt). */
+  function fakeSource() {
+    const asked: { request: ArtRequest; resolve: (reply: ArtReply) => void; reject: (error: unknown) => void }[] = []
+    const source: ArtSource = {
+      remote: true,
+      request: (request) => new Promise((resolve, reject) => asked.push({ request, resolve, reject }))
+    }
+    return { source, asked }
+  }
+  const request = (name: string): ArtRequest => ({ kind: 'clip', sheet: 'fx', clip: name, flash: false })
+
+  it('sends every request at once, then bakes each answer in order as it arrives', async () => {
+    const { source, asked } = fakeSource()
+    const log: string[] = []
+    const steps: WarmStep[] = ['a', 'b', 'c'].map((name) => ({
+      label: name,
+      weight: 1,
+      request: request(name),
+      run: () => void log.push(`run ${name}`)
+    }))
+    const running = runSteps(
+      steps,
+      undefined,
+      async () => void log.push('yield'),
+      1000,
+      () => 0,
+      source
+    )
+    expect(asked.map((a) => (a.request.kind === 'clip' ? a.request.clip : ''))).toEqual(['a', 'b', 'c'])
+    expect(log).toEqual([])
+    // Answers may arrive out of order; baking keeps the order of the steps.
+    asked[1].resolve({ kind: 'local' })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(log).toEqual([])
+    asked[0].resolve({ kind: 'local' })
+    asked[2].resolve({ kind: 'local' })
+    await running
+    expect(log).toEqual(['run a', 'run b', 'run c', 'yield'])
+  })
+
+  it('asks nothing for art that is already here, and paints here what the source failed to paint', async () => {
+    const { source, asked } = fakeSource()
+    const log: string[] = []
+    const steps: WarmStep[] = [
+      { label: 'here', weight: 1, request: request('here'), ready: () => true, run: () => void log.push('here') },
+      { label: 'lost', weight: 1, request: request('lost'), run: () => void log.push('lost') },
+      { label: 'plain', weight: 1, run: () => void log.push('plain') }
+    ]
+    const running = runSteps(
+      steps,
+      undefined,
+      async () => {},
+      1000,
+      () => 0,
+      source
+    )
+    expect(asked).toHaveLength(1)
+    asked[0].reject(new Error('worker gone'))
+    await running
+    expect(log).toEqual(['here', 'lost', 'plain'])
+  })
+
+  it('starts a new slice after waiting for an answer, so waiting never counts as work', async () => {
+    const { source, asked } = fakeSource()
+    let clock = 0
+    const log: string[] = []
+    const steps: WarmStep[] = ['a', 'b'].map((name) => ({
+      label: name,
+      weight: 1,
+      request: request(name),
+      run: () => {
+        clock += 5
+        log.push(name)
+      }
+    }))
+    const running = runSteps(
+      steps,
+      undefined,
+      async () => void log.push('yield'),
+      8,
+      () => clock,
+      source
+    )
+    // The workers take 100 ms for the first answer: that time is not the page's.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    clock += 100
+    asked[0].resolve({ kind: 'local' })
+    asked[1].resolve({ kind: 'local' })
+    await running
+    // 5 + 5 ms of baking stays in one slice until the budget of 8 is used up.
+    expect(log).toEqual(['a', 'b', 'yield'])
+  })
+
+  it('asks with the hurry it was given (a background warm-up waits behind everything else)', async () => {
+    const hurries: unknown[] = []
+    const source: ArtSource = {
+      remote: true,
+      request: (_request, hurry) => {
+        hurries.push(hurry)
+        return Promise.resolve({ kind: 'local' })
+      }
+    }
+    const steps: WarmStep[] = ['a', 'b'].map((name) => ({ label: name, weight: 1, request: request(name), run() {} }))
+    const hurry = { background: true, group: 'stage:5' }
+    await runSteps(
+      steps,
+      undefined,
+      async () => {},
+      8,
+      () => 0,
+      source,
+      hurry
+    )
+    expect(hurries).toEqual([hurry, hurry])
   })
 })

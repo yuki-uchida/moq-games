@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test'
-import { openGame, reloadGame } from './hoshi-no-hamham-helpers'
+import { openGame, pageThroughStory, reloadGame } from './hoshi-no-hamham-helpers'
 
 interface HudWorld {
   player: { hp: number; maxHp: number; x: number; y: number; w: number; h: number; invuln: number }
@@ -75,11 +75,7 @@ async function open(
     .locator('.stage-card')
     .nth(stageNo - 1)
     .click()
-  for (let i = 0; i < 8; i++) {
-    const next = page.locator('#story-next')
-    if (!(await next.isVisible())) break
-    await next.click()
-  }
+  await pageThroughStory(page, 8)
   await expect(page.locator('#hud')).toBeVisible()
   const cdp = touch ? await context.newCDPSession(page) : null
   const session: Session = {
