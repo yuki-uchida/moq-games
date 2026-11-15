@@ -279,6 +279,83 @@ describe('the pictures of popup texts', () => {
     expect(warmPopupPicture('+1', POPUP_COLORS.fruit, 3)).toBe(false)
     expect(popupPictureCount()).toBe(0)
   })
+
+  /** The properties of the game's canvas that only a popup written as text needs. */
+  const TEXT_PROPERTIES = ['textAlign', 'textBaseline', 'lineJoin', 'font', 'lineWidth', 'strokeStyle', 'fillStyle']
+  /** A context of the game's canvas that writes down which properties are read and which are set, and the texts. */
+  function watched(held: Record<string, unknown>) {
+    const read = new Set<string>()
+    const written = new Set<string>()
+    const texts: string[] = []
+    const fake = fakeContext()
+    Object.assign(fake.ctx, held)
+    const ctx = new Proxy(fake.ctx as unknown as Record<string, unknown>, {
+      get: (target, key: string) => {
+        if (key === 'fillText') return (text: string) => void texts.push(text)
+        read.add(key)
+        return Reflect.get(target, key)
+      },
+      set: (target, key: string, value) => {
+        written.add(key)
+        return Reflect.set(target, key, value)
+      }
+    }) as unknown as CanvasRenderingContext2D
+    const now = () => Object.fromEntries(Object.keys(held).map((key) => [key, Reflect.get(fake.ctx, key)]))
+    return { ctx, read, written, texts, now }
+  }
+  const HELD = {
+    textAlign: 'start',
+    textBaseline: 'alphabetic',
+    lineJoin: 'miter',
+    font: '10px sans-serif',
+    lineWidth: 1,
+    strokeStyle: '#000000',
+    fillStyle: '#123456',
+    globalAlpha: 1,
+    imageSmoothingEnabled: false
+  }
+
+  it('neither reads nor sets a property of text on the canvas for a popup that is a picture', () => {
+    fakePage()
+    const overlay = new Overlay()
+    const view = watched(HELD)
+    overlay.popup('+1', 0, 0, POPUP_COLORS.fruit)
+    overlay.popup('ナイス！', 0, 0, POPUP_COLORS.gold)
+    for (let i = 0; i < 4; i++) {
+      overlay.update(0.2)
+      overlay.drawPopups(view.ctx, 0, 0, 3)
+    }
+    for (const key of TEXT_PROPERTIES) {
+      expect(view.read.has(key), `${key} read`).toBe(false)
+      expect(view.written.has(key), `${key} set`).toBe(false)
+    }
+    // What a picture does change (it fades with an alpha and is drawn smoothed) is put back.
+    expect(view.written.has('globalAlpha')).toBe(true)
+    expect(view.written.has('imageSmoothingEnabled')).toBe(true)
+    expect(view.now()).toEqual(HELD)
+    expect(view.texts).toEqual([])
+  })
+
+  it('writes a popup without a picture as text and puts every property back', () => {
+    globals.document = undefined
+    const overlay = new Overlay()
+    const view = watched(HELD)
+    overlay.popup('+1', 0, 0, POPUP_COLORS.fruit)
+    overlay.popup('3/8', 0, 0, POPUP_COLORS.count)
+    overlay.update(0.9)
+    overlay.drawPopups(view.ctx, 0, 0, 3)
+    expect(view.texts).toEqual(['+1', '3/8'])
+    for (const key of TEXT_PROPERTIES) expect(view.written.has(key), `${key} set`).toBe(true)
+    expect(view.now()).toEqual(HELD)
+  })
+
+  it('leaves the canvas alone when no popup is on', () => {
+    const overlay = new Overlay()
+    const view = watched(HELD)
+    overlay.drawPopups(view.ctx, 0, 0, 3)
+    expect(view.read.size).toBe(0)
+    expect(view.written.size).toBe(0)
+  })
 })
 
 describe('warmOverlayText', () => {
