@@ -275,7 +275,7 @@ describe('fx-map', () => {
 })
 
 describe('sound-map', () => {
-  it('has an entry for every event type, and a sound for all but the two voiced by staging or music', () => {
+  it('has an entry for every event type, and a sound for all but the three voiced by staging or music', () => {
     expect(Object.keys(SOUND_MAP).sort()).toEqual([...SIM_EVENT_TYPES].sort())
     const silent = new Set<string>()
     for (const type of SIM_EVENT_TYPES) {
@@ -283,7 +283,7 @@ describe('sound-map', () => {
       for (const call of calls) expect(SFX, type).toContain(call.name)
       if (calls.length === 0) silent.add(type)
     }
-    // The clear jingle is music; the boss roar is a staging cue.
-    expect([...silent].sort()).toEqual(['boss-awake', 'clear'])
+    // The clear jingle is music; the boss roar and the transformation are staging cues.
+    expect([...silent].sort()).toEqual(['boss-awake', 'boss-phase', 'clear'])
   })
 })

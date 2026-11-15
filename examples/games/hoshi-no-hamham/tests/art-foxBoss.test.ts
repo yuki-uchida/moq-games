@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest'
-import { drawFox, footfalls, foxRig, idlePoses, movePoses, shootPoses } from '../src/art/chars/bosses/fox'
+import { airPoses, drawFox, footfalls, foxRig, idlePoses, movePoses, shootPoses } from '../src/art/chars/bosses/fox'
 import { bossSpec } from '../src/art/contract'
 import { sheet } from '../src/art/index'
+import { anchorOf } from '../src/art/sheet'
 import { R } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
 
@@ -90,7 +91,7 @@ describe('きつね旋風 (foxBoss) on the rig', () => {
   })
 
   describe('shoot: the ninja cast', () => {
-    /** The pale core of the fox-fire and of the release flash: no other drawing of his uses it. */
+    /** The pale core the fox-fire and the release flash would be drawn with: none of his drawings uses it. */
     const fire = new Set<number>([R.fire[0]])
     const front = (f: Raster) => box(f).x + box(f).w - 1
     const bottom = (f: Raster) => box(f).y + box(f).h - 1
@@ -132,13 +133,14 @@ describe('きつね旋風 (foxBoss) on the rig', () => {
       expect(Math.abs(wrist(3)[1] - (120 - 63 * 0.6))).toBeLessThanOrEqual(8)
     })
 
-    test('the fox-fire burns in frames 1–3 and is gone by frame 5', () => {
-      const fs = s.shoot.frames
-      for (const i of [1, 2, 3]) expect(count(fs[i], fire), `shoot ${i} fire`).toBeGreaterThanOrEqual(3)
-      expect(count(fs[2], fire), 'the flame grows').toBeGreaterThan(count(fs[1], fire))
-      expect(count(fs[5], fire), 'shoot 5 fire').toBe(0)
-      for (const name of ['idle', 'move', 'windup', 'attack', 'recover', 'intro', 'hurt', 'defeat'])
-        for (const [i, f] of s[name].frames.entries()) expect(count(f, fire), `${name} ${i} fire`).toBe(0)
+    test('a command, not a throw: no fox-fire over the paw and no flash at the fingertips in any frame', () => {
+      // the orb gathers in the light on his body (the view's `gather`); nothing burns in his hand
+      for (const [i, p] of shootPoses().entries()) {
+        expect(p.fire, `shoot ${i} flame radius`).toBe(0)
+        expect(p.flash, `shoot ${i} release flash`).toBe(0)
+      }
+      for (const [name, anim] of Object.entries(s))
+        for (const [i, f] of anim.frames.entries()) expect(count(f, fire), `${name} ${i} fire`).toBe(0)
     })
 
     test('neighbouring frames differ', () => {
@@ -159,11 +161,87 @@ describe('きつね旋風 (foxBoss) on the rig', () => {
     }
   })
 
+  describe('air: off the ground with no gesture (0 rising, 1 the top, 2 falling)', () => {
+    const fs = () => s.air.frames
+
+    test('three frames, all clearly off the ground rows', () => {
+      expect(fs().length).toBe(3)
+      const [, ay] = anchorOf(s.air)
+      for (const [i, f] of fs().entries()) {
+        // nothing on the ground rows the feet stand on (the anchor row and the one above), with air under him
+        for (const y of [ay - 1, ay, ay + 1])
+          for (let x = 0; x < f.w; x++) expect(f.get(x, y), `air ${i} at ${x},${y}`).toBe(0)
+        const bottom = box(f).y + box(f).h - 1
+        expect(bottom, `air ${i} bottom ${bottom}`).toBeLessThanOrEqual(ay - 4)
+      }
+    })
+
+    test('the three frames differ', () => {
+      const f = fs()
+      for (let i = 0; i < f.length; i++)
+        for (let j = i + 1; j < f.length; j++)
+          expect(differ(f[i], f[j]), `air ${i} vs ${j}`).toBeGreaterThanOrEqual(0.1)
+    })
+
+    test('he stays the size of his leap, inside the cell', () => {
+      const leap = [1, 2, 3, 4].map((i) => box(s.shoot.frames[i]))
+      const hMax = Math.max(...leap.map((b) => b.h))
+      const wMax = Math.max(...leap.map((b) => b.w))
+      for (const [i, f] of fs().entries()) {
+        const b = box(f)
+        expect(b.h, `air ${i} height`).toBeLessThanOrEqual(hMax + 8)
+        expect(b.w, `air ${i} width`).toBeLessThanOrEqual(wMax + 4)
+        expect(b.h, `air ${i} height`).toBeGreaterThanOrEqual(Math.min(...leap.map((q) => q.h)) - 12)
+      }
+    })
+
+    test('no gesture: nothing burns in his hands, the hands are open, no whirl', () => {
+      for (const [i, p] of airPoses().entries()) {
+        expect(p.fire, `air ${i} flame`).toBe(0)
+        expect(p.flash, `air ${i} flash`).toBe(0)
+        expect(p.spin, `air ${i} spin`).toBe(0)
+        expect(p.wind, `air ${i} wind`).toBe(0)
+        expect([p.handN, p.handF], `air ${i} hands`).toEqual(['open', 'open'])
+      }
+    })
+
+    test('falling (frame 2): headband and tail stream up; rising (frame 0): the tail hangs down', () => {
+      const [p0, , p2] = airPoses()
+      // the band's direction is + down; the tail's spine is in pelvis units with v down
+      expect(p2.band[0]).toBeLessThan(-30)
+      expect(p2.tail[4][1]).toBeLessThan(-30)
+      expect(p0.tail[4][1]).toBeGreaterThan(20)
+    })
+  })
+
   test('grounded clips stand on the anchor row', () => {
     for (const name of ['idle', 'recover', 'windup'])
       for (const [i, f] of s[name].frames.entries()) {
         const bottom = box(f).y + box(f).h - 1
         expect(Math.abs(bottom - 120), `${name} ${i} bottom ${bottom}`).toBeLessThanOrEqual(1)
       }
+  })
+
+  test('every frame a shot can leave from has his body under both places it is born', () => {
+    // sim.ts makes the shot 7 px beside the middle of his box (to the right facing right; mirrored, the same world
+    // place is 7 px behind his middle), 0.4 of the 63.36 px box down from its top, plus 7: the light gathers there
+    // and the shot comes out of it, so in every frame of these clips both places lie on a painted pixel or within 3 px
+    // of one
+    const H = 63.36
+    // `air` too: the light can show while he drops off a ledge in his wind-up
+    for (const name of ['idle', 'move', 'windup', 'attack', 'shoot', 'recover', 'hurt', 'air']) {
+      const anim = s[name]
+      const [ax, ay] = anchorOf(anim)
+      const by = Math.round(ay - H + H * 0.4 + 7)
+      const limit = 3
+      for (const [i, f] of anim.frames.entries())
+        for (const bx of [Math.round(ax + 7), Math.round(ax - 7)]) {
+          let best = Infinity
+          for (let y = Math.max(0, by - 6); y <= Math.min(f.h - 1, by + 6); y++)
+            for (let x = Math.max(0, bx - 6); x <= Math.min(f.w - 1, bx + 6); x++)
+              if (f.get(x, y)) best = Math.min(best, Math.hypot(x - bx, y - by))
+          expect(best, `${name} ${i} at ${bx - ax},${by - ay}`).toBeLessThanOrEqual(limit)
+        }
+    }
   })
 })

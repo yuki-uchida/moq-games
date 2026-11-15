@@ -49,13 +49,13 @@ import {
   castFit,
   castLeadTime,
   FIT_MIN,
+  attackRoom,
   castRoom,
   flinchRoom,
   flinchFit,
   shotLead,
   shotDue,
   SHOT_CUE_SECONDS,
-  summonFit,
   FLYER_SHOT_INTERVAL,
   STUN_SHOW_AFTER,
   SWARM_SHOT_INTERVAL,
@@ -675,7 +675,6 @@ const STATES: BossState[] = ['idle', 'windup', 'charge', 'recover', 'stunned', '
 /** Whether a hit, a cast or a summon would be shown now (it is given some time). */
 const flinchStarts = (s: BossSnapshot, spec: Record<string, AnimSpec>) => flinchFit(s, spec) > 0
 const castStarts = (s: BossSnapshot, spec: Record<string, AnimSpec>) => castFit(s, spec) > 0
-const summonStarts = (s: BossSnapshot, spec: Record<string, AnimSpec>) => summonFit(s, spec) > 0
 
 /** A boss snapshot: standing (no ground gained for a while), nothing started by the view. */
 const boss = (kind: BossKind, state: BossState, extra: Partial<BossSnapshot> = {}): BossSnapshot => ({
@@ -1306,19 +1305,6 @@ describe('boss clips', () => {
         'idle'
       ])
     })
-
-    it('a summon plays the gesture from its release, where it fits', () => {
-      const spec = bossSheetSpec('swarm', 'foxBoss')
-      expect(summonStarts(boss('swarm', 'idle', { stateTime: 0.1 }), spec)).toBe(true)
-      expect(summonStarts(boss('swarm', 'recover', { stateTime: 0.1 }), spec)).toBe(true)
-      expect(summonStarts(boss('swarm', 'idle', { stateTime: SWARM_IDLE_SECONDS - 0.05 }), spec)).toBe(false)
-      expect(summonStarts(boss('swarm', 'windup', { stateTime: 0 }), spec)).toBe(false)
-      // Only the fox and the bee summon with a gesture.
-      expect(summonStarts(boss('flyer', 'idle'), bossSpec('crowBoss'))).toBe(false)
-      const release = hitTime(spec.shoot)
-      expect(frameOf(spec.shoot, bossClip(boss('swarm', 'idle', { castAge: release }), 'foxBoss'))).toBe(3)
-      expect(bossClip(boss('swarm', 'idle', { castAge: specDuration(spec.shoot) }), 'foxBoss').name).toBe('idle')
-    })
   })
 
   it('the rage clip plays once', () => {
@@ -1438,5 +1424,133 @@ describe("a squirrel's throw begun again, and given up", () => {
     expect(at({ shootTimer: SPIT_INTERVAL - 0.05, throwCut: true }).name).toBe('idle')
     expect(spitFollowing(SPIT_INTERVAL - 0.05, shoot, true)).toBe(false)
     expect(spitThrowing(SPIT_INTERVAL - 0.05, shoot, true)).toBe(false)
+  })
+})
+
+describe('round 6c: a flinch never covers a shot, and a slam lands on its impact', () => {
+  it("a crow's flinch ends before the step his next shot leaves, or is the white flash alone", () => {
+    const spec = bossSpecOf('flyer')
+    const due = (shotTimer: number) =>
+      boss('flyer', 'idle', { stateTime: 0.1, shotTimer, projectiles: 3, onGround: false })
+    // Plenty of time before the shot: the whole flinch (or what his hover leaves).
+    const free = flinchFit(due(1.2), spec)
+    expect(free).toBeGreaterThan(0)
+    // A shot 0.2 s away: the flinch is fitted to end a step before it.
+    const s = due(0.2)
+    const fit = flinchFit(s, spec)
+    expect(fit).toBeGreaterThan(0)
+    expect(fit).toBeLessThanOrEqual(shotDue(s)! - 1 / 60 + 1e-9)
+    // Less than FIT_MIN before the shot: no flinch (the flash and the jolt only).
+    expect(flinchFit(due(FIT_MIN - 0.01), spec)).toBe(0)
+  })
+
+  it('round 6p: on the ground in his slam (the phase change restarted it) he rolls while carried; the squash comes with the impact', () => {
+    const spec = bossSpecOf('final')
+    for (const stateTime of [0, 0.05, 0.15]) {
+      // Carried along the ground at his leap's speed: his dash's clip (the king's roll).
+      expect(
+        bossClip(
+          boss('final', 'slam', { onGround: true, stateTime, stateReset: true, landedAt: 0.01, vx: 293 }),
+          'king',
+          spec
+        ).name
+      ).toBe('attack')
+      // At rest there (a staged pose held him): the first frame of his landing, as before.
+      expect(
+        bossClip(
+          boss('final', 'slam', { onGround: true, stateTime, stateReset: true, landedAt: 0.01, vx: 0 }),
+          'king',
+          spec
+        )
+      ).toMatchObject({ name: 'land', frame: 0 })
+    }
+    // The ordinary slam (no restart): one step on the ground before the impact, in his landing's first frame.
+    expect(
+      bossClip(boss('final', 'slam', { onGround: true, stateTime: 0.6, landedAt: 0.6, vx: 293 }), 'king', spec)
+    ).toMatchObject({ name: 'land', frame: 0 })
+    // The step the slam ends on (\`boss-slam\`, his recovery begins): the landing's first frame, then on.
+    const at = (stateTime: number) =>
+      bossClip(boss('final', 'recover', { prevState: 'slam', onGround: true, stateTime, landedAt: 0 }), 'king', spec)
+    expect(at(0)).toMatchObject({ name: 'land' })
+    expect(
+      frameAt({ frames: Array(spec.land.frames).fill({}), fps: spec.land.fps, loop: false } as unknown as Anim, at(0).t)
+    ).toBe(0)
+    expect(at(0.1).name).toBe('land')
+  })
+})
+
+describe('round 6g: the time before a heavy boss attacks', () => {
+  it('from his wind-up, his walk and his recovery (the king in phase 1, the bear)', () => {
+    expect(attackRoom(boss('final', 'windup', { stateTime: 0.1 }))).toBeCloseTo(0.25)
+    expect(attackRoom(boss('final', 'idle', { stateTime: 0.4 }))).toBeCloseTo(0.5 + 0.35)
+    expect(attackRoom(boss('tank', 'recover', { stateTime: 0.5 }))).toBeCloseTo(0.5 + 1.2 + 0.5)
+    expect(attackRoom(boss('final', 'shoot', { stateTime: 0.1 }))).toBe(0)
+  })
+
+  it('round 6h: none in his charge (an attack: his dash carries him on, no landing)', () => {
+    expect(attackRoom(boss('final', 'charge', { stateTime: 0.3 }))).toBe(0)
+    expect(attackRoom(boss('tank', 'charge', { stateTime: 0.3 }))).toBe(0)
+  })
+})
+
+describe('round 6p: a whirl off a ledge, a wind-up after a fall', () => {
+  it("the fox's whirl that carries him off a ledge stays his whirl in the air (no air between two whirls)", () => {
+    const spec = bossSheetSpec('swarm', 'foxBoss')
+    for (const vy of [60, 250, 400])
+      expect(
+        bossClip(boss('swarm', 'recover', { onGround: false, vx: 300, vy, stateTime: 0.05 }), 'foxBoss', spec).name
+      ).toBe('attack')
+    // Let go by it (slow), he falls in his air.
+    expect(
+      bossClip(boss('swarm', 'recover', { onGround: false, vx: 10, vy: 250, stateTime: 0.3 }), 'foxBoss', spec).name
+    ).toBe('air')
+  })
+
+  it('a wind-up taken over late (after a fall) is fitted to the time left: its last frame shows as the dash begins', () => {
+    const spec = bossSheetSpec('swarm', 'foxBoss')
+    const windup = spec.windup
+    const frames = (stateTime: number) =>
+      frameOf(windup, bossClip(boss('swarm', 'windup', { stateTime, clipFrom: 0.27 }), 'foxBoss', spec))
+    expect(frames(0.27)).toBe(0)
+    // On the wind-up's last step (sim.ts: the dash begins once past 0.35 s) its last frame.
+    expect(frames(0.35)).toBe(windup.frames - 1)
+    for (let t = 0.27; t < 0.35; t += 1 / 60) expect(frames(t + 1 / 60)).toBeGreaterThanOrEqual(frames(t))
+  })
+})
+
+describe('round 6q: a restarted slam rolls to its impact; a roll off a ledge stays a roll', () => {
+  it('on the ground in a restarted slam, carried, he rolls on past 0.2 s of its clock until the impact', () => {
+    const spec = bossSpecOf('final')
+    for (const stateTime of [0.2, 0.2167, 0.3])
+      expect(
+        bossClip(
+          boss('final', 'slam', { onGround: true, stateTime, stateReset: true, landedAt: 0.01, vx: 293 }),
+          'king',
+          spec
+        ).name
+      ).toBe('attack')
+  })
+
+  it("the king's roll that carries him off a ledge stays his roll in the air; his slam's recovery is not a roll", () => {
+    const spec = bossSpecOf('final')
+    for (const vy of [60, 250, 400])
+      expect(
+        bossClip(
+          boss('final', 'recover', { prevState: 'charge', onGround: false, vx: 400, vy, stateTime: 0.05 }),
+          'king',
+          spec
+        ).name
+      ).toBe('attack')
+    expect(
+      bossClip(
+        boss('final', 'recover', { prevState: 'charge', onGround: false, vx: 10, vy: 250, stateTime: 0.4 }),
+        'king',
+        spec
+      ).name
+    ).toBe('air')
+    expect(
+      bossClip(boss('final', 'recover', { prevState: 'slam', onGround: true, vx: 250, stateTime: 0.02 }), 'king', spec)
+        .name
+    ).toBe('land')
   })
 })

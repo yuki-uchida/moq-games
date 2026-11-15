@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest'
 import { allSheetSpecs } from '../src/art/contract'
 import { missingAnims, sheet } from '../src/art/index'
-import { rgbOf } from '../src/art/palette'
+import { anchorOf } from '../src/art/sheet'
+import { R, rgbOf } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
 
 const SHEETS = [
@@ -210,9 +211,10 @@ describe('the shockwave and the stinger', () => {
         let differ = 0
         for (let k = 0; k < f.data.length; k++) if (f.data[k] !== prev.data[k]) differ++
         expect(differ, `frame ${i} vs ${i - 1}`).toBeGreaterThanOrEqual(30)
-        // the shot at the centre grows, and the ring never moves outwards
+        // the shot at the centre grows, and the ring never moves outwards while it closes (frames 1-4; on frame 5
+        // the formed shot, on its ground, may reach past its tight aura: it is held under frame 0 below)
         expect(m[i].centre, `frame ${i} shot at the centre ${log}`).toBeGreaterThanOrEqual(m[i - 1].centre)
-        expect(m[i].far, `frame ${i} farthest pixel ${log}`).toBeLessThanOrEqual(m[i - 1].far)
+        if (i < 5) expect(m[i].far, `frame ${i} farthest pixel ${log}`).toBeLessThanOrEqual(m[i - 1].far)
       }
       // loud from the first frame: a few dozen pixels and a light
       expect(frames[0].count(), 'frame 0 painted area').toBeGreaterThanOrEqual(36)
@@ -231,6 +233,102 @@ describe('the shockwave and the stinger', () => {
       const ready = frames[5].colors()
       const shared = [...own].filter((c) => ready.has(c)).length
       expect(shared / own.size, `${id} frame 5 shares the colours of ${shot}`).toBeGreaterThanOrEqual(0.6)
+    })
+
+  // The light is drawn on the boss's own body, so the forming shot needs a ground of its own between it and him
+  for (const [id, shot, boss] of [
+    ['prop:stinger', 'fly', 'beeBoss'],
+    ['prop:feather', 'spin', 'crowBoss']
+  ] as const)
+    test(`${id} gather: the forming shot stands on a ground of its own, off ${boss}'s body`, () => {
+      const luma = (c: number) => {
+        const [r, g, b] = rgbOf(c)
+        return 0.299 * r + 0.587 * g + 0.114 * b
+      }
+      /** Mean luma of the painted pixels, leaving out `skip` (the flying shot's pale rim). */
+      const meanLuma = (frames: readonly Raster[], skip = 0) => {
+        let s = 0
+        let n = 0
+        for (const f of frames)
+          for (const c of f.data)
+            if (c && c !== skip) {
+              s += luma(c)
+              n++
+            }
+        return s / n
+      }
+      const shotL = meanLuma(sheet(id)[shot].frames, R.cloud[1])
+      const bodyL = meanLuma(sheet(boss).idle.frames)
+      // the ground is clearly lighter or darker than both the shot and the boss's body, on average
+      const lo = Math.min(shotL, bodyL) - 40
+      const hi = Math.max(shotL, bodyL) + 40
+      // the shot's fill colours (its outline and dark bands aside)
+      const fill = new Set<number>()
+      const own = new Set<number>()
+      for (const f of sheet(id)[shot].frames)
+        for (const c of f.colors()) {
+          // the flying shot's own pale rim (R.cloud[1]) is a ground colour, not the shot
+          if (c === R.cloud[1]) continue
+          own.add(c)
+          if (luma(c) >= 60) fill.add(c)
+        }
+      for (const i of [3, 4, 5]) {
+        const f = sheet(id).gather.frames[i]
+        const key = (x: number, y: number) => y * f.w + x
+        const near = (x: number, y: number) => Math.hypot(x + 0.5 - 16, y + 0.5 - 16) <= 6
+        const body = new Set<number>()
+        for (let y = 0; y < f.h; y++)
+          for (let x = 0; x < f.w; x++) if (near(x, y) && fill.has(f.get(x, y))) body.add(key(x, y))
+        expect(body.size, `frame ${i} shows the shot`).toBeGreaterThanOrEqual(10)
+        // the shot's own dark outline: dark pixels touching its fill
+        const rim = new Set<number>()
+        const n4 = [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1]
+        ]
+        for (const k of body)
+          for (const [dx, dy] of n4) {
+            const x = (k % f.w) + dx
+            const y = Math.floor(k / f.w) + dy
+            const c = f.get(x, y)
+            if (c && !body.has(key(x, y)) && luma(c) < 60) rim.add(key(x, y))
+          }
+        // what lies just outside that outline must be the ground, not the boss showing through
+        let outside = 0
+        let grounded = 0
+        for (const k of rim)
+          for (const [dx, dy] of n4) {
+            const x = (k % f.w) + dx
+            const y = Math.floor(k / f.w) + dy
+            const k2 = key(x, y)
+            if (body.has(k2) || rim.has(k2) || x < 0 || y < 0 || x >= f.w || y >= f.h) continue
+            const c = f.get(x, y)
+            // the shot's own colours (its dark bands and inner lines) are not what lies outside it
+            if (c && own.has(c)) continue
+            outside++
+            if (c && (luma(c) >= hi || luma(c) <= lo)) grounded++
+          }
+        expect(outside, `frame ${i} outline has an outside`).toBeGreaterThan(0)
+        expect(grounded / outside, `frame ${i}: ${grounded} of ${outside} on the ground`).toBeGreaterThanOrEqual(0.75)
+      }
+    })
+
+  // The light promises a shot, not a side: the view draws `gather` unmirrored whichever way the shot then flies, so
+  // every frame must read the same both ways
+  for (const id of ['prop:orb', 'prop:stinger', 'prop:feather'])
+    test(`${id} gather is its own mirror image about the anchor's vertical line, pixel for pixel`, () => {
+      const anim = sheet(id).gather
+      const [ax] = anchorOf(anim)
+      for (const [i, f] of anim.frames.entries())
+        for (let y = 0; y < f.h; y++)
+          for (let x = 0; x < f.w; x++) {
+            // pixel column x mirrors to 2 * ax - 1 - x (the line runs between columns ax - 1 and ax)
+            const m = 2 * ax - 1 - x
+            const there = m >= 0 && m < f.w ? f.get(m, y) : 0
+            expect(f.get(x, y), `frame ${i} at ${x},${y} vs ${m},${y}`).toBe(there)
+          }
     })
 
   test('the stinger ends in a single dark tip', () => {

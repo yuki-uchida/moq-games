@@ -201,7 +201,9 @@ const BOSS_EXTRAS: Partial<BossSnapshot>[] = [
   { active: false },
   { castAge: 0.05 },
   { standing: true },
-  { onGround: true }
+  { onGround: true },
+  // Off a ledge, falling (the fox, who walks the ledges).
+  { onGround: false, vy: 300 }
 ]
 
 // ------------------------------------------------------------------------------------------------- staging
@@ -271,6 +273,8 @@ function stagedPoses() {
     if (stage.boss.kind === 'final') {
       const boss = r.world.boss!
       r.emit({ type: 'boss-phase', phase: 2, x: boss.x, y: boss.y })
+      // (The transformation waits for him to be between his actions, then plays.)
+      r.run(6, () => r.session.director.current === 'boss-phase')
       r.run(3, () => r.session.director.current === null)
     }
     const p = r.world.player
@@ -805,6 +809,23 @@ for (const art of BOSS_ARTS) NOT_IN_PLAY[art] ??= { intro: 'staged when the boss
 // The phase-2 transformation is staged; without a director it plays on sim time, on the plain sheet.
 NOT_IN_PLAY[KING_RAGED] = {}
 
+/**
+ * The fox awake and put a tile above his ground (as when he drops off a ledge in his wind-up: the bot never stands
+ * below one): he falls in his `air`.
+ */
+function foxFall() {
+  const no = STAGES.findIndex((stage) => stage.boss?.art === 'foxBoss')
+  const world = new World(STAGES[no], { seed: 5 })
+  const r = new PlayRecorder(world)
+  r.run(0.5, () => true)
+  const boss = world.boss!
+  boss.active = true
+  boss.y -= TILE
+  boss.onGround = false
+  for (let i = 0; i < 40; i++) r.step(emptyInput())
+  return r
+}
+
 /** A short run that ends with the hero knocked out by an enemy (the knock-out is shown in play). */
 function knockOut() {
   const world = new World(STAGES[1], { seed: 5 })
@@ -822,7 +843,7 @@ describe('every clip is selected in real play', () => {
   const shown = new Map<string, Set<string>>()
   // About 3 s here; the generous limit is for a slow CI machine.
   beforeAll(() => {
-    runs.push(...STAGES.map((stage) => playStage(stage.no)), knockOut())
+    runs.push(...STAGES.map((stage) => playStage(stage.no)), knockOut(), foxFall())
     for (const r of runs)
       for (const [sheet, clips] of r.shown) {
         let set = shown.get(sheet)

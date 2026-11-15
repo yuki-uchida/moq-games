@@ -7,7 +7,7 @@ import { sharedArtSource, type ArtSource } from '../art/remote'
 import type { SimEvent } from '../game/events'
 import type { World } from '../game/sim'
 import { TILE } from '../game/types'
-import { ActorsView, shotSide } from './actors'
+import { ActorsView } from './actors'
 import { BackdropView } from './backdrop'
 import { Camera } from './camera'
 import { FxPool } from './fx'
@@ -63,6 +63,7 @@ export class StageView {
   /** The view position of the last drawn frame. */
   lastView = { x: 0, y: 0 }
   private api: FxApi
+  private birth = { x: 0, y: 0 }
 
   constructor(
     readonly world: World,
@@ -90,11 +91,17 @@ export class StageView {
       flash: (color, alpha, seconds) => this.overlay.flash(color, alpha, seconds),
       hurtPulse: () => this.overlay.hurt(),
       rand: fx.rand,
-      // (The king's volley bursts out of his chest: its smoke stays on his centre.)
+      // Where the shot leaves from: where its light was on his drawn body. (The king's volley bursts out of his
+      // chest: its smoke stays on his centre.)
       shotEdge: (x) => {
         const boss = this.world.boss
         if (!boss || boss.def.kind === 'final') return x
-        return x + (shotSide(this.world.player.x, x, boss.w) * boss.w) / 2
+        return this.actors.shotBirth(boss, this.birth).x
+      },
+      shotY: (y) => {
+        const boss = this.world.boss
+        if (!boss || boss.def.kind === 'final') return y
+        return this.actors.shotBirth(boss, this.birth).y
       },
       summonsLater: true,
       underWater: (x, y) => this.world.waterAt(Math.floor(x / TILE), Math.floor(y / TILE))
@@ -108,6 +115,9 @@ export class StageView {
 
   /** Hit-stop for at least `seconds`. */
   freeze(seconds: number) {
+    // (The facing holds count the hit-stop: it is time on the screen. Decided with the step that starts it, the
+    // same at every display rate; a hit-stop during another adds only what it lengthens it by.)
+    this.actors.heldFor(Math.max(0, seconds - this.freezeTime))
     this.freezeTime = Math.max(this.freezeTime, seconds)
   }
 
@@ -121,10 +131,22 @@ export class StageView {
   }
 
   /**
+   * One simulation step has run and its events have been answered (the world holds the simulation's own positions):
+   * the actors decide what their bodies do on it (`ActorsView.simStep`). Called once per step by `PlaySession`.
+   */
+  simStep() {
+    this.actors.simStep()
+    this.props.simStep()
+  }
+
+  /**
    * Advances the view. `dt` is real time (particles, overlay, camera shake); `animDt` is the time the actors and
    * props animate by (0 during hit-stop, scaled in slow motion).
    */
   update(dt: number, animDt = this.frozen ? 0 : dt) {
+    // (A frame a moment holds the simulation on, outside a hit-stop: its time on the screen counts for the facing
+    // holds, as a hit-stop's does.)
+    if (dt > 0 && animDt <= 0 && this.freezeTime <= 0) this.actors.heldFor(dt, true)
     this.time += dt
     this.freezeTime = Math.max(0, this.freezeTime - dt)
     const p = this.world.player
@@ -159,12 +181,14 @@ export class StageView {
     this.terrain.drawDecor(ctx, v.x, v.y)
     this.props.drawProps(ctx)
     this.props.drawPickups(ctx)
-    // A shot still inside the body that threw it comes out from behind his silhouette (see `PropsView.shotBehind`).
+    // (Every shot is drawn in front of the actors from its first frame: see `PropsView.shotBehind`.)
     this.props.drawProjectiles(ctx, 'behind')
     this.actors.drawEnemies(ctx)
     this.actors.drawBoss(ctx)
     this.props.drawPrincess(ctx)
     this.actors.drawHero(ctx)
+    // (A boss's gathering light is a warning: in front of him and of a hero who stands on him.)
+    this.actors.drawShotCue(ctx)
     this.props.drawProjectiles(ctx, 'front')
     this.fx.draw(ctx, 'world')
     this.water.draw(ctx, v.x, v.y)

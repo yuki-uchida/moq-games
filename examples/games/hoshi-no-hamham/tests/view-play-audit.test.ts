@@ -36,6 +36,8 @@ import {
   playthrough,
   spitterOverlaps,
   squirrelVolleys,
+  drawnBySimStep,
+  drawnDifferences,
   summarise,
   type Recorder
 } from './play-audit'
@@ -206,4 +208,16 @@ describe('the picture and the motion agree in real play', () => {
     for (const r of runs) if (!r.label.includes('knocked out')) expect(spat(r), r.label).toBe(true)
     expect(runs.filter((r) => r.label.includes('knocked out') && spat(r)).length).toBeGreaterThanOrEqual(1)
   })
+
+  // The view decides on simulation steps: the same play (no director here, so the very same steps) is drawn with the
+  // same clip and facing on every step at every display rate (compared on the steps both rates show).
+  it.each([1, 3, 7])(
+    'stage %i: the same play gives the same clips at 30, 48, 60 and 144 Hz',
+    { timeout: 120_000 },
+    (no) => {
+      const base = drawnBySimStep(no, 60)
+      for (const hz of [30, 48, 144])
+        expect(drawnDifferences(base, drawnBySimStep(no, hz)), String(hz) + ' Hz').toEqual([])
+    }
+  )
 })

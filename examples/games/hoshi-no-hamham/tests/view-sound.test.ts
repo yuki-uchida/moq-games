@@ -166,9 +166,9 @@ describe('event and cue maps', () => {
     }
   })
 
-  it('keeps every event audible except the two voiced elsewhere', () => {
+  it('keeps every event audible except the three voiced elsewhere (the transformation with its moment)', () => {
     const silent = SIM_EVENT_TYPES.filter((type) => SAMPLES[type].every((event) => callsFor(event, 100).length === 0))
-    expect(silent.sort()).toEqual(['boss-awake', 'clear'])
+    expect(silent.sort()).toEqual(['boss-awake', 'boss-phase', 'clear'])
   })
 
   it('maps every cue to valid names or to nothing', () => {

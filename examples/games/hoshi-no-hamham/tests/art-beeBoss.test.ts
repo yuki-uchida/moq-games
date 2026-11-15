@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest'
-import { BEE_RAMPS } from '../src/art/chars/bosses/bee'
+import { BEE_RAMPS, beeShootPoses } from '../src/art/chars/bosses/bee'
 import { bossSpec } from '../src/art/contract'
 import { sheet } from '../src/art/index'
+import { anchorOf } from '../src/art/sheet'
 import type { Raster } from '../src/art/raster'
 
 const ID = 'beeBoss'
@@ -122,6 +123,26 @@ describe('ハチ女王 (beeBoss) on the rig', () => {
       }
     })
 
+    test("a command, not a throw: no glint on the jewel and no sparkles in the sceptre's sweep", () => {
+      // the stingers gather in the light on her body (the view's `gather`); the sceptre only points
+      for (const [i, p] of beeShootPoses().entries()) {
+        expect(p.jewel, `shoot ${i} jewel glint`).toBe(false)
+        expect(p.sparks, `shoot ${i} sparkles`).toEqual([])
+      }
+      // and in the pixels: the sparkle's white-and-gold cross is not in any shoot frame
+      for (const [i, r] of f.entries())
+        for (let y = 2; y < r.h - 2; y++)
+          for (let x = 2; x < r.w - 2; x++) {
+            const cross =
+              r.get(x, y) === HONEY[0] &&
+              r.get(x - 1, y) === FUR[0] &&
+              r.get(x + 1, y) === FUR[0] &&
+              r.get(x, y - 1) === FUR[0] &&
+              r.get(x, y + 1) === FUR[0]
+            expect(cross, `shoot ${i} sparkle at ${x},${y}`).toBe(false)
+          }
+    })
+
     test('neighbouring frames differ', () => {
       for (let i = 1; i < f.length; i++) {
         let d = 0
@@ -145,5 +166,27 @@ describe('ハチ女王 (beeBoss) on the rig', () => {
             expect(n, `${name} ${i} has an isolated pixel at ${x},${y}`).toBeGreaterThan(0)
           }
       }
+  })
+
+  test('every frame a shot can leave from has his body under both places it is born', () => {
+    // sim.ts makes the shot 7 px beside the middle of his box (to the right facing right; mirrored, the same world
+    // place is 7 px behind his middle), 0.4 of the 63.36 px box down from its top, plus 7: the light gathers there
+    // and the shot comes out of it, so in every frame of these clips both places lie on a painted pixel or within 3 px
+    // of one (her `hurt` throws her back off the place for its three frames, up to 5 px: a hit, not a shot frame)
+    const H = 63.36
+    for (const name of ['idle', 'move', 'windup', 'attack', 'shoot', 'recover', 'hurt']) {
+      const anim = s[name]
+      const [ax, ay] = anchorOf(anim)
+      const by = Math.round(ay - H + H * 0.4 + 7)
+      const limit = name === 'hurt' ? 5 : 3
+      for (const [i, f] of anim.frames.entries())
+        for (const bx of [Math.round(ax + 7), Math.round(ax - 7)]) {
+          let best = Infinity
+          for (let y = Math.max(0, by - 6); y <= Math.min(f.h - 1, by + 6); y++)
+            for (let x = Math.max(0, bx - 6); x <= Math.min(f.w - 1, bx + 6); x++)
+              if (f.get(x, y)) best = Math.min(best, Math.hypot(x - bx, y - by))
+          expect(best, `${name} ${i} at ${bx - ax},${by - ay}`).toBeLessThanOrEqual(limit)
+        }
+    }
   })
 })

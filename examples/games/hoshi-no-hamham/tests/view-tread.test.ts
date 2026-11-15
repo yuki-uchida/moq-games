@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   FACE_DEAD_ZONE,
   FACE_HOLD,
+  DECISIVE_PX,
   EASE_SPEED,
-  HELD_SLIP_PX,
   HOLD_PX,
   SHUFFLE_PX,
   TURNING_SECONDS,
@@ -17,6 +17,7 @@ import {
   heldSideFacing,
   motionKnown,
   netMotion,
+  noteTurn,
   newTread,
   shownStanding,
   sideFacing,
@@ -46,6 +47,7 @@ class Body {
     if (face !== this.face) {
       this.face = face
       this.age = 0
+      noteTurn(this.t)
       this.turns.push(this.clock)
     }
     const gain = drawnGain(this.t, this.face)
@@ -100,7 +102,10 @@ describe('the tread: walking or standing', () => {
     const pace = (n: number) => 1.225 * Math.abs((n % 16) - 8)
     const paced = feed(pace, 2)
     expect(paced.t.standing).toBe(true)
-    expect(paced.turns.length).toBeLessThanOrEqual(1)
+    // (Before it is shown standing a leg of 9.8 px may carry it DECISIVE_PX against its facing once: it turns then;
+    // once it marks time it turns no more.)
+    expect(paced.turns.length).toBeLessThanOrEqual(2)
+    expect(paced.turns.every((t) => t < 0.6)).toBe(true)
     expect(paced.t.hi - paced.t.lo).toBeLessThanOrEqual(MARK_SPAN_PX)
   })
 
@@ -213,27 +218,21 @@ describe('the picture: the body, plus a bounded hold', () => {
     expect(treadX(b.t, b.t.x)).toBe(drawn)
   })
 
-  it(`D: a held picture stays put when a hit-stop starts or ends, though the body is drawn elsewhere then`, () => {
+  it(`D: on a frame where no time passes the picture moves with the body (its offset is kept)`, () => {
     // Shaken on the spot: held. The body is drawn between steps until the hit-stop, then where it stands (2 px over).
     const b = feed((n) => (n < 20 ? 1.5 * n : 30 + (n % 2) * 4), 0.6)
     expect(b.t.standing).toBe(true)
-    const drawn = b.drawn()
+    const offset = b.t.offset
     const x = b.t.x + 2
     stepTread(b.t, x, 0)
     stepPicture(b.t, x, 0, true)
-    expect(treadX(b.t, x)).toBeCloseTo(drawn, 9)
+    expect(b.t.offset).toBe(offset)
+    expect(treadX(b.t, x)).toBeCloseTo(x + offset, 9)
     // Held for a while, the same.
     for (let k = 0; k < 5; k++) {
-      stepTread(b.t, x, 0)
-      stepPicture(b.t, x, 0, true)
-      expect(treadX(b.t, x)).toBeCloseTo(drawn, 9)
+      stepPicture(b.t, x + 8, 0, true)
+      expect(b.t.offset).toBe(offset)
     }
-    // The step a hit lands on, shown on a held frame: the picture parts from where it was held by HELD_SLIP_PX at most.
-    const offset = b.t.offset
-    stepTread(b.t, x + 8, 0)
-    stepPicture(b.t, x + 8, 0, true)
-    expect(Math.abs(b.t.offset - offset)).toBeLessThanOrEqual(HELD_SLIP_PX + 1e-9)
-    expect(Math.abs(treadX(b.t, x + 8) - drawn)).toBeLessThan(8)
     // A walking body's picture is the body.
     const w = feed((n) => 1.5 * n, 0.5)
     stepTread(w.t, w.t.x + 1, 0)
@@ -272,17 +271,35 @@ describe("a walker's facing", () => {
     for (let i = 1; i < b.turns.length; i++) expect(b.turns[i] - b.turns[i - 1]).toBeGreaterThanOrEqual(FACE_HOLD)
   })
 
-  it(`never turns twice within FACE_HOLD (${FACE_HOLD} s): a body that would is marking time, and stands`, () => {
+  it(`within FACE_HOLD (${FACE_HOLD} s) of a turn it turns again only once its body has gone DECISIVE_PX (${DECISIVE_PX} px) the new way`, () => {
     expect(FACE_HOLD).toBeGreaterThan(9 / 60)
-    // Back for six steps, then on again: one turn, then it stands rather than turn back at once.
+    // Back for six steps, then on again for three (4.5 px) and stopped: one turn, then it marks time rather than
+    // turn back at once.
     const b = new Body()
     let stood = false
     for (let n = 0; n <= 90; n++) {
-      b.step(n < 40 ? 1.5 * n : n < 46 ? 60 - 1.5 * (n - 40) : 51 + 1.5 * (n - 46), STEP)
+      b.step(n < 40 ? 1.5 * n : n < 46 ? 60 - 1.5 * (n - 40) : n < 49 ? 51 + 1.5 * (n - 46) : 55.5, STEP)
       if (n > 40 && n < 60 && b.t.standing) stood = true
     }
     for (let i = 1; i < b.turns.length; i++) expect(b.turns[i] - b.turns[i - 1]).toBeGreaterThanOrEqual(FACE_HOLD)
     expect(stood).toBe(true)
+    // On again for good: it turns back within the hold, once it has gone 8 px (it is never carried further against
+    // its facing).
+    const c = new Body()
+    let worst = 0
+    let since = NaN
+    for (let n = 0; n <= 90; n++) {
+      const x = n < 40 ? 1.5 * n : n < 46 ? 60 - 1.5 * (n - 40) : 51 + 1.5 * (n - 46)
+      c.step(x, STEP)
+      if (c.face < 0 && n >= 46) {
+        since = Number.isNaN(since) ? x : Math.min(since, x)
+        worst = Math.max(worst, x - since)
+      }
+    }
+    expect(c.turns).toHaveLength(2)
+    expect(c.turns[1] - c.turns[0]).toBeLessThan(FACE_HOLD)
+    expect(worst).toBeLessThanOrEqual(DECISIVE_PX)
+    expect(c.face).toBe(1)
   })
 
   it('a walk is read from its own steps: just begun, it keeps the facing it had', () => {

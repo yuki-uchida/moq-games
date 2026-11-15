@@ -14,7 +14,7 @@
  *
  * The picture (`treadX`) is the body's position plus an offset that may hold a standing body still in the middle of
  * where it has been lately: never more than `HOLD_PX` from the body, eased in and out at no more than `EASE_SPEED`
- * px/s away from the body's own motion, and unchanged on a frame where no time passes. The ground its walk cycle plays
+ * px/s away from the body's own motion; on a frame where no time passes its offset is unchanged. The ground its walk cycle plays
  * by is what the picture covers the way it is drawn facing, so a body held still covers none. Allocation free: one
  * record per body, updated in place.
  */
@@ -45,11 +45,16 @@ export const FACE_DEAD_ZONE = 12
 export const SHUFFLE_PX = 2
 /** A body that has just turned does not turn again for this long (s): a hair over nine simulation steps. */
 export const FACE_HOLD = 0.16
+/**
+ * ...unless its body has gone this far (px) the other way since: then it has really turned, and it turns too (at a
+ * rat's 100 px/s two such turns are never closer than 0.08 s, and nothing is carried further against its facing).
+ */
+export const DECISIVE_PX = 8
+/** The run against its facing is looked at over at most this long (s) since its last turn. */
+export const DECISIVE_SECONDS = 1
 /** The picture is never further than this (px) from its body, and moves at most this fast (px/s) apart from it. */
 export const HOLD_PX = 6
 export const EASE_SPEED = 180
-/** On a frame where no time passes a held picture parts from its body by at most this (px). */
-export const HELD_SLIP_PX = 3
 
 /** Positions remembered (enough for `TURNING_SECONDS` at any display rate up to 240 Hz). */
 const HISTORY = 100
@@ -74,6 +79,8 @@ export interface Tread {
    */
   turnPeak: number
   turnPeakBefore: number
+  /** The record's clock when its drawn facing last turned (`noteTurn`; -Infinity: not yet). */
+  facedAt: number
   /** It stands, within the span `lo`–`hi` (it sets off when it leaves it); its picture is held at `at`. */
   standing: boolean
   /** The way it set off from its last stand, until its walk since is long enough to tell (0 otherwise). */
@@ -83,12 +90,11 @@ export interface Tread {
   lo: number
   hi: number
   at: number
-  /** Where it was on the last update (NaN before the first). */
+  /** Where it was on the last update (NaN before the first), and whether it was on the ground then. */
   x: number
+  grounded: boolean
   /** Its picture's offset from it, and where the picture was on the last update (for `drawnGain`). */
   offset: number
-  /** Where the picture was drawn on the last update (NaN before the first). */
-  shown: number
   drawnX: number
   /** The record's clock (s), and when the current walk began. */
   clock: number
@@ -111,6 +117,7 @@ export const newTread = (facing: 1 | -1 = 1): Tread => ({
   turnedBefore: -Infinity,
   turnPeak: NaN,
   turnPeakBefore: NaN,
+  facedAt: -Infinity,
   standing: false,
   leaving: 0,
   standSince: 0,
@@ -118,8 +125,8 @@ export const newTread = (facing: 1 | -1 = 1): Tread => ({
   hi: NaN,
   at: NaN,
   x: NaN,
+  grounded: true,
   offset: 0,
-  shown: NaN,
   drawnX: NaN,
   clock: 0,
   walkSince: 0,
@@ -177,6 +184,23 @@ function spanOver(t: Tread, seconds: number, out: { lo: number; hi: number }) {
 }
 const span = { lo: 0, hi: 0 }
 
+/**
+ * How far (px) the body has gone `way` over its last `seconds` (of what is remembered), from the furthest point it
+ * reached the other way in them.
+ */
+export function goneSince(t: Tread, seconds: number, way: 1 | -1) {
+  spanOver(t, seconds, span)
+  return way * (t.xs[t.head] - (way > 0 ? span.lo : span.hi))
+}
+
+/** The body's drawn facing turned now: what it does since is measured from here (on the simulation's time). */
+export function noteTurn(t: Tread) {
+  t.facedAt = t.clock
+}
+
+/** The simulation time (s) since its drawn facing last turned, at most `DECISIVE_SECONDS`. */
+export const sinceTurn = (t: Tread) => Math.min(DECISIVE_SECONDS, t.clock - t.facedAt)
+
 /** How far (px, signed) the walk has gone over its last `seconds` (0 while that is not known). */
 export function netMotion(t: Tread, seconds = NET_SECONDS) {
   if (!motionKnown(t, seconds)) return 0
@@ -233,6 +257,7 @@ export function stepTread(t: Tread, x: number, dt: number, onGround = true) {
     return
   }
   t.clock += dt
+  t.grounded = onGround
   if (Number.isNaN(t.walkSince)) t.walkSince = t.clock
   if (Math.abs(x - t.x) > TREAD_JUMP_PX) {
     restart(t, x)
@@ -312,19 +337,12 @@ export function stepTread(t: Tread, x: number, dt: number, onGround = true) {
  */
 export function stepPicture(t: Tread, x: number, dt: number, may: boolean) {
   if (Number.isNaN(t.x)) return
-  if (!(dt > 0)) {
-    // A held picture stays put; any other is the body (plus what is left of an easing).
-    // (By at most `HELD_SLIP_PX` apart from the body: the step a hit lands on is shown on a held frame too.)
-    if (may && t.standing && !Number.isNaN(t.shown)) {
-      const keep = Math.max(-HOLD_PX - 2, Math.min(HOLD_PX + 2, t.shown - x))
-      t.offset += Math.max(-HELD_SLIP_PX, Math.min(HELD_SLIP_PX, keep - t.offset))
-    }
-    return
-  }
+  // On a frame where no time passes the picture keeps its offset: it moves as the body is drawn (from between two
+  // steps to where it stands, as a hit-stop begins), never on its own.
+  if (!(dt > 0)) return
   const want = may && t.standing ? Math.max(-HOLD_PX, Math.min(HOLD_PX, t.at - x)) : 0
   const ease = EASE_SPEED * dt
   t.offset += Math.max(-ease, Math.min(ease, want - t.offset))
-  t.shown = x + t.offset
 }
 
 /** Where to draw a body whose centre is at `x`: there, plus the picture's offset. */
@@ -334,8 +352,9 @@ export const treadX = (t: Tread, x: number) => x + t.offset
  * The ground the picture covered since the last call, the way it is drawn facing (px; a step back counts nothing).
  * Called once per update with time passing.
  */
-export function drawnGain(t: Tread, face: 1 | -1) {
-  const drawn = treadX(t, t.x)
+export function drawnGain(t: Tread, face: 1 | -1, x = t.x) {
+  // (`x`: where the body is drawn now, between the simulation's steps.)
+  const drawn = treadX(t, x)
   const gain = Number.isNaN(t.drawnX) ? 0 : Math.max(0, face * (drawn - t.drawnX))
   t.drawnX = drawn
   return gain
@@ -363,6 +382,17 @@ export function heldSideFacing(current: 1 | -1, d: number, age: number, zone = F
  * time (the record stands) and keeps its facing.
  */
 export function walkFacing(t: Tread, current: 1 | -1, d: number, towardsHero: boolean, age = Infinity): 1 | -1 {
+  // A body drawn walking on the ground (not yet shown standing) that has gone `DECISIVE_PX` against its facing in
+  // one go, since its last turn, has really gone the other way: it turns, whatever else holds it (a hold, marking
+  // time). (In the air a turn has the hold alone.)
+  const back: 1 | -1 = current > 0 ? -1 : 1
+  if (
+    t.grounded &&
+    !shownStanding(t) &&
+    goneSince(t, sinceTurn(t), back) >= DECISIVE_PX - 1e-6 &&
+    (t.count < 2 || back * (t.xs[t.head] - t.xs[(t.head - 1 + HISTORY) % HISTORY]) >= 0)
+  )
+    return back
   if (t.standing) return towardsHero ? heldSideFacing(current, d, age) : current
   // Until its walk has lasted long enough to tell, the way it set off from a stand stands for it.
   const net = netMotion(t)
@@ -371,9 +401,10 @@ export function walkFacing(t: Tread, current: 1 | -1, d: number, towardsHero: bo
   // It turns on a step that goes the new way, not on one that is already coming back.
   if (t.count > 1 && way * (t.xs[t.head] - t.xs[(t.head - 1 + HISTORY) % HISTORY]) < 0) return current
   if (age < FACE_HOLD) {
-    // Turning back on what its walk has shown: it marks time, within where it has been since its last turn (or a
-    // moment). (When only the way it set off says otherwise, it walks on.)
-    if (motionKnown(t)) stand(t, Math.max(age, STAND_AFTER))
+    // Within the hold (and short of `DECISIVE_PX`, see above), turning back on what its walk has shown: it marks
+    // time, within where it has been since its last turn (or a moment). (When only the way it set off says
+    // otherwise, it walks on.)
+    if (motionKnown(t)) stand(t, Math.max(Math.min(age, sinceTurn(t)), STAND_AFTER))
     return current
   }
   if (t.clock - t.turnedAt <= NET_SECONDS + 1e-6 && t.shuffled) {

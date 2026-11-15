@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import { crowBossNearTip, crowBossPoses, crowBossWingTips } from '../src/art/chars/bosses/crow'
 import { bossSpec } from '../src/art/contract'
 import { sheet } from '../src/art/index'
+import { anchorOf } from '../src/art/sheet'
 import { C, R } from '../src/art/palette'
 import type { Raster } from '../src/art/raster'
 
@@ -146,6 +147,14 @@ describe('カラス助 (crowBoss) on the rig', () => {
     }
   })
 
+  test('shoot is a command, not a throw: nothing leaves the wing tip in any frame', () => {
+    // the feathers gather in the light on his body (the view's `gather`); the flicked wing only sends them
+    for (const [i, p] of crowBossPoses.shoot().entries()) {
+      expect(p.streaks, `shoot ${i} dashes off the wing tip`).toEqual([])
+      expect(p.loose, `shoot ${i} loose feathers`).toEqual([])
+    }
+  })
+
   test('sweep: low, wide and level, the wing beat changes his height, dust on two frames', () => {
     const sweep = s.sweep.frames
     expect(sweep).toHaveLength(spec.sweep.frames)
@@ -210,5 +219,27 @@ describe('カラス助 (crowBoss) on the rig', () => {
             expect(n, `${name} ${i} has an isolated pixel at ${x},${y}`).toBeGreaterThan(0)
           }
       }
+  })
+
+  test('every frame a shot can leave from has his body under both places it is born', () => {
+    // sim.ts makes the shot 7 px beside the middle of his box (to the right facing right; mirrored, the same world
+    // place is 7 px behind his middle), 0.5 of the 63.36 px box down from its top, plus 7: the light gathers there
+    // and the shot comes out of it, so in every frame of these clips both places lie on a painted pixel or within 3 px
+    // of one
+    const H = 63.36
+    for (const name of ['idle', 'windup', 'attack', 'shoot', 'recover', 'hurt', 'sweep']) {
+      const anim = s[name]
+      const [ax, ay] = anchorOf(anim)
+      const by = Math.round(ay - H + H * 0.5 + 7)
+      const limit = 3
+      for (const [i, f] of anim.frames.entries())
+        for (const bx of [Math.round(ax + 7), Math.round(ax - 7)]) {
+          let best = Infinity
+          for (let y = Math.max(0, by - 6); y <= Math.min(f.h - 1, by + 6); y++)
+            for (let x = Math.max(0, bx - 6); x <= Math.min(f.w - 1, bx + 6); x++)
+              if (f.get(x, y)) best = Math.min(best, Math.hypot(x - bx, y - by))
+          expect(best, `${name} ${i} at ${bx - ax},${by - ay}`).toBeLessThanOrEqual(limit)
+        }
+    }
   })
 })

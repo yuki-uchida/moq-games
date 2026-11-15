@@ -87,7 +87,8 @@ export const SOUND_MAP: SoundMap = {
   shock: () => [s('shockwave')],
   'boss-crash': () => [s('bossCrash')],
   'boss-hit': (e) => [s(e.weak ? 'bossHitWeak' : 'bossHit')],
-  'boss-phase': () => [s('bossPhase')],
+  // (Its sound comes with the transformation's moment: the cue `boss-transform`.)
+  'boss-phase': () => [],
   'boss-tired': () => [s('momTired')],
   'boss-down': () => [s('bossDown')],
   minion: () => [s('minion')],
@@ -97,6 +98,7 @@ export const SOUND_MAP: SoundMap = {
 
 export const CUE_MAP: Record<SoundCue, readonly SoundCall[]> = {
   footstep: [s('step', { volume: 0.5 })],
+  'boss-transform': [s('bossPhase')],
   'menu-move': [s('menuMove')],
   'menu-select': [s('menuSelect')],
   'menu-back': [s('menuBack')],

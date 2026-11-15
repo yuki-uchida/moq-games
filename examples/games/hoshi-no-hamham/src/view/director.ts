@@ -16,8 +16,9 @@ import type { Camera } from './camera'
 import type { CueSink } from './cues'
 import { edgePointer, type Overlay } from './overlay'
 import { mergeClaims, type Claims, type Sequence } from './sequence'
-import { LAND_WAIT_SECONDS, PRIORITY, Staging } from './staging'
+import { BETWEEN_WAIT_SECONDS, LAND_WAIT_SECONDS, PRIORITY, Staging } from './staging'
 import type { StageView } from './stage-view'
+import type { PoseToken } from './actors'
 
 /** What a director can reach. */
 export interface DirectorHost {
@@ -42,6 +43,8 @@ export interface Director {
   handle(event: SimEvent): void
   /** Every frame, with real time (also while the view is frozen; not while paused). */
   update(dt: number): void
+  /** One simulation step has run and its events have been handled (a moment waiting for bodies looks here). */
+  simStep?(): void
   /** Multiplier on simulation time: 1 normal, below 1 slow motion, 0 holds the simulation. */
   readonly timeScale: number
   /** While true the simulation gets empty input. */
@@ -62,6 +65,10 @@ export interface SkipSource {
 
 /** A press this soon after a moment begins is not taken as a skip (it was meant for the game). */
 const SKIP_GRACE = 0.15
+/** A hold's standing pose of the hero lasts at most this long (s): the hold ends it first. */
+const HOLD_POSE_SECONDS = 60
+/** One simulation step (s). */
+const STEP = 1 / 60
 
 const TOASTS: Partial<Record<SimEvent['type'], string>> = {
   switch: 'スイッチ！門が開いた',
@@ -83,6 +90,8 @@ interface Pending {
  */
 interface Landing extends Pending {
   waited: number
+  /** How long the moment has waited for the hero (his cap, from the moment's cause). */
+  heroWaited: number
   hero: boolean
   /** It also waits for the boss to be between his actions (`ActorsView.bossBetweenActions`). */
   between: boolean
@@ -103,6 +112,12 @@ export class StageDirector implements Director {
   private bossBar = false
   private goalArrow = false
   private ended = false
+  /** The standing pose a hold of the simulation gave the hero (see `holdHero`). */
+  private heroHeld: PoseToken | null = null
+  /** A step's events are being answered (`handle` until `simStep`). */
+  private answering = false
+  /** `simStep` drives the waits (see `simStep`). */
+  private stepDriven = false
   private staging: Staging
 
   constructor(
@@ -141,6 +156,8 @@ export class StageDirector implements Director {
   }
 
   handle(event: SimEvent) {
+    // (Driven by steps, a step's events are being answered until `simStep`: the hero's pose for a hold waits.)
+    this.answering = true
     const { hud, world } = this.host
     const toast = TOASTS[event.type]
     if (toast) hud.showToast(toast)
@@ -198,6 +215,8 @@ export class StageDirector implements Director {
 
   update(dt: number) {
     const { world } = this.host
+    // (A display frame comes after the steps of its frame and their events.)
+    this.answering = false
     // Jump or bite skips a moment that holds the input.
     const main = this.main
     if (main?.running && main.skippable && main.time >= SKIP_GRACE && this.claimed.lock && this.skipSource) {
@@ -209,7 +228,8 @@ export class StageDirector implements Director {
     }
     this.main?.update(dt)
     this.advanceQueue()
-    this.advanceLandings(dt)
+    // (Driven by the simulation's steps, the waits are looked at on every step: see simStep.)
+    if (!this.stepDriven) this.advanceLandings(dt * this.claimed.scale)
     // The stage ended without its event reaching the director: still play the ending.
     if (!this.ended && world.state !== 'play') {
       const p = world.player
@@ -223,6 +243,18 @@ export class StageDirector implements Director {
     if ((!boss || boss.dead) && this.bossBar) this.hideBossBar()
     this.refresh()
     this.updatePointer()
+  }
+
+  /**
+   * One simulation step has run: a moment that waits for the boss and the hero is looked at on it (a hero who
+   * touches the ground for one step between two hops counts at any display rate), and begun on the step its bodies
+   * are ready.
+   */
+  simStep() {
+    this.stepDriven = true
+    this.answering = false
+    this.advanceLandings(STEP)
+    this.refresh()
   }
 
   /** Skips the moment playing now (jump or bite does the same in the game). */
@@ -273,24 +305,53 @@ export class StageDirector implements Director {
    */
   private whenLanded(priority: number, make: () => Sequence | null, hero = false, between = false) {
     if (this.ended) return
-    if (this.landed(hero, between)) this.request(priority, make)
-    else this.landings.push({ priority, make, waited: 0, hero, between })
+    // (Never decided here, in the middle of a step's events: a hurt of the hero's may follow in the same step. The
+    // wait is looked at once the whole step has been answered: `simStep`.)
+    this.landings.push({ priority, make, waited: 0, heroWaited: 0, hero, between })
   }
 
-  private landed(hero: boolean, between = false) {
-    const { boss, player } = this.host.world
+  /**
+   * Whether a waiting moment may begin: the boss's side is not negotiable (up to its backstop); the hero's is waited
+   * for up to `LAND_WAIT_SECONDS` (after that a hero in the air is held there, as the simulation holds him), and,
+   * for a moment that waits for the boss to be between his actions, no longer than the boss rests: once he winds up
+   * for his next attack the moment begins (in the first moments of that wind-up, see
+   * `ActorsView.bossBetweenActions`) wherever the hero is, so a hero who keeps hopping never makes him go through
+   * another whole attack first.
+   */
+  private landed(hero: boolean, between = false, heroWaited = 0) {
+    if (!this.bossReady(between)) return false
+    if (!hero || this.heroReady() || heroWaited >= LAND_WAIT_SECONDS - 1e-9) return true
+    return between && this.host.world.boss?.state === 'windup'
+  }
+
+  /**
+   * The boss is on the ground (a flier hovers), not in his slam and not landing (`ActorsView.bossSettled`); with
+   * `between`, also between his actions.
+   */
+  private bossReady(between: boolean) {
+    const { boss } = this.host.world
     const bossDown = !boss || boss.dead || boss.onGround || boss.def.kind === 'flyer'
-    if (between && this.host.view.actors.bossBetweenActions?.() === false) return false
-    return bossDown && (!hero || player.onGround || player.dead)
+    const actors = this.host.view.actors
+    if (!bossDown || actors.bossSettled?.() === false) return false
+    return !(between && actors.bossBetweenActions?.() === false)
+  }
+
+  /** The hero stands on the ground and is not being knocked back by a hit (or he is down). */
+  private heroReady() {
+    const { player } = this.host.world
+    return player.dead || (player.onGround && !this.host.view.actors.heroKnocked?.())
   }
 
   private advanceLandings(dt: number) {
     if (!this.landings.length) return
     for (let i = 0; i < this.landings.length; ) {
       const l = this.landings[i]
-      l.waited += dt * this.claimed.scale
+      l.waited += dt
+      // (The hero's cap runs from the moment's cause: after it, a hero in the air hangs through the moment.)
+      l.heroWaited += dt
       if (this.ended) this.landings.splice(i, 1)
-      else if (this.landed(l.hero, l.between) || l.waited >= LAND_WAIT_SECONDS - 1e-9) {
+      // (A moment waits for the hero up to `LAND_WAIT_SECONDS` of the boss being ready, for the boss to its backstop.)
+      else if (this.landed(l.hero, l.between, l.heroWaited) || l.waited >= BETWEEN_WAIT_SECONDS - 1e-9) {
         this.landings.splice(i, 1)
         this.request(l.priority, l.make)
       } else i++
@@ -357,6 +418,27 @@ export class StageDirector implements Director {
       if (!this.ended && overlay.irisTarget < 1) overlay.irisTo(1, 0.25, overlay.irisX, overlay.irisY)
     }
     overlay.spotlight(c.spotlight)
+    this.holdHero(c.scale <= 0 && Boolean(this.main?.running))
+  }
+
+  /**
+   * Every moment that holds the simulation stands the hero on the ground: what he shows (a bite, a hurt) plays out on
+   * real time, then he stands, until the hold ends (a moment that poses him itself keeps its own pose). In the air he
+   * hangs. Slow motion is no hold.
+   */
+  private holdHero(held: boolean) {
+    const actors = this.host.view.actors
+    const { player, state } = this.host.world
+    if (!actors?.standStill) return
+    // (Taken once the step's events are all answered, never in the middle of them: `doBite` sends a boss's
+    // `boss-down` before its own `bite`, and the bite of that step plays out under the hold, facing the side it bit.)
+    if (held && this.stepDriven && this.answering) return
+    if (held && !this.heroHeld && !actors.posing('hero') && state === 'play' && player.onGround && !player.dead) {
+      this.heroHeld = actors.standStill(HOLD_POSE_SECONDS)
+    } else if (!held && this.heroHeld) {
+      actors.unposeIf('hero', this.heroHeld)
+      this.heroHeld = null
+    }
   }
 
   /** After the goal opened: an arrow at the screen edge points to it while it is off screen. */

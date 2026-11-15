@@ -1045,7 +1045,7 @@ const windup = memo(() => {
       band: [10, 30, 1.4, 0, 30]
     }),
     P({ ...set, wind: 1.5, windAt: 200, band: [-10, 30, 1.8, 1, 30] }),
-    P({ ...set, x: 1, wind: 2.4, windAt: 214, band: [-14, 30, 2, 2.4, 34] }),
+    P({ ...set, x: -1, wind: 2.4, windAt: 214, band: [-14, 30, 2, 2.4, 34] }),
     P({ ...set, x: -1, y: -5, wind: 2.6, windAt: 232, band: [-12, 30, 2, 3.8, 30] })
   ]
 })
@@ -1060,7 +1060,8 @@ const attack = memo(() => {
   return Array.from({ length: N }, (_, i) =>
     P({
       spin: i * 60,
-      pivot: 34,
+      // turned about a point 36 px up, so the middle of the ball, where his shot is born, is never a gap
+      pivot: 36,
       y: -5,
       lean: 30,
       head: [2, 5],
@@ -1232,9 +1233,9 @@ const defeat = memo(() => {
 
 /**
  * shoot: the ninja's cast, done in one low leap forward (he keeps moving while he casts): the spring with the hand
- * coming up, the hand sign before his face as he rises with fox-fire gathering at the fingertips, the thrust at the
- * top of the leap with the palm open (the game spawns the orb on `hit`), the arm following through as he comes down,
- * the touch-down. `rise` lifts the whole figure off the ground; in the air the legs tuck and trail as a leaping
+ * coming up, the hand sign before his face as he rises, the thrust at the top of the leap with the palm open (the
+ * game spawns the orb on `hit`), the arm following through as he comes down, the touch-down. A command, not a throw:
+ * nothing burns in his hand; the orb gathers in the light on his body (the view's `gather`) and he sends it. `rise` lifts the whole figure off the ground; in the air the legs tuck and trail as a leaping
  * fox's do, and the tail and headband stream a beat late.
  */
 const shoot = memo(() => [
@@ -1266,7 +1267,7 @@ const shoot = memo(() => [
     swayAmp: 1,
     band: [30, 26, 0.6, 0, 30]
   }),
-  // 1 — rising: stretched out of the spring, the hand sign made before the face, the flame catches, legs trailing
+  // 1 — rising: stretched out of the spring, the hand sign made before the face, legs trailing
   P({
     x: -1,
     y: 0,
@@ -1294,10 +1295,9 @@ const shoot = memo(() => [
     puff: 1.15,
     sway: 1,
     swayAmp: 1.5,
-    band: [36, 28, 1, 1, 30],
-    fire: 3.2
+    band: [36, 28, 1, 1, 30]
   }),
-  // 2 — near the top: legs tucked under him, coiled back with the flame grown, grinning
+  // 2 — near the top: legs tucked under him, coiled back with the sign held, grinning
   P({
     x: -2,
     y: -1,
@@ -1325,8 +1325,7 @@ const shoot = memo(() => [
     puff: 1.3,
     sway: 1.6,
     swayAmp: 1.5,
-    band: [22, 28, 1.2, 2, 28],
-    fire: 4.6
+    band: [22, 28, 1.2, 2, 28]
   }),
   // 3 (hit) — just past the top: the thrust, arm at full stretch and palm open, the near knee driving forward and
   // the far leg kicked out behind, band and tail snapped straight
@@ -1358,8 +1357,7 @@ const shoot = memo(() => [
     ],
     puff: 1.1,
     swayAmp: 0,
-    band: [-8, 34, 0.3, 3, 4],
-    flash: 1.3
+    band: [-8, 34, 0.3, 3, 4]
   }),
   // 4 — coming down: the arm swings through and down, the near foot reaching for the ground, the tail swishing under
   P({
@@ -1412,10 +1410,108 @@ const shoot = memo(() => [
   })
 ])
 
-/** The poses of the idle, move and shoot clips (for the tests). */
+/**
+ * air: off the ground with no gesture (he has stepped off a ledge, or been thrown up), one frame per phase as the
+ * leapers' (the view picks it by his vertical speed): 0 rising — stretched upward, legs trailing, tail hanging down;
+ * 1 the top — gathered, arms out, tail level; 2 falling — upright, arms out for balance, the near foot reaching for
+ * the ground, ears back, eyes down on where he will land, headband and tail streaming up behind him.
+ */
+const air = memo(() => [
+  P({
+    x: 0,
+    y: 0,
+    rise: 13,
+    lean: 0,
+    squash: -1.4,
+    head: [0, 2],
+    nod: -6,
+    eyes: 'wide',
+    mouth: 'flat',
+    earN: 26,
+    earF: 22,
+    armN: [10, 10, 10, 1],
+    handN: 'open',
+    armF: [-8, 13, 30, 1],
+    handF: 'open',
+    legN: [-6, 7, 50],
+    legF: [-11, 9, 60],
+    tail: [
+      [-6, 0],
+      [-18, 6],
+      [-29, 11],
+      [-39, 16],
+      [-46, 22]
+    ],
+    puff: 0.9,
+    swayAmp: 0,
+    band: [55, 28, 0.6, 0, 20]
+  }),
+  P({
+    x: 0,
+    y: -1,
+    rise: 14,
+    lean: 6,
+    squash: 0.6,
+    head: [0, 1],
+    nod: 4,
+    eyes: 'wide',
+    mouth: 'flat',
+    earN: 30,
+    earF: 26,
+    armN: [17, 3, -10, 1],
+    handN: 'open',
+    armF: [-15, 3, 10, 1],
+    handF: 'open',
+    legN: [4, 10, -10],
+    legF: [-5, 11, 20],
+    tail: [
+      [-6, -1],
+      [-20, 0],
+      [-33, -2],
+      [-45, -3],
+      [-55, -1]
+    ],
+    puff: 1.1,
+    swayAmp: 0,
+    band: [8, 30, 1.2, 1, 10]
+  }),
+  P({
+    x: 0,
+    y: 0,
+    rise: 11,
+    lean: 8,
+    squash: -0.4,
+    head: [1, 1],
+    nod: 14,
+    eyes: 'angry',
+    mouth: 'grin',
+    earN: 44,
+    earF: 40,
+    armN: [15, 5, 10, 1],
+    handN: 'open',
+    armF: [-15, 1, -10, 1],
+    handF: 'open',
+    legN: [4, 3, 10],
+    legF: [-6, 8, 30],
+    tail: [
+      [-6, -2],
+      [-17, -10],
+      [-25, -21],
+      [-28, -34],
+      [-24, -46]
+    ],
+    puff: 1.25,
+    sway: 1,
+    swayAmp: 1,
+    band: [-42, 24, 1.6, 2, -6]
+  })
+])
+
+/** The poses of the idle, move, shoot and air clips (for the tests). */
 export const idlePoses = () => idle()
 export const movePoses = () => move()
 export const shootPoses = () => shoot()
+export const airPoses = () => air()
 
 /** Where the feet of his run are on the ground (`tests/art-footfall.test.ts`). */
 export const footfalls: FootfallModule = {
@@ -1432,6 +1528,7 @@ export const sheets: SheetModule = {
     windup: lazyAnim(() => draw(windup()), 12, false, { sustain: 2 }),
     attack: lazyAnim(() => draw(attack()), 16, true),
     recover: lazyAnim(() => draw(recover()), 8, true),
-    shoot: lazyAnim(() => draw(shoot()), 12, false)
+    shoot: lazyAnim(() => draw(shoot()), 12, false),
+    air: lazyAnim(() => draw(air()), 8, false)
   })
 }

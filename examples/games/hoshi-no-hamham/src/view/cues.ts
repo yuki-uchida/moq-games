@@ -24,6 +24,7 @@ export const SOUND_CUES = [
   'iris-out',
   'iris-in',
   'boss-roar',
+  'boss-transform',
   'boss-boom',
   'mom-yell',
   'mom-tired',

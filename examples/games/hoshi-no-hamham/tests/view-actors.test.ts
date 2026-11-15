@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const blits: { anim: string; t: number; x: number; y: number; alpha?: number; frame?: number; flip?: boolean }[] = []
 
 vi.mock('../src/view/bake', () => ({
-  clip: (sheet: string, name: string) => ({ id: `${sheet}#${name}` }),
+  // (A light's `gather` has frames, so its drawing can be read; the other clips have none.)
+  clip: (sheet: string, name: string) =>
+    name === 'gather' ? { id: `${sheet}#${name}`, frames: [{}, {}, {}, {}] } : { id: `${sheet}#${name}` },
   flashClip: () => undefined,
   // The run's frame from its time (14 fps, 8 frames), so the footstep can be counted.
   frameIndex: (_anim: unknown, t: number, frame?: number) => frame ?? Math.floor(t * 14 + 1e-9) % 8,
@@ -62,7 +64,9 @@ import {
   landsSoon,
   DIE_WATER_HOP_SPEED,
   WATER_TOSS,
-  BIRTH_SOLID_SECONDS
+  BIRTH_SOLID_SECONDS,
+  SHOT_BIRTH_DX,
+  LAND_SLIDE_PX
 } from '../src/view/actors'
 import {
   BOSS_DEFEAT_GROUND_FRAME,
@@ -81,7 +85,6 @@ import {
   heroClip,
   hitTime,
   SHOT_CUE_SECONDS,
-  SHOT_CUE_SLIDE,
   specDuration
 } from '../src/view/clips'
 import { frameAt, type Anim } from '../src/art/sheet'
@@ -808,6 +811,107 @@ describe('hero-side facing (frog, crow, squirrel)', () => {
     for (const r of again.filter((r) => r.name === 'shoot')) expect(r.left).toBe(true)
   })
 
+  it('at 30 Hz (two steps a frame) a throw begun again shows from its first frame on the frame that first shows it', () => {
+    const { world, view, enemy, flip } = rig('spitter')
+    const shoot = ENEMY_SPEC.spitter.shoot
+    world.player.x = 400
+    enemy.shootTimer = hitTime(shoot) + 0.02
+    const frames: { name: string; frame: number; left: boolean }[] = []
+    const step = () => {
+      enemy.shootTimer -= 1 / 60
+      if (enemy.shootTimer <= 0) {
+        enemy.shootTimer = 2.4
+        view.handle({ type: 'spit', id: 2, x: 0, y: 0, dir: world.player.x > enemy.x ? 1 : -1 } as never)
+      }
+      view.simStep()
+    }
+    const show = () => {
+      frame(view, 1 / 30)
+      const c = view.selectEnemy(enemy as never)
+      frames.push({ name: c.name, frame: c.frame ?? frameAt(spitAnim(), c.t), left: flip() })
+    }
+    for (let i = 0; i < 3; i++) {
+      step()
+      step()
+      show()
+    }
+    expect(frames.at(-1)).toMatchObject({ name: 'shoot', left: false })
+    // The hero crosses on the first step of a frame; the throw begins again on it, drawn on the frame after both.
+    world.player.x = 100
+    const before = frames.length
+    for (let i = 0; i < 20; i++) {
+      step()
+      step()
+      show()
+    }
+    expect(frames[before]).toMatchObject({ name: 'shoot', frame: 0, left: true })
+  })
+
+  it('a squirrel whose throw comes straight after a turn stands until it may face its aim, then throws facing it', () => {
+    const { world, view, enemy, flip } = rig('spitter')
+    const shoot = ENEMY_SPEC.spitter.shoot
+    world.player.x = 500
+    enemy.shootTimer = 2
+    for (let i = 0; i < 20; i++) frame(view)
+    // It turns left to the hero...
+    world.player.x = 100
+    frame(view)
+    expect(flip()).toBe(true)
+    // ...who is straight back on its right as its throw falls due: it may not turn yet, so no lead-in shows.
+    world.player.x = 500
+    enemy.shootTimer = hitTime(shoot)
+    const seen: { name: string; left: boolean }[] = []
+    for (let i = 0; i < 12; i++) {
+      enemy.shootTimer -= 1 / 60
+      frame(view)
+      seen.push({ name: view.selectEnemy(enemy as never).name, left: flip() })
+    }
+    for (const r of seen) if (r.name === 'shoot') expect(r.left).toBe(false)
+    expect(seen[0].name).toBe('idle')
+    expect(seen.some((r) => r.name === 'shoot')).toBe(true)
+  })
+
+  for (const [hz, shown] of [
+    [60, true],
+    [30, false]
+  ] as const)
+    it(`at ${hz} Hz a throw begun again a step before its acorn leaves ${shown ? 'shows, and releases' : 'is never shown, and is given up (no release)'}`, () => {
+      const { world, view, enemy, flip } = rig('spitter')
+      const shoot = ENEMY_SPEC.spitter.shoot
+      world.player.x = 400
+      enemy.shootTimer = hitTime(shoot) + 0.02
+      const per = 60 / hz
+      const shots: { name: string; frame: number; left: boolean }[] = []
+      const step = () => {
+        enemy.shootTimer -= 1 / 60
+        if (enemy.shootTimer <= 1e-9) {
+          enemy.shootTimer = 2.4
+          view.handle({ type: 'spit', id: 2, x: 0, y: 0, dir: world.player.x > enemy.x ? 1 : -1 } as never)
+          view.simStep()
+          return true
+        }
+        view.simStep()
+        return false
+      }
+      // Up to two steps before the spit, in whole frames.
+      while (enemy.shootTimer > 2 / 60 + 1e-9) {
+        for (let k = 0; k < per; k++) step()
+        frame(view, 1 / hz)
+      }
+      // The hero crosses on the step before the spit; at 30 Hz that step and the spit's are one frame.
+      world.player.x = 100
+      let spat = false
+      for (let i = 0; i < 4 && !spat; i++) {
+        for (let k = 0; k < per && !spat; k++) spat = step()
+        frame(view, 1 / hz)
+        const c = view.selectEnemy(enemy as never)
+        shots.push({ name: c.name, frame: c.frame ?? frameAt(spitAnim(), c.t), left: flip() })
+      }
+      const release = shots.some((r) => r.name === 'shoot' && r.frame >= shoot.hit!)
+      expect(release).toBe(shown)
+      expect(shots.at(-1)!.left).toBe(true)
+    })
+
   it('a squirrel bitten in its throw shows the white flash over the throw; outside it, the hurt', () => {
     const { view, enemy } = rig('spitter')
     view.update(1 / 60)
@@ -1070,22 +1174,16 @@ describe('throws, casts and summons are shown only where the boss can show them'
     }
   }
 
-  it('a summon while he walks: the gesture from its release; during the dash: none, not even when the dash ends', () => {
+  it('round 6p: a summon has no gesture of the boss: he goes on with what he does (the minion has its puff)', () => {
     const event = { type: 'minion', x: 0, y: 0, kind: 'walker' } as never
-    // Walking: the release and the follow-through play.
     const walking = setup()
     walking.world.boss = fox('idle')
     walking.view.handle(event)
-    expect(drawn()(walking.view)).toBe('foxBoss#shoot')
-    // In the dash the state's clip stays ...
+    expect(drawn()(walking.view)).not.toBe('foxBoss#shoot')
     const dashing = setup()
     dashing.world.boss = fox('charge', { vx: 400 })
     dashing.view.handle(event)
     expect(drawn()(dashing.view)).toBe('foxBoss#attack')
-    // ... and when the dash ends a moment later, the tail of the gesture does not pop in.
-    dashing.view.update(0.1)
-    dashing.world.boss = fox('idle', { stateTime: 0 })
-    expect(drawn()(dashing.view)).not.toBe('foxBoss#shoot')
   })
 
   it('a shot whose lead-in was not started leaves without a pose', () => {
@@ -1621,30 +1719,40 @@ describe("the boss's facing", () => {
     expect(view.bossFlip(world.boss as never)).toBe(true)
   })
 
-  it('he faces his shot on the step it leaves, the way sim.ts aimed it', () => {
+  it('his shot never turns him: its light showed where it goes', () => {
     const { world, view } = setup()
     world.player.x = 0
     world.boss = bossBody({ state: 'idle', x: 300, def: { kind: 'swarm', art: 'foxBoss', speed: 175 } })
     view.update(1 / 60)
     view.update(1 / 60)
     expect(view.bossFlip(world.boss as never)).toBe(true)
+    // The hero just over to his right (within the dead zone of his facing): the shot goes right, he stays as he is.
     world.player.x = 305
-    // The event's x is his centre when the shot left (sim.ts aims from there, before he moves on): the hero clearly
-    // on the shot's side, no action, no dash, no turn a moment ago: a clean turn to the shot.
-    view.handle({ type: 'boss-shoot', x: 340, y: 0, count: 1 } as never)
-    view.update(1 / 60)
-    expect(view.bossFlip(world.boss as never)).toBe(false)
-    // Straight after that turn he does not turn again (his light told the side).
-    world.player.x = 250
-    view.handle({ type: 'boss-shoot', x: 340, y: 0, count: 1 } as never)
-    view.update(1 / 60)
-    expect(view.bossFlip(world.boss as never)).toBe(false)
-    // Over the hero (within a step of his own travel) a shot never turns him.
     for (let i = 0; i < 20; i++) view.tickReal(1 / 60)
-    world.player.x = 302
-    view.handle({ type: 'boss-shoot', x: 345, y: 0, count: 1 } as never)
+    view.handle({ type: 'boss-shoot', x: 340, y: 0, count: 1 } as never)
     view.update(1 / 60)
-    expect(view.bossFlip(world.boss as never)).toBe(false)
+    expect(view.bossFlip(world.boss as never)).toBe(true)
+  })
+
+  it('setting off to walk after another state, he faces the way he is walked from his first step', () => {
+    const { world, view } = setup()
+    world.player.x = 600
+    // His dash went left; then he walks right at the hero.
+    const b = bossBody({ state: 'charge', x: 300, vx: -400, def: { kind: 'swarm', art: 'foxBoss', speed: 175 } })
+    world.boss = b
+    for (let i = 0; i < 20; i++) {
+      b.x += b.vx / 60
+      view.simStep()
+      view.update(1 / 60)
+      view.tickReal(1 / 60)
+    }
+    expect(view.bossFlip(b as never)).toBe(true)
+    const w = bossBody({ state: 'idle', x: b.x, vx: 175, def: { kind: 'swarm', art: 'foxBoss', speed: 175 } })
+    world.boss = w
+    w.x += 175 / 60
+    view.simStep()
+    view.update(1 / 60)
+    expect(view.bossFlip(w as never)).toBe(false)
   })
 
   it('kicks up dust while he skids out a dash on the ground (not under reduced motion)', () => {
@@ -1887,7 +1995,7 @@ describe('C: an action keeps the facing it began with', () => {
     expect(view.bossFlip(world.boss as never)).toBe(before)
   })
 
-  it("a rat's hurt keeps its facing though it is thrown back the other way", () => {
+  it("a rat's hurt faces the blow, against the way it is thrown, and keeps that facing", () => {
     const { world, view } = setup()
     const rat = {
       id: 1,
@@ -1912,7 +2020,9 @@ describe('C: an action keeps the facing it began with', () => {
     rat.hitFlash = 0.2
     view.handle({ type: 'enemy-hit', id: 1, kind: 'walker', x: 0, y: 0, dir: -1 } as never)
     while (rat.hitFlash > 0) {
+      // Thrown back to the left (sim.ts knocks it away from the hero's bite): it faces right, into the blow.
       rat.x -= 3
+      rat.vx = -180
       rat.facing = -1
       world.player.x = -500
       frame(view)
@@ -1966,10 +2076,11 @@ describe("the hero's hurt faces the blow", () => {
       blits.length = 0
       view.drawHero(ctx)
       expect(blits.find((b) => b.anim === 'hero#hurt')!.flip).toBe(dir > 0)
-      // Once the hurt is over, his own facing.
+      // Once the hurt is over, his own facing again (not straight after the turn the hurt made).
       world.player.invuln = INVULN - 0.5
       frame(view)
       expect(view.selectHero()!.name).not.toBe('hurt')
+      for (let t = 0; t < FACE_HOLD + 0.02; t += 1 / 60) frame(view)
       expect(view.heroFlip()).toBe(dir < 0)
     }
   })
@@ -2269,14 +2380,24 @@ describe('a summoned enemy shows once the simulation has settled where it is', (
 })
 
 describe('round 5d: a staged pose that faced the other way, and a drop too short to show', () => {
-  it('a hero posed facing the other way (his cheer turned to her) turns back with his turn clip when it ends', () => {
+  it('round 6l: a hero posed facing the other way (his cheer turned to her) keeps facing her until he really turns', () => {
     const { world, view } = setup()
     world.player.facing = -1
     const token = view.pose('hero', 'cheer', 1, { face: 1 })
     frame(view)
     expect(view.heroFlip()).toBe(false)
     view.unposeIf('hero', token)
-    expect(view.selectHero()!.name).toBe('turn')
+    for (let i = 0; i < 10; i++) {
+      view.simStep()
+      frame(view)
+      expect(view.selectHero()!.name).not.toBe('turn')
+      expect(view.heroFlip()).toBe(false)
+    }
+    // He walks the way he faces in the game: he turns.
+    ;(world.player as { vx: number }).vx = -100
+    view.simStep()
+    frame(view)
+    expect(view.heroFlip()).toBe(true)
     // Posed facing his own way, he goes straight on.
     const own = view.pose('hero', 'cheer', 1, { face: -1 })
     frame(view)
@@ -2354,22 +2475,22 @@ describe('the gathering light before a shot of the crow, the fox and the bee', (
     expect(SHOT_CUE_SECONDS).toBe(0.45)
   })
 
-  it('sits on the edge of his body on the hero side, and slides across it while the hero passes over him', () => {
+  it('gathers where the shot is born on his drawn body, whichever side the hero is on (it promises no side)', () => {
     const { world, view } = setup()
     const b = fox({ shotTimer: 0.2 })
     world.boss = b
     frame(view)
     const at = (heroX: number) => {
       world.player.x = heroX
-      return view.shotCue(b as never)!
+      frame(view)
+      return { ...view.shotCue(b as never)! }
     }
-    expect(at(600)).toMatchObject({ side: 1, x: 340 + 40, sheet: 'prop:orb' })
-    expect(at(0)).toMatchObject({ side: -1, x: 340 - 40 })
-    // Over him: in between, continuously.
-    expect(at(300 + SHOT_CUE_SLIDE / 2).side).toBeCloseTo(0.5)
-    expect(at(300).side).toBe(0)
-    // At the height the shot is born (sim.ts: 0.4 of his height down, its 14 px box's middle).
+    // sim.ts: the shot's 14 px box has its left edge on his centre (340), its top 0.4 of his height down.
+    expect(at(600)).toMatchObject({ x: 340 + SHOT_BIRTH_DX, sheet: 'prop:orb' })
     expect(at(600).y).toBeCloseTo(200 + 80 * 0.4 + 7)
+    expect(at(0)).toEqual(at(600))
+    expect(at(301)).toEqual(at(299))
+    expect('side' in at(0)).toBe(false)
   })
 
   it('none for the king, before the fight, after it, or for a boss that throws nothing', () => {
@@ -2386,16 +2507,23 @@ describe('the gathering light before a shot of the crow, the fox and the bee', (
     expect(view.shotCue(world.boss as never)).toBeNull()
   })
 
-  it('is drawn in front of him from the gather clip of the shot sheet, by progress, mirrored on his left', () => {
+  it('round 6l: is drawn on its own (the stage draws it after the hero), by progress, never mirrored', () => {
     const { world, view } = setup()
     const b = fox({ shotTimer: 0.2 })
     world.boss = b
-    world.player.x = 0
-    frame(view)
-    blits.length = 0
-    view.drawBoss({} as CanvasRenderingContext2D)
-    // (The mock's clips have no frames: nothing is drawn and nothing throws.)
-    expect(blits.filter((x) => x.anim === 'prop:orb#gather')).toEqual([])
+    for (const heroX of [0, 600, 0]) {
+      world.player.x = heroX
+      frame(view)
+      blits.length = 0
+      view.drawBoss({} as CanvasRenderingContext2D)
+      // Not with the boss: in front of whoever stands on him.
+      expect(blits.filter((x) => x.anim === 'prop:orb#gather')).toEqual([])
+      view.drawShotCue({} as CanvasRenderingContext2D)
+      const light = blits.filter((x) => x.anim === 'prop:orb#gather')
+      expect(light).toHaveLength(1)
+      expect(light[0].flip).toBe(false)
+      expect(light[0].x).toBe(340 + SHOT_BIRTH_DX)
+    }
   })
 })
 
@@ -2461,4 +2589,1043 @@ describe('a release frame shows from the step its shot leaves, never before, at 
       expect(thrown).toBeGreaterThan(0)
       expect(spits[thrown].spit).toBe(true)
     })
+})
+
+describe('what a walker does is decided on the simulation steps: the same at every display rate', () => {
+  const STEP = 1 / 60
+  const RATES = [30, 48, 50, 60, 72, 75, 90, 100, 120, 144, 165, 240]
+  /** A rat or a mole pacing a pocket `width` px wide (patrol), or chasing a hero who swings to and fro over it. */
+  const motion = (kind: 'walker' | 'tough', width: number, chase: boolean, steps: number) => {
+    const speed = kind === 'walker' ? (chase ? 100 : 74) : 62
+    const xs: number[] = []
+    const heroes: number[] = []
+    let x = 500
+    let dir = 1
+    for (let n = 0; n < steps; n++) {
+      const hero = 500 + width / 2 + Math.sin(n / 23) * (width / 2 + 30)
+      if (chase) dir = hero > x ? 1 : -1
+      x += (dir * speed) / 60
+      if (!chase && x > 500 + width) {
+        x = 500 + width
+        dir = -1
+      } else if (!chase && x < 500) {
+        x = 500
+        dir = 1
+      }
+      xs.push(x)
+      heroes.push(hero)
+    }
+    return { xs, heroes }
+  }
+  /**
+   * Replays the motion as `PlaySession` shows it at `hz` (the pacer's steps and alpha, the picture between the last
+   * two steps), with a hit-stop or a stretch of slow motion when asked, and returns the decisions after every step.
+   */
+  const replay = (kind: 'walker' | 'tough', m: ReturnType<typeof motion>, hz: number, holds: boolean) => {
+    const { world, view } = setup()
+    world.boss = null
+    const body = {
+      id: 3,
+      kind,
+      x: m.xs[0] - 22,
+      y: 300,
+      w: 44,
+      h: 40,
+      vx: 0,
+      vy: 0,
+      facing: 1 as 1 | -1,
+      onGround: true,
+      hitFlash: 0,
+      shootTimer: 0,
+      dead: false,
+      t: 0
+    }
+    ;(world as unknown as { enemies: unknown[] }).enemies = [body]
+    frame(view)
+    const timers = () =>
+      (view as unknown as { enemyTimers: Map<number, { face: 1 | -1; tread: { standing: boolean } }> }).enemyTimers.get(
+        3
+      )!
+    const out: string[] = []
+    let n = 0
+    let acc = 0
+    let prev = m.xs[0]
+    let k = 0
+    while (n < m.xs.length - 1) {
+      k++
+      const real = 1 / hz
+      // A hit-stop of 0.2 s at 1 s, slow motion (0.3) from 2 s to 2.5 s.
+      const t = k / hz
+      const scale = !holds ? 1 : t > 1 && t < 1.2 ? 0 : t > 2 && t < 2.5 ? 0.3 : 1
+      acc += real * scale
+      while (scale > 0 && acc > STEP * 1e-6 && n < m.xs.length - 1) {
+        prev = m.xs[n]
+        n++
+        acc -= STEP
+        body.vx = (m.xs[n] - prev) * 60
+        body.facing = body.vx >= 0 ? 1 : -1
+        body.x = m.xs[n] - 22
+        world.player.x = m.heroes[n]
+        view.simStep()
+        out.push(`${timers().tread.standing ? 'S' : 'W'}${timers().face > 0 ? 'R' : 'L'}`)
+      }
+      const alpha = scale > 0 ? Math.min(1, Math.max(0, 1 + acc / STEP)) : 1
+      body.x = prev + (m.xs[n] - prev) * alpha - 22
+      view.update(real * scale)
+      view.tickReal(real)
+      body.x = m.xs[n] - 22
+    }
+    return out
+  }
+  for (const kind of ['walker', 'tough'] as const)
+    for (const chase of [false, true])
+      it(`${kind === 'walker' ? 'a rat' : 'a mole'} ${chase ? 'chasing' : 'pacing'} pockets of 6 to 40 px: identical decisions step for step at ${RATES.join(', ')} Hz, with and without hit-stops and slow motion`, () => {
+        for (let width = 6; width <= 40; width += 2) {
+          const m = motion(kind, width, chase, 300)
+          const base = replay(kind, m, 60, false)
+          // (The decisions are not all the same: it does turn and stand.)
+          expect(new Set(base).size, `${width} px`).toBeGreaterThan(1)
+          for (const hz of RATES)
+            for (const holds of [false, true])
+              expect(replay(kind, m, hz, holds), `${width} px at ${hz} Hz${holds ? ' with holds' : ''}`).toEqual(base)
+        }
+      })
+})
+
+describe('round 6c: once the stage is over or the hero is down, what the simulation holds stands still', () => {
+  it("a dashing boss and a walking rat keep the frame they had; a knocked-out body's clip plays on", () => {
+    const { world, view } = setup()
+    const b = bossBody({ state: 'charge', x: 300, vx: 400, def: { kind: 'brute', art: 'boarBoss', speed: 150 } })
+    world.boss = b
+    const rat = {
+      id: 5,
+      kind: 'walker',
+      x: 600,
+      y: 300,
+      w: 44,
+      h: 40,
+      vx: 74,
+      vy: 0,
+      facing: 1 as const,
+      onGround: true,
+      hitFlash: 0,
+      shootTimer: 0,
+      dead: false
+    }
+    ;(world as unknown as { enemies: unknown[] }).enemies = [rat]
+    for (let i = 0; i < 10; i++) {
+      b.x += 400 / 60
+      rat.x += 74 / 60
+      frame(view)
+    }
+    world.state = 'dead'
+    const boss0 = view.selectBoss(b as never)
+    const rat0 = view.selectEnemy(rat as never)
+    for (let i = 0; i < 60; i++) frame(view)
+    expect(view.selectBoss(b as never)).toEqual(boss0)
+    expect(view.selectEnemy(rat as never)).toEqual(rat0)
+  })
+})
+
+describe('round 6c: the transformation waits for him to be between his actions', () => {
+  it('not in a wind-up, a charge, a leap, a gathering, nor while he slides out of one; his walk is between actions', () => {
+    const { world, view } = setup()
+    const king = (extra = {}) =>
+      bossBody({ x: 300, onGround: true, def: { kind: 'final', art: 'king', speed: 120, projectiles: 3 }, ...extra })
+    for (const state of ['windup', 'charge', 'slam', 'shoot'] as const) {
+      world.boss = king({ state, stateTime: 0.2 })
+      view.simStep()
+      view.simStep()
+      view.simStep()
+      expect(view.bossBetweenActions(), state).toBe(false)
+    }
+    // Sliding out of his charge, then at rest for a few steps.
+    world.boss = king({ state: 'recover', vx: 200 })
+    view.simStep()
+    expect(view.bossBetweenActions()).toBe(false)
+    const b = king({ state: 'recover', vx: 10, stateTime: 0.6 })
+    world.boss = b
+    view.simStep()
+    expect(view.bossBetweenActions()).toBe(false)
+    view.simStep()
+    view.simStep()
+    expect(view.bossBetweenActions()).toBe(true)
+    // Off the ground he is not.
+    b.onGround = false
+    expect(view.bossBetweenActions()).toBe(false)
+    // A wind-up at rest (past its first moments) is still his attack.
+    world.boss = king({ state: 'windup', vx: 0, stateTime: 0.2 })
+    for (let i = 0; i < 3; i++) view.simStep()
+    expect(view.bossBetweenActions()).toBe(false)
+    // A charge that crashes into a wall on its first step: the steps of his slow wind-up do not count as rest.
+    const stunned = king({ state: 'stunned', vx: 0 })
+    world.boss = stunned
+    view.simStep()
+    expect(view.bossBetweenActions()).toBe(false)
+    // His own walk is not an action: in `idle` he is between actions at any speed (he stops and roars).
+    world.boss = king({ state: 'idle', vx: 244 })
+    view.simStep()
+    expect(view.bossBetweenActions()).toBe(true)
+  })
+})
+
+describe('round 6d: a hit-stop lengthens the facing hold only by what it adds to the screen', () => {
+  const STEP = 1 / 60
+  const RATES = [30, 48, 50, 60, 72, 75, 90, 100, 120, 144, 165, 240]
+  /**
+   * A rat shaken on the spot under a hero who swings from side to side (it turns to him as often as its hold lets
+   * it), with hit-stops that overlap now and then, played as `PlaySession` and `StageView` play it at \`hz\`: a step
+   * that starts a hit-stop runs no further step in its frame, the hit-stop holds the frames that follow, and a
+   * second one during it adds only what it lengthens it by. The real times at which its drawn facing turned.
+   */
+  const turns = (hz: number) => {
+    const { world, view } = setup()
+    world.boss = null
+    const rat = {
+      id: 7,
+      kind: 'walker',
+      x: 500,
+      y: 300,
+      w: 44,
+      h: 40,
+      vx: 0,
+      vy: 0,
+      facing: 1 as 1 | -1,
+      onGround: true,
+      hitFlash: 0,
+      shootTimer: 0,
+      dead: false
+    }
+    ;(world as unknown as { enemies: unknown[] }).enemies = [rat]
+    let frozen = 0
+    const freeze = (seconds: number) => {
+      view.heldFor(Math.max(0, seconds - frozen))
+      frozen = Math.max(frozen, seconds)
+    }
+    const out: number[] = []
+    let acc = 0
+    let n = 0
+    let real = 0
+    let last = view.enemyFlip(rat as never)
+    for (let k = 0; k < hz * 8; k++) {
+      const dt = 1 / hz
+      real += dt
+      const held = frozen > 0
+      if (!held) {
+        acc += dt
+        while (acc > STEP * 1e-6 && frozen <= 0) {
+          acc -= STEP
+          n++
+          rat.x = 500 + (n % 2) * 1.5
+          world.player.x = 522 + (Math.floor(n / 4) % 2 ? -60 : 60)
+          // A hit-stop every 23 steps, and another, longer, starting inside it now and then: begun by the step's
+          // events, which the view answers before the step's decisions (`PlaySession.frame`).
+          if (n % 23 === 0) freeze(0.1)
+          if (n % 69 === 2) freeze(0.15)
+          view.simStep()
+        }
+      } else acc = 0
+      frozen = Math.max(0, frozen - dt)
+      view.update(held ? 0 : dt)
+      view.tickReal(dt)
+      const flip = view.enemyFlip(rat as never)
+      if (flip !== last) out.push(real)
+      last = flip
+    }
+    return out
+  }
+  for (const hz of RATES)
+    it(`at ${hz} Hz no two turns are closer on the screen than 0.15 s`, () => {
+      const t = turns(hz)
+      expect(t.length).toBeGreaterThan(10)
+      for (let i = 1; i < t.length; i++) expect(t[i] - t[i - 1], `turn ${i}`).toBeGreaterThanOrEqual(0.15 - 1e-9)
+    })
+})
+
+describe('round 6e: turns drawn with their step, a boss falling over the hero, two squirrel cases', () => {
+  const STEP = 1 / 60
+  const RATES = [30, 48, 50, 72, 75, 90, 100, 144, 165]
+
+  for (const hz of RATES)
+    it(`at ${hz} Hz a rat's drawn facing is the one decided on the last step the frame shows`, () => {
+      const { world, view } = setup()
+      world.boss = null
+      const rat = { id: 4, kind: 'walker', x: 500, y: 300, w: 44, h: 40, vx: 0, vy: 0, facing: 1 as 1 | -1 }
+      Object.assign(rat, { onGround: true, hitFlash: 0, shootTimer: 0, dead: false })
+      ;(world as unknown as { enemies: unknown[] }).enemies = [rat]
+      const timers = () => (view as unknown as { enemyTimers: Map<number, { face: number }> }).enemyTimers.get(4)!
+      let acc = 0
+      let n = 0
+      let prev = rat.x
+      for (let k = 0; k < hz * 4; k++) {
+        acc += 1 / hz
+        while (acc > STEP * 1e-6) {
+          acc -= STEP
+          n++
+          // Pacing 18 px to and fro at 100 px/s: turns that its body really makes, often.
+          prev = rat.x
+          const leg = 11
+          const p = n % (2 * leg)
+          rat.x = 500 + (100 / 60) * (p < leg ? p : 2 * leg - p)
+          view.simStep()
+        }
+        const alpha = Math.min(1, Math.max(0, 1 + acc / STEP))
+        const at = rat.x
+        rat.x = prev + (at - prev) * alpha
+        view.update(1 / hz)
+        view.tickReal(1 / hz)
+        expect(view.enemyFlip(rat as never)).toBe(timers().face < 0)
+        rat.x = at
+      }
+    })
+
+  it('a king falling out of his walk over the hero, his speed flipped on every step, turns once in the fall at most', () => {
+    const { world, view } = setup()
+    const king = bossBody({
+      x: 300,
+      state: 'idle',
+      onGround: false,
+      vy: 100,
+      def: { kind: 'final', art: 'king', speed: 195, projectiles: 3 }
+    }) as ReturnType<typeof bossBody> & { vx: number; x: number; y: number }
+    world.boss = king
+    world.player.x = 300
+    frame(view)
+    for (let i = 0; i < 20; i++) frame(view)
+    let turns = 0
+    let last = view.bossFlip(king as never)
+    for (let n = 0; n < 40; n++) {
+      king.vx = n % 2 ? 195 : -195
+      king.x += king.vx / 60 + (n % 3 === 0 ? 1 : 0)
+      king.y += 2
+      view.simStep()
+      frame(view)
+      const flip = view.bossFlip(king as never)
+      if (flip !== last) turns++
+      last = flip
+    }
+    expect(turns).toBeLessThanOrEqual(1)
+  })
+})
+
+describe('round 6f: the transformation, the held world, the light, the hero', () => {
+  const king = (extra = {}) =>
+    bossBody({ x: 300, onGround: true, def: { kind: 'final', art: 'king', speed: 195, projectiles: 3 }, ...extra })
+
+  it('the first 0.1 s of a wind-up are still a rest between his actions; later in it they are not', () => {
+    const { world, view } = setup()
+    world.boss = king({ state: 'windup', stateTime: 0.05 })
+    view.simStep()
+    expect(view.bossBetweenActions()).toBe(true)
+    world.boss = king({ state: 'windup', stateTime: 0.2 })
+    view.simStep()
+    expect(view.bossBetweenActions()).toBe(false)
+  })
+
+  it('a king who comes down from a real fall out of his walk lands (and is not between actions until it is over)', () => {
+    const { world, view } = setup()
+    const b = king({ state: 'idle', onGround: false, y: 160, vy: 300 })
+    world.boss = b
+    view.simStep()
+    frame(view)
+    b.y = 200
+    b.onGround = true
+    b.vy = 0
+    view.simStep()
+    frame(view)
+    expect(view.selectBoss(b as never).name).toBe('land')
+    expect(view.bossBetweenActions()).toBe(false)
+    // A hop of a few px is no fall.
+    const c = king({ state: 'idle', onGround: false, y: 196 })
+    const r = setup()
+    r.world.boss = c
+    r.view.simStep()
+    c.y = 200
+    c.onGround = true
+    r.view.simStep()
+    frame(r.view)
+    expect(r.view.selectBoss(c as never).name).not.toBe('land')
+  })
+
+  it('boss-slam always begins a landing, even after a staged pose cut one', () => {
+    const { world, view } = setup()
+    const b = king({ state: 'slam', onGround: true, stateTime: 0.3 })
+    world.boss = b
+    frame(view)
+    // A staged pose ends while he is held on the ground in his slam: that landing is cut.
+    view.pose('boss', 'rage', 0.1)
+    view.tickReal(0.2)
+    frame(view)
+    view.handle({ type: 'boss-slam', x: 340, y: 280 } as never)
+    world.boss = king({ state: 'recover', onGround: true, stateTime: 0 })
+    frame(view)
+    expect(view.selectBoss(world.boss as never).name).toBe('land')
+  })
+
+  it('once the stage is over nothing the simulation holds is decided again: a walker keeps its stride and facing', () => {
+    const { world, view } = setup()
+    world.boss = null
+    const rat = { id: 6, kind: 'walker', x: 500, y: 300, w: 44, h: 40, vx: 74, vy: 0, facing: 1 as 1 | -1 }
+    Object.assign(rat, { onGround: true, hitFlash: 0, shootTimer: 0, dead: false })
+    ;(world as unknown as { enemies: unknown[] }).enemies = [rat]
+    for (let i = 0; i < 30; i++) {
+      rat.x += 74 / 60
+      view.simStep()
+      frame(view)
+    }
+    world.state = 'dead'
+    const before = { clip: view.selectEnemy(rat as never), flip: view.enemyFlip(rat as never) }
+    // PlaySession still calls simStep on its paced steps; the world does not move.
+    for (let i = 0; i < 40; i++) {
+      view.simStep()
+      frame(view)
+    }
+    expect(view.selectEnemy(rat as never)).toEqual(before.clip)
+    expect(view.enemyFlip(rat as never)).toBe(before.flip)
+  })
+
+  it("the hero's bite keeps the side it bit to its end, whatever his facing does meanwhile", () => {
+    const { world, view } = setup()
+    const p = world.player as { facing: number; biteTimer: number; x: number }
+    p.facing = 1
+    for (let i = 0; i < 20; i++) {
+      view.simStep()
+      frame(view)
+    }
+    view.handle({ type: 'bite', x: 0, y: 0, dir: 1, hit: false } as never)
+    p.biteTimer = BITE_TIME
+    const flips: boolean[] = []
+    for (let i = 0; i < 12; i++) {
+      p.biteTimer -= 1 / 60
+      // The input turns him round on every step (the bot does, over an enemy).
+      p.facing = i % 2 ? 1 : -1
+      view.simStep()
+      frame(view)
+      if (view.selectHero()!.name === 'bite') flips.push(view.heroFlip())
+    }
+    expect(flips.length).toBeGreaterThan(3)
+    expect(flips.every((f) => f === false)).toBe(true)
+  })
+
+  for (const hz of [30, 60, 144])
+    it(`at ${hz} Hz the hero's hard landing shows the same steps of its clip`, () => {
+      const { world, view } = setup()
+      const p = world.player as { onGround: boolean; vy: number; y: number }
+      const names: string[] = []
+      const per = 60 / hz
+      let n = 0
+      p.onGround = false
+      p.vy = 600
+      for (let k = 0; k < 40 * (hz / 60) + 2; k++) {
+        for (let s = 0; s < Math.max(1, Math.round(per)) && n < 40; s++, n++) {
+          if (n === 10) {
+            p.onGround = true
+            p.vy = 0
+            view.handle({ type: 'land', x: 0, y: 0, speed: 700 } as never)
+          }
+          view.simStep()
+          names[n] = view.selectHero()!.name
+        }
+        frame(view, 1 / hz)
+      }
+      // The steps from the touchdown: the landing, the same at every rate.
+      expect(names.slice(10, 20).filter((x) => x === 'land').length).toBe(10)
+    })
+})
+
+describe("round 6g: the hero's pivot is the picture of a drawn turn; a landing fitted to the next attack", () => {
+  it('an input that goes back before the hold lets him turn gives no pivot: he keeps the facing he is drawn with', () => {
+    const { world, view } = setup()
+    const p = world.player as { facing: number; vx: number; onGround: boolean }
+    p.facing = 1
+    for (let i = 0; i < 20; i++) {
+      view.simStep()
+      frame(view)
+    }
+    // He turns left (a drawn turn: his pivot).
+    p.facing = -1
+    view.simStep()
+    frame(view)
+    expect(view.heroFlip()).toBe(true)
+    expect(view.selectHero()!.name).toBe('turn')
+    for (let i = 0; i < 3; i++) {
+      view.simStep()
+      frame(view)
+    }
+    // Within the hold the input presses right for two steps and lets go: no pivot, no turn drawn.
+    const seen: { name: string; left: boolean }[] = []
+    for (let i = 0; i < 6; i++) {
+      p.facing = i < 2 ? 1 : -1
+      view.simStep()
+      frame(view)
+      seen.push({ name: view.selectHero()!.name, left: view.heroFlip() })
+    }
+    for (const r of seen) expect(r.left).toBe(true)
+  })
+
+  it('a king who lands from a fall just before his attack begins comes down without a landing; earlier, a fitted one', () => {
+    const fall = (state: string, stateTime: number) => {
+      const { world, view } = setup()
+      const b = bossBody({
+        x: 300,
+        state,
+        stateTime,
+        onGround: false,
+        y: 160,
+        def: { kind: 'final', art: 'king', speed: 195, projectiles: 3 }
+      })
+      world.boss = b
+      view.simStep()
+      frame(view)
+      Object.assign(b, { y: 200, onGround: true, vy: 0 })
+      view.simStep()
+      frame(view)
+      return view.selectBoss(b as never).name
+    }
+    // (sim.ts: his wind-up lasts 0.35 s; a landing needs FIT_MIN, 0.1 s.)
+    expect(fall('windup', 0.3)).not.toBe('land')
+    expect(fall('windup', 0.1)).toBe('land')
+    expect(fall('idle', 0.2)).toBe('land')
+  })
+})
+
+describe("round 6h: a plain fall's landing gives way once its impact has shown; it goes on over a seam", () => {
+  const KING = { kind: 'final', art: 'king', speed: 195, projectiles: 3 }
+  const land = bossSpec('king').land!
+  /** A king come down 40 px on to ground at y 320 (his feet), the touchdown step answered but not yet drawn. */
+  // (In his recovery he stays put: the landing has its whole length.)
+  const touchdown = (state = 'recover', vx = 0, stateTime = 0) => {
+    const { world, view } = setup()
+    world.solidAt = (_tx: number, ty: number) => ty >= 5
+    const b = bossBody({ x: 300, y: 200, state, stateTime, onGround: false, vy: 300, vx, def: KING })
+    world.boss = b as never
+    view.simStep()
+    frame(view)
+    Object.assign(b, { y: 240, onGround: true, vy: 0 })
+    view.simStep()
+    return { world, view, b }
+  }
+
+  it('in his recovery: not before a frame has drawn the landing, nor in its first frame; from its second frame on', () => {
+    const { view, b } = touchdown()
+    expect(view.selectBoss(b as never).name).toBe('land')
+    expect(view.bossBetweenActions()).toBe(false)
+    expect(view.bossSettled()).toBe(false)
+    const rows: { t: number; between: boolean }[] = []
+    for (let i = 0; i < 12 && view.selectBoss(b as never).name === 'land'; i++) {
+      frame(view)
+      view.simStep()
+      rows.push({ t: view.selectBoss(b as never).t, between: view.bossBetweenActions() })
+    }
+    const end = (land.hold?.[0] ?? 1) / land.fps
+    expect(rows.some((r) => r.between)).toBe(true)
+    for (const r of rows) expect(r.between, `at ${r.t}`).toBe(r.t + 1e-9 >= end)
+  })
+
+  it('into his wind-up only once he no longer slides', () => {
+    const run = (vx: number) => {
+      // (Early in it: the landing leaves the wind-up its warning.)
+      const { view, b } = touchdown('windup', vx)
+      for (let i = 0; i < 8; i++) {
+        frame(view)
+        view.simStep()
+      }
+      expect(view.selectBoss(b as never).name).toBe('land')
+      return view.bossBetweenActions()
+    }
+    expect(run(100)).toBe(false)
+    expect(run(0)).toBe(true)
+  })
+
+  it('two steps off the ground over a seam do not end it; a third ends it for good', () => {
+    const { world, view, b } = touchdown()
+    world.player.x = 1000
+    for (let i = 0; i < 2; i++) {
+      frame(view)
+      view.simStep()
+    }
+    const names = (steps: number) => {
+      const out: string[] = []
+      for (let i = 0; i < steps; i++) {
+        Object.assign(b, { y: 238, onGround: false, vy: 27 })
+        view.simStep()
+        frame(view)
+        out.push(view.selectBoss(b as never).name)
+      }
+      Object.assign(b, { y: 240, onGround: true, vy: 0 })
+      view.simStep()
+      frame(view)
+      out.push(view.selectBoss(b as never).name)
+      return out
+    }
+    expect(names(2)).toEqual(['land', 'land', 'land'])
+    const after = names(3)
+    expect(after.slice(0, 3)).toEqual(['land', 'land', 'air'])
+    expect(after[3]).not.toBe('land')
+  })
+})
+
+describe('round 6h: a hurt faces the blow from the hit itself; a hit-stop counts for the holds after its step', () => {
+  it("a rat bitten from its left faces left, though its walk carries it the hero's way (not away from him)", () => {
+    const { world, view } = setup()
+    world.boss = null
+    world.player.x = 440
+    const rat = {
+      id: 3,
+      kind: 'walker',
+      x: 500,
+      y: 300,
+      w: 44,
+      h: 40,
+      vx: -100,
+      vy: 0,
+      facing: -1 as 1 | -1,
+      onGround: true,
+      hitFlash: 0,
+      shootTimer: 0,
+      dead: false
+    }
+    ;(world as unknown as { enemies: unknown[] }).enemies = [rat]
+    for (let i = 0; i < 20; i++) {
+      view.simStep()
+      frame(view)
+    }
+    expect(view.enemyFlip(rat as never)).toBe(true)
+    // Bitten from its left (thrown right) as it walks at the hero: its walk still carries it left.
+    Object.assign(rat, { hitFlash: 0.16, vy: -180, onGround: false })
+    view.handle({ type: 'enemy-hit', id: 3, kind: 'walker', x: 522, y: 320, dir: 1 } as never)
+    view.simStep()
+    frame(view)
+    expect(view.selectEnemy(rat as never).name).toBe('hurt')
+    expect(view.enemyFlip(rat as never)).toBe(true)
+  })
+})
+
+describe('round 6l: the player commands, the held moments, the wind-up he has shown, the light', () => {
+  /** A hero standing facing `facing` for a while (the hold long over). */
+  const standing = (facing: 1 | -1 = 1) => {
+    const { world, view } = setup()
+    world.boss = null
+    const p = world.player as {
+      facing: number
+      vx: number
+      biteTimer: number
+      invuln: number
+      onGround: boolean
+    }
+    p.facing = facing
+    for (let i = 0; i < 30; i++) {
+      view.simStep()
+      frame(view)
+    }
+    return { world, view, p }
+  }
+
+  it('a bite within the facing hold is drawn from the frame that shows its step, facing the side it bit', () => {
+    const { view, p } = standing(1)
+    // He turns left (a drawn turn), and two steps later bites to the right.
+    p.facing = -1
+    view.simStep()
+    frame(view)
+    expect(view.heroFlip()).toBe(true)
+    view.simStep()
+    frame(view)
+    p.facing = 1
+    view.handle({ type: 'bite', x: 0, y: 0, dir: 1, hit: true } as never)
+    p.biteTimer = BITE_TIME
+    view.simStep()
+    frame(view)
+    expect(view.selectHero()!.name).toBe('bite')
+    expect(view.heroFlip()).toBe(false)
+  })
+
+  it('a moment that holds the simulation keeps the facing he is drawn with, and he comes out of it so', () => {
+    const { view, p } = standing(1)
+    // He turns left, and taps right within the hold: the simulation faces right, he is still drawn facing left.
+    p.facing = -1
+    view.simStep()
+    frame(view)
+    p.facing = 1
+    view.simStep()
+    frame(view)
+    expect(view.heroFlip()).toBe(true)
+    const token = view.standStill(60)
+    const posed: boolean[] = []
+    // (Held: the frames pass no simulation time.)
+    for (let i = 0; i < 20; i++) {
+      view.update(0)
+      view.tickReal(1 / 60)
+      posed.push(view.heroFlip())
+    }
+    view.unposeIf('hero', token)
+    const after: { name: string; left: boolean }[] = []
+    for (let i = 0; i < 12; i++) {
+      view.simStep()
+      frame(view)
+      after.push({ name: view.selectHero()!.name, left: view.heroFlip() })
+    }
+    expect(posed.every((l) => l)).toBe(true)
+    // No frame the other way, no pivot while he stands: he turns once he moves the way he faces in the game.
+    for (const r of after) expect(r).toEqual({ name: 'idle', left: true })
+    p.vx = 100
+    view.simStep()
+    frame(view)
+    expect(view.heroFlip()).toBe(false)
+  })
+
+  it('round 6p: still braking when the hold ends, he skids from its first frame, facing as the pose showed him', () => {
+    const { view, p } = standing(1)
+    // Running right, he presses left: he brakes (a skid).
+    p.vx = 210
+    view.simStep()
+    frame(view)
+    p.facing = -1
+    view.simStep()
+    frame(view)
+    expect(view.selectHero()!.name).toBe('skid')
+    const token = view.standStill(60)
+    for (let i = 0; i < 20; i++) {
+      view.update(0)
+      view.tickReal(1 / 60)
+    }
+    expect(view.selectHero()!.name).toBe('idle')
+    const posed = view.heroFlip()
+    view.unposeIf('hero', token)
+    // (The frames after the hold that run no step yet show it from its first frame.)
+    view.update(0)
+    expect(view.selectHero()).toMatchObject({ name: 'skid', t: 0 })
+    expect(view.heroFlip()).toBe(posed)
+    const names: string[] = []
+    for (let i = 0; i < 3; i++) {
+      p.vx -= 15
+      view.simStep()
+      frame(view)
+      names.push(view.selectHero()!.name)
+    }
+    expect(names).toEqual(['skid', 'skid', 'skid'])
+  })
+
+  it('a skid a bite covered does not take over in its middle when the bite ends', () => {
+    const { view, p } = standing(1)
+    p.vx = 210
+    view.simStep()
+    frame(view)
+    p.facing = -1
+    view.simStep()
+    frame(view)
+    expect(view.selectHero()!.name).toBe('skid')
+    view.handle({ type: 'bite', x: 0, y: 0, dir: -1, hit: false } as never)
+    p.biteTimer = BITE_TIME
+    const names: string[] = []
+    for (let i = 0; i < 30; i++) {
+      p.biteTimer = Math.max(0, p.biteTimer - 1 / 60)
+      p.vx = Math.max(0, p.vx - 4)
+      view.simStep()
+      frame(view)
+      names.push(view.selectHero()!.name)
+    }
+    const end = names.lastIndexOf('bite')
+    expect(end).toBeGreaterThan(0)
+    expect(names.slice(end + 1)).not.toContain('skid')
+  })
+
+  it('a hero who cannot be hurt is drawn on every frame the simulation is held (the blink is for time that runs)', () => {
+    const { world, view, p } = standing(1)
+    p.invuln = INVULN - 0.5
+    // Find a frame where the blink hides him, then hold the simulation there.
+    let hidden = false
+    for (let i = 0; i < 20 && !hidden; i++) {
+      frame(view)
+      hidden = !view.heroDrawn()
+    }
+    expect(hidden).toBe(true)
+    const drawn: boolean[] = []
+    for (let i = 0; i < 30; i++) {
+      blits.length = 0
+      view.update(0)
+      view.tickReal(1 / 60)
+      view.drawHero({} as CanvasRenderingContext2D)
+      drawn.push(blits.some((b) => b.anim.startsWith('hero#')) && view.heroDrawn())
+    }
+    expect(drawn.every((d) => d)).toBe(true)
+    expect(world.player.invuln).toBeGreaterThan(0)
+  })
+
+  it("the first 0.1 s of a wind-up is judged by the wind-up's own age, not the clock the phase step restarts", () => {
+    const { world, view } = setup()
+    const w = world as unknown as { time: number }
+    w.time = 10
+    const king = bossBody({
+      x: 300,
+      onGround: true,
+      state: 'windup',
+      stateTime: 0.2,
+      def: { kind: 'final', art: 'king', speed: 120, projectiles: 3 }
+    })
+    world.boss = king as never
+    view.simStep()
+    frame(view)
+    expect(view.bossBetweenActions()).toBe(false)
+    // The phase step: sim.ts restarts his state's clock; the crouch he shows is 0.2 s old.
+    view.handle({ type: 'boss-phase', x: 0, y: 0 } as never)
+    king.stateTime = 0
+    w.time += 1 / 60
+    view.simStep()
+    expect(view.bossBetweenActions()).toBe(false)
+    // A wind-up that has really just begun still gives way.
+    const fresh = setup()
+    ;(fresh.world as unknown as { time: number }).time = 10
+    fresh.world.boss = bossBody({ ...king, stateTime: 0.05 }) as never
+    fresh.view.simStep()
+    fresh.view.simStep()
+    expect(fresh.view.bossBetweenActions()).toBe(true)
+  })
+})
+
+describe('round 6l: a landing out of his walk, a sleeping boss', () => {
+  it('a king who walks off a ledge takes the impact over no more than LAND_SLIDE_PX of ground', () => {
+    const { world, view } = setup()
+    const b = bossBody({
+      x: 300,
+      y: 160,
+      state: 'idle',
+      stateTime: 0.2,
+      onGround: false,
+      vy: 300,
+      vx: 195,
+      def: { kind: 'final', art: 'king', speed: 195, projectiles: 3 }
+    })
+    world.boss = b as never
+    view.simStep()
+    frame(view)
+    Object.assign(b, { y: 200, onGround: true, vy: 0 })
+    view.simStep()
+    let ground = 0
+    for (let i = 0; i < 40; i++) {
+      frame(view)
+      if (view.selectBoss(b as never).name !== 'land') break
+      b.x += 195 / 60
+      ground += 195 / 60
+      view.simStep()
+    }
+    expect(ground).toBeGreaterThan(0)
+    expect(ground).toBeLessThanOrEqual(LAND_SLIDE_PX + 195 / 60 + 1e-6)
+  })
+
+  it('a heavy boss asleep records no landing: he wakes without one', () => {
+    const { world, view } = setup()
+    const b = bossBody({
+      x: 300,
+      y: 160,
+      active: false,
+      onGround: false,
+      vy: 300,
+      def: { kind: 'tank', art: 'apeBoss', speed: 100 }
+    })
+    world.boss = b as never
+    view.simStep()
+    frame(view)
+    Object.assign(b, { y: 200, onGround: true, vy: 0 })
+    view.simStep()
+    frame(view)
+    b.active = true
+    view.simStep()
+    frame(view)
+    expect(view.selectBoss(b as never).name).not.toBe('land')
+  })
+})
+
+describe('round 6m: the fox in the air', () => {
+  const FOX = { kind: 'swarm', art: 'foxBoss', speed: 175, projectiles: 1 }
+  it('off a ledge in his wind-up he falls in his air; landed, his wind-up begins on its first frame', () => {
+    const { world, view } = setup()
+    // Ground at y 320 (his feet on it at y 240).
+    world.solidAt = (_tx: number, ty: number) => ty >= 5
+    const b = bossBody({ x: 300, y: 240, state: 'windup', stateTime: 0, onGround: true, def: FOX })
+    world.boss = b as never
+    view.simStep()
+    frame(view)
+    expect(view.selectBoss(b as never).name).toBe('windup')
+    // A tile above it, falling.
+    const names: string[] = []
+    for (let i = 0; i < 6; i++) {
+      Object.assign(b, { y: 176 + i * 8, onGround: false, vy: 100 + i * 30, stateTime: b.stateTime + 1 / 60 })
+      view.simStep()
+      frame(view)
+      names.push(view.selectBoss(b as never).name)
+    }
+    expect(names.every((n) => n === 'air')).toBe(true)
+    Object.assign(b, { y: 240, onGround: true, vy: 0, stateTime: b.stateTime + 1 / 60 })
+    view.simStep()
+    frame(view)
+    expect(view.selectBoss(b as never)).toMatchObject({ name: 'windup', t: 0 })
+  })
+
+  it('the shake at a ledge’s lip (a step off the ground, a step on) keeps his walk', () => {
+    const { world, view } = setup()
+    world.solidAt = (_tx: number, ty: number) => ty >= 5
+    world.player.x = 0
+    const b = bossBody({ x: 300, y: 240, state: 'idle', stateTime: 0.5, onGround: true, vx: -175, def: FOX })
+    world.boss = b as never
+    const names: string[] = []
+    for (let i = 0; i < 12; i++) {
+      Object.assign(b, { onGround: i % 2 === 0, vy: i % 2 === 0 ? 0 : 27, x: b.x + (i % 2 ? -3 : 3) })
+      view.simStep()
+      frame(view)
+      names.push(view.selectBoss(b as never).name)
+    }
+    expect(names).not.toContain('air')
+  })
+})
+
+describe('round 6p: out of a crash', () => {
+  it('the king straight out of a crash (his stun lasts a step) is not between actions until he has been at rest for REST_STEPS steps', () => {
+    const { world, view } = setup()
+    const KING = { kind: 'final', art: 'king', speed: 120, projectiles: 3 }
+    const b = bossBody({ x: 300, onGround: true, state: 'charge', stateTime: 0.5, vx: -400, def: KING })
+    world.boss = b as never
+    view.simStep()
+    frame(view)
+    Object.assign(b, { state: 'stunned', stateTime: 0, vx: 0 })
+    view.simStep()
+    Object.assign(b, { state: 'idle', stateTime: 0, vx: 150 })
+    view.simStep()
+    frame(view)
+    const between: boolean[] = []
+    for (let i = 0; i < 4; i++) {
+      between.push(view.bossBetweenActions())
+      b.stateTime += 1 / 60
+      view.simStep()
+      frame(view)
+    }
+    // Walking straight on out of the crash, he is not at rest.
+    expect(between).toEqual([false, false, false, false])
+    b.vx = 0
+    for (let i = 0; i < 3; i++) {
+      b.stateTime += 1 / 60
+      view.simStep()
+      frame(view)
+    }
+    expect(view.bossBetweenActions()).toBe(true)
+  })
+})
+
+describe('round 6q: out of a hold, a landing at the end of a rest, a walker in the air', () => {
+  const runningRight = () => {
+    const { world, view } = setup()
+    world.boss = null
+    const p = world.player as { facing: number; vx: number; onGround: boolean }
+    p.facing = 1
+    p.vx = 0
+    for (let i = 0; i < 30; i++) {
+      view.simStep()
+      frame(view)
+    }
+    return { world, view, p }
+  }
+  const hold = (view: ActorsView) => {
+    const token = view.standStill(60)
+    for (let i = 0; i < 10; i++) {
+      view.update(0)
+      view.tickReal(1 / 60)
+    }
+    view.unposeIf('hero', token)
+  }
+
+  it('carried slowly against the facing the pose showed him with, he stands; faster than a walk, he skids', () => {
+    for (const [vx, want] of [
+      [-60, 'idle'],
+      [-200, 'skid']
+    ] as const) {
+      const { view, p } = runningRight()
+      // (Knocked: the simulation carries him left while he faces right.)
+      p.vx = vx
+      hold(view)
+      const names: string[] = []
+      for (let i = 0; i < 3; i++) {
+        view.simStep()
+        frame(view)
+        names.push(view.selectHero()!.name)
+        p.vx *= 0.8
+      }
+      expect(names[0], String(vx)).toBe(want)
+      expect(names, String(vx)).not.toContain('run')
+      expect(view.heroFlip()).toBe(false)
+    }
+  })
+
+  it('a skid out of a hold that the input turns round ends: it is not mirrored', () => {
+    const { view, p } = runningRight()
+    p.vx = -200
+    hold(view)
+    // (The frame after the hold, before a step: the skid from its first frame, facing as the pose showed him.)
+    view.update(0)
+    expect(view.selectHero()!.name).toBe('skid')
+    expect(view.heroFlip()).toBe(false)
+    // The input turns him on the first step after it: the skid ends, it does not turn round.
+    p.facing = -1
+    view.simStep()
+    frame(view)
+    expect(view.selectHero()!.name === 'skid' && view.heroFlip()).toBe(false)
+  })
+
+  it('a king who touches down at the end of his recovery takes the impact before his walk carries him', () => {
+    const { world, view } = setup()
+    const KING = { kind: 'final', art: 'king', speed: 195, projectiles: 3 }
+    world.solidAt = (_tx: number, ty: number) => ty >= 5
+    // (Phase 1: his recovery lasts 0.8 s; 0.05 s are left when he touches down.)
+    const b = bossBody({ x: 300, y: 200, state: 'recover', stateTime: 0.74, onGround: false, vy: 300, def: KING })
+    world.boss = b as never
+    view.simStep()
+    frame(view)
+    Object.assign(b, { y: 240, onGround: true, vy: 0, stateTime: 0.75 })
+    view.simStep()
+    let frames = 0
+    for (let i = 0; i < 40; i++) {
+      frame(view)
+      if (view.selectBoss(b as never).name !== 'land') break
+      frames++
+      b.stateTime += 1 / 60
+      if (b.stateTime > 0.8) Object.assign(b, { state: 'idle', stateTime: 0, vx: 195 })
+      if (b.state === 'idle') b.x += 195 / 60
+      view.simStep()
+    }
+    expect(frames).toBeGreaterThan(0)
+    // 0.05 s at rest, then no more than LAND_SLIDE_PX of his walk.
+    expect(frames / 60).toBeLessThanOrEqual(0.05 + LAND_SLIDE_PX / 195 + 2 / 60)
+  })
+
+  it("a walker's going aloft is decided on the simulation's steps, not on a display frame", () => {
+    const { world, view } = setup()
+    world.boss = null
+    const rat = {
+      id: 5,
+      kind: 'walker',
+      x: 500,
+      y: 300,
+      w: 44,
+      h: 40,
+      vx: 74,
+      vy: 0,
+      facing: 1 as 1 | -1,
+      onGround: true,
+      hitFlash: 0,
+      shootTimer: 0,
+      dead: false,
+      t: 9
+    }
+    ;(world as unknown as { enemies: unknown[] }).enemies = [rat]
+    for (let i = 0; i < 10; i++) {
+      view.simStep()
+      frame(view)
+    }
+    // Off the ground with nothing below: a frame alone does not decide it ...
+    Object.assign(rat, { onGround: false, vy: 200 })
+    frame(view)
+    expect(view.selectEnemy(rat as never).name).not.toBe('air')
+    // ... its step does.
+    view.simStep()
+    frame(view)
+    expect(view.selectEnemy(rat as never).name).toBe('air')
+  })
 })
