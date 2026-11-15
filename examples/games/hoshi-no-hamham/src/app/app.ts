@@ -21,7 +21,7 @@ import { SoundBoard, type SoundCue } from '../view/sound-map'
 import type { StageView } from '../view/stage-view'
 import { fetchArt, screenArtStats } from './art-fetch'
 import { PlaySession, STEP } from './play'
-import { isWarm, popupSteps, runSteps, warmStage, type WarmStep } from './warm'
+import { isWarm, popupSteps, runSteps, warmStage, yieldToBrowser, type WarmStep } from './warm'
 
 type ScreenName = 'title' | 'select' | 'story' | 'play' | 'result' | 'dead' | 'ending'
 
@@ -175,6 +175,8 @@ export class App {
   private musicTimer = 0
   /** Bumped by every new plan of work ahead, so an older plan stops (see `planAhead`). */
   private aheadRun = 0
+  /** The stage whose start is prepared while its story is read (see `standBy`), with its session. */
+  private ready: { stage: StageDef; session: PlaySession } | null = null
   private started = false
   private resolveFirstFrame: () => void = () => {}
   /** Resolves once the first frame of the loop (the title's first picture) has been drawn. */
@@ -315,7 +317,8 @@ export class App {
     if (this.session) this.session.autopilot = on
   }
 
-  private leavePlay() {
+  /** `starting`: the stage that was prepared is about to begin, and what was prepared for it stays. */
+  private leavePlay(starting = false) {
     this.startToken += 1
     this.loading.hide()
     this.session?.stopAudio()
@@ -324,8 +327,36 @@ export class App {
     this.paused = false
     this.screens.setPaused(false)
     this.screens.setTouch(false)
+    if (starting) return
+    this.ready = null
     this.hud.hide()
     this.hud.hideBoss()
+  }
+
+  /** A session of `stage` for the player. */
+  private newSession(stage: StageDef) {
+    return new PlaySession(stage, {
+      renderer: this.renderer,
+      hud: this.hud,
+      audio: this.audio,
+      input: this.input,
+      reducedMotion: reducedMotion()
+    })
+  }
+
+  /**
+   * Prepares the start of a stage while its story is read: builds its session (the world, the view, the director)
+   * and has the HUD stand by, laid out with the stage's first frame written. The tap that starts the stage then
+   * only shows them. Two tasks, each after a frame of the story.
+   */
+  private async standBy(stage: StageDef) {
+    const still = () => this.screen === 'story' && this.storyStage === stage && isWarm(stage)
+    await yieldToBrowser()
+    if (!still() || this.ready) return
+    const session = this.newSession(stage)
+    this.ready = { stage, session }
+    await yieldToBrowser()
+    if (still() && this.ready?.session === session) this.hud.standby(stage, session.world)
   }
 
   openTitle() {
@@ -425,7 +456,9 @@ export class App {
       this.prepare({ screen: 'hud' }),
       () => runAhead(popupSteps(stage, this.renderer.k)),
       this.prepare({ screen: 'result', stage, last: stage.no >= STAGES.length }),
-      this.prepare({ screen: 'dead', stage })
+      this.prepare({ screen: 'dead', stage }),
+      // Last, so that nothing laid out ahead after it touches the HUD again: the stage's own start.
+      () => this.standBy(stage)
     ])
   }
 
@@ -448,9 +481,10 @@ export class App {
    * was played before); otherwise the screen the player came from stays up with a loading card until it is.
    */
   private startStage(stage: StageDef) {
-    this.leavePlay()
+    const startsNow = isWarm(stage) && this.audio.ahead
+    this.leavePlay(startsNow && this.ready?.stage === stage)
     this.stage = stage
-    if (isWarm(stage) && this.audio.ahead) {
+    if (startsNow) {
       this.beginStage(stage)
       return
     }
@@ -471,7 +505,10 @@ export class App {
   }
 
   private beginStage(stage: StageDef) {
-    this.leavePlay()
+    // What was prepared for this very stage is used; anything else is put away with the rest.
+    const ready = this.ready?.stage === stage ? this.ready : null
+    this.leavePlay(Boolean(ready))
+    this.ready = null
     this.stage = stage
     this.screen = 'play'
     this.planAhead([])
@@ -479,13 +516,7 @@ export class App {
     window.clearTimeout(this.musicTimer)
     this.screens.showPlay()
     if (this.touch) this.screens.setTouch(true)
-    this.session = new PlaySession(stage, {
-      renderer: this.renderer,
-      hud: this.hud,
-      audio: this.audio,
-      input: this.input,
-      reducedMotion: reducedMotion()
-    })
+    this.session = ready?.session ?? this.newSession(stage)
     this.session.autopilot = this.autopilot
     this.session.start()
     this.renderer.resetSampling()
