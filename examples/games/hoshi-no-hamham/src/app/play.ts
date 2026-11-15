@@ -8,9 +8,15 @@
  *
  * A session can also be the title screen's demo (`demo: true`): the bot plays, nothing sounds, the HUD is left
  * alone, and a plain director ends it after a while so the app can start the next one.
+ *
+ * The step in which a boss falls also lowers his gate and opens the goal. The view, the sounds and the director
+ * answer the fall in its frame, and the gate and the goal in the two frames after it (`AFTER_A_FALL`): the
+ * simulation stands still through them anyway (the fall's hit-stop), and the frame of the fall is the fullest of a
+ * stage.
  */
 import type { GameAudio } from '../audio/api'
 import { botInput, type BotMemory } from '../game/bot'
+import type { SimEvent, SimEventType } from '../game/events'
 import type { Input } from '../game/input'
 import { World, emptyInput } from '../game/sim'
 import type { StageDef } from '../game/types'
@@ -26,6 +32,13 @@ import { Pacer, STEP } from './pacer'
 export { STEP }
 /** A demo that neither clears nor dies moves on after this many seconds. */
 export const DEMO_SECONDS = 40
+
+/**
+ * The events of a boss's fall that are answered after its frame, one display frame each, in the order they came:
+ * his gate going down and the goal opening. Each is particles, a sound and a staged moment of its own, and none of
+ * them changes what the fall's own frame shows.
+ */
+export const AFTER_A_FALL: ReadonlySet<SimEventType> = new Set<SimEventType>(['gate-down', 'goal-open'])
 
 export interface PlayDeps {
   renderer: Renderer
@@ -95,6 +108,8 @@ export class PlaySession {
   private pacer = new Pacer()
   private mover = new Interpolator()
   private bot: BotMemory = { x: 0, stuck: 0, reverse: 0 }
+  /** The events of a boss's fall that are still to be answered (see `AFTER_A_FALL`). */
+  private later: SimEvent[] = []
 
   constructor(
     readonly stage: StageDef,
@@ -143,6 +158,8 @@ export class PlaySession {
   frame(dt: number) {
     const { view, director, world, pacer, mover } = this
     mover.restore()
+    // What came with a boss's fall, one event a frame (before this frame's steps: the order of the events holds).
+    if (this.later.length) this.answer(this.later.shift()!)
     const scale = view.frozen ? 0 : Math.max(0, director.timeScale)
     pacer.begin(dt, scale)
     if (scale > 0) {
@@ -181,13 +198,24 @@ export class PlaySession {
   private drain() {
     const events = this.world.events
     if (!events.length) return
+    // Events still waiting from a fall come before anything newer.
+    while (this.later.length) this.answer(this.later.shift()!)
+    // A stage that ended in the step of the fall (the hero stood on the goal) is answered whole, at once.
+    let fell = false
+    if (this.world.state === 'play') for (const event of events) if (event.type === 'boss-down') fell = true
     for (const event of events) {
-      if (event.type === 'hurt') this.damage += 1
-      this.view.handle(event)
-      this.sounds.event(event)
-      this.director.handle(event)
+      if (fell && AFTER_A_FALL.has(event.type)) this.later.push(event)
+      else this.answer(event)
     }
     events.length = 0
+  }
+
+  /** The view, the sounds and the director answer one event. */
+  private answer(event: SimEvent) {
+    if (event.type === 'hurt') this.damage += 1
+    this.view.handle(event)
+    this.sounds.event(event)
+    this.director.handle(event)
   }
 
   /** Draws the frame, then puts the simulation's own positions back. */

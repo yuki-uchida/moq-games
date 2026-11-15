@@ -148,6 +148,14 @@ function drawMoon(canvas: HTMLCanvasElement) {
 /** The boss's face on the track while it sleeps: darker and greyer. */
 const ASLEEP_TONE: Tone = { brightness: 0.55, saturate: 0.6 }
 
+/**
+ * How many frames after the stage's state has changed (the boss woke or fell, the goal opened, a material was
+ * collected) the deck words its aim line again and changes the track's pictures of the goal and of the boss. The
+ * frame of such a change is the fullest of a stage (a boss's fall is four events at once, each with its particles,
+ * its sound and its staging); the deck's part of it comes a twentieth of a second later at 60 frames a second.
+ */
+export const STATE_DELAY_FRAMES = 3
+
 /** The reduced-motion preference: asked on every tick, so the query is made once and read after that. */
 let motionQuery: MediaQueryList | null = null
 const reducedMotion = () => {
@@ -233,6 +241,8 @@ export class Deck {
   private star: HTMLElement
   /** What the aim line was last worked out from; it is worked out again only when one of these changes. */
   private aimSeen: AimSeen | null = null
+  /** Frames until the deck shows the state it has seen (see `STATE_DELAY_FRAMES`); 0 when it shows it. */
+  private stateWait = 0
 
   private stage: StageDef | null = null
   private aimKey = ''
@@ -498,6 +508,7 @@ export class Deck {
     this.clockTenths = -1
     this.killCount = -1
     this.aimSeen = null
+    this.stateWait = 0
     this.heroAt = this.goalAt = this.bossAt = Number.NaN
     this.bossHidden = null
     this.bossAsleep = null
@@ -575,8 +586,13 @@ export class Deck {
         active,
         dead
       }
-      this.updateAim(world, stage)
-    }
+      // A stage that starts is written at once (the tap that starts it writes its first frame ahead); a change
+      // while it is played waits its few frames, and a change during the wait starts the wait again.
+      if (seen) this.stateWait = STATE_DELAY_FRAMES
+      else this.updateAim(world, stage)
+    } else if (this.stateWait > 0 && --this.stateWait === 0) this.updateAim(world, stage)
+    /** The deck shows the state it has seen: the track's pictures of the goal and of the boss may follow it. */
+    const settled = this.stateWait === 0
 
     // The hint line: a toast or a speech line holds it for a moment, then the stage's hints cycle.
     if (this.hold) {
@@ -614,19 +630,19 @@ export class Deck {
     // The progress track.
     const width = world.w * TILE
     this.heroAt = trackRatio(world.player.x + world.player.w / 2, width)
-    if (world.goalOpen !== this.goalOpen) {
+    if (settled && world.goalOpen !== this.goalOpen) {
       this.goalOpen = world.goalOpen
       drawRaster(this.goal, clipRaster('ui', world.goalOpen ? 'starOn' : 'lock'))
       this.goal.classList.toggle('is-open', world.goalOpen)
     }
     this.goalAt = trackRatio(world.goalX + TILE / 2, width)
     const hideBoss = !boss || boss.dead
-    if (hideBoss !== this.bossHidden) {
+    if (settled && hideBoss !== this.bossHidden) {
       this.bossHidden = hideBoss
       this.bossFace.hidden = hideBoss
     }
     if (boss && !hideBoss) {
-      if (boss.def.art !== this.bossArt || !boss.active !== this.bossAsleep) {
+      if (settled && (boss.def.art !== this.bossArt || !boss.active !== this.bossAsleep)) {
         this.bossArt = boss.def.art
         this.bossAsleep = !boss.active
         const face = sheet('ui')[`face_${boss.def.art}`]
