@@ -82,6 +82,7 @@ export function spawnShot(sim: Sim, s: ShotSpec, guard?: readonly number[]): Sho
     const seg: Vec = [s.p[0] - guard[0], s.p[1] - guard[1], s.p[2] - guard[2]]
     if (Math.hypot(seg[0], seg[1], seg[2]) > 1e-6) {
       shot.p = [guard[0], guard[1], guard[2]]
+      // Flew freely to the muzzle: start there. A bounce off cover on the way stays on the shooter's side of it.
       if (sweep(sim, shot, seg) === 'go') {
         shot.p = [s.p[0], s.p[1], s.p[2]]
         shot.travelled = 0
@@ -168,10 +169,10 @@ function directHit(sim: Sim, s: Shot, t: Target, at: Vec, head: boolean) {
 
 /**
  * Moves a shot along `seg` (one tick, or its guard segment) against walls, the solid props and hostile actors.
- * 'stop': it hit something and is done for this tick (gone, or bounced off an actor); 'go': it flew on (or bounced
- * off a wall) and the caller runs its fuse and lifetime.
+ * 'stop': it hit something and is done for this tick (gone, or bounced off an actor); 'go': it flew on freely;
+ * 'bounce': it bounced off a wall and sits on the near side of it. The caller runs fuse and lifetime after both.
  */
-function sweep(sim: Sim, s: Shot, seg: Vec): 'stop' | 'go' {
+function sweep(sim: Sim, s: Shot, seg: Vec): 'stop' | 'go' | 'bounce' {
   const wall = sim.phys.raycast(s.p, seg, 1, s.r, s.side)
   const act = rayActors(sim, s.side, s.p, seg, wall ? wall.t : 1, s.r, s.owner, false)
   if (act && (!wall || act.t <= wall.t)) {
@@ -201,7 +202,7 @@ function sweep(sim: Sim, s: Shot, seg: Vec): 'stop' | 'go' {
     s.v[2] = (s.v[2] - 2 * vn * n[2]) * s.bounce
     s.p = [at[0] + n[0] * 0.02, at[1] + n[1] * 0.02, at[2] + n[2] * 0.02]
     if (n[1] > 0.7 && Math.abs(s.v[1]) < 1.5) s.v[1] = 0
-    return 'go'
+    return 'bounce'
   }
   if (s.blast || s.kind === 'octopus') {
     explode(sim, s, [at[0] + wall.normal[0] * 0.1, at[1] + wall.normal[1] * 0.1, at[2] + wall.normal[2] * 0.1])

@@ -257,10 +257,29 @@ export function stop(sim: Sim, f: Foe) {
   groundMove(sim, f, 0, 0, 0)
 }
 
-/** Flying movement toward a point (keeps above box tops). */
+/**
+ * Moves a flyer by its velocity through the physics (map boxes, ヤドカリ walls, the solid 灯台 / 巣核): it slides along
+ * what it meets, never through it, and stays a little above the ground. Returns true on contact with a wall.
+ */
+export function flyMove(sim: Sim, f: Foe): boolean {
+  f.grounded = false
+  const res = sim.phys.move(f, DT, FOE_SIDE)
+  const under = sim.phys.groundHeight(f.p[0], f.p[2], f.r, f.p[1] + 0.5)
+  if (f.p[1] < under + 0.3 && !sim.phys.overlaps([f.p[0], under + 0.3, f.p[2]], f.r, f.h, FOE_SIDE))
+    f.p[1] = under + 0.3
+  f.grounded = false
+  return res.wall
+}
+
+/**
+ * Flying movement toward a point (keeps above box tops). Blocked by a wall it cannot slide past, it rises just over
+ * the top of what is ahead (at most 40 m above its goal), and settles back once clear.
+ */
 export function flyTo(sim: Sim, f: Foe, to: Vec, speed: number, accel = 14) {
   const floor = sim.phys.groundHeight(to[0], to[2], f.r, 200)
-  const ty = Math.max(to[1], floor + 1.5)
+  const climb = f.mem.climb ?? 0
+  const base = Math.max(to[1], floor + 1.5)
+  const ty = base + climb
   const dx = to[0] - f.p[0]
   const dy = ty - f.p[1]
   const dz = to[2] - f.p[2]
@@ -273,14 +292,17 @@ export function flyTo(sim: Sim, f: Foe, to: Vec, speed: number, accel = 14) {
   f.v[0] += Math.max(-a, Math.min(a, wx - f.v[0]))
   f.v[1] += Math.max(-a, Math.min(a, wy - f.v[1]))
   f.v[2] += Math.max(-a, Math.min(a, wz - f.v[2]))
-  f.p[0] += f.v[0] * DT
-  f.p[1] += f.v[1] * DT
-  f.p[2] += f.v[2] * DT
-  const under = sim.phys.groundHeight(f.p[0], f.p[2], f.r, f.p[1] + 0.5)
-  if (f.p[1] < under + 0.3) f.p[1] = under + 0.3
-  const b = sim.map.bounds
-  f.p[0] = Math.max(b.min[0] + f.r, Math.min(b.max[0] - f.r, f.p[0]))
-  f.p[2] = Math.max(b.min[1] + f.r, Math.min(b.max[1] - f.r, f.p[2]))
+  const before = Math.hypot(dx, dz)
+  const blocked = flyMove(sim, f)
+  const after = Math.hypot(to[0] - f.p[0], to[2] - f.p[2])
+  // Pressed against something on the way to a goal still metres off, without closing in: rise just over the top of
+  // what is ahead; otherwise (loitering beside it, or clear) sink back.
+  if (blocked && speed > 0 && before > f.r + 3 && before - after < speed * DT * 0.5) {
+    const ax = f.p[0] + (dx / before) * (f.r + 1)
+    const az = f.p[2] + (dz / before) * (f.r + 1)
+    const top = sim.phys.groundHeight(ax, az, f.r, 200)
+    f.mem.climb = Math.min(40, Math.max(climb, top + 1 - base))
+  } else if (climb > 0) f.mem.climb = Math.max(0, climb - 4 * DT)
 }
 
 // ---------------------------------------------------------------------------------------------------------------

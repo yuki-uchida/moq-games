@@ -666,7 +666,7 @@ export class Physics {
 
   /**
    * Line of sight between two points (boxes, dynamic walls of other sides and, unless `solids` is false, the solid
-   * props). A solid prop whose volume holds `b` (the 灯台 / a 巣核 is the target) does not block the view of it.
+   * props). An obstacle holding `b` (the 灯台, a 巣核 or a ヤドカリ wall is the target) does not block the view of it.
    */
   clear(a: readonly number[], b: readonly number[], side = -1, solids = true): boolean {
     const d: Vec = [b[0] - a[0], b[1] - a[1], b[2] - a[2]]
@@ -682,7 +682,10 @@ export class Physics {
       }
     }
     if (!h || h.t >= 0.999) return true
-    return h.box === -5 && this.solids.some((c) => c.tag === h.tag && inCyl(c, b, 0.05))
+    // The obstacle that holds `b` is the target itself (a solid prop, a hostile ヤドカリ wall): it does not hide itself.
+    if (h.box === -5) return this.solids.some((c) => c.tag === h.tag && inCyl(c, b, 0.05))
+    if (h.box === -3) return this.dyn.some((w) => w.tag === h.tag && inBox(w.min, w.max, b, 0.05))
+    return false
   }
 
   /** True when the ground cell at (x, z) is blocked for a walker of radius r (boxes taller than a step). */
@@ -698,6 +701,14 @@ export class Physics {
     return hit
   }
 }
+
+const inBox = (min: readonly number[], max: readonly number[], p: readonly number[], pad: number) =>
+  p[0] >= min[0] - pad &&
+  p[0] <= max[0] + pad &&
+  p[1] >= min[1] - pad &&
+  p[1] <= max[1] + pad &&
+  p[2] >= min[2] - pad &&
+  p[2] <= max[2] + pad
 
 const inCyl = (c: SolidCyl, p: readonly number[], pad: number) =>
   Math.hypot(p[0] - c.x, p[2] - c.z) <= c.r + pad && p[1] >= c.y0 - pad && p[1] <= c.y1 + pad

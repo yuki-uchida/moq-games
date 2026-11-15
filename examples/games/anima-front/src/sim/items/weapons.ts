@@ -3,7 +3,7 @@
  * zoom, lock, lob, beam and charge. Each handler runs once per tick for the paw's active antique.
  */
 import { ITEMS, type ItemDef } from '../../data/items'
-import { hitTarget, hostilesNear, refOf, targetCenter, targetVisible, type Target } from '../actors'
+import { hitTarget, hostilesNear, placeEffect, refOf, targetCenter, targetVisible, type Target } from '../actors'
 import { canPay, drain } from '../anima'
 import { damageProp } from '../combat'
 import { BLAST_KNOCK, DT, LOB_RADIUS, PUFFER_FALLOFF } from '../constants'
@@ -191,7 +191,13 @@ export function slam(sim: Sim, p: Player, h: HandSt, def: ItemDef) {
     h.charge = Math.min(1, (sim.time - h.modeT) / wind)
     if (sim.time - h.modeT >= wind - 1e-9) {
       const f = forwardOf(p.yaw)
-      const c: Vec = [p.p[0] + f[0] * u.reach, p.p[1] + 0.6, p.p[2] + f[2] * u.reach]
+      // The impact lands `reach` ahead, or in front of the first wall / solid prop on the way (never beyond cover).
+      const c = placeEffect(
+        sim,
+        [p.p[0], p.p[1] + 0.6, p.p[2]],
+        [p.p[0] + f[0] * u.reach, p.p[1] + 0.6, p.p[2] + f[2] * u.reach],
+        p.side
+      )
       emit(sim, {
         type: 'impact',
         at: r3v([c[0], p.p[1], c[2]]),
@@ -568,9 +574,9 @@ export function beam(sim: Sim, p: Player, h: HandSt, def: ItemDef) {
   h.beam = []
   const dmg = u.dps * rangedMul(p) * DT * BEAM_EVERY
   if (!hit) {
-    // Stopped on a solid 灯台 / 巣核: it takes the beam when it is hostile (damageProp ignores one's own).
+    // Stopped on a ヤドカリ wall or a solid 灯台 / 巣核: it takes the beam when hostile (damageProp ignores one's own).
     const w = cast.wall
-    const r = w && w.box === -5 && w.tag !== undefined ? findProp(sim, w.tag) : undefined
+    const r = w && (w.box === -3 || w.box === -5) && w.tag !== undefined ? findProp(sim, w.tag) : undefined
     if (r)
       damageProp(sim, r, {
         amount: dmg,

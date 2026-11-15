@@ -240,12 +240,13 @@ While アルマジロ is raised the animal moves at 70% speed and cannot use tha
   passive at most once. Invalid loadouts are repaired by `sanitizeLoadout` (drops the offending slots).
 - Each paw's active antiques form that paw's list in slot order (slot 0 → 15). `Q` / `E` (or the wheel for R)
   cycle a paw; switching takes 0.25 s (the antique dissolves and re-forms in light).
-- **Sustain estimate** (editor): `fight = upkeep + Σ per paw (cost rate of its first weapon × 0.5 duty) + 9/s
-incoming × (1 − armour reduction)` minus regeneration (held / toggled drains count at an assumed share of the fight:
-  cloak 40 %, shield 20 % per paw — both paws raised together —, glide 10 %, free for the owl; listed under the
-  bar; every number comes from the sim's own cost functions: `itemCost`, `drainOf`, `upkeepOf`, `glideDrain`,
-  `dashCost`); shows **推定継戦時間** = anima / fight (∞ if ≤ 0) and a
-  bar of anima use by category. Also shown: max anima, upkeep/s, cheapest/most expensive actions.
+- **Sustain estimate** (editor, `sustainEstimate` in `src/sim/loadout.ts`): `fight = upkeep + Σ per paw (mean cost
+rate of its weapons × 0.15 duty) + Σ active gadgets (cost per use / max(cooldown, 15 s)) + Σ held / toggled drains
+(drain/s × assumed share: cloak 40 %, shield 20 % per paw — both paws raised together —, glide 10 %, free for the
+owl) + 0.6/s incoming × (1 − armour reduction)`, minus a third (0.33) of natural regeneration; every number comes
+  from the sim's own cost functions (`itemCost`, `drainOf`, `upkeepOf`, `glideDrain`, `dashCost`). Shows
+  **推定継戦時間** = max anima / (fight − 0.33 × regeneration) (∞ if ≤ 0, rounded to whole seconds) and a bar of anima
+  use by category, the drains listed under it. Also shown: max anima, upkeep/s, cheapest/most expensive actions.
 - Six presets (one default per species, all selectable): **アタッカー** (シャチマル + ミツバチ…), **ガンナー**
   (キツツキ, ダンゴムシ…), **スナイパー** (フクロウアイ, ヤモリフック, モモンガ…), **タンク** (アルマジロ, カメノコウラ,
   マンモス…), **サポート** (ミツツボアリ, コウモリ, ヤドカリ, ハチドリ…), **遊撃** (ネコノツメ, イッカク, カエルパッド…).
@@ -302,7 +303,15 @@ are settings. Phones play in landscape; in portrait the game shows a rotate card
   `Physics.raycast`; area effects (melee sweeps, blasts on players, foes, bosses and props, beam chains, foe bites and
   sweeps, the honey aura) need `targetVisible` (some part of the target in clear sight). The beam is drawn to the end
   the sim resolved (`HandView.beamEnd`). Not occluded by design: sonar (壁越し), standing in a base / zone / acid
-  puddle, revives and the cart's escort radius.
+  puddle, revives and the cart's escort radius. A big body (a boss) also shows its near side and flanks.
+- Effects placed at a point (the マンモス slam, クイツクシ's slam) land in front of the first cover between the attacker
+  and the point (`placeEffect`); a grenade bouncing off cover at launch stays on the shooter's side; a コロガシ chain
+  needs sight like any blast. Distances go to the target's real shape (`targetDistance`: body cylinder, ヤドカリ wall
+  box, the 灯台 / 巣核 colliders). Every attack type (shots, pellets, beams, melee, blasts) damages a hostile ヤドカリ
+  wall, never a friendly one.
+- Every mover resolves against map boxes, ヤドカリ walls and the solid props through `Physics.move`: walkers, flyers
+  (`flyMove`; blocked on the way, they rise just over the obstacle), dives, ゴウテツ, players' dashes, hooks, pads and
+  knockback. Not bodies: anima shards (pickups) and the escort cart (follows its authored path).
 - Kill credit: the last damager within 10 s; assists: other damagers within 10 s.
 
 ## 11. Enemies (`src/data/enemies.ts`, `src/sim/enemies/`)

@@ -7,6 +7,7 @@ import { ITEMS } from '../data/items'
 import { damageFoe, damagePlayer, damageProp, type DamageInfo } from './combat'
 import { raySphere, rayCylinder } from './physics'
 import { PROP_SOLIDS } from './prop-solids'
+import { hermitWallBox } from './wall-box'
 import { FOE_SIDE, type Foe, type Player, type Prop, type Side, type Sim } from './state'
 import type { ActorRef } from './types'
 import { angleFromYaw, vdist, type Vec } from './vec'
@@ -22,6 +23,16 @@ export interface ActorHit {
 /** Props that block and take shots (objectives, nodes, targets). Walls are dynamic boxes in physics. */
 export const isShootableProp = (r: Prop) =>
   !r.gone && r.hp !== undefined && r.kind !== 'hermit' && r.kind !== 'zone' && r.kind !== 'base'
+
+/**
+ * Props every attack can damage (shots, pellets, beams, melee, blasts): the shootable ones plus ヤドカリ walls (shots
+ * and beams reach those through their physics box, melee and blasts through this list).
+ */
+export const isDamageableProp = (r: Prop) => !r.gone && r.hp !== undefined && r.kind !== 'zone' && r.kind !== 'base'
+
+/** Whether a prop is hostile to `side` (never one's own; foes never damage neutral targets). */
+export const propHostileTo = (r: Prop, side: Side) =>
+  !(r.side !== -1 && r.side === side) && !(r.side === -1 && side === FOE_SIDE)
 
 export const propHeight = (r: Prop) => r.data.h ?? 2
 
@@ -52,25 +63,46 @@ export function rayProp(o: Vec, d: Vec, maxT: number, r: Prop, inflate = 0): num
   return best
 }
 
-/** Distance from a point to a prop's hit volume (0 inside). */
+/** Distance from a point to an upright cylinder (centre x/z, radius, y range); 0 inside. */
+export function cylDistance(cx: number, cz: number, r: number, y0: number, y1: number, c: readonly number[]): number {
+  const dh = Math.max(0, Math.hypot(c[0] - cx, c[2] - cz) - r)
+  const dy = c[1] < y0 ? y0 - c[1] : c[1] > y1 ? c[1] - y1 : 0
+  return Math.hypot(dh, dy)
+}
+
+/** Distance from a point to an axis-aligned box; 0 inside. */
+export function boxDistance(min: readonly number[], max: readonly number[], c: readonly number[]): number {
+  const dx = Math.max(min[0] - c[0], 0, c[0] - max[0])
+  const dy = Math.max(min[1] - c[1], 0, c[1] - max[1])
+  const dz = Math.max(min[2] - c[2], 0, c[2] - max[2])
+  return Math.hypot(dx, dy, dz)
+}
+
+/**
+ * Distance from a point to a prop's real shape (0 inside): a ヤドカリ wall's box, a solid prop's colliders, any other
+ * prop's cylinder.
+ */
 export function propDistance(r: Prop, c: readonly number[]): number {
-  let best = Infinity
-  const h = Math.hypot(c[0] - r.p[0], c[2] - r.p[2])
-  for (const v of propVolumes(r)) {
-    const dh = Math.max(0, h - v.r)
-    const dy = c[1] < v.y0 ? v.y0 - c[1] : c[1] > v.y1 ? c[1] - v.y1 : 0
-    best = Math.min(best, Math.hypot(dh, dy))
+  if (r.kind === 'hermit') {
+    const w = hermitWallBox(r)
+    return boxDistance(w.min, w.max, c)
   }
+  let best = Infinity
+  for (const v of propVolumes(r)) best = Math.min(best, cylDistance(r.p[0], r.p[2], v.r, v.y0, v.y1, c))
   return best
 }
 
-/** The point of a prop's hit volume nearest to `c` (on its axis side; inside the volume for a solid). */
+/** The point of a prop's shape nearest to `c`, a hair inside it (so a sight line to it counts the prop as the target). */
 export function propNearest(r: Prop, c: readonly number[]): Vec {
+  if (r.kind === 'hermit') {
+    const w = hermitWallBox(r)
+    const cl = (x: number, lo: number, hi: number) => Math.min(Math.max(x, lo + 0.05), hi - 0.05)
+    return [cl(c[0], w.min[0], w.max[0]), cl(c[1], w.min[1], w.max[1]), cl(c[2], w.min[2], w.max[2])]
+  }
   let best: Vec = [r.p[0], r.p[1], r.p[2]]
   let bd = Infinity
   const h = Math.hypot(c[0] - r.p[0], c[2] - r.p[2])
   for (const v of propVolumes(r)) {
-    // a hair inside the surface, so a sight line to it counts the prop itself as the target
     const k = h > 1e-6 ? Math.min(1, Math.max(0, v.r - 0.05) / h) : 0
     const q: Vec = [
       r.p[0] + (c[0] - r.p[0]) * k,
@@ -86,6 +118,31 @@ export function propNearest(r: Prop, c: readonly number[]): Vec {
   return best
 }
 
+/** Distance from a point to a body's shape (players and foes: their upright cylinder); 0 inside. */
+export const bodyDistance = (b: { p: Vec; r: number; h: number }, c: readonly number[]) =>
+  cylDistance(b.p[0], b.p[2], b.r, b.p[1], b.p[1] + b.h, c)
+
+/** Distance from a point to any target's real shape. */
+export function targetDistance(t: Target, c: readonly number[]): number {
+  if (t.k === 'p') return bodyDistance(t.p, c)
+  if (t.k === 'f') return bodyDistance(t.f.avatar ?? t.f, c)
+  return propDistance(t.r, c)
+}
+
+/**
+ * Where an effect aimed from `from` at `to` lands (a slam's impact, a boss strike): `to`, or just in front of the
+ * first map box, ヤドカリ wall of another side or solid prop between them — never beyond cover.
+ */
+export function placeEffect(sim: Sim, from: readonly number[], to: readonly number[], side: Side, back = 0.15): Vec {
+  const d: Vec = [to[0] - from[0], to[1] - from[1], to[2] - from[2]]
+  const len = Math.hypot(d[0], d[1], d[2])
+  if (len < 1e-6) return [to[0], to[1], to[2]]
+  const hit = sim.phys.raycast(from, d, 1, 0, side)
+  if (!hit) return [to[0], to[1], to[2]]
+  const t = Math.max(0, hit.t - back / len)
+  return [from[0] + d[0] * t, from[1] + d[1] * t, from[2] + d[2] * t]
+}
+
 export const refOf = (t: Target): ActorRef => (t.k === 'p' ? t.p.id : t.k === 'f' ? t.f.id : t.r.id)
 
 export const targetCenter = (t: Target): Vec =>
@@ -97,8 +154,8 @@ export const targetCenter = (t: Target): Vec =>
 
 /**
  * The one occlusion rule for an effect crossing space from `from` to a target (melee sweeps, blasts, chain jumps,
- * auras): some part of the target — the point of it nearest `from`'s height, its centre or its top — is in clear
- * sight for `side` (map boxes, ヤドカリ walls of other sides, the solid 灯台 / 巣核; a solid prop does not hide
+ * auras): some part of the target — the point of it nearest `from`'s height, its centre, its top and, for a wide
+ * body, its near side and both flanks — is in clear sight for `side` (map boxes, ヤドカリ walls of other sides, the solid 灯台 / 巣核; a solid prop does not hide
  * itself). Ray-borne effects (shots, beams, the hook, aim) get the same rule from Physics.raycast.
  */
 export function targetVisible(sim: Sim, from: readonly number[], t: Target, side: Side): boolean {
@@ -108,11 +165,22 @@ export function targetVisible(sim: Sim, from: readonly number[], t: Target, side
   } else {
     const b = t.k === 'p' ? t.p : (t.f.avatar ?? t.f)
     const h = b.h
-    pts.push([b.p[0], Math.min(Math.max(from[1], b.p[1] + 0.1), b.p[1] + h - 0.1), b.p[2]], targetCenter(t), [
-      b.p[0],
-      b.p[1] + h * 0.9,
-      b.p[2]
-    ])
+    const y = Math.min(Math.max(from[1], b.p[1] + 0.1), b.p[1] + h - 0.1)
+    pts.push([b.p[0], y, b.p[2]], targetCenter(t), [b.p[0], b.p[1] + h * 0.9, b.p[2]])
+    // A wide body (a boss) also shows its near side and both flanks: a thin cover hides only part of it.
+    if (b.r > 0.8) {
+      const dx = from[0] - b.p[0]
+      const dz = from[2] - b.p[2]
+      const l = Math.hypot(dx, dz) || 1
+      const nx = dx / l
+      const nz = dz / l
+      const k = b.r * 0.85
+      for (const yy of [y, b.p[1] + h * 0.5]) {
+        pts.push([b.p[0] + nx * k, yy, b.p[2] + nz * k])
+        pts.push([b.p[0] - nz * k, yy, b.p[2] + nx * k])
+        pts.push([b.p[0] + nz * k, yy, b.p[2] - nx * k])
+      }
+    }
   }
   for (const q of pts) if (sim.phys.clear(from, q, side)) return true
   return false
@@ -208,25 +276,20 @@ export function hostilesNear(
 ): Target[] {
   const out: Target[] = []
   const inSector = (pos: Vec) => !sector || angleFromYaw(sector.yaw, sector.from, pos) <= sector.arc / 2
-  const vClose = (pos: Vec, h: number, r: number) => {
-    const y = Math.min(Math.max(c[1], pos[1]), pos[1] + h)
-    return Math.hypot(pos[0] - c[0], y - c[1], pos[2] - c[2]) - r <= radius
-  }
   for (const p of sim.players) {
     if (p.side === side || p.state !== 'alive') continue
-    if (vClose(p.p, p.h, p.r) && inSector(p.p)) out.push({ k: 'p', p })
+    if (bodyDistance(p, c) <= radius && inSector(p.p)) out.push({ k: 'p', p })
   }
   if (side !== FOE_SIDE) {
     for (const f of sim.foeHash.query(c[0], c[2], radius + 7)) {
       if (f.dead) continue
-      if (vClose(f.p, f.h, f.r) && inSector(f.p)) out.push({ k: 'f', f })
+      if (bodyDistance(f, c) <= radius && inSector(f.p)) out.push({ k: 'f', f })
     }
   }
   if (props) {
     for (const r of sim.props) {
-      if (!isShootableProp(r) || (r.side !== -1 && r.side === side)) continue
-      if (r.side === -1 && side === FOE_SIDE) continue
-      if (propDistance(r, c) <= radius && inSector(r.p)) out.push({ k: 'r', r })
+      if (!isDamageableProp(r) || !propHostileTo(r, side)) continue
+      if (propDistance(r, c) <= radius && inSector(propNearest(r, c))) out.push({ k: 'r', r })
     }
   }
   return out

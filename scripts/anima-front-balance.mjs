@@ -403,7 +403,12 @@ async function runJobs(jobs, n) {
 
 const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN)
 const fmt = (x, d = 0) => (x === null || x === undefined || Number.isNaN(x) ? '-' : x.toFixed(d))
-const mmss = (s) => (Number.isFinite(s) ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : '-')
+// Whole seconds first, so 539.6 s prints 9:00 (never 8:60).
+const mmss = (s) => {
+  if (!Number.isFinite(s)) return '-'
+  const t = Math.round(s)
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`
+}
 
 function table(head, rows) {
   const w = head.map((h, i) => Math.max(String(h).length, ...rows.map((r) => String(r[i]).length)))

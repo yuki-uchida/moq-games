@@ -6,7 +6,7 @@
  */
 import type { FoeAttack } from '../data/enemies'
 import { ITEMS } from '../data/items'
-import { propDistance, targetVisible } from './actors'
+import { bodyDistance, isDamageableProp, propDistance, propHostileTo, targetVisible } from './actors'
 import { recordBurn } from './anima'
 import { BEAR_KNOCK, BLAST_EDGE, CREDIT_WINDOW, OBJECTIVE_ARMOR } from './constants'
 import { bossHitModifier } from './foes/bosses'
@@ -425,12 +425,13 @@ export function blast(
     emit(sim, { type: 'blast', at: r3v(at), radius: r3(radius), item, team: sideTeam(side), ...byPlayer(by) })
   const fall = (d: number) => damage * (1 - (1 - BLAST_EDGE) * Math.min(1, d / radius))
   const center = (p: Vec, h: number): Vec => [p[0], Math.min(Math.max(at[1], p[1]), p[1] + h), p[2]]
-  // One occlusion rule for every target (players, foes, bosses, props): targetVisible from just above the blast.
+  // One occlusion rule for every target (players, foes, bosses, props): targetVisible from just above the blast;
+  // distances to each target's real shape (body cylinder, wall box, prop colliders).
   const lift: Vec = [at[0], at[1] + 0.3, at[2]]
   for (const p of sim.players) {
     if (p.side === side || p.state !== 'alive') continue
     const c = center(p.p, p.h)
-    const d = vdist(c, at) - p.r
+    const d = bodyDistance(p, at)
     if (d > radius) continue
     if (!targetVisible(sim, lift, { k: 'p', p }, side)) continue
     damagePlayer(sim, p, {
@@ -449,7 +450,7 @@ export function blast(
     for (const f of sim.foeHash.query(at[0], at[2], radius + 6)) {
       if (f.dead) continue
       const c = center(f.p, f.h)
-      const d = vdist(c, at) - f.r
+      const d = bodyDistance(f.avatar ?? f, at)
       if (d > radius) continue
       if (!targetVisible(sim, lift, { k: 'f', f }, side)) continue
       damageFoe(sim, f, {
@@ -466,7 +467,8 @@ export function blast(
     }
   }
   for (const r of sim.props) {
-    if (r.gone || r.hp === undefined || (r.side !== -1 && r.side === side)) continue
+    // Every damageable structure (ヤドカリ walls, the 灯台, 巣核, targets), measured to its real shape.
+    if (!isDamageableProp(r) || !propHostileTo(r, side)) continue
     const d = propDistance(r, at)
     if (d > radius) continue
     if (!targetVisible(sim, lift, { k: 'r', r }, side)) continue
