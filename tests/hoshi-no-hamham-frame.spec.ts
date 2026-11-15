@@ -192,3 +192,53 @@ test.describe('pinch zoom on a phone at 844×390', () => {
     await touch('touchEnd', [])
   })
 })
+
+test.describe('a phone turned while a thumb holds the pad', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
+
+  test('the pad follows the thumb at its new place', async ({ page }) => {
+    test.setTimeout(60_000)
+    await boot(page)
+    await page.locator('#continue').tap()
+    await page.locator('#stage-grid .stage-card').first().tap()
+    await page.locator('#story-skip').tap()
+    await page.waitForFunction(() => Boolean((window as unknown as { __hamham: Hamham }).__hamham.world))
+    await expect(page.locator('#touch-controls')).toBeVisible()
+    const held = () =>
+      page.evaluate(() => {
+        const state = (
+          window as unknown as { __hamham: { app: { input: { poll(): { left: boolean; right: boolean } } } } }
+        ).__hamham.app.input.poll()
+        return state.left ? 'left' : state.right ? 'right' : 'neither'
+      })
+    /** A pointer event on the pad itself: the thumb stays down through the turn, which a real tap cannot do here. */
+    const point = (type: 'pointerdown' | 'pointermove' | 'pointerup', x: number) =>
+      page.evaluate(
+        ([kind, clientX]) =>
+          document
+            .querySelector('[data-pad]')!
+            .dispatchEvent(new PointerEvent(kind, { pointerId: 7, pointerType: 'touch', clientX, bubbles: true })),
+        [type, x] as const
+      )
+
+    const upright = (await page.locator('[data-pad]').boundingBox())!
+    await point('pointerdown', upright.x + upright.width * 0.2)
+    expect(await held()).toBe('left')
+
+    await page.setViewportSize({ width: 844, height: 390 })
+    await expect(page.locator('#touch-controls')).toBeVisible()
+    const turned = (await page.locator('[data-pad]').boundingBox())!
+    // The pad is another size now: a point on its right side that was on the left side of the pad as it lay before
+    // the turn tells the two apart (a pad's left side ends at 46 % of its width, its right side begins at 54 %).
+    const rightFrom = turned.x + turned.width * 0.54
+    const leftUntil = upright.x + upright.width * 0.46
+    expect(rightFrom, 'the turn moved the sides of the pad').toBeLessThan(leftUntil - 4)
+    const x = (rightFrom + leftUntil) / 2
+    await point('pointermove', x)
+    expect(await held()).toBe('right')
+    await point('pointermove', turned.x + turned.width * 0.2)
+    expect(await held()).toBe('left')
+    await point('pointerup', turned.x + turned.width * 0.2)
+    expect(await held()).toBe('neither')
+  })
+})
