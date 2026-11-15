@@ -221,6 +221,49 @@ export const hasPopupPicture = (text: string, color: string, k: number, size = P
 /** Forgets every picture of a popup text (tests). */
 export const forgetPopupPictures = () => popupPictures.clear()
 
+/**
+ * What a context held of the properties a popup written as text changes. A popup that is a picture changes none of
+ * them, and the game's canvas is then never asked for its font: reading it makes the browser write the font out and
+ * hold its font cache for the frame, and the first font set on a context (even the one it already says it has)
+ * costs a slow phone a few milliseconds, in the frame of the first popup after the canvas was made or sized.
+ */
+interface TextState {
+  align: CanvasTextAlign
+  baseline: CanvasTextBaseline
+  join: CanvasLineJoin
+  font: string
+  line: number
+  stroke: CanvasRenderingContext2D['strokeStyle']
+  fill: CanvasRenderingContext2D['fillStyle']
+}
+
+/** Sets the context up for a popup's text and returns what to put back with `endText`. */
+function beginText(ctx: CanvasRenderingContext2D): TextState {
+  const was: TextState = {
+    align: ctx.textAlign,
+    baseline: ctx.textBaseline,
+    join: ctx.lineJoin,
+    font: ctx.font,
+    line: ctx.lineWidth,
+    stroke: ctx.strokeStyle,
+    fill: ctx.fillStyle
+  }
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.lineJoin = 'round'
+  return was
+}
+
+function endText(ctx: CanvasRenderingContext2D, was: TextState) {
+  ctx.textAlign = was.align
+  ctx.textBaseline = was.baseline
+  ctx.lineJoin = was.join
+  ctx.font = was.font
+  ctx.lineWidth = was.line
+  ctx.strokeStyle = was.stroke
+  ctx.fillStyle = was.fill
+}
+
 const ease = (t: number) => 1 - (1 - t) ** 3
 /** Radius and strength of the spotlight's two rings of darkness. */
 const SPOTLIGHT_RINGS = [
@@ -471,18 +514,11 @@ export class Overlay {
     this.drawBubbles(ctx, viewX, viewY)
     if (!this.popups.length) return
     // The few properties the popups change are put back by hand: saving the whole state allocates in the browser.
-    const was = ctx.textAlign
-    const wasBaseline = ctx.textBaseline
-    const wasJoin = ctx.lineJoin
+    // A popup is a picture drawn with an alpha, so these two are all there is to put back; the properties of text
+    // are read and set only for a popup that has no picture (`TextState`).
     const wasSmoothing = ctx.imageSmoothingEnabled
-    const wasFont = ctx.font
-    const wasLine = ctx.lineWidth
-    const wasStroke = ctx.strokeStyle
-    const wasFill = ctx.fillStyle
     const wasAlpha = ctx.globalAlpha
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.lineJoin = 'round'
+    let text: TextState | null = null
     // Device pixels per view pixel, for the pictures of the texts (1 where the context cannot say).
     const k = scale ?? (typeof ctx.getTransform === 'function' ? ctx.getTransform().a || 1 : 1)
     for (const p of this.popups) {
@@ -502,6 +538,7 @@ export class Overlay {
         ctx.drawImage(picture.image, Math.round((x - w / 2) * k) / k, Math.round((y - h / 2) * k) / k, w, h)
         continue
       }
+      text ??= beginText(ctx)
       ctx.font = `800 ${Math.round(p.size * pop)}px ${ROUNDED_FONT}`
       ctx.lineWidth = POPUP_LINE
       ctx.strokeStyle = INK
@@ -509,14 +546,8 @@ export class Overlay {
       ctx.fillStyle = p.color
       ctx.fillText(p.text, x, y)
     }
-    ctx.textAlign = was
-    ctx.textBaseline = wasBaseline
-    ctx.lineJoin = wasJoin
+    if (text) endText(ctx, text)
     ctx.imageSmoothingEnabled = wasSmoothing
-    ctx.font = wasFont
-    ctx.lineWidth = wasLine
-    ctx.strokeStyle = wasStroke
-    ctx.fillStyle = wasFill
     ctx.globalAlpha = wasAlpha
   }
 
