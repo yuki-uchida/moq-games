@@ -137,6 +137,30 @@ test.describe('アニマフロント front-end', () => {
     await expect(page.locator('[data-custom="1"]')).toContainText('はちみつ部隊')
   })
 
+  test('loadout: a held drain antique (コノハムシ) shortens 推定継戦時間 and is listed with its assumed share', async ({
+    page
+  }) => {
+    await openTitle(page)
+    await page.click('[data-menu="loadout"]')
+    await expect(current(page, 'loadout')).toBeVisible()
+    await page.click('[data-species="shiba"]')
+    await page.getByRole('button', { name: '全部外す' }).click()
+    await page.click('[data-tab="ranged"]')
+    await page.click('[data-item="bee"]')
+    await page.click('[data-slot="0"]')
+    const value = page.locator('.sustain-value')
+    await expect(value).not.toHaveText('計算中')
+    const before = await value.textContent()
+    await expect(page.locator('.drains')).toBeHidden()
+    await page.click('[data-tab="gadget"]')
+    await page.click('[data-item="leaf"]')
+    await page.click('[data-hand="L"]')
+    await page.click('[data-slot="1"]')
+    await expect(page.locator('.drains')).toContainText('コノハムシ 使用中 2.5/秒 × 想定 40% = 1/秒')
+    await expect(value).not.toHaveText(before!)
+    await page.locator('.stats-panel').screenshot({ path: test.info().outputPath('sustain-leaf.png') })
+  })
+
   test('loadout: a loadout with problems cannot be saved or confirmed and nothing is stored', async ({ page }) => {
     await openTitle(page)
     await page.click('[data-menu="loadout"]')

@@ -193,7 +193,15 @@ export function revealedFor(sim: Sim, p: Player, side?: number): boolean {
  * Whether an observer at `eye` (foe or bot of another side) can perceive player `p`: cloaked players are lost
  * beyond the antique's range unless they attacked within the last second; ink clouds block sight.
  */
-export function canPerceive(sim: Sim, eye: Vec, p: Player, needLos = true, observerSide?: number): boolean {
+export function canPerceive(
+  sim: Sim,
+  eye: Vec,
+  p: Player,
+  needLos = true,
+  observerSide?: number,
+  /** False: the 灯台 / 巣核 do not hide the player (a foe crowd keeps track of animals it was fighting round it). */
+  solids = true
+): boolean {
   if (p.state !== 'alive') return false
   const c: Vec = [p.p[0], p.p[1] + p.h * 0.6, p.p[2]]
   const d = vdist(eye, c)
@@ -202,6 +210,6 @@ export function canPerceive(sim: Sim, eye: Vec, p: Player, needLos = true, obser
     if (d > (u?.kind === 'cloak' ? u.loseRange : 5)) return false
   }
   if (d > 4 && inkBetween(sim, eye, c)) return false
-  if (needLos && !sim.phys.clear(eye, c, -1)) return false
+  if (needLos && !sim.phys.clear(eye, c, -1, solids)) return false
   return true
 }

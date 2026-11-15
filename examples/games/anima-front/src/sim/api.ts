@@ -48,6 +48,11 @@ export interface SustainReport {
   sustain: number
   /** Share of the fight burn per source (anima/s). */
   byCategory: Record<ItemCategory | 'damage', number>
+  /**
+   * Held / toggled drain antiques in the estimate (コノハムシ, アルマジロ, モモンガ): drain while running (anima/s),
+   * the assumed share of a fight they run and the resulting anima/s (included in byCategory and burn).
+   */
+  drains: { item: ItemId; perSecond: number; share: number; rate: number }[]
   cheapest?: { item: ItemId; cost: number }
   priciest?: { item: ItemId; cost: number }
   /** Japanese notes such as 「武器がありません」 or 「消費が非常に激しい構成です」. */

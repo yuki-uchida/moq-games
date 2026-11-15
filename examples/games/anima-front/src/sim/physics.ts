@@ -1,7 +1,7 @@
 /**
  * Static collision world (DESIGN §9): axis-aligned boxes in a uniform x/z grid, the y = 0 ground plane and the map
  * bounds as walls, plus one-sided dynamic boxes (ヤドカリ walls) and solid upright cylinders (the 灯台 and the 巣核:
- * they block movement for every side; shots and sight lines test those props themselves). Provides capsule movement
+ * they block movement, ray casts and sight lines for every side; a ray starting inside one leaves it). Provides capsule movement
  * with wall sliding and step-up, ground detection, ray casts (with an optional inflation radius for swept spheres),
  * steering around the cylinders and a dynamic spatial hash for actor queries.
  */
@@ -38,9 +38,9 @@ export interface RayHit {
   point: Vec
   normal: Vec
   surface: Surface
-  /** Box index, −1 for the ground plane, −2 for the bounds, −3 for a dynamic box. */
+  /** Box index, −1 for the ground plane, −2 for the bounds, −3 for a dynamic box, −5 for a solid prop cylinder. */
   box: number
-  /** Dynamic box tag (prop id) when `box` is −3. */
+  /** Prop id when `box` is −3 (dynamic box) or −5 (solid prop). */
   tag?: number
 }
 
@@ -608,9 +608,42 @@ export class Physics {
         }
       }
     }
+    // Solid mission props (every side; a ray starting inside one leaves it, like a box).
+    let solidSurface: Surface = 'concrete'
+    for (const c of this.solids) {
+      const rr = c.r + inflate
+      const ox = o[0] - c.x
+      const oz = o[2] - c.z
+      if (ox * ox + oz * oz <= rr * rr && o[1] >= c.y0 - inflate && o[1] <= c.y1 + inflate) continue
+      const t = rayCylinder(o, d, bestT, c.x, c.z, rr, c.y0 - inflate, c.y1 + inflate)
+      if (t < 0 || t >= bestT) continue
+      bestT = t
+      bestBox = -5
+      tag = c.tag
+      solidSurface = c.surface ?? 'concrete'
+      const py = o[1] + d[1] * t
+      if (py >= c.y1 + inflate - 1e-6) (bestN0 = 0), (bestN1 = 1), (bestN2 = 0)
+      else if (py <= c.y0 - inflate + 1e-6) (bestN0 = 0), (bestN1 = -1), (bestN2 = 0)
+      else {
+        const nx = ox + d[0] * t
+        const nz = oz + d[2] * t
+        const nl = Math.hypot(nx, nz) || 1
+        bestN0 = nx / nl
+        bestN1 = 0
+        bestN2 = nz / nl
+      }
+    }
     if (bestBox === -4) return null
     const surface =
-      bestBox >= 0 ? this.surf[bestBox] : bestBox === -1 ? this.groundSurface : bestBox === -3 ? 'wood' : 'concrete'
+      bestBox >= 0
+        ? this.surf[bestBox]
+        : bestBox === -1
+          ? this.groundSurface
+          : bestBox === -3
+            ? 'wood'
+            : bestBox === -5
+              ? solidSurface
+              : 'concrete'
     const hit: RayHit = {
       t: bestT,
       point: [o[0] + d[0] * bestT, o[1] + d[1] * bestT, o[2] + d[2] * bestT],
@@ -631,11 +664,25 @@ export class Physics {
     return t
   }
 
-  /** Line of sight between two points (boxes and dynamic walls of other sides). */
-  clear(a: readonly number[], b: readonly number[], side = -1): boolean {
+  /**
+   * Line of sight between two points (boxes, dynamic walls of other sides and, unless `solids` is false, the solid
+   * props). A solid prop whose volume holds `b` (the 灯台 / a 巣核 is the target) does not block the view of it.
+   */
+  clear(a: readonly number[], b: readonly number[], side = -1, solids = true): boolean {
     const d: Vec = [b[0] - a[0], b[1] - a[1], b[2] - a[2]]
-    const h = this.raycast(a, d, 1, 0, side)
-    return !h || h.t >= 0.999
+    let h: RayHit | null
+    if (solids) h = this.raycast(a, d, 1, 0, side)
+    else {
+      const keep = this.solids
+      this.solids = []
+      try {
+        h = this.raycast(a, d, 1, 0, side)
+      } finally {
+        this.solids = keep
+      }
+    }
+    if (!h || h.t >= 0.999) return true
+    return h.box === -5 && this.solids.some((c) => c.tag === h.tag && inCyl(c, b, 0.05))
   }
 
   /** True when the ground cell at (x, z) is blocked for a walker of radius r (boxes taller than a step). */
@@ -651,6 +698,9 @@ export class Physics {
     return hit
   }
 }
+
+const inCyl = (c: SolidCyl, p: readonly number[], pad: number) =>
+  Math.hypot(p[0] - c.x, p[2] - c.z) <= c.r + pad && p[1] >= c.y0 - pad && p[1] <= c.y1 + pad
 
 /** Penetration depth of a circle into a rectangle (> 0 overlapping, < 0 separated by that distance). */
 export function circleRect(x: number, z: number, r: number, x0: number, z0: number, x1: number, z1: number): number {

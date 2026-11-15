@@ -96,6 +96,58 @@ describe('pvp', () => {
     expect(v.pvp!.winner).toBe(1)
   })
 
+  /** Teams 0 and 1 tied at `rounds` each before the last spurt, then sudden death (KOs worth 2). */
+  const tiedIntoSudden = (rounds: number) => {
+    const m = match(70)
+    m.step(1)
+    for (let r = 0; r < rounds; r++) {
+      m.ko('b', 'a')
+      m.ko('a', 'b')
+      m.step(5 * 60 + 5)
+    }
+    m.step(70 * 60 - m.sim.tick + 5)
+    expect(m.world.view().pvp!.suddenDeath).toBe(true)
+    expect(m.world.view().pvp!.scores).toEqual([rounds, rounds, 0])
+    return m
+  }
+
+  it('sudden death from 1–1–0: the third team scoring alone to the top wins', () => {
+    const m = tiedIntoSudden(1)
+    m.ko('a', 'c')
+    m.step(1)
+    const v = m.world.view()
+    expect(v.pvp!.scores).toEqual([1, 1, 2])
+    expect(v.phase).toBe('victory')
+    expect(v.pvp!.winner).toBe(2)
+  })
+
+  it('sudden death from 1–1–0: a tied team scoring wins', () => {
+    const m = tiedIntoSudden(1)
+    m.ko('c', 'b')
+    m.step(1)
+    const v = m.world.view()
+    expect(v.pvp!.scores).toEqual([1, 3, 0])
+    expect(v.phase).toBe('victory')
+    expect(v.pvp!.winner).toBe(1)
+  })
+
+  it('sudden death: a KO that only makes a new tie at the top plays on; the next one that breaks it wins', () => {
+    const m = tiedIntoSudden(2)
+    m.ko('a', 'c')
+    m.step(1)
+    let v = m.world.view()
+    expect(v.pvp!.scores).toEqual([2, 2, 2])
+    expect(v.phase).toBe('play')
+    expect(v.pvp!.suddenDeath).toBe(true)
+    m.ko('c', 'b')
+    m.step(1)
+    v = m.world.view()
+    expect(v.pvp!.scores).toEqual([2, 4, 2])
+    expect(v.phase).toBe('victory')
+    expect(v.pvp!.winner).toBe(1)
+    expect(v.pvp!.mvp).toBeTruthy()
+  })
+
   it('sudden death without a KO ends in a draw', () => {
     const m = match(5)
     m.step(5 * 60 + 2)

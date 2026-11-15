@@ -2,7 +2,8 @@
  * 三つ巴演習 (DESIGN §12): three teams on the arena, 6:00 by default. A KO scores +1 for the team that dealt the
  * last damage within 10 s (+2 during the last 60 s, ラストスパート). KO'd animals warp out at once and respawn
  * after 5 s with 2 s of protection. Team bases regenerate +12/s and hurt intruders 20/s. A tie at the top plays
- * 60 s of sudden death (first KO by a tied team wins), then a draw. MVP: most KOs (then assists, damage).
+ * 60 s of sudden death: it ends at the first scoring KO (by any team) after which exactly one team holds the top
+ * score, and that team wins (a third team can overtake); a KO that only makes a new tie plays on; time out is a draw. MVP: most KOs (then assists, damage).
  */
 import { PVP_RADIO } from '../../data/missions'
 import { heal } from '../anima'
@@ -31,11 +32,19 @@ export function createPvp(cfg: MatchConfig): ModeCtl {
   let lastSpurt = false
   let sudden = false
   let suddenAt = 0
-  let tied: TeamId[] = []
   let winner: TeamId | -1 | undefined
   let mvp: string | undefined
   /** Last base that hurt each player (scores the base's team if nobody else did damage). */
   const baseHit = new Map<string, { team: TeamId; t: number }>()
+
+  /** The one team (with players) holding the top score; −1 when no team has players; null on a tie at the top. */
+  function leader(sim: Sim): TeamId | -1 | null {
+    const teams = ([0, 1, 2] as TeamId[]).filter((t) => sim.players.some((p) => p.team === t))
+    if (!teams.length) return -1
+    const top = Math.max(...teams.map((t) => scores[t]))
+    const at = teams.filter((t) => scores[t] === top)
+    return at.length === 1 ? at[0] : null
+  }
 
   const bases = (sim: Sim) => sim.map.bases.filter((b) => typeof b.team === 'number')
 
@@ -99,9 +108,8 @@ export function createPvp(cfg: MatchConfig): ModeCtl {
         if (p.timer <= 0) respawn(sim, p, ctl.spawnFor(sim, p), PVP_PROTECT)
       }
       if (!sudden && left <= 0) {
-        const top = Math.max(...scores)
-        tied = ([0, 1, 2] as TeamId[]).filter((t) => scores[t] === top && sim.players.some((p) => p.team === t))
-        if (tied.length <= 1) finish(sim, tied[0] ?? -1)
+        const lead = leader(sim)
+        if (lead !== null) finish(sim, lead)
         else {
           sudden = true
           suddenAt = sim.time
@@ -132,7 +140,10 @@ export function createPvp(cfg: MatchConfig): ModeCtl {
       }
       emit(sim, { type: 'ko', who: p.id, ...ev })
       warpAway(sim, p, PVP_RESPAWN)
-      if (sudden && team !== undefined && points > 0 && tied.includes(team) && !isOver(sim)) finish(sim, team)
+      if (sudden && team !== undefined && points > 0 && !isOver(sim)) {
+        const lead = leader(sim)
+        if (lead !== null) finish(sim, lead)
+      }
     },
 
     onFoeKilled() {},

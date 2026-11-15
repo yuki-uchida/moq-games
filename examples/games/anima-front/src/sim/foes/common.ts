@@ -77,7 +77,8 @@ export function pickTarget(sim: Sim, f: Foe): TargetInfo | null {
       if (p.state !== 'alive') continue
       const d = Math.hypot(p.p[0] - f.p[0], p.p[2] - f.p[2])
       if (d >= bd) continue
-      if (!canPerceive(sim, e, p, d > 3, FOE_SIDE)) continue
+      // Choosing whom to chase looks past the 灯台 / 巣核 (the crowd goes round it); firing needs a clear line.
+      if (!canPerceive(sim, e, p, d > 3, FOE_SIDE, false)) continue
       bd = d
       best = { k: 'p', id: p.id }
     }
