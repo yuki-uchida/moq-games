@@ -768,10 +768,25 @@ function installPerf() {
       return true
     },
     // False when there is no boss to defeat any more: the stage is over (the bot beat him, or the hero fell).
+    // The boss falls inside the next step of the simulation, as a bite fells him: the game reads the events of a
+    // step in the frame of that step, and the music hears of the fall before it looks at the boss again (felled
+    // between two frames, a frame without a step saw a dead boss and no fall yet, and started the stage's theme for
+    // nothing). The hero is put beside him and away from the goal, as after a bite: on the goal, the same step
+    // would clear the stage too.
     killBoss: () => {
       const w = window.__hamham.world
       if (!w || w.state !== 'play' || !w.boss || w.boss.dead) return false
-      w.damageBoss(999)
+      const step = w.step
+      w.step = function (dt, input) {
+        w.step = step
+        const b = this.boss
+        if (this.state === 'play' && b && !b.dead) {
+          this.player.x = Math.min(b.x - this.player.w - 12, this.goalX - 200)
+          this.player.vx = 0
+          this.damageBoss(999)
+        }
+        return step.call(this, dt, input)
+      }
       return true
     }
   }
