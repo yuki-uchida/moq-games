@@ -86,6 +86,8 @@ export interface GameRenderer {
   cameraYaw(): number
   /** Where the camera is (debug probe). */
   cameraPosition(): V3
+  /** The shoulder camera's aim pivot (debug probe). */
+  cameraPivot(): V3
   /** Whether a solid prop is hidden because it would cover the aim (debug probe). */
   isPropHidden(id: number): boolean
   /** How see-through a solid prop is now, 0 (opaque) to 1 (debug probe). */

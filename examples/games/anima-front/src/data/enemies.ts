@@ -220,7 +220,7 @@ export const FOES: Record<FoeKind, FoeDef> = {
     ],
     drop: { chance: 1, count: 40, amount: 3 },
     weak: 2.5,
-    text: '海から歩いてくる要塞。4本の脚を壊すと膝をつき、胸の核がむき出しになる。'
+    text: '海から歩いてくる要塞。4本の脚のうち2本を壊すと膝をつき、胸の核がむき出しになる。'
   },
   kurozume: {
     id: 'kurozume',

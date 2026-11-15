@@ -7,6 +7,7 @@
 import * as THREE from 'three'
 import { SPECIES, eyeHeight, shoulderOffset, type SpeciesId } from '../data/species'
 import type { V3 } from '../sim/types'
+import { easeShoulder, freeShoulder, SHOULDER_PAD } from '../sim/shoulder'
 import type { BoxGrid } from './core/box-grid'
 
 export const ARM_LENGTH = 3.2
@@ -25,17 +26,45 @@ export function aimDirection(yaw: number, pitch: number, out: THREE.Vector3): TH
   return out.set(Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp)
 }
 
-/** Sim aim pivot: feet + (0, eye height, 0) + right × shoulder offset × side; right = (−cos yaw, 0, sin yaw). */
+/**
+ * Sim aim pivot: feet + (0, eye height, 0) + right × shoulder offset × side × k (the free fraction, src/sim/shoulder.ts);
+ * right = (−cos yaw, 0, sin yaw).
+ */
 export function aimPivot(
   feet: V3,
   yaw: number,
   species: SpeciesId,
   shoulder: 1 | -1,
-  out: THREE.Vector3
+  out: THREE.Vector3,
+  k = 1
 ): THREE.Vector3 {
   const def = SPECIES[species]
-  const side = shoulderOffset(def) * shoulder
+  const side = shoulderOffset(def) * shoulder * k
   return out.set(feet[0] - Math.cos(yaw) * side, feet[1] + eyeHeight(def), feet[2] + Math.sin(yaw) * side)
+}
+
+/**
+ * Free fraction of the shoulder offset (src/sim/shoulder.ts) against the render box grid and the solid props, both
+ * grown by SHOULDER_PAD — the same rule and geometry the sim's pivotOf uses.
+ */
+export function freeShoulderFraction(
+  feet: V3,
+  yaw: number,
+  species: SpeciesId,
+  shoulder: 1 | -1,
+  grid: Pick<BoxGrid, 'raycast'> | null,
+  solids: readonly CameraSolid[]
+): number {
+  const def = SPECIES[species]
+  const len = shoulderOffset(def)
+  const ax = feet[0]
+  const ay = feet[1] + eyeHeight(def)
+  const az = feet[2]
+  const dx = -Math.cos(yaw) * shoulder
+  const dz = Math.sin(yaw) * shoulder
+  let hit = grid ? grid.raycast(ax, ay, az, dx, 0, dz, len, SHOULDER_PAD) : len
+  for (const s of solids) hit = Math.min(hit, rayHitsSolid(ax, ay, az, dx, 0, dz, len, s, SHOULDER_PAD))
+  return freeShoulder(len, hit)
 }
 
 /** Vertical FOV (deg) for a horizontal-ish FOV: Hor+ above 16:9, constant horizontal below it. */
@@ -257,6 +286,9 @@ export class CameraRig {
   private hasCentre = false
   /** Free fraction of the current shot's look-to-camera line, eased (no popping when it changes). */
   private clear = 1
+  /** Free fraction of the shoulder offset (eased like the sim's Player.shoulderK). */
+  private shoulderK = 1
+  private hasShoulder = false
 
   constructor(aspect = 16 / 9) {
     this.camera = new THREE.PerspectiveCamera(verticalFov(75, aspect), aspect, 0.06, 320)
@@ -359,7 +391,11 @@ export class CameraRig {
     this.mode = 'shoulder'
     this.zoom = damp(this.zoom, p.zoom, 14, dt)
     this.applyFov()
-    aimPivot(p.feet, p.yaw, p.species, p.shoulder, this.pivot)
+    // The pivot pulled in toward the body axis so it is never inside a box or a solid (same rule as the sim).
+    const free = freeShoulderFraction(p.feet, p.yaw, p.species, p.shoulder, this.grid, this.solids)
+    this.shoulderK = this.hasShoulder ? easeShoulder(this.shoulderK, free, dt) : free
+    this.hasShoulder = true
+    aimPivot(p.feet, p.yaw, p.species, p.shoulder, this.pivot, this.shoulderK)
     aimDirection(p.yaw, p.pitch, this.dir)
     const target = ARM_LENGTH * armScale(p.species) * (1 - 0.35 * this.zoom)
     let blocked = this.grid

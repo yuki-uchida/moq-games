@@ -142,6 +142,8 @@ export interface Player {
   yaw: number
   pitch: number
   shoulder: 1 | -1
+  /** Free fraction of the shoulder offset (src/sim/shoulder.ts): pulled in so the aim pivot is never inside cover. */
+  shoulderK: number
   r: number
   h: number
   grounded: boolean

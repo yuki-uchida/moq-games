@@ -285,7 +285,9 @@ are settings. Phones play in landscape; in portrait the game shows a rotate card
   26 m/s²; jump velocity 11.5 × √jump → ≈ 2.5 m high (rabbit ≈ 3.4 m); coyote time and jump buffer 0.1 s.
 - Dash: 0.2 s at 21 m/s in the move direction (or forward), cooldown 0.9 s, cost 0.5, one air dash per jump.
 - Frog pads launch to 13 m; gecko hook pulls at 26 m/s; gliders and owls fall at 2.2 m/s. No fall damage.
-- Aim pivot = feet + (0, eye height, 0) + right × shoulder offset × side. The aim ray starts at the pivot. The
+- Aim pivot = feet + (0, eye height, 0) + right × shoulder offset × side × k, where k (`src/sim/shoulder.ts`) pulls
+  the pivot in toward the body axis so it keeps 0.15 m clear of every map box, ヤドカリ wall and solid prop (shrinks at
+  once, regrows at 3/s); the sim and the shoulder camera resolve it alike. The aim ray starts at the pivot. The
   camera sits behind the pivot on the same line, so the crosshair is exactly the aim ray. Projectiles start at
   the paw's muzzle (pivot-relative offsets in `src/sim/constants.ts`) and fly toward the aim ray's first hit
   (or 250 m along it).
@@ -331,13 +333,13 @@ plus separation; special units steer individually. Every attack is telegraphed (
 
 ### 蝕機 (machines): pearl-white ceramic plates, cyan light seams, single lens eyes. Elegant and cold.
 
-| id          | 名前            | HP   | speed | behaviour                                                                                           |
-| ----------- | --------------- | ---- | ----- | --------------------------------------------------------------------------------------------------- |
-| `mitsume`   | ミツメ          | 42   | 8.0   | three-eyed scout drone, flies 3–6 m, laser burst 3 × 5, strafes                                     |
-| `ashinaga`  | アシナガ        | 215  | 3.0   | four-legged walker (2.2 m), plasma mortar arc 30 dmg radius 3, slow                                 |
-| `korogashi` | コロガシ        | 30   | 9.0   | rolling sphere bomb, explodes near targets 40 dmg radius 3 (also when destroyed, 50%)               |
-| `tategami`  | タテガミ        | 170  | 3.5   | shield projector: a dome (radius 6 m) over nearby machines blocks shots from outside                |
-| `goutetsu`  | ゴウテツ (boss) | 7000 | 1.5   | walking fortress 12 m: 4 breakable legs (800 each) → kneels, core exposed; missiles, sweeping laser |
+| id          | 名前            | HP   | speed | behaviour                                                                                                                                              |
+| ----------- | --------------- | ---- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `mitsume`   | ミツメ          | 42   | 8.0   | three-eyed scout drone, flies 3–6 m, laser burst 3 × 5, strafes                                                                                        |
+| `ashinaga`  | アシナガ        | 215  | 3.0   | four-legged walker (2.2 m), plasma mortar arc 30 dmg radius 3, slow                                                                                    |
+| `korogashi` | コロガシ        | 30   | 9.0   | rolling sphere bomb, explodes near targets 40 dmg radius 3 (also when destroyed, 50%)                                                                  |
+| `tategami`  | タテガミ        | 170  | 3.5   | shield projector: a dome (radius 6 m) over nearby machines blocks shots from outside                                                                   |
+| `goutetsu`  | ゴウテツ (boss) | 7000 | 1.5   | walking fortress 12 m: 4 breakable legs (800 each; blasts and melee reach them too) → kneels once 2 are broken, core exposed; missiles, sweeping laser |
 
 ### クロヅメ連合 (foreign animals)
 

@@ -186,6 +186,66 @@ export function targetVisible(sim: Sim, from: readonly number[], t: Target, side
   return false
 }
 
+/**
+ * Sample points on a target's shape for area effects centred at `c`: the nearest point of it, then (a body) its
+ * axis at the centre's height, its centre and top, and for a wide body (a boss) a fan of points round the side facing
+ * `c` (every 7.5°, ±90°) at the centre's height, mid-height and the top, so a part peeking round thin cover counts.
+ */
+function areaSamples(t: Target, c: readonly number[]): Vec[] {
+  if (t.k === 'r') return [propNearest(t.r, c), targetCenter(t)]
+  const b = t.k === 'p' ? t.p : (t.f.avatar ?? t.f)
+  const h = b.h
+  // the exact nearest point of the body cylinder (its distance is the body distance), then the others
+  const y = Math.min(Math.max(c[1], b.p[1]), b.p[1] + h)
+  const dx = c[0] - b.p[0]
+  const dz = c[2] - b.p[2]
+  const l = Math.hypot(dx, dz)
+  const k = Math.min(l, b.r)
+  const nx = l > 1e-6 ? dx / l : 0
+  const nz = l > 1e-6 ? dz / l : 1
+  const pts: Vec[] = [
+    [b.p[0] + nx * k, y, b.p[2] + nz * k],
+    [b.p[0], y, b.p[2]],
+    targetCenter(t),
+    [b.p[0], b.p[1] + h * 0.9, b.p[2]]
+  ]
+  if (b.r > 0.8) {
+    const base = Math.atan2(nx, nz)
+    const rr = b.r * 0.98
+    for (const yy of [y, b.p[1] + h * 0.5, b.p[1] + h * 0.9])
+      for (let i = -12; i <= 12; i++) {
+        const a = base + (i * Math.PI) / 24
+        pts.push([b.p[0] + Math.sin(a) * rr, yy, b.p[2] + Math.cos(a) * rr])
+      }
+  }
+  return pts
+}
+
+/**
+ * Where an area effect centred at `c` (a blast, a melee sweep) with reach `radius` touches a target: the nearest of
+ * its sample points that is both within the reach and in clear sight from `from` for `side` — one point for both
+ * tests, so a part out of reach that peeks round cover does not let a covered part in reach be hit. Returns that
+ * contact point and its distance (for falloff and boss parts), or null.
+ */
+export function areaContact(
+  sim: Sim,
+  c: readonly number[],
+  from: readonly number[],
+  t: Target,
+  radius: number,
+  side: Side
+): { at: Vec; d: number } | null {
+  const nearest = targetDistance(t, c)
+  if (nearest > radius) return null
+  const cand = areaSamples(t, c)
+    .map((q) => ({ q, d: Math.hypot(q[0] - c[0], q[1] - c[1], q[2] - c[2]) }))
+    .filter((s) => s.d <= radius + 1e-6)
+    .sort((a, b) => a.d - b.d)
+  for (const s of cand)
+    if (sim.phys.clear(from, s.q, side)) return { at: s.q, d: Math.max(nearest, Math.min(s.d, radius)) }
+  return null
+}
+
 /** Ray vs a humanoid body (players and クロヅメ avatars): returns t and whether the head sphere was hit. */
 function rayBody(o: Vec, d: Vec, maxT: number, p: Player, inflate: number): { t: number; head: boolean } | null {
   const hr = p.species.headRadius

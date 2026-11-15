@@ -43,6 +43,7 @@ import { computeBuild, dashCost, glideDrain, modsOf, sanitizeLoadout } from './l
 import { lungeVelocity } from './items/weapons'
 import { addProp } from './props'
 import { emit, makeStats, type HandSt, type Player, type Side, type Sim } from './state'
+import { easeShoulder, freeShoulder, SHOULDER_PAD } from './shoulder'
 import { BTN, neutralPlayerInput, type PlayerConfig } from './types'
 import { aimDir, clamp, forwardOf, r3v, rightOf, vdist, type Vec } from './vec'
 
@@ -105,6 +106,7 @@ export function createPlayer(sim: Sim, cfg: PlayerConfig, at: { p: Vec; yaw: num
     yaw: at.yaw,
     pitch: 0,
     shoulder: 1,
+    shoulderK: 1,
     r: species.radius,
     h: species.height,
     grounded: true,
@@ -154,11 +156,24 @@ export function createPlayer(sim: Sim, cfg: PlayerConfig, at: { p: Vec; yaw: num
   return p
 }
 
-/** Aim pivot (DESIGN §9): feet + eye height + right × shoulder offset × side. */
+/** Aim pivot (DESIGN §9): feet + eye height + right × shoulder offset × side × the free fraction (shoulderK). */
 export function pivotOf(p: Player): Vec {
   const r = rightOf(p.yaw)
-  const off = shoulderOffset(p.species) * p.shoulder
+  const off = shoulderOffset(p.species) * p.shoulder * p.shoulderK
   return [p.p[0] + r[0] * off, p.p[1] + eyeHeight(p.species), p.p[2] + r[2] * off]
+}
+
+/**
+ * Updates the free shoulder fraction for the current yaw and side (src/sim/shoulder.ts): the offset from the body
+ * axis at eye height is cast against map boxes, every ヤドカリ wall and the solid props grown by SHOULDER_PAD.
+ */
+export function updateShoulder(sim: Sim, p: Player, dt = DT) {
+  const r = rightOf(p.yaw)
+  const len = shoulderOffset(p.species)
+  const off = len * p.shoulder
+  const axis: Vec = [p.p[0], p.p[1] + eyeHeight(p.species), p.p[2]]
+  const hit = sim.phys.raycast(axis, [r[0] * off, 0, r[2] * off], 1, SHOULDER_PAD, -1)
+  p.shoulderK = easeShoulder(p.shoulderK, freeShoulder(len, hit ? hit.t * len : Infinity), dt)
 }
 
 export function aimOf(p: Player): Vec {
@@ -407,7 +422,7 @@ function finishMove(sim: Sim, p: Player, startP: Vec) {
             : hs > 0.5
               ? 'run'
               : 'idle'
-  void sim
+  updateShoulder(sim, p)
 }
 
 export function launch(sim: Sim, p: Player, padId: number, up: number, forward: number, yaw: number) {

@@ -6,7 +6,7 @@
  */
 import type { FoeAttack } from '../data/enemies'
 import { ITEMS } from '../data/items'
-import { bodyDistance, isDamageableProp, propDistance, propHostileTo, targetVisible } from './actors'
+import { areaContact, isDamageableProp, propHostileTo, type Target } from './actors'
 import { recordBurn } from './anima'
 import { BEAR_KNOCK, BLAST_EDGE, CREDIT_WINDOW, OBJECTIVE_ARMOR } from './constants'
 import { bossHitModifier } from './foes/bosses'
@@ -34,6 +34,11 @@ export interface DamageInfo {
   /** Horizontal knockback speed and upward speed. */
   knock?: number
   knockUp?: number
+  /**
+   * An area effect (blast, melee sweep) touching the target at `at`: a boss part there takes it, and the armoured
+   * hull takes it too (an explosion or a sweep reaches every part it touches).
+   */
+  area?: boolean
 }
 
 const attackerPlayer = (sim: Sim, by: ActorRef | undefined): Player | undefined => {
@@ -424,54 +429,51 @@ export function blast(
   if (opts.event !== false)
     emit(sim, { type: 'blast', at: r3v(at), radius: r3(radius), item, team: sideTeam(side), ...byPlayer(by) })
   const fall = (d: number) => damage * (1 - (1 - BLAST_EDGE) * Math.min(1, d / radius))
-  const center = (p: Vec, h: number): Vec => [p[0], Math.min(Math.max(at[1], p[1]), p[1] + h), p[2]]
-  // One occlusion rule for every target (players, foes, bosses, props): targetVisible from just above the blast;
-  // distances to each target's real shape (body cylinder, wall box, prop colliders).
+  // One rule for every target (players, foes, bosses, props): areaContact — the nearest sample point of the target's
+  // real shape that is both within the radius and in clear sight from just above the blast; damage falls off with
+  // that point's distance and lands there (so a boss leg in reach takes it like a direct hit).
   const lift: Vec = [at[0], at[1] + 0.3, at[2]]
+  const hit = (t: Target) => areaContact(sim, at, lift, t, radius, side)
   for (const p of sim.players) {
     if (p.side === side || p.state !== 'alive') continue
-    const c = center(p.p, p.h)
-    const d = bodyDistance(p, at)
-    if (d > radius) continue
-    if (!targetVisible(sim, lift, { k: 'p', p }, side)) continue
+    const c = hit({ k: 'p', p })
+    if (!c) continue
     damagePlayer(sim, p, {
-      amount: fall(Math.max(0, d)),
+      amount: fall(c.d),
       kind: 'blast',
       side,
       by,
       item,
-      at: c,
+      at: c.at,
       from: at,
       knock: opts.knock,
-      knockUp: opts.knockUp
+      knockUp: opts.knockUp,
+      area: true
     })
   }
   if (side !== FOE_SIDE) {
     for (const f of sim.foeHash.query(at[0], at[2], radius + 6)) {
       if (f.dead) continue
-      const c = center(f.p, f.h)
-      const d = bodyDistance(f.avatar ?? f, at)
-      if (d > radius) continue
-      if (!targetVisible(sim, lift, { k: 'f', f }, side)) continue
+      const c = hit({ k: 'f', f })
+      if (!c) continue
       damageFoe(sim, f, {
-        amount: fall(Math.max(0, d)),
+        amount: fall(c.d),
         kind: 'blast',
         side,
         by,
         item,
-        at: c,
+        at: c.at,
         from: at,
         knock: opts.knock,
-        knockUp: opts.knockUp
+        knockUp: opts.knockUp,
+        area: true
       })
     }
   }
   for (const r of sim.props) {
     // Every damageable structure (ヤドカリ walls, the 灯台, 巣核, targets), measured to its real shape.
     if (!isDamageableProp(r) || !propHostileTo(r, side)) continue
-    const d = propDistance(r, at)
-    if (d > radius) continue
-    if (!targetVisible(sim, lift, { k: 'r', r }, side)) continue
-    damageProp(sim, r, { amount: fall(Math.max(0, d)), kind: 'blast', side, by, item, at: r.p, from: at })
+    const c = hit({ k: 'r', r })
+    if (c) damageProp(sim, r, { amount: fall(c.d), kind: 'blast', side, by, item, at: c.at, from: at, area: true })
   }
 }
