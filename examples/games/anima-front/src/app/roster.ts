@@ -83,6 +83,32 @@ export function pickTeamSpecies(
   return out.slice(keep.length)
 }
 
+/** Longest display name that travels over the network (see cleanName). */
+const NAME_MAX = 12
+
+/**
+ * One rule for every display name in a room or match: the first holder keeps `base`, later ones get a number
+ * (「ハヤテ2」, 「ハヤテ3」…) so no two animals share a name. `taken` is not changed.
+ */
+export function uniqueName(base: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(base)) return base
+  for (let n = 2; ; n++) {
+    const suffix = String(n)
+    const name = [...base].slice(0, NAME_MAX - suffix.length).join('') + suffix
+    if (!taken.has(name)) return name
+  }
+}
+
+/** Names in order, made unique: the first of each keeps its name. `taken` names are already held by others. */
+export function dedupeNames(names: readonly string[], taken: Iterable<string> = []): string[] {
+  const used = new Set(taken)
+  return names.map((n) => {
+    const u = uniqueName(n, used)
+    used.add(u)
+    return u
+  })
+}
+
 /** The first unused name of the animal's pool (its ARK member first), or a numbered fallback. */
 export function pickName(species: SpeciesId, used: ReadonlySet<string>, rnd: () => number, first = false): string {
   const pool = NAME_POOLS[species]
@@ -93,10 +119,7 @@ export function pickName(species: SpeciesId, used: ReadonlySet<string>, rnd: () 
     if (!used.has(pool[0]) && rnd() < 0.6) return pool[0]
     return free[Math.floor(rnd() * free.length)]
   }
-  for (let n = 2; ; n++) {
-    const name = `${SPECIES[species].name}${n}`
-    if (!used.has(name)) return name
-  }
+  return uniqueName(SPECIES[species].name, used)
 }
 
 /** A preset suiting the animal, avoiding presets the team already has when possible. */

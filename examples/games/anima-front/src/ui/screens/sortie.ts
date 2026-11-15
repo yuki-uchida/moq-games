@@ -12,7 +12,7 @@ import { cleanRoom, randomRoom, validRoom } from '../../app/online'
 export function localChoice(ctx: AppContext): LocalChoice {
   const species = ctx.armory.species
   const { loadout, name } = resolveLoadout(ctx.armory, species)
-  return { name: SPECIES[species].name, species, loadout, loadoutName: name }
+  return { name: ctx.settings.playerName || SPECIES[species].name, species, loadout, loadoutName: name }
 }
 
 /**

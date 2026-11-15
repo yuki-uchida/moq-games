@@ -117,6 +117,36 @@ describe('online lobby over the in-memory network', () => {
     for (const g of guests) g.leave()
   })
 
+  it('three guests of the same animal and name get three distinct names in the room message and the config', async () => {
+    const hub = new FakeHub()
+    const p = provider(hub)
+    const host = await p.host(pve, choice('ハヤテ', 'shiba'), 'kujira-1234')
+    const guests: Lobby[] = []
+    for (let i = 0; i < 3; i++) {
+      const pending = provider(hub).join('kujira-1234', choice('ハヤテ', 'shiba'))
+      await run(200)
+      guests.push(await pending)
+    }
+    for (const g of guests) g.setReady(true)
+    await run(400)
+    const want = ['ハヤテ', 'ハヤテ2', 'ハヤテ3', 'ハヤテ4']
+    expect(host.state().online?.members.map((m) => m.name)).toEqual(want)
+    for (const g of guests) expect(g.state().online?.members.map((m) => m.name)).toEqual(want)
+    expect(host.state().seats.map((s) => s.name)).toEqual(want)
+    const start = host.start()
+    expect(start.config.players.map((q) => q.name)).toEqual(want)
+    // a fifth with the same name only watches, and still shows a different name
+    const late = provider(hub).join('kujira-1234', choice('ハヤテ', 'shiba'))
+    await run(300)
+    const watcher = await late
+    await run(300)
+    const names = host.state().online!.members.map((m) => m.name)
+    expect(new Set(names).size).toBe(names.length)
+    watcher.leave()
+    host.leave()
+    for (const g of guests) g.leave()
+  })
+
   it('the host picks the mission and difficulty; guests follow', async () => {
     const hub = new FakeHub()
     const { host, guests } = await room(hub, ['ゲスト'])

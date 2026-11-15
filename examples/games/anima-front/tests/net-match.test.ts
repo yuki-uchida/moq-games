@@ -330,6 +330,25 @@ describe('drop-in and spectators (DESIGN §18)', () => {
     t.host.leave()
   }, 60_000)
 
+  it('a drop-in with the name of a player already in the match gets a number', async () => {
+    const t = await table(['ホスト'])
+    await run(1000, () => frame(t))
+    const world = (t.hostSession as HostMatch).world
+    expect(
+      simOf(world)
+        .players.filter((p) => p.bot === undefined)
+        .map((p) => p.name)
+    ).toEqual(['ホスト', 'ホスト2'])
+    const late = await lateJoin(t.hub, 'match-1234', choice('ホスト', 'owl'), () => frame(t))
+    const follow = late.online!.takeMatch()!
+    t.guestSessions.push(follow.start.connect())
+    await run(600, () => frame(t))
+    const names = simOf(world).players.map((p) => p.name)
+    expect(new Set(names).size).toBe(names.length)
+    expect(simOf(world).players.find((p) => p.id === follow.start.me)!.name).toBe('ホスト3')
+    t.host.leave()
+  }, 60_000)
+
   it('PvE: with every seat held by a player, a late guest watches', async () => {
     const t = await table(['B', 'C', 'D'])
     await run(1000, () => frame(t))
