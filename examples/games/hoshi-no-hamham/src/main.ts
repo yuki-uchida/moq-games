@@ -30,6 +30,11 @@ boot(document.querySelector<HTMLCanvasElement>('#game')!).then((app) => {
     openEnding: () => app.openEnding()
   }
   // `?perf` in the address: a readout of late frames in a corner, for checking the game on the device in hand.
-  if (new URLSearchParams(location.search).has('perf'))
-    void import('./app/perf-readout').then(({ startPerfReadout }) => startPerfReadout(app))
+  // `?perf=nohold`: the same readout, and the stages are played without their hit-stops.
+  const perf = new URLSearchParams(location.search).get('perf')
+  if (perf !== null) {
+    const noHold = perf === 'nohold'
+    if (noHold) app.setStagedHolds(false)
+    void import('./app/perf-readout').then(({ startPerfReadout }) => startPerfReadout(app, noHold))
+  }
 })

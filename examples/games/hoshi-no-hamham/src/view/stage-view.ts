@@ -56,6 +56,11 @@ export class StageView {
   readonly reducedMotion: boolean
   /** Seconds of hit-stop left. */
   freezeTime = 0
+  /**
+   * False: no hit-stop is staged. The check on the device in hand (`?perf=nohold`) plays a stage without them, to
+   * tell by feel a hold that is staged from a picture that came late.
+   */
+  holds = true
   /** Real seconds since the view was built. */
   time = 0
   /** Events answered so far (for tests). */
@@ -115,6 +120,7 @@ export class StageView {
 
   /** Hit-stop for at least `seconds`. */
   freeze(seconds: number) {
+    if (!this.holds) return
     // (The facing holds count the hit-stop: it is time on the screen. Decided with the step that starts it, the
     // same at every display rate; a hit-stop during another adds only what it lengthens it by.)
     this.actors.heldFor(Math.max(0, seconds - this.freezeTime))

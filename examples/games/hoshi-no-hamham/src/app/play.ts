@@ -40,6 +40,28 @@ export const DEMO_SECONDS = 40
  */
 export const AFTER_A_FALL: ReadonlySet<SimEventType> = new Set<SimEventType>(['gate-down', 'goal-open'])
 
+/**
+ * The events that are always a judgement of damage: the hero is hurt or falls, an enemy or a boss is hit or falls,
+ * a boss crashes into a wall, a rock breaks. (A bite is one when it landed on something: see `judges`.)
+ */
+export const JUDGEMENTS: ReadonlySet<SimEventType> = new Set<SimEventType>([
+  'hurt',
+  'dead',
+  'enemy-hit',
+  'enemy-down',
+  'boss-hit',
+  'boss-crash',
+  'boss-down',
+  'rock-break'
+])
+
+/**
+ * True for an event that judges damage: one of `JUDGEMENTS`, or a bite that landed (on an enemy, a boss, a tree, a
+ * rock, the ground). The session counts them, and the check on the device in hand counts the long waits right
+ * after them (`perf-readout.ts`).
+ */
+export const judges = (event: SimEvent) => JUDGEMENTS.has(event.type) || (event.type === 'bite' && event.hit)
+
 export interface PlayDeps {
   renderer: Renderer
   hud: Hud
@@ -100,6 +122,8 @@ export class PlaySession {
   readonly demo: boolean
   /** How many hits the hero has taken. */
   damage = 0
+  /** How many judgements of damage have been answered (`judges`): the hero's hurts and the hits he deals. */
+  judged = 0
   /** The bot plays instead of the player, with sound and the HUD as in real play (performance checks). */
   autopilot = false
   /** Where between the last two simulation states the frame's picture is: 1 shows the current state. */
@@ -217,6 +241,7 @@ export class PlaySession {
   /** The view, the sounds and the director answer one event. */
   private answer(event: SimEvent) {
     if (event.type === 'hurt') this.damage += 1
+    if (judges(event)) this.judged += 1
     this.view.handle(event)
     this.sounds.event(event)
     this.director.handle(event)
