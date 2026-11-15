@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { runSteps, stageArt, stageWarmSteps, TILES_PER_STEP, type WarmStep } from '../src/app/warm'
+import { popupSteps, runSteps, stageArt, stageWarmSteps, TILES_PER_STEP, type WarmStep } from '../src/app/warm'
 import { sheet, tileKey } from '../src/art'
 import { KING_RAGED, THEMES, allSheetSpecs, themedProp, type ThemeId } from '../src/art/contract'
 import type { ArtReply, ArtRequest, ArtSource } from '../src/art/remote'
@@ -110,6 +110,30 @@ describe('what a stage draws', () => {
       })
     })
   }
+})
+
+describe('the popups made ahead of a stage', () => {
+  it("are the scores and the calls, one slice each, and every value of a collecting stage's counter", () => {
+    const boss = STAGES.find((stage) => stage.objective === 'boss')!
+    expect(popupSteps(boss, 3).map((step) => step.label)).toEqual([
+      'popup:+1',
+      'popup:+2',
+      'popup:ナイス！',
+      'popup:ゴール！'
+    ])
+    const collect = STAGES.find((stage) => stage.objective === 'collect')!
+    const need = collect.collect ?? 0
+    expect(need).toBeGreaterThan(0)
+    expect(popupSteps(collect, 3).map((step) => step.label)).toEqual([
+      'popup:+1',
+      'popup:+2',
+      'popup:ナイス！',
+      'popup:ゴール！',
+      ...Array.from({ length: need }, (_, i) => `popup:${i + 1}/${need}`)
+    ])
+    // Without a page there is no picture to make: a slice then does nothing, and does not throw.
+    for (const step of popupSteps(collect, 3)) expect(() => step.run()).not.toThrow()
+  })
 })
 
 describe('runSteps', () => {

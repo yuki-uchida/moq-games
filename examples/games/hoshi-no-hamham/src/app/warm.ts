@@ -16,7 +16,15 @@ import { adopt, sharedArtSource, type ArtHurry, type ArtReply, type ArtRequest, 
 import { TILE, World } from '../game/sim'
 import type { StageDef } from '../game/types'
 import { bake, bakeBackdrop, warmClip } from '../view/bake'
-import { POPUP_TEXTS, ROUNDED_FONT, STAGED_LINES, warmOverlayText } from '../view/overlay'
+import {
+  KNOWN_POPUPS,
+  POPUP_COLORS,
+  POPUP_TEXTS,
+  ROUNDED_FONT,
+  STAGED_LINES,
+  warmOverlayText,
+  warmPopupPicture
+} from '../view/overlay'
 import { stageTileQueries } from '../view/terrain'
 
 /** What a stage draws: sheet ids, which of them also need hit-flash silhouettes, and the world's backdrop. */
@@ -188,6 +196,25 @@ export function overlayTextSteps(): WarmStep[] {
     ...POPUP_SIZES.map((size) => ({ label: `font:popup:${size}`, weight: 1, run: () => measure(size, POPUP_TEXTS) })),
     ...BUBBLE_SIZES.map((size) => ({ label: `font:bubble:${size}`, weight: 1, run: () => measure(size, STAGED_LINES) }))
   ]
+}
+
+/**
+ * One slice per popup the stage can show (the scores and the calls, and on a collecting stage every value of its
+ * counter): the popup's picture at `k` device pixels per view pixel, so that the frame of a pickup or of a hit
+ * finds it made. They need the canvas's scale, which the art's warm-up does not know: the app runs them while a
+ * story is read.
+ */
+export function popupSteps(stage: StageDef, k: number): WarmStep[] {
+  const popups: (readonly [string, string])[] = [...KNOWN_POPUPS]
+  if (stage.objective === 'collect') {
+    const need = stage.collect ?? 0
+    for (let count = 1; count <= need; count++) popups.push([`${count}/${need}`, POPUP_COLORS.count])
+  }
+  return popups.map(([text, color]) => ({
+    label: `popup:${text}`,
+    weight: 1,
+    run: () => void warmPopupPicture(text, color, k)
+  }))
 }
 
 /**
