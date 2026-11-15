@@ -16,6 +16,7 @@ import { shotArt, STORY_SCENES, ENDING_SCENES, type SceneKey } from '../ui/story
 import { installZoomGuard } from '../ui/zoom-guard'
 import { primeStagingPictures } from '../view/prime'
 import { Renderer } from '../view/renderer'
+import { stageThemes } from '../view/music'
 import { SoundBoard, type SoundCue } from '../view/sound-map'
 import type { StageView } from '../view/stage-view'
 import { fetchArt, screenArtStats } from './art-fetch'
@@ -413,6 +414,8 @@ export class App {
     void fetchShots(stage.no, 1)
     void fetchArt(`result:${stage.no}`, resultArt(stage))
     void fetchArt('dead', deadArt())
+    // The players of the music the stage will ask for, built in idle moments while the story is read.
+    this.audio.prepareMusic?.(stageThemes(stage))
     // The player reads for a few seconds anyway: build the stage's art meanwhile (a task later: listing a stage's
     // art builds its world). Once it is built, lay out what play and the stage's end will show, and make the
     // pictures of the popups at the canvas's scale.

@@ -5,6 +5,7 @@
 import type { GameAudio, ThemeName } from '../audio/api'
 import type { SimEvent } from '../game/events'
 import type { World } from '../game/sim'
+import type { StageDef } from '../game/types'
 
 /** The boss fight as the music sees it; null when no boss fight is on (the chasing parent is not one). */
 export interface BossMusic {
@@ -64,6 +65,16 @@ export function musicFor(state: MusicState): MusicChoice {
       return { theme: state.theme, layer: state.hp > 0 && state.hp <= LOW_HP ? 1 : 0 }
     }
   }
+}
+
+/**
+ * The themes a stage can ask for while it is played, the soonest first: its world's, the jingles of its two ends
+ * and its boss's (a chasing parent has none: the world's theme plays through her chase).
+ */
+export function stageThemes(stage: Pick<StageDef, 'theme' | 'boss'>): ThemeName[] {
+  const themes: ThemeName[] = [stage.theme, 'clear', 'gameover']
+  if (!stage.boss.stamina) themes.push(stage.boss.kind === 'final' ? 'finalBoss' : 'boss')
+  return themes
 }
 
 /** 0 normal, 1 strongest: pause ducks hard, being under water muffles. */

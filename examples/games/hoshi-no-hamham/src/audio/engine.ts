@@ -18,6 +18,11 @@ const LOOKAHEAD = 0.5
 const LOOKAHEAD_HIDDEN = 1.6
 /** The most main-thread time one scheduling pass may spend on the music, in milliseconds. */
 const TICK_BUDGET_MS = 3
+/**
+ * How many players that are not sounding are kept for the next time their theme is asked for: a stage's own theme,
+ * its boss's, the two jingles of its ends and the story's before it.
+ */
+export const KEPT_PLAYERS = 5
 
 export class AudioEngine {
   readonly mixer: Mixer
@@ -26,6 +31,16 @@ export class AudioEngine {
   private theme: ThemeName | null = null
   private layer = 0
   private readonly fading = new Set<MusicPlayer>()
+  /**
+   * The players that are not sounding, by theme, the one put away longest ago first. A theme that comes back (the
+   * world's after a boss has fallen, the boss's on another try, a jingle on the next stage) starts again on the
+   * parts and racks its player has, and one built ahead (`prepareMusic`) waits here: building a player and the
+   * racks of its first notes is tens of milliseconds of a phone's main thread, right at a change of scene.
+   */
+  private readonly parked = new Map<ThemeName, MusicPlayer>()
+  /** The themes asked for ahead (see `wantMusic`): their players are the last to go. */
+  private wanted: ReadonlySet<ThemeName> = new Set()
+  private disposed = false
   private timer: ReturnType<typeof setInterval> | undefined
   /** The pending continuation of a pass that ran out of budget. */
   private soon: ReturnType<typeof setTimeout> | undefined
@@ -120,6 +135,7 @@ export class AudioEngine {
       return
     }
     const old = this.player
+    const was = this.theme
     this.player = null
     this.theme = theme
     this.layer = l
@@ -127,17 +143,78 @@ export class AudioEngine {
     if (old) {
       this.fading.add(old)
       const fade = jingle ? 0.25 : theme === null ? 0.8 : 1.2
-      old.fadeOut(fade, () => this.fading.delete(old))
+      old.fadeOut(fade, () => {
+        this.fading.delete(old)
+        if (was) this.park(was, old)
+      })
     }
     if (theme === null) return
     const song = SONGS[theme]
     if (!song) return
-    const p = new MusicPlayer(this.mixer, this.noise, song, l, startAt, this.live)
+    const p = this.take(theme, l, startAt) ?? new MusicPlayer(this.mixer, this.noise, song, l, startAt, this.live)
     if (old) p.fadeIn(jingle ? 0.05 : 1.2)
     this.player = p
     // Building the player was this task's work; its first notes are scheduled by the next one, a pass at a time.
     if (this.live) this.continueSoon()
     else p.pump(startAt + this.lookahead)
+  }
+
+  /**
+   * Puts a player that is off the mixer away for the next time its theme is asked for. Of more than
+   * `KEPT_PLAYERS` the oldest goes, one that nobody has asked for ahead before any that was.
+   */
+  private park(theme: ThemeName, player: MusicPlayer): void {
+    if (!this.live || this.disposed) return
+    this.parked.delete(theme)
+    this.parked.set(theme, player)
+    while (this.parked.size > KEPT_PLAYERS) {
+      let oldest: ThemeName | undefined
+      for (const kept of this.parked.keys())
+        if (!this.wanted.has(kept)) {
+          oldest = kept
+          break
+        }
+      this.parked.delete(oldest ?? this.parked.keys().next().value!)
+    }
+  }
+
+  /**
+   * Names the themes that may be asked for soon (a stage's): their players, built ahead or put away after they
+   * sounded, are kept before any other's. A new list replaces the one before.
+   */
+  wantMusic(themes: readonly ThemeName[]): void {
+    this.wanted = new Set(themes)
+  }
+
+  /**
+   * The player of `theme` that was put away, started again from its song's first note; undefined when there is none,
+   * or when its last notes have not rung out yet (it stays put away, and a new one is built as before).
+   */
+  private take(theme: ThemeName, layer: number, startAt: number): MusicPlayer | undefined {
+    const player = this.parked.get(theme)
+    if (!player || player.quietAt > this.ctx.currentTime) return undefined
+    this.parked.delete(theme)
+    player.restart(layer, startAt)
+    return player
+  }
+
+  /**
+   * Builds the player of a theme before the theme is asked for and puts it away, off the mixer. True when a player
+   * of the theme is there afterwards (put away, or the one sounding now); false when none was built (an offline
+   * engine, nothing to be heard, or no such song).
+   */
+  prepareMusic(theme: ThemeName): boolean {
+    if (!this.live || this.disposed || !this.audible()) return false
+    if (this.parked.has(theme) || (this.theme === theme && this.player)) return true
+    const song = SONGS[theme]
+    if (!song) return false
+    this.park(theme, new MusicPlayer(this.mixer, this.noise, song, 0, 0, true, true, false))
+    return true
+  }
+
+  /** The themes whose players are put away now, the one put away longest ago first (tests and tools). */
+  get keptThemes(): ThemeName[] {
+    return [...this.parked.keys()]
   }
 
   /** Synchronously schedules a whole stretch of the current music (offline rendering). */
@@ -215,5 +292,7 @@ export class AudioEngine {
     this.loops.clear()
     this.player = null
     this.fading.clear()
+    this.parked.clear()
+    this.disposed = true
   }
 }

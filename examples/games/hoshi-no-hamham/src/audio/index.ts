@@ -9,7 +9,7 @@ import { SfxBank, whenIdle } from './bank'
 import { AudioEngine } from './engine'
 import { makeNoise } from './instruments'
 import { createMixer, impulseSteps, MUSIC_IMPULSE, SFX_IMPULSE } from './mixer'
-import { compileSongsAhead } from './music'
+import { compileSongsAhead, inIdleMoments } from './music'
 import { SONGS } from './songs'
 
 export * from './api'
@@ -58,6 +58,10 @@ class WebAudio implements GameAudio {
   private inPlay = false
   /** Stops the compiling of songs ahead. */
   private stopSongs: (() => void) | null = null
+  /** Stops the building of players ahead (see `prepareMusic`). */
+  private stopPlayers: (() => void) | null = null
+  /** The themes last asked for ahead. */
+  private wanted: readonly ThemeName[] = []
 
   private safe(fn: () => void): void {
     try {
@@ -158,6 +162,7 @@ class WebAudio implements GameAudio {
     for (const k of ['master', 'music', 'sfx'] as const) engine.setVolume(k, this.volumes[k])
     engine.setMuted(this.muted)
     engine.setDuck(this.duck)
+    engine.wantMusic(this.wanted)
     if (this.theme) engine.setMusic(this.theme, this.layer)
     this.bank?.start()
     this.stopSongs ??= compileSongsAhead(
@@ -189,6 +194,25 @@ class WebAudio implements GameAudio {
       this.musicTimer = undefined
       this.safe(() => this.engine?.setMusic(this.theme, this.layer))
     }, 0)
+  }
+
+  /**
+   * One player per idle moment, in the order given, and none while a stage is played. Without an engine yet (before
+   * the first gesture's work is done) nothing is built: the themes are then built when they are asked for.
+   */
+  prepareMusic(themes: readonly ThemeName[]): void {
+    this.wanted = [...themes]
+    this.stopPlayers?.()
+    this.stopPlayers = null
+    if (this.disposed) return
+    this.safe(() => this.engine?.wantMusic(this.wanted))
+    if (!this.wanted.length) return
+    this.stopPlayers = inIdleMoments(
+      this.wanted,
+      (theme) => this.safe(() => void this.engine?.prepareMusic(theme)),
+      whenIdle,
+      () => this.inPlay
+    )
   }
 
   sfx(name: SfxName, options?: SfxOptions): void {
@@ -244,6 +268,7 @@ class WebAudio implements GameAudio {
     this.steps = null
     this.bank?.stop()
     this.stopSongs?.()
+    this.stopPlayers?.()
     this.safe(() => {
       this.engine?.dispose()
       void this.ctx?.close().catch(() => undefined)
