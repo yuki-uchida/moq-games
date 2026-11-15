@@ -15,6 +15,8 @@ export interface MatchProbe {
   cameraYaw(): number | null
   /** Where the camera is now. */
   cameraPos(): V3 | null
+  /** Whether this solid prop (lighthouse…) is hidden by the camera. */
+  propHidden(id: number): boolean
   /** Local player id. */
   me: string
   /** Turns the camera (and aim) toward a world point, as if the player moved the mouse. */

@@ -545,6 +545,7 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
     stats: () => renderer?.stats() ?? null,
     cameraYaw: () => renderer?.cameraYaw() ?? null,
     cameraPos: () => renderer?.cameraPosition() ?? null,
+    propHidden: (id: number) => renderer?.isPropHidden(id) ?? false,
     aimAt(p: readonly number[]) {
       const me = view?.players.find((q) => q.id === start.me)
       if (!me) return

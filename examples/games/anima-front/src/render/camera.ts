@@ -143,20 +143,41 @@ export function rayHitsSolid(
     // starting inside: the pivot is already in it (the prop is faded instead)
     return t0 > 0 ? t0 : Infinity
   }
+  // Finite cylinder: the side (radial interval) and the top / bottom caps (height slab) are intersected, so a ray
+  // that starts above the top inside the radius still enters through the cap.
   const r = s.r + pad
   const fx = ox - s.x
   const fz = oz - s.z
   const A = dx * dx + dz * dz
   const C = fx * fx + fz * fz - r * r
-  if (C < 0) return Infinity
-  if (A < 1e-9) return Infinity
-  const B = 2 * (fx * dx + fz * dz)
-  const disc = B * B - 4 * A * C
-  if (disc < 0) return Infinity
-  const t = (-B - Math.sqrt(disc)) / (2 * A)
-  if (t < 0 || t > len) return Infinity
-  const y = oy + dy * t
-  return y >= s.y0 - pad && y <= s.y1 + pad ? t : Infinity
+  let ta = -Infinity
+  let tb = Infinity
+  if (A < 1e-9) {
+    if (C > 0) return Infinity // a vertical ray outside the radius
+  } else {
+    const B = 2 * (fx * dx + fz * dz)
+    const disc = B * B - 4 * A * C
+    if (disc < 0) return Infinity
+    const sq = Math.sqrt(disc)
+    ta = (-B - sq) / (2 * A)
+    tb = (-B + sq) / (2 * A)
+  }
+  const lo = s.y0 - pad
+  const hi = s.y1 + pad
+  let tc = -Infinity
+  let td = Infinity
+  if (Math.abs(dy) < 1e-9) {
+    if (oy < lo || oy > hi) return Infinity
+  } else {
+    tc = (lo - oy) / dy
+    td = (hi - oy) / dy
+    if (tc > td) [tc, td] = [td, tc]
+  }
+  const t0 = Math.max(ta, tc, 0)
+  const t1 = Math.min(tb, td, len)
+  if (t0 > t1) return Infinity
+  // starting inside the whole volume: the pivot is already in it (the prop is hidden instead)
+  return t0 > 0 ? t0 : Infinity
 }
 
 /** Whether the point is inside the solid grown by `pad`. */
@@ -239,6 +260,11 @@ export class CameraRig {
 
   constructor(aspect = 16 / 9) {
     this.camera = new THREE.PerspectiveCamera(verticalFov(75, aspect), aspect, 0.06, 320)
+  }
+
+  /** The aim pivot the shoulder camera used last (feet + eye height + shoulder offset): where the sim aims from. */
+  get aimPoint(): THREE.Vector3 {
+    return this.pivot
   }
 
   setGrid(grid: BoxGrid | null) {
