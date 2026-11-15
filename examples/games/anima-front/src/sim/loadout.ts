@@ -7,6 +7,8 @@
  *   burn = upkeep (online passives)
  *        + Σ per paw: mean cost rate of the paw's weapons × 0.15 duty (aiming, moving and switching take the rest)
  *        + Σ active gadgets: cost per use / max(cooldown, 15 s)
+ *        + Σ held / toggled drains (non-weapon `drain` antiques, once each): drain/s × the assumed share of a fight
+ *          they run (DRAIN_SHARE: コノハムシ cloak 40 %, アルマジロ shield 20 %, モモンガ glide 10 %)
  *        + 0.6 anima/s incoming damage × (1 − armour reduction)
  *   armour reduction = 1 − (1 − passive armour %) × (1 − share of hits negated by クラゲヴェール (1 / every))
  *   net = burn − a third of natural regeneration (fights leave little quiet time; shards make up part of it);
@@ -23,6 +25,7 @@ import { DT, REGEN_RATE } from './constants'
 import type { Build, Mods } from './state'
 
 const ITEM_SET = new Set<string>(ITEM_IDS)
+const round = (x: number) => Math.round(x * 100) / 100
 const isItemId = (x: unknown): x is ItemId => typeof x === 'string' && ITEM_SET.has(x)
 
 /** Repairs anything into a valid 16-slot loadout (drops offending slots; guarantees one weapon). */
@@ -307,6 +310,16 @@ const SUSTAIN_MEDIUM = 120
 const GADGET_GAP = 15
 /** Share of natural regeneration that happens during a fight. */
 const FIGHT_REGEN = 0.33
+/**
+ * Assumed share of a fight a non-weapon drain antique runs: the cloak stays on for long stretches, a shield is held
+ * while blocking, a glide lasts only while falling. Shown in the editor's breakdown (SustainReport.drains).
+ */
+export const DRAIN_SHARE: Record<'cloak' | 'shield' | 'glide', number> = { cloak: 0.4, shield: 0.2, glide: 0.1 }
+
+function drainKind(def: ItemDef): keyof typeof DRAIN_SHARE | null {
+  const k = def.use?.kind ?? def.passive?.kind
+  return k === 'cloak' || k === 'shield' || k === 'glide' ? k : null
+}
 
 export function sustainEstimate(species: SpeciesId, loadout: Loadout): SustainReport {
   const clean = sanitizeLoadout(loadout)
@@ -334,6 +347,17 @@ export function sustainEstimate(species: SpeciesId, loadout: Loadout): SustainRe
       byCategory.gadget += itemCost(m, def) / Math.max(GADGET_GAP, def.cooldown ?? 0)
     }
   }
+  // Held / toggled drains (cloak, shield, glide), counted once per antique whichever paws carry it.
+  const drains: SustainReport['drains'] = []
+  for (const id of new Set([...b.R, ...b.L, ...b.passives])) {
+    const def = ITEMS[id]
+    const kind = drainKind(def)
+    if (!kind || !def.drain || isWeapon(id)) continue
+    const perSecond = itemCost(m, def, def.drain)
+    const rate = perSecond * DRAIN_SHARE[kind]
+    byCategory[def.category] += rate
+    drains.push({ item: id, perSecond: round(perSecond), share: DRAIN_SHARE[kind], rate: round(rate) })
+  }
   const negateShare = b.negateEvery > 0 ? Math.min(1, 1 / b.negateEvery) : 0
   const reduction = 1 - (1 - b.armorReduce) * (1 - negateShare)
   byCategory.damage = INCOMING * (1 - reduction)
@@ -357,7 +381,6 @@ export function sustainEstimate(species: SpeciesId, loadout: Loadout): SustainRe
   if (b.upkeep > regen) warnings.push('維持消費が自然回復を上回っています')
   if (sustain < SUSTAIN_SHORT) warnings.push('消費が非常に激しい構成です')
   else if (sustain < SUSTAIN_MEDIUM) warnings.push('消費が激しめの構成です。安いアンティークを混ぜましょう')
-  const round = (x: number) => Math.round(x * 100) / 100
   for (const k of Object.keys(byCategory) as (keyof typeof byCategory)[]) byCategory[k] = round(byCategory[k])
   const report: SustainReport = {
     maxAnima: b.maxAnima,
@@ -366,6 +389,7 @@ export function sustainEstimate(species: SpeciesId, loadout: Loadout): SustainRe
     burn: round(burn),
     sustain: sustain === Infinity ? Infinity : Math.round(sustain * 10) / 10,
     byCategory,
+    drains,
     warnings
   }
   if (cheapest) report.cheapest = cheapest

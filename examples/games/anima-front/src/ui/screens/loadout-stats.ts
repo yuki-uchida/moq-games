@@ -1,5 +1,6 @@
 /** Live stats of the loadout editor: sustain estimate, category breakdown, warnings (DESIGN §7). */
 import { fmt, safeLoadoutErrors, safeSustain } from '../../app/loadouts'
+import type { SustainReport } from '../../sim/api'
 import { CATEGORY_NAMES, ITEMS, type ItemCategory } from '../../data/items'
 import type { Loadout } from '../../data/loadout'
 import { SPECIES, type SpeciesId } from '../../data/species'
@@ -58,6 +59,8 @@ export function createStatsPanel(): StatsPanel {
     return seg
   })
   const extremes = h('div', 'extremes')
+  /** Held / toggled drains with their assumed share of a fight (part of the estimate). */
+  const drains = h('div', 'drains')
   const notes = h('ul', 'notes')
   const el = h(
     'section',
@@ -66,6 +69,7 @@ export function createStatsPanel(): StatsPanel {
     gauge,
     h('div', 'stat-grid', max.el, upkeep.el, regen.el, burn.el),
     h('div', 'breakdown-wrap', breakdown, legend),
+    drains,
     extremes,
     notes
   )
@@ -87,6 +91,7 @@ export function createStatsPanel(): StatsPanel {
         setStyle(gaugeFill, 'transform', 'scaleX(0)')
         for (const s of segs) setStyle(s, 'flex-grow', '0')
         extremes.replaceChildren()
+        drains.replaceChildren()
       } else {
         setText(max.v, String(Math.round(report.maxAnima)))
         setText(upkeep.v, fmt(round2(report.upkeep)))
@@ -97,6 +102,7 @@ export function createStatsPanel(): StatsPanel {
         setStyle(gaugeFill, 'transform', `scaleX(${sustainFraction(report.sustain)})`)
         const total = PARTS.reduce((a, p) => a + Math.max(0, report.byCategory[p] ?? 0), 0) || 1
         PARTS.forEach((p, i) => setStyle(segs[i], 'flex-grow', String(Math.max(0, report.byCategory[p] ?? 0) / total)))
+        drains.replaceChildren(...(report.drains ?? []).map(drainLine))
         extremes.replaceChildren(
           ...nodes(
             report.cheapest
@@ -128,6 +134,12 @@ export function createStatsPanel(): StatsPanel {
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100
+
+/** 「コノハムシ 使用中 2.5/秒 × 想定 40% = 1/秒」 */
+export const drainText = (d: SustainReport['drains'][number]) =>
+  `${ITEMS[d.item].name} 使用中 ${fmt(d.perSecond)}/秒 × 想定 ${Math.round(d.share * 100)}% = ${fmt(round2(d.rate))}/秒`
+
+const drainLine = (d: SustainReport['drains'][number]) => h('span', null, drainText(d))
 
 /** The short explanation of the anima economy shown beside the board. */
 export function economyCard(): HTMLElement {

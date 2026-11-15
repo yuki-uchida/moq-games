@@ -5,10 +5,11 @@
 import { ITEMS, type ItemDef } from '../../data/items'
 import { hitTarget, hostilesNear, rayActors, refOf, targetCenter, type Target } from '../actors'
 import { canPay, drain } from '../anima'
+import { damageProp } from '../combat'
 import { BLAST_KNOCK, DT, LOB_RADIUS, PUFFER_FALLOFF } from '../constants'
 import { aimOf, muzzleOf, pivotOf } from '../player'
 import { spawnShot } from '../projectiles'
-import { emit, type HandSt, type Player, type Sim } from '../state'
+import { emit, findProp, type HandSt, type Player, type Sim } from '../state'
 import type { ActorRef } from '../types'
 import { deg, forwardOf, jitterDir, r3v, vdist, vnorm, type Vec } from '../vec'
 import {
@@ -543,7 +544,22 @@ export function beam(sim: Sim, p: Player, h: HandSt, def: ItemDef) {
   const wall = sim.phys.raycast(o, d, u.range, 0, p.side)
   const hit = rayActors(sim, p.side, o, d, wall ? wall.t : u.range, 0.05, selfRef(p), true)
   h.beam = []
-  if (!hit) return
+  if (!hit) {
+    // Stopped on a solid 灯台 / 巣核: it takes the beam when it is hostile (damageProp ignores one's own).
+    const r = wall && wall.box === -5 && wall.tag !== undefined ? findProp(sim, wall.tag) : undefined
+    if (r) {
+      damageProp(sim, r, {
+        amount: u.dps * rangedMul(p) * DT * BEAM_EVERY,
+        kind: 'beam',
+        side: p.side,
+        by: selfRef(p),
+        item: def.id,
+        at: wall!.point,
+        from: o
+      })
+    }
+    return
+  }
   const dmg = u.dps * rangedMul(p) * DT * BEAM_EVERY
   const at: Vec = [o[0] + d[0] * hit.t, o[1] + d[1] * hit.t, o[2] + d[2] * hit.t]
   const first = refOf(hit.target)

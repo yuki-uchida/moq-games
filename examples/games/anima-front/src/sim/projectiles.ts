@@ -200,7 +200,8 @@ export function shotsTick(sim: Sim) {
           item: s.kind,
           ...byPlayer(s.owner)
         })
-        if (wall.box === -3 && wall.tag !== undefined) {
+        // A ヤドカリ wall, or a solid 灯台 / 巣核 the shot stopped on (damageProp ignores the shooter's own side's).
+        if ((wall.box === -3 || wall.box === -5) && wall.tag !== undefined) {
           const r = findProp(sim, wall.tag)
           if (r)
             damageProp(sim, r, {

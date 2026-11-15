@@ -368,5 +368,5 @@ export const MISSION_ORDER = MISSION_IDS.map((id) => MISSIONS[id])
 export const PVP_RADIO = {
   start: { who: 'ruri', text: 'ユメクジラ演習場、起動。ここでの撃破は現実には影響しません。全力でどうぞ！' },
   lastSpurt: { who: 'ruri', text: 'ラストスパート！ 残り60秒、撃破ポイントが2倍です！' },
-  suddenDeath: { who: 'ruri', text: '同点です！ サドンデス、次の撃破で決着！' }
+  suddenDeath: { who: 'ruri', text: '同点です！ サドンデス、撃破で単独トップに立ったチームの勝ちです！' }
 } satisfies Record<string, RadioLine>

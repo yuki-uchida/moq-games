@@ -418,7 +418,7 @@ export function createHud(): Hud {
         banner.show('ラストスパート', '撃破ポイント ×2', 'warn')
         break
       case 'suddenDeath':
-        banner.show('サドンデス', '次の撃破で決着', 'warn')
+        banner.show('サドンデス', '撃破で単独トップに立てば勝利', 'warn')
         break
       case 'objective':
         if (e.what === 'captured') banner.show(`${e.label ?? 'ポイント'} 制圧`, 'CAPTURED', 'good')

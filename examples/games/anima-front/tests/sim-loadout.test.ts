@@ -5,6 +5,7 @@ import { LOADOUT_SLOTS, makeLoadout, PRESETS, type Loadout } from '../src/data/l
 import { SPECIES_IDS } from '../src/data/species'
 import {
   computeBuild,
+  DRAIN_SHARE,
   handLists,
   loadoutErrors,
   sanitizeLoadout,
@@ -150,6 +151,30 @@ describe('sustainEstimate', () => {
       expect(sustainEstimate('shiba', p).sustain).toBeGreaterThan(2 * sustainEstimate('shiba', allout).sustain - 20)
     }
     expect(sustainEstimate('shiba', makeLoadout([], ['frog'], [])).warnings).toContain('武器がありません')
+  })
+
+  it('counts held / toggled drains (cloak, shield, glide) at their assumed share of a fight', () => {
+    const base = sustainEstimate('shiba', makeLoadout(['bee'], [], []))
+    expect(base.drains).toEqual([])
+    const cloak = sustainEstimate('shiba', makeLoadout(['bee'], ['leaf'], []))
+    // コノハムシ drains 2.5/s while on and is assumed on for 40 % of a fight.
+    expect(DRAIN_SHARE.cloak).toBe(0.4)
+    expect(cloak.drains).toEqual([{ item: 'leaf', perSecond: 2.5, share: 0.4, rate: 1 }])
+    expect(cloak.byCategory.gadget).toBeCloseTo(base.byCategory.gadget + 1, 5)
+    expect(cloak.burn).toBeCloseTo(base.burn + 1, 2)
+    expect(cloak.sustain).toBeCloseTo(100 / (base.burn + 1 - 1.5 * 0.33), 0)
+    expect(cloak.sustain).toBeLessThan(base.sustain / 2)
+    // the shield (armour) and the glide (a passive) count too, once each whichever paws carry them
+    const all = sustainEstimate('shiba', makeLoadout(['bee', 'armadillo'], ['leaf', 'armadillo'], ['momonga']))
+    expect(all.drains.map((d) => [d.item, d.share])).toEqual([
+      ['armadillo', 0.2],
+      ['leaf', 0.4],
+      ['momonga', 0.1]
+    ])
+    const shield = all.drains.find((d) => d.item === 'armadillo')!
+    expect(shield.rate).toBeCloseTo(0.4 * 0.2, 5)
+    expect(all.drains.find((d) => d.item === 'momonga')!.rate).toBeCloseTo(1.2 * 0.1, 5)
+    expect(all.sustain).toBeLessThan(cloak.sustain)
   })
 
   it('is monotonic: a more expensive build never reports a longer sustain', () => {

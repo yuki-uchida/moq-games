@@ -241,7 +241,8 @@ While アルマジロ is raised the animal moves at 70% speed and cannot use tha
 - Each paw's active antiques form that paw's list in slot order (slot 0 → 15). `Q` / `E` (or the wheel for R)
   cycle a paw; switching takes 0.25 s (the antique dissolves and re-forms in light).
 - **Sustain estimate** (editor): `fight = upkeep + Σ per paw (cost rate of its first weapon × 0.5 duty) + 9/s
-incoming × (1 − armour reduction)` minus regeneration; shows **推定継戦時間** = anima / fight (∞ if ≤ 0) and a
+incoming × (1 − armour reduction)` minus regeneration (held / toggled drains count at an assumed share of the fight:
+  cloak 40 %, shield 20 %, glide 10 %, listed under the bar); shows **推定継戦時間** = anima / fight (∞ if ≤ 0) and a
   bar of anima use by category. Also shown: max anima, upkeep/s, cheapest/most expensive actions.
 - Six presets (one default per species, all selectable): **アタッカー** (シャチマル + ミツバチ…), **ガンナー**
   (キツツキ, ダンゴムシ…), **スナイパー** (フクロウアイ, ヤモリフック, モモンガ…), **タンク** (アルマジロ, カメノコウラ,
@@ -273,8 +274,10 @@ are settings. Phones play in landscape; in portrait the game shows a rotate card
 - Static world = axis-aligned boxes (`MapDef.boxes`) on a uniform grid for queries. Characters are vertical
   capsules; they slide along walls and step up ledges ≤ 0.45 m. Map edges are walls.
 - The 灯台 (shaft r 1.5 m to 9 m, sandbag foot r 2.1 m to 0.8 m) and the 巣核 (r 1.6 m to 3.5 m) are solid upright
-  cylinders for players, bots and foes (`src/sim/prop-solids.ts`, also in the guest's prediction); a destroyed node
-  stops blocking, the escort cart stays walk-through.
+  cylinders for players, bots and foes (`src/sim/prop-solids.ts`, also in the guest's prediction). They stop shots,
+  beams and the ヤモリフック of every side (a shot hurts the prop only when it is hostile to the shooter) and block AI
+  lines of fire; foes still pick whom to chase past them. A destroyed node stops blocking; the escort cart stays
+  walk-through.
 - Ground speed 6.8 m/s × species × modifiers; acceleration 60 m/s² on the ground, 16 m/s² in the air; gravity
   26 m/s²; jump velocity 11.5 × √jump → ≈ 2.5 m high (rabbit ≈ 3.4 m); coyote time and jump buffer 0.1 s.
 - Dash: 0.2 s at 21 m/s in the move direction (or forward), cooldown 0.9 s, cost 0.5, one air dash per jump.
@@ -355,7 +358,8 @@ Missions unlock in order. Each has a briefing (commander + operator lines), obje
 - Map `arena` (ユメクジラ演習場): a virtual city with three bases 120° apart around a central tower plaza.
 - 6:00. KO = +1 for the scoring team; the last 60 s (**ラストスパート**) KOs are +2. Respawn 5 s, 2 s protection.
 - Team bases: regeneration +12/s; foes inside a base take 20/s (no spawn camping).
-- Highest score wins; a tie plays 60 s of sudden death (first KO wins), then a draw.
+- Highest score wins; a tie plays 60 s of sudden death: the first scoring KO (by any team, the third one included)
+  that leaves exactly one team on top wins it, a KO that only makes a new tie plays on, and time out is a draw.
 - Teams: **アカネ隊** (crimson `#e5484d`), **アオイ隊** (blue `#3e8ed0`), **キハダ隊** (yellow `#f2b33d`), plus
   pattern stripes on armour (diagonal / dots / chevrons) so colour is never the only cue.
 
