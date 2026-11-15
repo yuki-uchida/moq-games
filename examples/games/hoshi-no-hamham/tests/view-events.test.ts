@@ -3,6 +3,7 @@ import { FX_SPEC } from '../src/art/contract'
 import { SIM_EVENT_TYPES, type SimEvent, type SimEventType } from '../src/game/events'
 import { FX_NAMES } from '../src/view/fx'
 import { FX_MAP, SHOCK_W, playFx, type FxApi } from '../src/view/fx-map'
+import { KNOWN_POPUPS, POPUP_COLORS } from '../src/view/overlay'
 import { SFX } from '../src/audio/api'
 import { SOUND_MAP, callsFor } from '../src/view/sound-map'
 
@@ -159,6 +160,25 @@ describe('fx-map', () => {
     const pickup = stubView()
     playFx({ type: 'pickup', kind: 'berry', x: 0, y: 0, hp: 6, count: 3, need: 8 }, pickup.view)
     expect(pickup.calls).toContain('popup')
+  })
+
+  it('shows only popups whose pictures are made ahead, but for the counter of a collecting stage', () => {
+    // The work ahead of a stage makes the pictures of `KNOWN_POPUPS` (and of a collecting stage's counter): a popup
+    // an event shows with another text or colour would have its picture made in the frame of the event.
+    const known = new Set(KNOWN_POPUPS.map(([text, color]) => `${text}|${color}`))
+    const shown: string[] = []
+    for (const type of SIM_EVENT_TYPES)
+      for (const event of SAMPLES[type] as SimEvent[]) {
+        const { view } = stubView()
+        view.popup = (text, _x, _y, color) => void shown.push(`${text}|${color}`)
+        playFx(event, view)
+      }
+    expect(shown).toEqual(expect.arrayContaining(['+1|#ff9aa4', '+2|#ffd45e', 'ナイス！|#ffd45e']))
+    for (const popup of shown) {
+      if (popup === `3/8|${POPUP_COLORS.count}`) continue
+      expect(known.has(popup), popup).toBe(true)
+    }
+    expect(shown).toContain(`3/8|${POPUP_COLORS.count}`)
   })
 
   it("a new shockwave's dust is under its leading edge, whichever way it goes", () => {

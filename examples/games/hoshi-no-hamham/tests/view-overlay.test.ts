@@ -1,6 +1,19 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { VIEW_H, VIEW_W } from '../src/art/contract'
-import { Overlay, POPUP_TEXTS, ROUNDED_FONT, STAGED_LINES, warmOverlayText } from '../src/view/overlay'
+import {
+  forgetPopupPictures,
+  KNOWN_POPUPS,
+  Overlay,
+  overlayPictures,
+  POPUP_COLORS,
+  POPUP_PICTURES,
+  POPUP_TEXTS,
+  popupPictureCount,
+  ROUNDED_FONT,
+  STAGED_LINES,
+  warmOverlayText,
+  warmPopupPicture
+} from '../src/view/overlay'
 
 interface Gradient {
   args: number[]
@@ -141,6 +154,123 @@ describe('Overlay bubbles and popups', () => {
     overlay.popup('+1', 0, 0)
     overlay.clearPopups('ゴール！')
     expect(overlay.popupTexts).toEqual(['+1'])
+  })
+})
+
+describe('the pictures of popup texts', () => {
+  const globals = globalThis as Record<string, unknown>
+  const saved = globals.document
+  /** A page that makes canvases and counts them; every canvas hands out a context that records its texts. */
+  function fakePage() {
+    const canvases: { width: number; height: number; texts: string[] }[] = []
+    globals.document = {
+      createElement: () => {
+        const canvas = { width: 0, height: 0, texts: [] as string[] }
+        const fake = fakeContext()
+        const ctx = new Proxy(fake.ctx as unknown as Record<string, unknown>, {
+          get: (target, key: string) =>
+            key === 'fillText' ? (text: string) => void canvas.texts.push(text) : Reflect.get(target, key)
+        })
+        canvases.push(canvas)
+        return { ...canvas, getContext: () => ctx, canvas }
+      }
+    }
+    return canvases
+  }
+  /** A context of the game's canvas that writes down the pictures drawn on it. */
+  function screen() {
+    const drawn: unknown[] = []
+    const fake = fakeContext()
+    const ctx = new Proxy(fake.ctx as unknown as Record<string, unknown>, {
+      get: (target, key: string) =>
+        key === 'drawImage' ? (image: unknown) => void drawn.push(image) : Reflect.get(target, key)
+    }) as unknown as CanvasRenderingContext2D
+    return { ctx, drawn }
+  }
+  beforeEach(() => forgetPopupPictures())
+  afterEach(() => {
+    globals.document = saved
+    forgetPopupPictures()
+  })
+
+  it('makes one picture for all the popups of one text, colour and scale', () => {
+    const canvases = fakePage()
+    const overlay = new Overlay()
+    const view = screen()
+    for (let i = 0; i < 6; i++) {
+      overlay.popup('+1', 10 * i, 0, POPUP_COLORS.fruit)
+      overlay.update(0.05)
+      overlay.drawPopups(view.ctx, 0, 0, 3)
+    }
+    expect(canvases).toHaveLength(1)
+    expect(popupPictureCount()).toBe(1)
+    // Every popup on screen drew that one picture, in every frame.
+    expect(view.drawn.length).toBeGreaterThan(6)
+    expect(new Set(view.drawn).size).toBe(1)
+  })
+
+  it('makes another picture for another text, colour, size or scale', () => {
+    const canvases = fakePage()
+    const overlay = new Overlay()
+    const view = screen()
+    overlay.popup('+1', 0, 0, POPUP_COLORS.fruit)
+    overlay.popup('+2', 0, 0, POPUP_COLORS.fruit)
+    overlay.popup('+1', 0, 0, POPUP_COLORS.gold)
+    overlay.popup('+1', 0, 0, POPUP_COLORS.fruit, 15)
+    overlay.drawPopups(view.ctx, 0, 0, 3)
+    expect(canvases).toHaveLength(4)
+    // The same four at another scale of the canvas (a smaller backing store) are four more.
+    const smaller = new Overlay()
+    smaller.popup('+1', 0, 0, POPUP_COLORS.fruit)
+    smaller.drawPopups(view.ctx, 0, 0, 2)
+    expect(canvases).toHaveLength(5)
+    expect(popupPictureCount()).toBe(5)
+  })
+
+  it('finds a picture made ahead, and makes none where pictures are off', () => {
+    const canvases = fakePage()
+    for (const [text, color] of KNOWN_POPUPS) expect(warmPopupPicture(text, color, 3)).toBe(true)
+    expect(canvases).toHaveLength(KNOWN_POPUPS.length)
+    expect(canvases.map((c) => c.texts[0])).toEqual(KNOWN_POPUPS.map(([text]) => text))
+    const overlay = new Overlay()
+    const view = screen()
+    for (const [text, color] of KNOWN_POPUPS) overlay.popup(text, 0, 0, color)
+    overlay.drawPopups(view.ctx, 0, 0, 3)
+    expect(canvases).toHaveLength(KNOWN_POPUPS.length)
+    expect(view.drawn).toHaveLength(KNOWN_POPUPS.length)
+    // Asked again, a picture is found, not made.
+    expect(warmPopupPicture(KNOWN_POPUPS[0][0], KNOWN_POPUPS[0][1], 3)).toBe(true)
+    expect(canvases).toHaveLength(KNOWN_POPUPS.length)
+    overlayPictures.enabled = false
+    try {
+      expect(warmPopupPicture('+1', POPUP_COLORS.fruit, 4)).toBe(false)
+      expect(canvases).toHaveLength(KNOWN_POPUPS.length)
+    } finally {
+      overlayPictures.enabled = true
+    }
+  })
+
+  it('keeps the newest pictures only', () => {
+    fakePage()
+    for (let i = 0; i < POPUP_PICTURES + 5; i++) warmPopupPicture(`${i}/99`, POPUP_COLORS.count, 3)
+    expect(popupPictureCount()).toBe(POPUP_PICTURES)
+    // The first ones went; one used again stays the newest.
+    const canvases = fakePage()
+    warmPopupPicture('0/99', POPUP_COLORS.count, 3)
+    expect(canvases).toHaveLength(1)
+    warmPopupPicture(`${POPUP_PICTURES + 4}/99`, POPUP_COLORS.count, 3)
+    expect(canvases).toHaveLength(1)
+    warmPopupPicture('7/99', POPUP_COLORS.count, 3)
+    for (let i = 0; i < POPUP_PICTURES - 2; i++) warmPopupPicture(`new ${i}`, POPUP_COLORS.count, 3)
+    const before = canvases.length
+    warmPopupPicture('7/99', POPUP_COLORS.count, 3)
+    expect(canvases).toHaveLength(before)
+  })
+
+  it('has no picture without a page (the text is drawn as it was)', () => {
+    globals.document = undefined
+    expect(warmPopupPicture('+1', POPUP_COLORS.fruit, 3)).toBe(false)
+    expect(popupPictureCount()).toBe(0)
   })
 })
 

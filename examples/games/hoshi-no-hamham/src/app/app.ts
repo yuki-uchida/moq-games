@@ -20,7 +20,7 @@ import { SoundBoard, type SoundCue } from '../view/sound-map'
 import type { StageView } from '../view/stage-view'
 import { fetchArt, screenArtStats } from './art-fetch'
 import { PlaySession, STEP } from './play'
-import { isWarm, runSteps, warmStage, type WarmStep } from './warm'
+import { isWarm, popupSteps, runSteps, warmStage, type WarmStep } from './warm'
 
 type ScreenName = 'title' | 'select' | 'story' | 'play' | 'result' | 'dead' | 'ending'
 
@@ -414,11 +414,13 @@ export class App {
     void fetchArt(`result:${stage.no}`, resultArt(stage))
     void fetchArt('dead', deadArt())
     // The player reads for a few seconds anyway: build the stage's art meanwhile (a task later: listing a stage's
-    // art builds its world). Once it is built, lay out what play and the stage's end will show.
+    // art builds its world). Once it is built, lay out what play and the stage's end will show, and make the
+    // pictures of the popups at the canvas's scale.
     const warm = new Promise<void>((resolve) => setTimeout(() => warmStage(stage).then(resolve, resolve), 0))
     this.planAhead([
       () => warm,
       this.prepare({ screen: 'hud' }),
+      () => runAhead(popupSteps(stage, this.renderer.k)),
       this.prepare({ screen: 'result', stage, last: stage.no >= STAGES.length }),
       this.prepare({ screen: 'dead', stage })
     ])

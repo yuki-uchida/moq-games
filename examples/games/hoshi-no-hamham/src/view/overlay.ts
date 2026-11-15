@@ -66,7 +66,10 @@ interface Popup {
   age: number
   life: number
   size: number
-  /** The text as a picture, made the first time the popup is drawn (null where no canvas can be made). */
+  /**
+   * The text as a picture, looked up the first time the popup is drawn (null where no canvas can be made). Popups
+   * of the same text, colour and size share it: it is never drawn on again.
+   */
   picture?: TextPicture | null
 }
 
@@ -130,22 +133,53 @@ function screenPictures() {
 }
 
 const POPUP_LINE = 3.5
+/** The size of a popup's text unless its caller gives another (px of the view). */
+export const POPUP_SIZE = 13
+/** The colours of the popups: a fruit's score, a star's score and the calls, the counter of a collecting stage. */
+export const POPUP_COLORS = { fruit: '#ff9aa4', gold: '#ffd45e', count: '#a4f29a' } as const
+
+/** The popups every stage can show, as text and colour (`fx-map.ts` and `staging.ts` show them). */
+export const KNOWN_POPUPS: readonly (readonly [text: string, color: string])[] = [
+  ['+1', POPUP_COLORS.fruit],
+  ['+2', POPUP_COLORS.gold],
+  ['ナイス！', POPUP_COLORS.gold],
+  ['ゴール！', POPUP_COLORS.gold]
+]
+
+/** How many pictures of popup texts are kept (the newest: the scale changes with the canvas's size). */
+export const POPUP_PICTURES = 40
+
+/**
+ * The pictures of the popups' texts made so far, by scale, size, colour and text. A stage shows a handful of
+ * different popups (`+1`, `+2`, the calls, a counter), the same ones over and over, and making a picture (a canvas,
+ * its font, the outline and the fill) costs a slow phone a few milliseconds in the very frame of the pickup or the
+ * hit. Every popup of the same text, colour, size and scale shows the one picture.
+ */
+const popupPictures = new Map<string, TextPicture>()
 
 /**
  * A popup's text with its outline as a picture, so that the frames it is on screen draw one image instead of
  * stroking and filling the text again. `k` is the canvas's device pixels per view pixel. Null without a canvas.
  */
-function popupPicture(p: Popup, k: number): TextPicture | null {
+function popupPicture(text: string, color: string, size: number, k: number): TextPicture | null {
   if (!overlayPictures.enabled || typeof document === 'undefined') return null
+  const key = `${k}|${size}|${color}|${text}`
+  const held = popupPictures.get(key)
+  if (held) {
+    // Used again: it is the newest now.
+    popupPictures.delete(key)
+    popupPictures.set(key, held)
+    return held
+  }
   try {
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
     if (!ctx) return null
-    const font = `800 ${p.size}px ${ROUNDED_FONT}`
+    const font = `800 ${size}px ${ROUNDED_FONT}`
     ctx.font = font
     const pad = POPUP_LINE + 2
-    const w = Math.ceil(ctx.measureText(p.text).width + pad * 2)
-    const h = Math.ceil(p.size * 1.5 + pad * 2)
+    const w = Math.ceil(ctx.measureText(text).width + pad * 2)
+    const h = Math.ceil(size * 1.5 + pad * 2)
     canvas.width = Math.ceil(w * k)
     canvas.height = Math.ceil(h * k)
     // Sizing the canvas resets its state.
@@ -156,14 +190,31 @@ function popupPicture(p: Popup, k: number): TextPicture | null {
     ctx.lineJoin = 'round'
     ctx.lineWidth = POPUP_LINE
     ctx.strokeStyle = INK
-    ctx.strokeText(p.text, w / 2, h / 2)
-    ctx.fillStyle = p.color
-    ctx.fillText(p.text, w / 2, h / 2)
-    return { image: canvas, w, h }
+    ctx.strokeText(text, w / 2, h / 2)
+    ctx.fillStyle = color
+    ctx.fillText(text, w / 2, h / 2)
+    const picture = { image: canvas, w, h }
+    popupPictures.set(key, picture)
+    if (popupPictures.size > POPUP_PICTURES) popupPictures.delete(popupPictures.keys().next().value!)
+    return picture
   } catch {
     return null
   }
 }
+
+/**
+ * Makes the picture of a popup before the popup is shown, for a canvas of `k` device pixels per view pixel (the
+ * work ahead of a stage asks, one picture at a time). True when the picture is there.
+ */
+export function warmPopupPicture(text: string, color: string, k: number, size = POPUP_SIZE): boolean {
+  return popupPicture(text, color, size, k) !== null
+}
+
+/** The pictures of popup texts held now (for tests). */
+export const popupPictureCount = () => popupPictures.size
+
+/** Forgets every picture of a popup text (tests). */
+export const forgetPopupPictures = () => popupPictures.clear()
 
 const ease = (t: number) => 1 - (1 - t) ** 3
 /** Radius and strength of the spotlight's two rings of darkness. */
@@ -265,7 +316,7 @@ export class Overlay {
   }
 
   /** A short rising text at a world position. */
-  popup(text: string, x: number, y: number, color = '#fff9f4', size = 13) {
+  popup(text: string, x: number, y: number, color = '#fff9f4', size = POPUP_SIZE) {
     this.popups.push({ text, x, y, color, age: 0, life: 0.95, size })
     if (this.popups.length > 24) this.popups.shift()
   }
@@ -436,7 +487,7 @@ export class Overlay {
       ctx.globalAlpha = t > 0.7 ? Math.max(0, 1 - (t - 0.7) / 0.3) : 1
       const x = p.x - viewX
       const y = p.y - viewY - rise
-      if (p.picture === undefined) p.picture = popupPicture(p, k)
+      if (p.picture === undefined) p.picture = popupPicture(p.text, p.color, p.size, k)
       const picture = p.picture
       if (picture) {
         // The text was drawn once; the pop is a scale of its picture, placed on whole device pixels.

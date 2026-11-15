@@ -10,7 +10,7 @@ import type { SimEvent } from '../game/events'
 import { ZONES } from '../ui/hud-model'
 import type { DirectorHost, Outcome } from './director'
 import { RUN_THRESHOLD, bossSheetSpec, clipLife, specDuration } from './clips'
-import type { Anchor, BubbleTone } from './overlay'
+import { POPUP_COLORS, type Anchor, type BubbleTone } from './overlay'
 import type { PoseTarget } from './actors'
 import { Sequence } from './sequence'
 
@@ -462,7 +462,7 @@ export class Staging {
   goalReveal(event: At<'goal-open'>): Sequence | null {
     const { camera, overlay, sound } = this.host
     if (camera.sees(event.x, event.y, 40)) {
-      overlay.popup('ゴール！', event.x, event.y - 118, '#ffd45e')
+      overlay.popup('ゴール！', event.x, event.y - 118, POPUP_COLORS.gold)
       return null
     }
     const length = this.reduced ? 0.7 : 0.95
@@ -476,7 +476,7 @@ export class Staging {
       sound.cue('unlock')
       this.fx.spawn('ring', event.x, event.y, { layer: 'front' })
       this.fx.burst('sparkle', event.x, event.y - 20, 10, { speed: [60, 150], life: [0.4, 0.7], layer: 'front' })
-      overlay.popup('ゴール！', event.x, event.y - 118, '#ffd45e')
+      overlay.popup('ゴール！', event.x, event.y - 118, POPUP_COLORS.gold)
     })
     seq.at(length - 0.32, () => this.panHome(0.3))
     return seq

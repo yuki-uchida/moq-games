@@ -7,6 +7,7 @@
 import type { SimEvent, SimEventType } from '../game/events'
 import { TILE } from '../game/types'
 import type { BurstOptions, FxName, SpawnOptions } from './fx'
+import { POPUP_COLORS } from './overlay'
 
 /** What an effect may do to the view. */
 export interface FxApi {
@@ -154,8 +155,13 @@ export const FX_MAP: FxMap = {
         life: [0.7, 0.9],
         layer: 'front'
       })
-      v.popup(e.kind === 'star' ? '+2' : '+1', e.x, e.y - 20, e.kind === 'star' ? '#ffd45e' : '#ff9aa4')
-    } else v.popup(`${e.count ?? 0}/${e.need ?? 0}`, e.x, e.y - 20, '#a4f29a')
+      v.popup(
+        e.kind === 'star' ? '+2' : '+1',
+        e.x,
+        e.y - 20,
+        e.kind === 'star' ? POPUP_COLORS.gold : POPUP_COLORS.fruit
+      )
+    } else v.popup(`${e.count ?? 0}/${e.need ?? 0}`, e.x, e.y - 20, POPUP_COLORS.count)
   },
   // ----- gimmicks
   dig: (e, v) => {
@@ -377,7 +383,7 @@ export const FX_MAP: FxMap = {
     })
     v.freeze(0.06)
     v.trauma(e.weak ? 0.35 : 0.2)
-    if (e.weak) v.popup('ナイス！', e.x, e.y - 50, '#ffd45e')
+    if (e.weak) v.popup('ナイス！', e.x, e.y - 50, POPUP_COLORS.gold)
   },
   'boss-phase': (e, v) => {
     v.flash('#ffffff', 0.7, 0.35)
