@@ -333,13 +333,13 @@ plus separation; special units steer individually. Every attack is telegraphed (
 
 ### 蝕機 (machines): pearl-white ceramic plates, cyan light seams, single lens eyes. Elegant and cold.
 
-| id          | 名前            | HP   | speed | behaviour                                                                                                                                              |
-| ----------- | --------------- | ---- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `mitsume`   | ミツメ          | 42   | 8.0   | three-eyed scout drone, flies 3–6 m, laser burst 3 × 5, strafes                                                                                        |
-| `ashinaga`  | アシナガ        | 215  | 3.0   | four-legged walker (2.2 m), plasma mortar arc 30 dmg radius 3, slow                                                                                    |
-| `korogashi` | コロガシ        | 30   | 9.0   | rolling sphere bomb, explodes near targets 40 dmg radius 3 (also when destroyed, 50%)                                                                  |
-| `tategami`  | タテガミ        | 170  | 3.5   | shield projector: a dome (radius 6 m) over nearby machines blocks shots from outside                                                                   |
-| `goutetsu`  | ゴウテツ (boss) | 7000 | 1.5   | walking fortress 12 m: 4 breakable legs (800 each; blasts and melee reach them too) → kneels once 2 are broken, core exposed; missiles, sweeping laser |
+| id          | 名前            | HP   | speed | behaviour                                                                                                                                                                                     |
+| ----------- | --------------- | ---- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mitsume`   | ミツメ          | 42   | 8.0   | three-eyed scout drone, flies 3–6 m, laser burst 3 × 5, strafes                                                                                                                               |
+| `ashinaga`  | アシナガ        | 215  | 3.0   | four-legged walker (2.2 m), plasma mortar arc 30 dmg radius 3, slow                                                                                                                           |
+| `korogashi` | コロガシ        | 30   | 9.0   | rolling sphere bomb, explodes near targets 40 dmg radius 3 (also when destroyed, 50%)                                                                                                         |
+| `tategami`  | タテガミ        | 170  | 3.5   | shield projector: a dome (radius 6 m) over nearby machines blocks shots from outside                                                                                                          |
+| `goutetsu`  | ゴウテツ (boss) | 7000 | 1.5   | walking fortress 12 m: 4 breakable legs (800 each; each leg is its own target for blasts and melee, in reach and in sight) → kneels once 2 are broken, core exposed; missiles, sweeping laser |
 
 ### クロヅメ連合 (foreign animals)
 
@@ -498,7 +498,8 @@ Screens (every change uses a transition, never a hard cut):
   of known players, others' only within 45 m (+ the blast radius) of a living member and without the actor; prop
   damage on player props only to the teams that know the prop. The host recomputes the sets for every snapshot
   (`src/net/visibility.ts`): an enemy is known within 6 m of a living member, in line of sight (boxes, ヤドカリ
-  walls, ink; eye, aim pivot or camera to head or chest; ≤ 150 m; camouflage ≥ 0.5 only within 5 m; 0.4 s
+  walls, solid props, ink; eye, either shoulder's aim pivot as resolved by `src/sim/shoulder.ts` or the camera
+  behind it, to head or chest; ≤ 150 m; camouflage ≥ 0.5 only within 5 m; 0.4 s
   hysteresis), when that team's sonar reveals it, when it fired or used an antique in the last 1.5 s within 45 m,
   when it stands in that team's base or was hit by that team in the last second; everyone in the results. Team
   keys reach guests wrapped with an ECDH P-256 + HKDF key (guest key in its profile, host key in the lobby state)

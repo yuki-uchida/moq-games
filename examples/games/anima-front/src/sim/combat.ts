@@ -6,10 +6,10 @@
  */
 import type { FoeAttack } from '../data/enemies'
 import { ITEMS } from '../data/items'
-import { areaContact, isDamageableProp, propHostileTo, type Target } from './actors'
+import { areaContact, cylContact, isDamageableProp, propHostileTo, type Target } from './actors'
 import { recordBurn } from './anima'
 import { BEAR_KNOCK, BLAST_EDGE, CREDIT_WINDOW, OBJECTIVE_ARMOR } from './constants'
-import { bossHitModifier } from './foes/bosses'
+import { bossAreaParts, bossHitModifier } from './foes/bosses'
 import { onFoeDeath } from './foes/index'
 import { modsOf } from './loadout'
 import { emit, FOE_SIDE, isOver, sideTeam, type Foe, type Player, type Prop, type Side, type Sim } from './state'
@@ -34,11 +34,10 @@ export interface DamageInfo {
   /** Horizontal knockback speed and upward speed. */
   knock?: number
   knockUp?: number
-  /**
-   * An area effect (blast, melee sweep) touching the target at `at`: a boss part there takes it, and the armoured
-   * hull takes it too (an explosion or a sweep reaches every part it touches).
-   */
+  /** An area effect (blast, melee sweep) touching the target at `at`. */
   area?: boolean
+  /** The boss part an area effect reached (bossAreaParts): a ゴウテツ leg index, or −1 for the armoured hull. */
+  part?: number
 }
 
 const attackerPlayer = (sim: Sim, by: ActorRef | undefined): Player | undefined => {
@@ -415,6 +414,40 @@ export function destroyProp(sim: Sim, r: Prop, by: ActorRef | undefined) {
 /** `by` for impact / blast events: the acting player (PvP routes them per team); foes' effects leave it out. */
 export const byPlayer = (by: ActorRef | undefined): { by?: string } => (typeof by === 'string' ? { by } : {})
 
+/**
+ * An area effect (blast, melee sweep) centred at `c` with reach `radius` on a foe: every separately damageable boss
+ * part (bossAreaParts: ゴウテツ's legs, クイツクシ's open maw) is its own target — in reach and in sight from `from`,
+ * each reached part takes `amount(distance)` — and so is the body / armoured hull (unless a part that stands for it
+ * was reached). Returns true when anything was hit.
+ */
+export function areaHitFoe(
+  sim: Sim,
+  f: Foe,
+  c: Vec,
+  from: Vec,
+  radius: number,
+  side: Side,
+  amount: (d: number) => number,
+  info: Omit<DamageInfo, 'amount' | 'at' | 'part' | 'area'>
+): boolean {
+  let hit = false
+  let replaced = false
+  for (const pt of bossAreaParts(f)) {
+    const pc = cylContact(sim, c, from, pt.cyl, radius, side)
+    if (!pc) continue
+    damageFoe(sim, f, { ...info, amount: amount(pc.d), at: pc.at, area: true, part: pt.part })
+    hit = true
+    if (pt.alone) replaced = true
+    if (f.dead) return true
+  }
+  if (replaced) return hit
+  const bc = areaContact(sim, c, from, { k: 'f', f }, radius, side)
+  if (!bc) return hit
+  const parts = f.kind === 'goutetsu' && f.parts ? { part: -1 } : {}
+  damageFoe(sim, f, { ...info, amount: amount(bc.d), at: bc.at, area: true, ...parts })
+  return true
+}
+
 /** Radial damage with linear falloff to 40 % at the edge; walls block it. */
 export function blast(
   sim: Sim,
@@ -454,19 +487,14 @@ export function blast(
   if (side !== FOE_SIDE) {
     for (const f of sim.foeHash.query(at[0], at[2], radius + 6)) {
       if (f.dead) continue
-      const c = hit({ k: 'f', f })
-      if (!c) continue
-      damageFoe(sim, f, {
-        amount: fall(c.d),
+      areaHitFoe(sim, f, at, lift, radius, side, fall, {
         kind: 'blast',
         side,
         by,
         item,
-        at: c.at,
         from: at,
         knock: opts.knock,
-        knockUp: opts.knockUp,
-        area: true
+        knockUp: opts.knockUp
       })
     }
   }

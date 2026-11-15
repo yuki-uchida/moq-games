@@ -7,6 +7,10 @@ import { hiddenPlayer } from '../src/net/split'
 import { VIS, TeamVisibility } from '../src/net/visibility'
 import type { MapDef, PlayerView, PropView, SimEvent, TeamId, V3, View } from '../src/sim/types'
 import { makeLoadout } from '../src/data/loadout'
+import { eyeHeight, shoulderOffset, SPECIES } from '../src/data/species'
+import { getMap } from '../src/sim/api'
+import { Physics } from '../src/sim/physics'
+import { pivotOf, updateShoulder } from '../src/sim/player'
 import { rig } from './sim-helpers'
 import { playerCfg } from './sim-maps'
 
@@ -285,5 +289,66 @@ describe('props and resting shards per team', () => {
     objectsAt(vis, [watcher([0, 0, -190]), hidden()], 3, { shards: [] })
     o = objectsAt(vis, [watcher([0, 0, -190]), hidden()], 4, { shards })
     expect([...o.shards.get(0)!]).toEqual([])
+  })
+})
+
+describe('viewpoints are the ones the player really has (the free shoulder, round 15)', () => {
+  // The review's spot on the real arena: a team-0 shiba at (7.3, 0, 35.4) facing +z with its right shoulder against
+  // cover; the enemy at (−3, 0, 33) is hidden from its eye, its real (pulled-in) pivot and its real camera.
+  const arena = getMap('arena')
+  const away = ([0, 0, 0, 1, 1, 1, 2, 2, 2, 2] as const).map((team, i) => ({
+    ...player(`other${i}`, team, [0, -1000, 0]),
+    state: 'away' as const
+  }))
+  const at = (shoulder: 1 | -1, e: V3, extra: PropView[] = []) =>
+    new TeamVisibility(arena)
+      .update(
+        view([player('a', 0, [7.3, 0, 35.4], { yaw: 0, shoulder }), player('e', 1, e), ...away], 1, { props: extra }),
+        []
+      )
+      .get(0)!
+      .has('e')
+
+  it('an enemy hidden from the real eye, pivot and camera is not sent (either shoulder: switching is instant)', () => {
+    // the pivot before the fix (the full offset, inside the cover) saw it
+    const phys = new Physics(arena)
+    const full: V3 = [7.3 - shoulderOffset(SPECIES.shiba), eyeHeight(SPECIES.shiba), 35.4]
+    expect(phys.clear(full, [-3, eyeHeight(SPECIES.shiba), 33])).toBe(true)
+    expect(at(1, [-3, 0, 33])).toBe(false)
+    expect(at(-1, [-3, 0, 33])).toBe(false)
+  })
+
+  it('the review case: hidden from the sim own pivot and camera there, so not visible', () => {
+    const phys = new Physics(arena)
+    const a: V3 = [7.3, 0, 35.4]
+    const eye: V3 = [a[0], a[1] + eyeHeight(SPECIES.shiba), a[2]]
+    const target: V3 = [-3, eyeHeight(SPECIES.shiba), 33]
+    const chest: V3 = [-3, SPECIES.shiba.height * 0.55, 33]
+    const r = rig({ map: arena })
+    r.step(3)
+    r.player().p = [...a]
+    r.player().yaw = 0
+    updateShoulder(r.sim, r.player(), 0)
+    const actualPivot = pivotOf(r.player())
+    const arm = phys.raycast(actualPivot, [0, 0, -1], 3.2, 0, -1)
+    const armLength = arm ? Math.max(0.35, arm.t - 0.22) : 3.2
+    const actualCamera: V3 = [actualPivot[0], actualPivot[1], actualPivot[2] - armLength]
+    expect(phys.clear(eye, target)).toBe(false)
+    expect(phys.clear(actualPivot, target)).toBe(false)
+    expect(phys.clear(actualCamera, target)).toBe(false)
+    expect(phys.clear(actualCamera, chest)).toBe(false)
+    expect(phys.overlaps(a, SPECIES.shiba.radius, SPECIES.shiba.height)).toBe(false)
+    expect(phys.overlaps([-3, 0, 33], SPECIES.shiba.radius, SPECIES.shiba.height)).toBe(false)
+    expect(r.player().shoulderK).toBeLessThan(1)
+    expect(at(1, [-3, 0, 33])).toBe(false)
+  })
+
+  it('an enemy in genuine sight from there is sent', () => {
+    expect(at(1, [7.3, 0, 45])).toBe(true)
+  })
+
+  it('a ヤドカリ wall between them hides an enemy that would otherwise be seen', () => {
+    const wall: PropView = { id: 900, kind: 'hermit', p: [7.3, 0, 40], yaw: 0, team: 1, t: 0 }
+    expect(at(1, [7.3, 0, 45], [wall])).toBe(false)
   })
 })

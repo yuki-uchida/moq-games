@@ -5,8 +5,8 @@
  * is both within its radius and in sight. The round-14 review's cases keep their numbers.
  */
 import { describe, expect, it } from 'vitest'
-import { blast, damageFoe } from '../src/sim/combat'
-import { goutetsuLegs } from '../src/sim/foes/bosses'
+import { areaHitFoe, blast, damageFoe } from '../src/sim/combat'
+import { bossAreaParts, goutetsuLegs } from '../src/sim/foes/bosses'
 import { spawnFoe } from '../src/sim/foes/index'
 import type { Foe } from '../src/sim/state'
 import { aimAt, rig } from './sim-helpers'
@@ -182,5 +182,95 @@ describe('a blast needs one point of a big body both in reach and in sight', () 
     r.step()
     blast(r.sim, [0, 1, -2.1], 5, 85, 0, 'me', 'hippo')
     expect(f.hp).toBeLessThan(1000)
+  })
+})
+
+describe('each ゴウテツ leg is its own blast target (round 15)', () => {
+  const front = () => {
+    const r = rig({ r: ['hippo'] })
+    r.step(3)
+    r.player().p = [15, 0, -15]
+    const f = spawnFoe(r.sim, 'goutetsu', [0, 0, 0])
+    f.state = 'idle'
+    r.step()
+    f.passive = true
+    f.yaw = 0
+    f.p = [0, 0, 0]
+    return { r, f }
+  }
+
+  it('a cannon blast reaching both front legs damages those legs (and the hull), not the rear ones', () => {
+    const { r, f } = front()
+    const legs = goutetsuLegs(f)
+    const at: [number, number, number] = [0, 1, -5.2]
+    const before = [...f.parts!]
+    const hp = f.hp
+    expect(Math.hypot(at[0] - legs[0][0], at[2] - legs[0][2])).toBeLessThan(5)
+    expect(Math.hypot(at[0] - legs[1][0], at[2] - legs[1][2])).toBeLessThan(5)
+    blast(r.sim, at, 5, 85, 0, 'me', 'hippo')
+    expect(f.parts![0]).toBeLessThan(before[0])
+    expect(f.parts![1]).toBeLessThan(before[1])
+    expect(f.parts![2]).toBe(before[2])
+    expect(f.parts![3]).toBe(before[3])
+    expect(f.hp).toBeLessThan(hp)
+  })
+
+  it('firing a real cannon at the front centre reaches the front legs', () => {
+    const r = rig({ r: ['hippo'] })
+    r.step(3)
+    r.player().p = [0, 0, -12]
+    const f = spawnFoe(r.sim, 'goutetsu', [0, 0, 0])
+    f.state = 'idle'
+    r.step()
+    f.passive = true
+    f.p = [0, 0, 0]
+    f.yaw = 0
+    const before = [...f.parts!]
+    aimAt(r, [0, 1, 0])
+    r.press('R', 65)
+    r.step(100)
+    expect(r.of('blast').find((e) => e.item === 'hippo')).toBeDefined()
+    expect(f.parts![0]).toBeLessThan(before[0])
+    expect(f.parts![1]).toBeLessThan(before[1])
+  })
+
+  it('a leg covered from the blast takes nothing while the uncovered one does', () => {
+    const map = flatMap()
+    // a post between the blast and the leg at (+3, −3) only
+    map.boxes.push({ min: [0.3, 0, -4.6], max: [2.8, 8, -4.2], kind: 'wall' })
+    const r = rig({ r: ['bee'], map })
+    r.step(3)
+    r.player().p = [15, 0, -15]
+    const f = spawnFoe(r.sim, 'goutetsu', [0, 0, 0])
+    f.state = 'idle'
+    r.step()
+    f.passive = true
+    f.yaw = 0
+    f.p = [0, 0, 0]
+    const legs = goutetsuLegs(f)
+    const at: [number, number, number] = [0, 1, -5.2]
+    const covered = legs.findIndex((l) => l[0] > 0 && l[2] < 0)
+    const open = legs.findIndex((l) => l[0] < 0 && l[2] < 0)
+    const before = [...f.parts!]
+    blast(r.sim, at, 5, 85, 0, 'me', 'hippo')
+    expect(f.parts![covered]).toBe(before[covered])
+    expect(f.parts![open]).toBeLessThan(before[open])
+  })
+
+  it('a melee sweep in reach of a leg and the hull hits both; a kneeling ゴウテツ has no legs to hit', () => {
+    const { r, f } = front()
+    const legs = goutetsuLegs(f)
+    const before = [...f.parts!]
+    const hp = f.hp
+    areaHitFoe(r.sim, f, [legs[0][0], 1, legs[0][2] - 1.6], [legs[0][0], 1, legs[0][2] - 1.6], 2, 0, () => 40, {
+      kind: 'melee',
+      side: 0,
+      by: 'me',
+      from: [legs[0][0], 1, -6]
+    })
+    expect(f.parts![0]).toBeLessThan(before[0])
+    expect(f.hp).toBeLessThan(hp)
+    f.state = 'stagger'
+    expect(bossAreaParts(f)).toEqual([])
   })
 })

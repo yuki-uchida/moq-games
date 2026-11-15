@@ -194,38 +194,72 @@ export function targetVisible(sim: Sim, from: readonly number[], t: Target, side
 function areaSamples(t: Target, c: readonly number[]): Vec[] {
   if (t.k === 'r') return [propNearest(t.r, c), targetCenter(t)]
   const b = t.k === 'p' ? t.p : (t.f.avatar ?? t.f)
-  const h = b.h
-  // the exact nearest point of the body cylinder (its distance is the body distance), then the others
-  const y = Math.min(Math.max(c[1], b.p[1]), b.p[1] + h)
-  const dx = c[0] - b.p[0]
-  const dz = c[2] - b.p[2]
+  const pts = cylSamples({ x: b.p[0], z: b.p[2], r: b.r, y0: b.p[1], y1: b.p[1] + b.h }, c)
+  pts.splice(2, 0, targetCenter(t))
+  return pts
+}
+
+/** An upright cylinder an area effect can reach on its own (a body, a boss part such as a ゴウテツ leg). */
+export interface AreaCyl {
+  x: number
+  z: number
+  r: number
+  y0: number
+  y1: number
+}
+
+/** Sample points of a cylinder for an area effect centred at `c` (see areaSamples). */
+function cylSamples(b: AreaCyl, c: readonly number[]): Vec[] {
+  const h = b.y1 - b.y0
+  // the exact nearest point of the cylinder (its distance is the shape distance), then the others
+  const y = Math.min(Math.max(c[1], b.y0), b.y1)
+  const dx = c[0] - b.x
+  const dz = c[2] - b.z
   const l = Math.hypot(dx, dz)
   const k = Math.min(l, b.r)
   const nx = l > 1e-6 ? dx / l : 0
   const nz = l > 1e-6 ? dz / l : 1
   const pts: Vec[] = [
-    [b.p[0] + nx * k, y, b.p[2] + nz * k],
-    [b.p[0], y, b.p[2]],
-    targetCenter(t),
-    [b.p[0], b.p[1] + h * 0.9, b.p[2]]
+    [b.x + nx * k, y, b.z + nz * k],
+    [b.x, y, b.z],
+    [b.x, b.y0 + h * 0.9, b.z]
   ]
   if (b.r > 0.8) {
     const base = Math.atan2(nx, nz)
     const rr = b.r * 0.98
-    for (const yy of [y, b.p[1] + h * 0.5, b.p[1] + h * 0.9])
+    for (const yy of [y, b.y0 + h * 0.5, b.y0 + h * 0.9])
       for (let i = -12; i <= 12; i++) {
         const a = base + (i * Math.PI) / 24
-        pts.push([b.p[0] + Math.sin(a) * rr, yy, b.p[2] + Math.cos(a) * rr])
+        pts.push([b.x + Math.sin(a) * rr, yy, b.z + Math.cos(a) * rr])
       }
   }
   return pts
+}
+
+/** The nearest sample that is both within `radius` of `c` and in clear sight from `from`. */
+function firstReached(
+  sim: Sim,
+  pts: Vec[],
+  c: readonly number[],
+  from: readonly number[],
+  nearest: number,
+  radius: number,
+  side: Side
+): { at: Vec; d: number } | null {
+  const cand = pts
+    .map((q) => ({ q, d: Math.hypot(q[0] - c[0], q[1] - c[1], q[2] - c[2]) }))
+    .filter((s) => s.d <= radius + 1e-6)
+    .sort((a, b) => a.d - b.d)
+  for (const s of cand)
+    if (sim.phys.clear(from, s.q, side)) return { at: s.q, d: Math.max(nearest, Math.min(s.d, radius)) }
+  return null
 }
 
 /**
  * Where an area effect centred at `c` (a blast, a melee sweep) with reach `radius` touches a target: the nearest of
  * its sample points that is both within the reach and in clear sight from `from` for `side` — one point for both
  * tests, so a part out of reach that peeks round cover does not let a covered part in reach be hit. Returns that
- * contact point and its distance (for falloff and boss parts), or null.
+ * contact point and its distance (for falloff), or null.
  */
 export function areaContact(
   sim: Sim,
@@ -237,13 +271,21 @@ export function areaContact(
 ): { at: Vec; d: number } | null {
   const nearest = targetDistance(t, c)
   if (nearest > radius) return null
-  const cand = areaSamples(t, c)
-    .map((q) => ({ q, d: Math.hypot(q[0] - c[0], q[1] - c[1], q[2] - c[2]) }))
-    .filter((s) => s.d <= radius + 1e-6)
-    .sort((a, b) => a.d - b.d)
-  for (const s of cand)
-    if (sim.phys.clear(from, s.q, side)) return { at: s.q, d: Math.max(nearest, Math.min(s.d, radius)) }
-  return null
+  return firstReached(sim, areaSamples(t, c), c, from, nearest, radius, side)
+}
+
+/** areaContact for one cylinder part (a ゴウテツ leg, クイツクシ's open maw). */
+export function cylContact(
+  sim: Sim,
+  c: readonly number[],
+  from: readonly number[],
+  b: AreaCyl,
+  radius: number,
+  side: Side
+): { at: Vec; d: number } | null {
+  const nearest = cylDistance(b.x, b.z, b.r, b.y0, b.y1, c)
+  if (nearest > radius) return null
+  return firstReached(sim, cylSamples(b, c), c, from, nearest, radius, side)
 }
 
 /** Ray vs a humanoid body (players and クロヅメ avatars): returns t and whether the head sphere was hit. */
