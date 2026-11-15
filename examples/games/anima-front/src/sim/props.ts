@@ -4,6 +4,7 @@
  */
 import { ITEMS } from '../data/items'
 import type { SpeciesId } from '../data/species'
+import { targetVisible } from './actors'
 import { heal } from './anima'
 import { DT } from './constants'
 import { PROP_SOLIDS, propSolids } from './prop-solids'
@@ -109,7 +110,12 @@ export function propsTick(sim: Sim) {
       const rate = r.data.heal ?? 4
       for (const p of sim.players) {
         if (p.state !== 'alive' || p.side !== r.side) continue
-        if (vdist(p.p, r.p) <= (r.r ?? 4.5)) heal(sim, p, rate * DT, 'honey')
+        // The aura obeys the shared occlusion rule (no healing through walls or the 灯台 / 巣核).
+        if (
+          vdist(p.p, r.p) <= (r.r ?? 4.5) &&
+          targetVisible(sim, [r.p[0], r.p[1] + 0.6, r.p[2]], { k: 'p', p }, r.side)
+        )
+          heal(sim, p, rate * DT, 'honey')
       }
     } else if (r.kind === 'decoy') {
       // The hologram runs forward and stops at walls.

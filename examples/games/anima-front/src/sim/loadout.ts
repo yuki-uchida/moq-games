@@ -8,7 +8,8 @@
  *        + Σ per paw: mean cost rate of the paw's weapons × 0.15 duty (aiming, moving and switching take the rest)
  *        + Σ active gadgets: cost per use / max(cooldown, 15 s)
  *        + Σ held / toggled drains (non-weapon `drain` antiques, once each): drain/s × the assumed share of a fight
- *          they run (DRAIN_SHARE: コノハムシ cloak 40 %, アルマジロ shield 20 %, モモンガ glide 10 %)
+ *          they run (DRAIN_SHARE: コノハムシ cloak 40 %, アルマジロ shield 20 % per paw that carries it — both paws
+ *          are assumed raised together —, モモンガ glide 10 %; the owl glides free)
  *        + 0.6 anima/s incoming damage × (1 − armour reduction)
  *   armour reduction = 1 − (1 − passive armour %) × (1 − share of hits negated by クラゲヴェール (1 / every))
  *   net = burn − a third of natural regeneration (fights leave little quiet time; shards make up part of it);
@@ -21,7 +22,7 @@ import { ITEM_IDS, ITEMS, isWeapon, type ItemCategory, type ItemDef, type ItemId
 import { LOADOUT_SLOTS, type Hand, type Loadout, type LoadoutSlot } from '../data/loadout'
 import { SPECIES, type SpeciesId } from '../data/species'
 import type { SustainReport } from './api'
-import { DT, REGEN_RATE } from './constants'
+import { DASH_COST, DT, REGEN_RATE } from './constants'
 import type { Build, Mods } from './state'
 
 const ITEM_SET = new Set<string>(ITEM_IDS)
@@ -154,7 +155,8 @@ export const emptyMods = (): Mods => ({
   maxAnima: 0
 })
 
-const NO_MODS: Readonly<Mods> = Object.freeze(emptyMods())
+/** The mods of a build whose passives are offline (critical anima): none. */
+export const NO_MODS: Readonly<Mods> = Object.freeze(emptyMods())
 
 /**
  * The enhancement mods that apply to a player right now: the build's mods while passives are online, none while
@@ -216,6 +218,52 @@ export function itemCost(m: Mods, def: ItemDef, base = def.cost ?? def.drain ?? 
   return base * Math.max(0.2, 1 + catMod) * costScale(m)
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// The one cost pipeline: every spend and drain in the sim and every number in the editor's estimate comes from
+// these functions, called with modsOf(p) in the sim (the build's mods while passives are online, none offline) and
+// with the build's mods in the editor (which assumes passives online).
+
+/** Anima per second of a passive's upkeep. */
+export const upkeepOf = (m: Mods, def: ItemDef) => itemCost(m, def, def.upkeep ?? 0)
+
+/** Anima per second of gliding with モモンガ (the owl glides for free). */
+export const glideDrain = (species: SpeciesId, m: Mods) =>
+  SPECIES[species].trait === 'glide' ? 0 : itemCost(m, ITEMS.momonga, ITEMS.momonga.drain ?? 1.2)
+
+/** Anima per dash (the penguin's belly slide is free). */
+export const dashCost = (species: SpeciesId, m: Mods) =>
+  SPECIES[species].trait === 'bellySlide' ? 0 : DASH_COST * costScale(m)
+
+/** Anima per second of a held / toggled antique's drain (beam, shield, cloak; glide via glideDrain). */
+export const drainOf = (m: Mods, def: ItemDef) => itemCost(m, def, def.drain ?? 0)
+
+/** The editor's per-antique numbers of a loadout (same functions as the sim). */
+export interface ItemCostLine {
+  item: ItemId
+  /** Anima per use (an antique with a per-use cost). */
+  perUse?: number
+  /** Anima per second while running (drains, per paw) or as upkeep. */
+  perSecond?: number
+}
+
+/** Per-antique costs of a loadout for a species, with passives online (the editor) or offline. */
+export function itemCosts(species: SpeciesId, loadout: Loadout, online = true): ItemCostLine[] {
+  const b = computeBuild(species, sanitizeLoadout(loadout))
+  const m = online ? b.mods : NO_MODS
+  const out: ItemCostLine[] = []
+  for (const id of new Set([...b.R, ...b.L, ...b.passives])) {
+    const def = ITEMS[id]
+    const line: ItemCostLine = { item: id }
+    if (def.cost !== undefined) line.perUse = itemCost(m, def)
+    // Passives (glide, upkeep) do not run at all while offline.
+    if (def.passive?.kind === 'glide') line.perSecond = online ? glideDrain(species, m) : 0
+    else if (def.drain !== undefined) line.perSecond = drainOf(m, def)
+    else if (def.upkeep !== undefined) line.perSecond = online ? upkeepOf(m, def) : 0
+    if (line.perUse !== undefined || line.perSecond !== undefined) out.push(line)
+  }
+  return out
+}
+
 /** Derives the build (mods, armour, upkeep, max anima) from a sanitized loadout. */
 export function computeBuild(speciesId: SpeciesId, loadout: Loadout): Build {
   const lists = handLists(loadout)
@@ -240,7 +288,7 @@ export function computeBuild(speciesId: SpeciesId, loadout: Loadout): Build {
       contactDps += p.contactDps * ae
     } else if (p.kind === 'negate') negateEvery = p.every / ae
     else if (p.kind === 'glide') glider = true
-    if (def.upkeep) upkeep += def.upkeep * (def.category === 'armor' ? 1 + mods.armorUpkeep : 1) * costScale(mods)
+    if (def.upkeep) upkeep += upkeepOf(mods, def)
   }
   return {
     R: lists.R,
@@ -335,8 +383,7 @@ export function sustainEstimate(species: SpeciesId, loadout: Loadout): SustainRe
   }
   for (const id of b.passives) {
     const def = ITEMS[id]
-    if (def.upkeep)
-      byCategory[def.category] += def.upkeep * (def.category === 'armor' ? 1 + m.armorUpkeep : 1) * costScale(m)
+    if (def.upkeep) byCategory[def.category] += upkeepOf(m, def)
   }
   for (const list of [b.R, b.L]) {
     const weapons = list.filter((id) => isWeapon(id))
@@ -347,16 +394,19 @@ export function sustainEstimate(species: SpeciesId, loadout: Loadout): SustainRe
       byCategory.gadget += itemCost(m, def) / Math.max(GADGET_GAP, def.cooldown ?? 0)
     }
   }
-  // Held / toggled drains (cloak, shield, glide), counted once per antique whichever paws carry it.
+  // Held / toggled drains: the cloak is one state whichever paw toggles it; a shield drains in each paw that raises it
+  // (both paws assumed raised together); the glide is free for the owl.
   const drains: SustainReport['drains'] = []
   for (const id of new Set([...b.R, ...b.L, ...b.passives])) {
     const def = ITEMS[id]
     const kind = drainKind(def)
     if (!kind || !def.drain || isWeapon(id)) continue
-    const perSecond = itemCost(m, def, def.drain)
-    const rate = perSecond * DRAIN_SHARE[kind]
+    const perSecond = kind === 'glide' ? glideDrain(species, m) : drainOf(m, def)
+    if (perSecond <= 0) continue
+    const paws = kind === 'shield' ? Number(b.R.includes(id)) + Number(b.L.includes(id)) : 1
+    const rate = perSecond * paws * DRAIN_SHARE[kind]
     byCategory[def.category] += rate
-    drains.push({ item: id, perSecond: round(perSecond), share: DRAIN_SHARE[kind], rate: round(rate) })
+    drains.push({ item: id, perSecond: round(perSecond), paws, share: DRAIN_SHARE[kind], rate: round(rate) })
   }
   const negateShare = b.negateEvery > 0 ? Math.min(1, 1 / b.negateEvery) : 0
   const reduction = 1 - (1 - b.armorReduce) * (1 - negateShare)

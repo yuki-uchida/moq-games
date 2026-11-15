@@ -7,6 +7,7 @@ import { ITEMS } from '../../data/items'
 import { targetCenter, type Target } from '../actors'
 import { MAX_PITCH, STEP_UP } from '../constants'
 import { navGrid } from '../grid'
+import { shotGuard } from '../items/common'
 import { modsOf, weaponRate } from '../loadout'
 import { muzzleOf, pivotOf } from '../player'
 import { FOE_SIDE, type Player, type Sim } from '../state'
@@ -104,7 +105,12 @@ export function botThink(sim: Sim, p: Player) {
     if (tgtNow) {
       const ap = aimPoint(tgtNow, pivotOf(p))
       const side = p.side
-      const blocked = !sim.phys.clear(pivotOf(p), ap, side) || !sim.phys.clear(muzzleOf(p, 'R'), ap, side)
+      // The same path a shot takes (src/sim/projectiles.ts): body axis → muzzle, then muzzle → aim point.
+      const muzzle = muzzleOf(p, 'R')
+      const blocked =
+        !sim.phys.clear(pivotOf(p), ap, side) ||
+        !sim.phys.clear(shotGuard(p, muzzle), muzzle, side) ||
+        !sim.phys.clear(muzzle, ap, side)
       if (blocked && b.clearShot) b.strafe = -b.strafe
       b.clearShot = !blocked
     } else b.clearShot = true

@@ -121,6 +121,8 @@ export interface HandView {
   combo: number
   /** Foes/players currently locked by ツバメ. */
   locks?: ActorRef[]
+  /** While beaming: where the sim stopped the beam this tick (wall, solid prop, actor or its range). */
+  beamEnd?: V3
 }
 
 export interface PlayerStats {

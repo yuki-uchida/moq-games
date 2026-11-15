@@ -39,7 +39,7 @@ import {
   SLIDE_TIME,
   ZOOM_SPEED_FACTOR
 } from './constants'
-import { computeBuild, modsOf, sanitizeLoadout } from './loadout'
+import { computeBuild, dashCost, glideDrain, modsOf, sanitizeLoadout } from './loadout'
 import { lungeVelocity } from './items/weapons'
 import { addProp } from './props'
 import { emit, makeStats, type HandSt, type Player, type Side, type Sim } from './state'
@@ -74,6 +74,7 @@ export function makeHand(hand: Hand, items: (typeof ITEMS)[keyof typeof ITEMS]['
     dir: [0, 0, 1],
     hitSet: null,
     beam: [],
+    beamEnd: null,
     armed: false,
     until: 0,
     beamTick: 0
@@ -252,7 +253,7 @@ export function movePlayer(sim: Sim, p: Player, wantDash: boolean) {
   // Dash start.
   if (wantDash && alive && sim.time >= p.dashReadyAt && (p.grounded || p.airDash) && !p.hook) {
     const penguin = p.species.trait === 'bellySlide'
-    if (penguin || spend(sim, p, DASH_COST)) {
+    if (penguin || spend(sim, p, dashCost(p.species.id, modsOf(p)))) {
       const d = moving ? wish : forwardOf(p.yaw)
       const l = Math.hypot(d[0], d[2]) || 1
       p.dashDir = [d[0] / l, 0, d[2] / l]
@@ -332,7 +333,7 @@ export function movePlayer(sim: Sim, p: Player, wantDash: boolean) {
     let glide = false
     if (alive && !p.grounded && p.v[1] < 0 && holdJump) {
       if (p.species.trait === 'glide') glide = true
-      else if (p.build.glider && p.online) glide = drain(sim, p, ITEMS.momonga.drain ?? 1.2, 'momonga')
+      else if (p.build.glider && p.online) glide = drain(sim, p, glideDrain(p.species.id, modsOf(p)), 'momonga')
     }
     if (glide !== p.gliding) setGlide(sim, p, glide)
 
@@ -501,6 +502,7 @@ export function resetActions(sim: Sim, p: Player) {
     h.lockRef = null
     h.queue = 0
     h.beam = []
+    h.beamEnd = null
     h.hitSet = null
   }
   if (p.hook) endHook(sim, p)

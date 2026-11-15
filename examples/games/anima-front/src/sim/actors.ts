@@ -6,6 +6,7 @@
 import { ITEMS } from '../data/items'
 import { damageFoe, damagePlayer, damageProp, type DamageInfo } from './combat'
 import { raySphere, rayCylinder } from './physics'
+import { PROP_SOLIDS } from './prop-solids'
 import { FOE_SIDE, type Foe, type Player, type Prop, type Side, type Sim } from './state'
 import type { ActorRef } from './types'
 import { angleFromYaw, vdist, type Vec } from './vec'
@@ -24,6 +25,67 @@ export const isShootableProp = (r: Prop) =>
 
 export const propHeight = (r: Prop) => r.data.h ?? 2
 
+/** An upright cylinder of a prop's hit volume (radius, y range). */
+export interface PropVolume {
+  r: number
+  y0: number
+  y1: number
+}
+
+/**
+ * A prop's hit volume: a solid prop (灯台, 巣核) is exactly its colliders (src/sim/prop-solids.ts), so what stops a
+ * body, a shot and a sight line is the same shape; any other prop is one cylinder of its radius × data.h.
+ */
+export function propVolumes(r: Prop): PropVolume[] {
+  const parts = PROP_SOLIDS[r.kind]
+  if (parts) return parts.map((s) => ({ r: s.r, y0: r.p[1], y1: r.p[1] + s.h }))
+  return [{ r: r.r ?? 1, y0: r.p[1], y1: r.p[1] + propHeight(r) }]
+}
+
+/** Ray entry t into a prop's hit volume grown by `inflate` (−1 when missed; 0 when starting inside). */
+export function rayProp(o: Vec, d: Vec, maxT: number, r: Prop, inflate = 0): number {
+  let best = -1
+  for (const v of propVolumes(r)) {
+    const t = rayCylinder(o, d, maxT, r.p[0], r.p[2], v.r + inflate, v.y0 - inflate, v.y1 + inflate)
+    if (t >= 0 && (best < 0 || t < best)) best = t
+  }
+  return best
+}
+
+/** Distance from a point to a prop's hit volume (0 inside). */
+export function propDistance(r: Prop, c: readonly number[]): number {
+  let best = Infinity
+  const h = Math.hypot(c[0] - r.p[0], c[2] - r.p[2])
+  for (const v of propVolumes(r)) {
+    const dh = Math.max(0, h - v.r)
+    const dy = c[1] < v.y0 ? v.y0 - c[1] : c[1] > v.y1 ? c[1] - v.y1 : 0
+    best = Math.min(best, Math.hypot(dh, dy))
+  }
+  return best
+}
+
+/** The point of a prop's hit volume nearest to `c` (on its axis side; inside the volume for a solid). */
+export function propNearest(r: Prop, c: readonly number[]): Vec {
+  let best: Vec = [r.p[0], r.p[1], r.p[2]]
+  let bd = Infinity
+  const h = Math.hypot(c[0] - r.p[0], c[2] - r.p[2])
+  for (const v of propVolumes(r)) {
+    // a hair inside the surface, so a sight line to it counts the prop itself as the target
+    const k = h > 1e-6 ? Math.min(1, Math.max(0, v.r - 0.05) / h) : 0
+    const q: Vec = [
+      r.p[0] + (c[0] - r.p[0]) * k,
+      Math.min(Math.max(c[1], v.y0 + 0.05), v.y1 - 0.05),
+      r.p[2] + (c[2] - r.p[2]) * k
+    ]
+    const dd = Math.hypot(q[0] - c[0], q[1] - c[1], q[2] - c[2])
+    if (dd < bd) {
+      bd = dd
+      best = q
+    }
+  }
+  return best
+}
+
 export const refOf = (t: Target): ActorRef => (t.k === 'p' ? t.p.id : t.k === 'f' ? t.f.id : t.r.id)
 
 export const targetCenter = (t: Target): Vec =>
@@ -32,6 +94,29 @@ export const targetCenter = (t: Target): Vec =>
     : t.k === 'f'
       ? [t.f.p[0], t.f.p[1] + t.f.h * 0.5, t.f.p[2]]
       : [t.r.p[0], t.r.p[1] + propHeight(t.r) * 0.5, t.r.p[2]]
+
+/**
+ * The one occlusion rule for an effect crossing space from `from` to a target (melee sweeps, blasts, chain jumps,
+ * auras): some part of the target — the point of it nearest `from`'s height, its centre or its top — is in clear
+ * sight for `side` (map boxes, ヤドカリ walls of other sides, the solid 灯台 / 巣核; a solid prop does not hide
+ * itself). Ray-borne effects (shots, beams, the hook, aim) get the same rule from Physics.raycast.
+ */
+export function targetVisible(sim: Sim, from: readonly number[], t: Target, side: Side): boolean {
+  const pts: Vec[] = []
+  if (t.k === 'r') {
+    pts.push(propNearest(t.r, from), targetCenter(t))
+  } else {
+    const b = t.k === 'p' ? t.p : (t.f.avatar ?? t.f)
+    const h = b.h
+    pts.push([b.p[0], Math.min(Math.max(from[1], b.p[1] + 0.1), b.p[1] + h - 0.1), b.p[2]], targetCenter(t), [
+      b.p[0],
+      b.p[1] + h * 0.9,
+      b.p[2]
+    ])
+  }
+  for (const q of pts) if (sim.phys.clear(from, q, side)) return true
+  return false
+}
 
 /** Ray vs a humanoid body (players and クロヅメ avatars): returns t and whether the head sphere was hit. */
 function rayBody(o: Vec, d: Vec, maxT: number, p: Player, inflate: number): { t: number; head: boolean } | null {
@@ -63,9 +148,7 @@ export function rayActors(
   maxT: number,
   inflate = 0,
   skip?: ActorRef,
-  wide = false,
-  /** Props that already contain the ray's origin are skipped unless this says they are the one aimed at. */
-  insideProp?: (r: Prop) => boolean
+  wide = false
 ): ActorHit | null {
   let best: ActorHit | null = null
   // A target whose volume already contains the ray's origin (the muzzle is inside it) is only a fallback: a shot
@@ -98,23 +181,13 @@ export function rayActors(
   for (const r of sim.props) {
     if (!isShootableProp(r) || (r.side !== -1 && r.side === side)) continue
     if (r.side === -1 && side === FOE_SIDE) continue
-    const t = rayCylinder(o, d, bestT, r.p[0], r.p[2], (r.r ?? 1) + inflate, r.p[1], r.p[1] + propHeight(r))
-    if (t >= 0 && t <= 1e-9 && insideProp && !insideProp(r)) continue
+    const t = rayProp(o, d, bestT, r, inflate)
+    // A ray starting inside a solid prop leaves it, as in Physics.raycast (shots get there through their guard
+    // segment from the shooter's body, src/sim/projectiles.ts, so a muzzle poking into it still hits it).
+    if (t >= 0 && t <= 1e-9 && PROP_SOLIDS[r.kind]) continue
     if (t >= 0 && t <= bestT) take(t, { k: 'r', r }, false)
   }
   return best ?? inside
-}
-
-/** The hostile shootable prop whose hit volume (grown by `pad`) contains the point, if any. */
-export function propContaining(sim: Sim, side: Side, at: Vec, pad = 0.15): Prop | undefined {
-  for (const r of sim.props) {
-    if (!isShootableProp(r) || (r.side !== -1 && r.side === side)) continue
-    if (r.side === -1 && side === FOE_SIDE) continue
-    const rr = (r.r ?? 1) + pad
-    if ((at[0] - r.p[0]) ** 2 + (at[2] - r.p[2]) ** 2 > rr * rr) continue
-    if (at[1] >= r.p[1] - pad && at[1] <= r.p[1] + propHeight(r) + pad) return r
-  }
-  return undefined
 }
 
 /** Applies damage to any target kind. */
@@ -153,7 +226,7 @@ export function hostilesNear(
     for (const r of sim.props) {
       if (!isShootableProp(r) || (r.side !== -1 && r.side === side)) continue
       if (r.side === -1 && side === FOE_SIDE) continue
-      if (vClose(r.p, propHeight(r), r.r ?? 1) && inSector(r.p)) out.push({ k: 'r', r })
+      if (propDistance(r, c) <= radius && inSector(r.p)) out.push({ k: 'r', r })
     }
   }
   return out

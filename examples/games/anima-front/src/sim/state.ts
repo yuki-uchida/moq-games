@@ -112,6 +112,8 @@ export interface HandSt {
   hitSet: Set<ActorRef> | null
   /** The paw's last beam targets (chain). */
   beam: ActorRef[]
+  /** Where the paw's beam stops this tick (sim-resolved, drawn by the renderer); null when not beaming. */
+  beamEnd: Vec | null
   /** The activation of a hold-type antique (zoom, lock, charge) still has its button down. */
   armed: boolean
   /** Minimum end time of a tapped hold action (beam, shield). */
@@ -234,8 +236,6 @@ export interface Foe {
 
 export interface Shot {
   id: number
-  /** The prop (node, cart…) this shot is aimed at from inside its volume: the only one it may hit while inside. */
-  aimedProp?: number
   kind: ShotKind
   item: ItemId | undefined
   foeAttack: FoeAttack | undefined

@@ -3,15 +3,17 @@
  * click, use bookkeeping (uses counter, cloak reveal, same antique in both paws alternating) and bullets.
  */
 import { ITEMS, type ItemDef, type ItemId } from '../../data/items'
-import { propContaining, rayActors } from '../actors'
+import { rayActors, type ActorHit } from '../actors'
 import { spend } from '../anima'
 import { AIM_RANGE, AVATAR_DAMAGE, BEAR_MELEE, EMPTY_GAP, SHOT_RADIUS } from '../constants'
 import { itemCost, modsOf, periodScale } from '../loadout'
+import type { RayHit } from '../physics'
 import { aimOf, muzzleOf, pivotOf } from '../player'
 import { spawnShot, type ShotSpec } from '../projectiles'
 import { emit, type HandSt, type Player, type Sim } from '../state'
 import { deg, jitterDir, r3, r3v, vnorm, type Vec } from '../vec'
 
+/** Per-use cost (or, with `base`, per-second drain) of an antique for this player now: modsOf(p) — online mods only. */
 export const costOf = (p: Player, def: ItemDef, base?: number) => itemCost(modsOf(p), def, base)
 export const periodOf = (p: Player, base: number, def?: ItemDef) => base * periodScale(modsOf(p)) + (def?.cooldown ?? 0)
 /** クロヅメ avatars hit with the difficulty multiplier × AVATAR_DAMAGE (they come in numbers). */
@@ -50,16 +52,73 @@ export function used(sim: Sim, p: Player, h: HandSt, def: ItemDef, period: numbe
   }
 }
 
-/** First point along the aim ray (boxes and hostile actors), or AIM_RANGE metres along it. */
-export function aimPoint(sim: Sim, p: Player, range = AIM_RANGE): Vec {
-  const o = pivotOf(p)
-  const d = aimOf(p)
+/**
+ * The shot guard of a shooter (src/sim/projectiles.ts spawnShot): its body axis at the muzzle's height, a point bodies
+ * keep clear of every solid, so a muzzle poking into a wall, a ヤドカリ wall, the 灯台, a 巣核 or a foe hits it there.
+ */
+export const shotGuard = (body: { readonly p: readonly number[] }, from: readonly number[]): Vec => [
+  body.p[0],
+  from[1],
+  body.p[2]
+]
+
+export interface CastResult {
+  /** Where the ray stopped: the actor or wall hit, or `range` along it. */
+  end: Vec
+  /** The hostile actor (or prop) hit first, if any. */
+  hit: ActorHit | null
+  /** The first wall, ヤドカリ wall or solid prop on the ray (it stopped the ray unless `hit` came first). */
+  wall: RayHit | null
+}
+
+/**
+ * A player's ray from `o` (the aim pivot) along `d` with the same occlusion rules as projectiles: the stretch from
+ * the body axis to `o` first (a pivot leaning into a wall, a solid prop or a body stops there), then walls, the solid
+ * props and hostile actors (grown by `inflate`) up to `range`. Aim points and beams use it.
+ */
+export function castRay(sim: Sim, p: Player, o: Vec, d: Vec, range: number, inflate = 0): CastResult {
   const skip = p.foe ? p.foe.id : p.id
+  const g = shotGuard(p, o)
+  const gs: Vec = [o[0] - g[0], o[1] - g[1], o[2] - g[2]]
+  if (Math.hypot(gs[0], gs[1], gs[2]) > 1e-6) {
+    const gw = sim.phys.raycast(g, gs, 1, 0, p.side)
+    const ga = rayActors(sim, p.side, g, gs, gw ? gw.t : 1, inflate, skip, true)
+    const at = (t: number): Vec => [g[0] + gs[0] * t, g[1] + gs[1] * t, g[2] + gs[2] * t]
+    if (ga && ga.t > 1e-9 && (!gw || ga.t <= gw.t)) return { end: at(ga.t), hit: ga, wall: null }
+    if (gw) return { end: gw.point, hit: null, wall: gw }
+  }
   const wall = sim.phys.raycast(o, d, range, 0, p.side)
-  const act = rayActors(sim, p.side, o, d, wall ? wall.t : range, 0, skip, true)
+  const act = rayActors(sim, p.side, o, d, wall ? wall.t : range, inflate, skip, true)
+  // A body the ray only starts inside of is hit only when nothing else lies on the ray.
+  const t = act ? act.t : wall ? wall.t : range
+  return { end: [o[0] + d[0] * t, o[1] + d[1] * t, o[2] + d[2] * t], hit: act, wall }
+}
+
+/**
+ * castRay for walls only (the ヤモリフック, pad placement): the first wall, ヤドカリ wall or solid prop from the body
+ * axis to `o`, else along `d` up to `range`.
+ */
+export function wallRay(sim: Sim, p: Player, o: Vec, d: Vec, range: number): RayHit | null {
+  const g = shotGuard(p, o)
+  const gs: Vec = [o[0] - g[0], o[1] - g[1], o[2] - g[2]]
+  if (Math.hypot(gs[0], gs[1], gs[2]) > 1e-6) {
+    const gw = sim.phys.raycast(g, gs, 1, 0, p.side)
+    if (gw) return gw
+  }
+  return sim.phys.raycast(o, d, range, 0, p.side)
+}
+
+/** First point along the aim ray (castRay: walls, solid props, hostile actors), or AIM_RANGE metres along it. */
+export function aimPoint(sim: Sim, p: Player, range = AIM_RANGE): Vec {
+  const c = castRay(sim, p, pivotOf(p), aimOf(p), range)
   // A volume the aim ray only starts inside of is not what it points at.
-  const t = act && act.t > 1e-9 ? act.t : wall ? wall.t : range
-  return [o[0] + d[0] * t, o[1] + d[1] * t, o[2] + d[2] * t]
+  if (c.hit && c.hit.t <= 1e-9) {
+    const o = pivotOf(p)
+    const d = aimOf(p)
+    const t = c.wall ? c.wall.t : range
+    return [o[0] + d[0] * t, o[1] + d[1] * t, o[2] + d[2] * t]
+  }
+  return c.end
 }
 
 /** Direction from the paw muzzle toward the aim point, jittered by `spreadDeg` (normal-ish distribution). */
@@ -107,10 +166,7 @@ export function bullet(
     r: SHOT_RADIUS,
     falloff: o.falloff
   }
-  // Fired from inside a prop's volume: it may only hit that prop when the aim point is on or in it too.
-  const inside = propContaining(sim, p.side, from, 0)
-  if (inside && propContaining(sim, p.side, target) === inside) spec.aimedProp = inside.id
-  spawnShot(sim, spec)
+  spawnShot(sim, spec, shotGuard(p, from))
   p.stats.shots++
   if (event) fireEvent(sim, p, h, def.id, from, dir)
   return dir

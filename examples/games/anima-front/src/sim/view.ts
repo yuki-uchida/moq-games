@@ -20,6 +20,7 @@ function handView(sim: Sim, h: HandSt): HandView {
     combo: h.combo
   }
   if (h.locks.length) v.locks = h.locks.map((l) => l.ref)
+  if (h.act === 'beam' && h.beamEnd) v.beamEnd = r3v(h.beamEnd)
   return v
 }
 

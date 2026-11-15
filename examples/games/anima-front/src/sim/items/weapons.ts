@@ -3,7 +3,7 @@
  * zoom, lock, lob, beam and charge. Each handler runs once per tick for the paw's active antique.
  */
 import { ITEMS, type ItemDef } from '../../data/items'
-import { hitTarget, hostilesNear, rayActors, refOf, targetCenter, type Target } from '../actors'
+import { hitTarget, hostilesNear, refOf, targetCenter, targetVisible, type Target } from '../actors'
 import { canPay, drain } from '../anima'
 import { damageProp } from '../combat'
 import { BLAST_KNOCK, DT, LOB_RADIUS, PUFFER_FALLOFF } from '../constants'
@@ -15,6 +15,7 @@ import { deg, forwardOf, jitterDir, r3v, vdist, vnorm, type Vec } from '../vec'
 import {
   aimPoint,
   bullet,
+  castRay,
   costOf,
   emptyClick,
   fireDir,
@@ -24,6 +25,7 @@ import {
   pay,
   periodOf,
   rangedMul,
+  shotGuard,
   spreadMul,
   used
 } from './common'
@@ -67,7 +69,7 @@ function meleeSector(
     const ref = refOf(t)
     if (extra.skip?.has(ref) || ref === selfRef(p)) continue
     const tc = targetCenter(t)
-    if (!sim.phys.clear(c, tc, p.side)) continue
+    if (!targetVisible(sim, c, t, p.side)) continue
     extra.skip?.add(ref)
     hitTarget(sim, t, {
       amount: dmg,
@@ -284,20 +286,24 @@ export function spread(sim: Sim, p: Player, h: HandSt, def: ItemDef) {
   const center = fireDir(sim, p, from, target, 0)
   for (let i = 0; i < u.pellets; i++) {
     const d = jitterDir(center, deg(u.cone / 2) * spreadMul(p), sim.rng.range(-1, 1), sim.rng.range(-1, 1))
-    spawnShot(sim, {
-      kind: def.id,
-      item: def.id,
-      side: p.side,
-      owner: selfRef(p),
-      hand: h.hand,
-      p: from,
-      v: [d[0] * u.speed, d[1] * u.speed, d[2] * u.speed],
-      dmg: u.damage * rangedMul(p),
-      headMult: 1,
-      range: u.range,
-      life: (u.range * 1.6) / u.speed,
-      falloff: PUFFER_FALLOFF
-    })
+    spawnShot(
+      sim,
+      {
+        kind: def.id,
+        item: def.id,
+        side: p.side,
+        owner: selfRef(p),
+        hand: h.hand,
+        p: from,
+        v: [d[0] * u.speed, d[1] * u.speed, d[2] * u.speed],
+        dmg: u.damage * rangedMul(p),
+        headMult: 1,
+        range: u.range,
+        life: (u.range * 1.6) / u.speed,
+        falloff: PUFFER_FALLOFF
+      },
+      shotGuard(p, from)
+    )
     p.stats.shots++
   }
   fireEvent(sim, p, h, def.id, from, center)
@@ -418,38 +424,46 @@ export function lock(sim: Sim, p: Player, h: HandSt, def: ItemDef, ev: PawEvent)
     const target = aimPoint(sim, p)
     const dir0 = fireDir(sim, p, from, target, 0)
     if (locks.length === 0) {
-      spawnShot(sim, {
-        kind: def.id,
-        item: def.id,
-        side: p.side,
-        owner: selfRef(p),
-        hand: h.hand,
-        p: from,
-        v: [dir0[0] * u.speed, dir0[1] * u.speed, dir0[2] * u.speed],
-        dmg,
-        range: u.range * 1.5,
-        life: (u.range * 1.5) / u.speed,
-        r: 0.15
-      })
+      spawnShot(
+        sim,
+        {
+          kind: def.id,
+          item: def.id,
+          side: p.side,
+          owner: selfRef(p),
+          hand: h.hand,
+          p: from,
+          v: [dir0[0] * u.speed, dir0[1] * u.speed, dir0[2] * u.speed],
+          dmg,
+          range: u.range * 1.5,
+          life: (u.range * 1.5) / u.speed,
+          r: 0.15
+        },
+        shotGuard(p, from)
+      )
       p.stats.shots++
     }
     locks.forEach((l, i) => {
       // Darts fan out, then home in.
       const fan = jitterDir(dir0, deg(10), ((i % 2) * 2 - 1) * (1 + (i >> 1)), 0.6)
-      spawnShot(sim, {
-        kind: def.id,
-        item: def.id,
-        side: p.side,
-        owner: selfRef(p),
-        hand: h.hand,
-        p: from,
-        v: [fan[0] * u.speed, fan[1] * u.speed, fan[2] * u.speed],
-        dmg,
-        range: u.range * 2,
-        life: (u.range * 2) / u.speed,
-        r: 0.15,
-        homing: { ref: l.ref, turn: u.turn }
-      })
+      spawnShot(
+        sim,
+        {
+          kind: def.id,
+          item: def.id,
+          side: p.side,
+          owner: selfRef(p),
+          hand: h.hand,
+          p: from,
+          v: [fan[0] * u.speed, fan[1] * u.speed, fan[2] * u.speed],
+          dmg,
+          range: u.range * 2,
+          life: (u.range * 2) / u.speed,
+          r: 0.15,
+          homing: { ref: l.ref, turn: u.turn }
+        },
+        shotGuard(p, from)
+      )
       p.stats.shots++
     })
     fireEvent(sim, p, h, def.id, from, dir0)
@@ -478,24 +492,28 @@ export function lob(sim: Sim, p: Player, h: HandSt, def: ItemDef) {
   const from = muzzleOf(p, h.hand)
   const a = aimOf(p)
   const dir = vnorm([a[0], a[1] + 0.18, a[2]])
-  spawnShot(sim, {
-    kind: def.id,
-    item: def.id,
-    side: p.side,
-    owner: selfRef(p),
-    hand: h.hand,
-    p: from,
-    v: [dir[0] * u.speed, dir[1] * u.speed, dir[2] * u.speed],
-    dmg: u.damage * rangedMul(p),
-    gravity: u.gravity,
-    bounce: u.bounce,
-    fuse: u.fuse,
-    life: u.fuse + 1,
-    r: LOB_RADIUS,
-    blast: { radius: u.radius, damage: u.damage * rangedMul(p) },
-    explodeOnActor: true,
-    knock: BLAST_KNOCK
-  })
+  spawnShot(
+    sim,
+    {
+      kind: def.id,
+      item: def.id,
+      side: p.side,
+      owner: selfRef(p),
+      hand: h.hand,
+      p: from,
+      v: [dir[0] * u.speed, dir[1] * u.speed, dir[2] * u.speed],
+      dmg: u.damage * rangedMul(p),
+      gravity: u.gravity,
+      bounce: u.bounce,
+      fuse: u.fuse,
+      life: u.fuse + 1,
+      r: LOB_RADIUS,
+      blast: { radius: u.radius, damage: u.damage * rangedMul(p) },
+      explodeOnActor: true,
+      knock: BLAST_KNOCK
+    },
+    shotGuard(p, from)
+  )
   p.stats.shots++
   fireEvent(sim, p, h, def.id, from, dir)
   used(sim, p, h, def, periodOf(p, u.interval, def))
@@ -515,6 +533,7 @@ export function beam(sim: Sim, p: Player, h: HandSt, def: ItemDef) {
     if (h.mode === 'beam') {
       h.mode = 'idle'
       h.beam = []
+      h.beamEnd = null
     }
     h.act = 'idle'
     return
@@ -524,6 +543,7 @@ export function beam(sim: Sim, p: Player, h: HandSt, def: ItemDef) {
     h.mode = 'idle'
     h.act = 'idle'
     h.beam = []
+    h.beamEnd = null
     h.until = 0
     return
   }
@@ -538,30 +558,32 @@ export function beam(sim: Sim, p: Player, h: HandSt, def: ItemDef) {
   h.act = 'beam'
   const leaf = ITEMS.leaf.use
   p.attackRevealUntil = sim.time + (leaf?.kind === 'cloak' ? leaf.revealAfterAttack : 1)
+  // Where the beam stops this tick (sim-resolved; the renderer draws the bolt to it).
+  const cast = castRay(sim, p, o, d, u.range, 0.05)
+  h.beamEnd = cast.end
   h.beamTick++
   if (h.beamTick < BEAM_EVERY) return
   h.beamTick = 0
-  const wall = sim.phys.raycast(o, d, u.range, 0, p.side)
-  const hit = rayActors(sim, p.side, o, d, wall ? wall.t : u.range, 0.05, selfRef(p), true)
+  const hit = cast.hit
   h.beam = []
+  const dmg = u.dps * rangedMul(p) * DT * BEAM_EVERY
   if (!hit) {
     // Stopped on a solid 灯台 / 巣核: it takes the beam when it is hostile (damageProp ignores one's own).
-    const r = wall && wall.box === -5 && wall.tag !== undefined ? findProp(sim, wall.tag) : undefined
-    if (r) {
+    const w = cast.wall
+    const r = w && w.box === -5 && w.tag !== undefined ? findProp(sim, w.tag) : undefined
+    if (r)
       damageProp(sim, r, {
-        amount: u.dps * rangedMul(p) * DT * BEAM_EVERY,
+        amount: dmg,
         kind: 'beam',
         side: p.side,
         by: selfRef(p),
         item: def.id,
-        at: wall!.point,
+        at: cast.end,
         from: o
       })
-    }
     return
   }
-  const dmg = u.dps * rangedMul(p) * DT * BEAM_EVERY
-  const at: Vec = [o[0] + d[0] * hit.t, o[1] + d[1] * hit.t, o[2] + d[2] * hit.t]
+  const at = cast.end
   const first = refOf(hit.target)
   h.beam.push(first)
   p.stats.shots++
@@ -576,16 +598,17 @@ export function beam(sim: Sim, p: Player, h: HandSt, def: ItemDef) {
     head: hit.head,
     headMult: u.headMult
   })
-  // Chain to the nearest other hostile within chainRange.
+  // Chain to the nearest other hostile within chainRange that is in sight of the hit (the same occlusion rule as
+  // every effect: from just in front of the hit point, so the first target's own volume does not count).
+  const back: Vec = [at[0] - d[0] * 0.1, at[1] - d[1] * 0.1, at[2] - d[2] * 0.1]
   let best: Target | null = null
   let bd = u.chainRange
   for (const t of hostilesNear(sim, p.side, at, u.chainRange, undefined, false)) {
     if (refOf(t) === first) continue
     const dd = vdist(targetCenter(t), at)
-    if (dd < bd) {
-      bd = dd
-      best = t
-    }
+    if (dd >= bd || !targetVisible(sim, back, t, p.side)) continue
+    bd = dd
+    best = t
   }
   if (best) {
     h.beam.push(refOf(best))
@@ -617,21 +640,25 @@ export function charge(sim: Sim, p: Player, h: HandSt, def: ItemDef, ev: PawEven
     const from = muzzleOf(p, h.hand)
     const dir = fireDir(sim, p, from, aimPoint(sim, p), 0)
     const dmg = u.damage * rangedMul(p)
-    spawnShot(sim, {
-      kind: def.id,
-      item: def.id,
-      side: p.side,
-      owner: selfRef(p),
-      hand: h.hand,
-      p: from,
-      v: [dir[0] * u.speed, dir[1] * u.speed + 1.5, dir[2] * u.speed],
-      dmg,
-      gravity: u.gravity,
-      life: 5,
-      r: 0.35,
-      blast: { radius: u.radius, damage: dmg },
-      knock: BLAST_KNOCK
-    })
+    spawnShot(
+      sim,
+      {
+        kind: def.id,
+        item: def.id,
+        side: p.side,
+        owner: selfRef(p),
+        hand: h.hand,
+        p: from,
+        v: [dir[0] * u.speed, dir[1] * u.speed + 1.5, dir[2] * u.speed],
+        dmg,
+        gravity: u.gravity,
+        life: 5,
+        r: 0.35,
+        blast: { radius: u.radius, damage: dmg },
+        knock: BLAST_KNOCK
+      },
+      shotGuard(p, from)
+    )
     p.stats.shots++
     fireEvent(sim, p, h, def.id, from, dir)
     used(sim, p, h, def, def.cooldown ?? 0)

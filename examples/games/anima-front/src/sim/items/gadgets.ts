@@ -10,13 +10,13 @@ import { spawnShot } from '../projectiles'
 import { addProp, deployEvent, ownedProps, snapYaw, syncWalls } from '../props'
 import { emit, type HandSt, type Player, type Sim } from '../state'
 import { forwardOf, r3v, vdist, vnorm, type Vec } from '../vec'
-import { costOf, emptyClick, isReady, pay, periodOf, used } from './common'
+import { costOf, emptyClick, isReady, pay, periodOf, shotGuard, used, wallRay } from './common'
 
 /** Point on the floor near the aim point within `range` (drops from walls/air to the ground below). */
 function floorPoint(sim: Sim, p: Player, range: number): Vec {
   const o = pivotOf(p)
   const d = aimOf(p)
-  const hit = sim.phys.raycast(o, d, range, 0, p.side)
+  const hit = wallRay(sim, p, o, d, range)
   let pt: Vec
   if (hit) {
     pt = hit.point
@@ -100,7 +100,7 @@ export function gadget(sim: Sim, p: Player, h: HandSt, def: ItemDef) {
     case 'hook': {
       const o = pivotOf(p)
       const d = aimOf(p)
-      const hit = sim.phys.raycast(o, d, u.range, 0, p.side)
+      const hit = wallRay(sim, p, o, d, u.range)
       if (!pay(sim, p, h, def)) return
       if (hit) {
         const to: Vec = [
@@ -151,19 +151,23 @@ export function gadget(sim: Sim, p: Player, h: HandSt, def: ItemDef) {
       const from = muzzleOf(p, h.hand)
       const a = aimOf(p)
       const dir = vnorm([a[0], a[1] + 0.25, a[2]])
-      spawnShot(sim, {
-        kind: def.id,
-        item: def.id,
-        side: p.side,
-        owner,
-        hand: h.hand,
-        p: from,
-        v: [dir[0] * u.speed, dir[1] * u.speed, dir[2] * u.speed],
-        dmg: 0,
-        gravity: u.gravity,
-        life: 4,
-        r: 0.2
-      })
+      spawnShot(
+        sim,
+        {
+          kind: def.id,
+          item: def.id,
+          side: p.side,
+          owner,
+          hand: h.hand,
+          p: from,
+          v: [dir[0] * u.speed, dir[1] * u.speed, dir[2] * u.speed],
+          dmg: 0,
+          gravity: u.gravity,
+          life: 4,
+          r: 0.2
+        },
+        shotGuard(p, from)
+      )
       emit(sim, { type: 'fire', who: owner, item: def.id, hand: h.hand, from: r3v(from), dir: r3v(dir) })
       break
     }
