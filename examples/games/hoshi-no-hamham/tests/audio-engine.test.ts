@@ -248,6 +248,34 @@ describe('the players the engine keeps', () => {
     }
   })
 
+  test('builds the racks of a player built ahead a few milliseconds at a time, and its first notes make only sources', () => {
+    steady()
+    const { rec, engine } = live()
+    try {
+      // Nothing to build for a theme that has no player put away.
+      expect(engine.primeMusic('meadow', 3)).toBe(false)
+      expect(engine.prepareMusic('meadow')).toBe(true)
+      const from = rec.log.length
+      let slices = 1
+      while (engine.primeMusic('meadow', 3)) slices += 1
+      expect(slices).toBeGreaterThanOrEqual(1)
+      const racks = rec.kept(from).length
+      expect(racks).toBeGreaterThan(60)
+      expect(rec.sources(from)).toEqual(['osc'])
+      expect(rec.wiring(from)).toEqual([])
+      expect(engine.primeMusic('meadow', 3)).toBe(false)
+      // The stage begins: four seconds of its theme build few nodes besides the notes' sources.
+      const start = rec.log.length
+      engine.setMusic('meadow')
+      play(rec, 0, 4)
+      expect(rec.sources(start).length).toBeGreaterThan(50)
+      expect(rec.kept(start).length).toBeLessThan(racks / 5)
+    } finally {
+      engine.dispose()
+      unsteady()
+    }
+  })
+
   test('builds nothing ahead that would not be heard, nothing offline, and keeps nothing once it is disposed of', () => {
     vi.useFakeTimers()
     const { rec, engine } = live()

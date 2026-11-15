@@ -14,6 +14,12 @@ export interface VoiceEnv {
   noise: AudioBuffer
   /** The kept nodes this note is built on; without one every node is made new. */
   rack?: Rack
+  /**
+   * With a stand-in the voice builds and wires its rack as for a note, and makes no source: every source it asks
+   * for is this one oscillator, which is never started and so never sounds (`MusicPlayer.prime` builds the racks
+   * of a song's first notes this way before the song is played).
+   */
+  standIn?: OscillatorNode
 }
 
 /**
@@ -151,6 +157,10 @@ function pulseWave(ctx: BaseAudioContext): PeriodicWave {
 }
 
 function osc(c: VoiceEnv, type: OscillatorType, freq: number, t: number, stop: number, detune = 0): OscillatorNode {
+  if (c.standIn) {
+    c.rack?.busy(stop)
+    return c.standIn
+  }
   const o = c.ctx.createOscillator()
   o.type = type
   o.frequency.setValueAtTime(freq, t)
@@ -182,7 +192,11 @@ function filter(c: VoiceEnv, type: BiquadFilterType, freq: number, q = 0.7): Biq
   return f
 }
 
-function noiseSrc(c: VoiceEnv, t: number, stop: number): AudioBufferSourceNode {
+function noiseSrc(c: VoiceEnv, t: number, stop: number): AudioScheduledSourceNode {
+  if (c.standIn) {
+    c.rack?.busy(stop)
+    return c.standIn
+  }
   const s = c.ctx.createBufferSource()
   s.buffer = c.noise
   s.loop = true
@@ -621,13 +635,17 @@ function chip(type: 'square' | 'pulse' | 'tri', level: number): Voice {
     const g = gain(c)
     adsr(g.gain, t, level * amp(v), 0.003, 0.12, 0.65, dur, 0.04)
     g.connect(c.out)
+    c.rack?.busy(stop)
+    if (c.standIn) {
+      c.standIn.connect(g)
+      return
+    }
     const o = c.ctx.createOscillator()
     if (type === 'pulse') o.setPeriodicWave(pulseWave(c.ctx))
     else o.type = type === 'square' ? 'square' : 'triangle'
     o.frequency.value = f
     o.start(t)
     o.stop(stop)
-    c.rack?.busy(stop)
     o.connect(g)
   }
 }

@@ -28,11 +28,12 @@ const AHEAD_RETRY_MS = 1000
 
 /**
  * Does `work` for each of `items`, one per idle moment and never while a stage is played (it looks again a second
- * later). Returns a function that stops it.
+ * later). Work that returns true has more to do for its item: it is called for it again in the next idle moment.
+ * Returns a function that stops it.
  */
 export function inIdleMoments<T>(
   items: readonly T[],
-  work: (item: T) => unknown,
+  work: (item: T) => boolean | void,
   idle: Idle,
   playing: () => boolean,
   later: (run: () => void, ms: number) => unknown = setTimeout
@@ -48,7 +49,7 @@ export function inIdleMoments<T>(
     idle(() => {
       if (stopped) return
       // A stage may have started while this waited for its moment.
-      if (!playing()) work(left.shift()!)
+      if (!playing() && work(left[0]) !== true) left.shift()
       next()
     }, playing)
   }
@@ -72,7 +73,7 @@ export function compileSongsAhead(
 ): () => void {
   return inIdleMoments(
     defs.filter((def) => !compiled.has(def)),
-    compile,
+    (def) => void compile(def),
     idle,
     playing,
     later
@@ -99,6 +100,11 @@ const WIDTH: Partial<Record<InstName, { pan: number; chorus: number }>> = {
 
 /** Seconds a rack is left alone after the sources of its note have stopped, while its filters ring out. */
 const RACK_REST = 0.05
+/**
+ * How far ahead of its time a note is scheduled, as `prime` reckons it (the engine's look-ahead): a rack is free
+ * for a note when the note before it on that rack has rung out by then.
+ */
+const PRIME_LEAD = 0.5
 
 interface PartRuntime {
   gain: GainNode
@@ -126,6 +132,10 @@ export class MusicPlayer {
   private readonly kept: boolean
   /** True while the player's outputs are connected to the mixer. */
   private attached = false
+  /** The next event `prime` looks at, the stand-in of its sources, and whether there is anything left for it. */
+  private primeNext = 0
+  private standIn: OscillatorNode | null = null
+  private primeable: boolean
 
   /**
    * `humanise` loosens the timing of the notes a little (a live player). `kept` builds the notes on racks; it
@@ -152,6 +162,8 @@ export class MusicPlayer {
     this.out.gain.value = 1
     this.revBus = ctx.createGain()
     this.choBus = ctx.createGain()
+    // Only a player that was built off the mixer and has not sounded yet has its racks built ahead.
+    this.primeable = kept && !attached
     if (attached) this.attach()
     for (const p of def.parts) {
       const g = ctx.createGain()
@@ -211,10 +223,12 @@ export class MusicPlayer {
   /**
    * The context time from which nothing of this player sounds any more: its last note has rung out. Until then it
    * must not be started again (the tail of a note of the pass before would be heard under the new one). Infinity
-   * for a player without racks, which does not know when its notes end.
+   * for a player without racks, which does not know when its notes end; 0 for one that has not sounded (the times
+   * on racks built ahead are the song's, not the context's).
    */
   get quietAt(): number {
     if (!this.kept) return Infinity
+    if (this.primeable) return 0
     let at = 0
     for (const rt of this.parts)
       for (const list of rt.racks.values()) for (const rack of list) if (rack.freeAt > at) at = rack.freeAt
@@ -228,6 +242,7 @@ export class MusicPlayer {
    */
   restart(layer: number, startTime: number): void {
     const def = this.song.def
+    this.endPriming()
     this.layer = layer
     this.next = 0
     this.tickBase = 0
@@ -330,6 +345,68 @@ export class MusicPlayer {
         const list = rt.racks.get(key)
         list?.splice(list.indexOf(rack), 1)
       }
+    }
+  }
+
+  /**
+   * Builds the racks the notes of the song's first `seconds` are built on, before the song is played: every such
+   * note is built on its rack as `playEvent` would build it, with a stand-in for its sources that never sounds
+   * (see `VoiceEnv.standIn`), at the time it has in the song. The first notes of the song then make only their
+   * sources, as every later note does. With a budget it stops once that many milliseconds are spent and returns
+   * true: there is more to do. Nothing to do (false) for a player that has sounded or is on the mixer.
+   */
+  prime(seconds: number, budgetMs = Infinity, clock: () => number = performance.now.bind(performance)): boolean {
+    if (!this.primeable) return false
+    const { events, tickSec, def } = this.song
+    const ctx = this.mixer.ctx
+    this.standIn ??= ctx.createOscillator()
+    const env = this.env
+    const deadline = budgetMs === Infinity ? Infinity : clock() + budgetMs
+    while (this.primeNext < events.length) {
+      const e = events[this.primeNext]
+      const when = e.t * tickSec
+      if (when >= seconds) break
+      this.primeNext++
+      const part = def.parts[e.part]
+      if (!this.active(part.layer, part.maxLayer)) continue
+      const rt = this.parts[e.part]
+      const key = part.inst === 'kit' ? e.midi : 0
+      // The racks' times are the song's here (it starts at 0): a rack is free for this note when the note before
+      // it has rung out by the time this one would be scheduled.
+      const rack = this.rackOf(rt, key, Math.max(0, when - PRIME_LEAD))
+      env.out = rt.gain
+      env.rack = rack
+      env.standIn = this.standIn
+      rack.begin()
+      try {
+        VOICES[part.inst](env, when, e.len * tickSec, e.midi, e.vel)
+        rack.end(RACK_REST)
+      } catch {
+        const list = rt.racks.get(key)
+        list?.splice(list.indexOf(rack), 1)
+      } finally {
+        env.standIn = undefined
+      }
+      if (deadline !== Infinity && clock() >= deadline) return true
+    }
+    this.endPriming()
+    return false
+  }
+
+  /** The racks built ahead are free from now on, and the stand-in is taken off them. */
+  private endPriming(): void {
+    if (!this.primeable) return
+    this.primeable = false
+    for (const rt of this.parts) for (const list of rt.racks.values()) for (const rack of list) rack.freeAt = 0
+    const standIn = this.standIn
+    this.standIn = null
+    if (!standIn) return
+    try {
+      standIn.disconnect()
+      standIn.frequency.cancelScheduledValues(0)
+      standIn.detune.cancelScheduledValues(0)
+    } catch {
+      // Nothing was connected.
     }
   }
 

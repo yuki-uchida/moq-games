@@ -16,6 +16,8 @@ export * from './api'
 
 /** The most main-thread time one slice of the preparation may take, in milliseconds. */
 const PREPARE_SLICE_MS = 4
+/** The most main-thread time one idle moment spends on the racks of a player built ahead, in milliseconds. */
+const PRIME_SLICE_MS = 3
 /**
  * The order the songs are compiled ahead in: the menus' first, then the ones that start in the middle of play (a
  * stage's end, a boss's entrance), then the stages' own.
@@ -207,9 +209,22 @@ class WebAudio implements GameAudio {
     if (this.disposed) return
     this.safe(() => this.engine?.wantMusic(this.wanted))
     if (!this.wanted.length) return
+    // A player in one idle moment, then the racks of its first notes a few milliseconds at a time.
     this.stopPlayers = inIdleMoments(
       this.wanted,
-      (theme) => this.safe(() => void this.engine?.prepareMusic(theme)),
+      (theme) => {
+        let more = false
+        this.safe(() => {
+          const engine = this.engine
+          if (!engine) return
+          const built = engine.keptThemes.includes(theme)
+          if (!engine.prepareMusic(theme)) return
+          // Building the player was this moment's work; its racks come in the moments after. (A theme that sounds
+          // now has its player on the mixer: there is nothing to build for it.)
+          more = built ? engine.primeMusic(theme, PRIME_SLICE_MS) : engine.keptThemes.includes(theme)
+        })
+        return more
+      },
       whenIdle,
       () => this.inPlay
     )
