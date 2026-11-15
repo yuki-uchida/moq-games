@@ -14,7 +14,7 @@ import { SIM_EVENT_TYPES } from '../src/game/events'
 import { World } from '../src/game/sim'
 import { STAGES } from '../src/game/stages'
 import { SOUND_CUES } from '../src/view/cues'
-import { BOSS_DOWN_SILENCE, duckFor, musicFor, musicStateOf, type MusicState } from '../src/view/music'
+import { BOSS_DOWN_SILENCE, duckFor, musicFor, musicStateOf, stageThemes, type MusicState } from '../src/view/music'
 import {
   CUE_MAP,
   FAR,
@@ -440,6 +440,34 @@ describe('music', () => {
     expect(musicFor(play({ outcome: 'dead', boss: { final: false, ratio: 1, phase: 1 } })).theme).toBe('gameover')
     expect(musicFor(play({ silent: true }))).toEqual({ theme: null, layer: 0 })
     for (const theme of ['title', 'select', 'story', 'ending', 'clear', 'gameover']) expect(THEMES).toContain(theme)
+  })
+
+  it('names the themes a stage can ask for, the soonest first', () => {
+    expect(stageThemes(STAGES[0])).toEqual(['meadow', 'clear', 'gameover'])
+    expect(stageThemes(STAGES[4])).toEqual(['forest', 'clear', 'gameover', 'boss'])
+    expect(stageThemes(STAGES[9])).toEqual([STAGES[9].theme, 'clear', 'gameover', 'finalBoss'])
+    // Whatever a stage's world asks for while it is played is among them.
+    for (const stage of STAGES) {
+      const themes = stageThemes(stage)
+      expect(new Set(themes).size, stage.id).toBe(themes.length)
+      const w = world(stage.no)
+      const asked = new Set<string | null>()
+      const look = () => asked.add(musicFor(musicStateOf(w, false)).theme)
+      look()
+      if (w.boss) {
+        w.boss.active = true
+        look()
+        w.boss.phase = 2
+        look()
+        w.boss.dead = true
+        look()
+      }
+      w.state = 'clear'
+      look()
+      w.state = 'dead'
+      look()
+      for (const theme of asked) expect(themes, `${stage.id}: ${theme}`).toContain(theme)
+    }
   })
 
   it('ducks for pause and water', () => {

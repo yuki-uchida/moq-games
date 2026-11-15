@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { VOICES } from '../src/audio/instruments'
-import { compileSongsAhead, compiledSong, MusicPlayer } from '../src/audio/music'
+import { compileSongsAhead, compiledSong, inIdleMoments, MusicPlayer } from '../src/audio/music'
 import { compileSong, type SongDef } from '../src/audio/notation'
 import { SONGS } from '../src/audio/songs'
+import { recordingContext } from './audio-fakes'
 
 /** A stand-in for any Web Audio object: every property is a function/param that returns another stand-in. */
 function fake(): unknown {
@@ -107,6 +108,141 @@ describe('the music scheduler', () => {
     expect(jingle.finished).toBe(false)
     jingle.pump(60, 3, true)
     expect(jingle.finished).toBe(true)
+  })
+})
+
+describe('a player that is started again', () => {
+  const noise = { duration: 2 } as AudioBuffer
+  const shifted = (notes: Note[], by: number) =>
+    notes.map(([inst, when, dur, midi]) => [inst, Number((when - by).toFixed(6)), dur, midi])
+
+  test('plays its song from the first note, in the layer it is given', () => {
+    const notes = recordVoices()
+    const p = player('meadow')
+    p.pump(6)
+    const first = notes.splice(0)
+    expect(first.length).toBeGreaterThan(50)
+    // On through the song, then again from the top a hundred seconds later.
+    p.pump(40)
+    notes.splice(0)
+    p.restart(2, 100)
+    p.pump(106)
+    expect(shifted(notes.splice(0), 100)).toEqual(shifted(first, 0))
+
+    // In another layer it plays what a new player of that layer plays.
+    player('meadow', 0).pump(6)
+    const quiet = notes.splice(0)
+    expect(quiet.length).toBeLessThan(first.length)
+    p.restart(0, 200)
+    p.pump(206)
+    expect(shifted(notes.splice(0), 200)).toEqual(shifted(quiet, 0))
+  })
+
+  test('a jingle that has ended plays again', () => {
+    const notes = recordVoices()
+    const jingle = player('clear', 0)
+    jingle.pump(60)
+    const first = notes.splice(0)
+    expect(jingle.finished).toBe(true)
+    jingle.restart(0, 100)
+    expect(jingle.finished).toBe(false)
+    jingle.pump(160)
+    expect(shifted(notes.splice(0), 100)).toEqual(shifted(first, 0))
+    expect(jingle.finished).toBe(true)
+  })
+
+  test('builds nothing but the sources of its notes once the notes before have rung out', () => {
+    const rec = recordingContext()
+    const p = new MusicPlayer(rec.mixer(), noise, SONGS.meadow, 2, 0, false, true)
+    p.pump(8)
+    expect(rec.kept().length).toBeGreaterThan(100)
+    // The notes scheduled up to the eighth second ring a little longer; then the player is silent.
+    expect(p.quietAt).toBeGreaterThan(8)
+    expect(p.quietAt).toBeLessThan(20)
+    rec.at(100)
+    const from = rec.log.length
+    p.restart(2, 100)
+    p.pump(108)
+    expect(rec.sources(from).length).toBeGreaterThan(100)
+    expect(rec.kept(from)).toEqual([])
+    expect(p.quietAt).toBeGreaterThan(108)
+  })
+
+  test('knows when it is silent: at once when it has played nothing, never without racks', () => {
+    const rec = recordingContext()
+    expect(new MusicPlayer(rec.mixer(), noise, SONGS.clear, 0, 0, false, true).quietAt).toBe(0)
+    const loose = new MusicPlayer(rec.mixer(), noise, SONGS.clear, 0, 0, false, false)
+    loose.pump(4)
+    expect(loose.quietAt).toBe(Infinity)
+  })
+
+  test('built off the mixer it is connected when it starts, and taken off again when it has faded', () => {
+    vi.useFakeTimers()
+    try {
+      const rec = recordingContext()
+      const mixer = rec.mixer()
+      const built = rec.log.length
+      const p = new MusicPlayer(mixer, noise, SONGS.clear, 0, 0, false, true, false)
+      // Its parts are there, and nothing of it reaches the mixer.
+      expect(rec.kept(built).length).toBeGreaterThan(6)
+      expect(rec.wiring(built)).toEqual([])
+      const into = (lines: string[]) => lines.map((line) => line.replace(/gain\d+/, 'gain'))
+      p.restart(0, 1)
+      expect(into(rec.wiring(built))).toEqual(['connect gain>music', 'connect gain>musicReverb', 'connect gain>chorus'])
+      // Started again while it is on the mixer: no second connection.
+      let from = rec.log.length
+      p.restart(0, 2)
+      expect(rec.wiring(from)).toEqual([])
+      let done = false
+      p.fadeOut(0.25, () => (done = true))
+      vi.advanceTimersByTime(500)
+      expect(done).toBe(false)
+      vi.advanceTimersByTime(100)
+      expect(done).toBe(true)
+      expect(into(rec.wiring(from))).toEqual(['disconnect gain', 'disconnect gain', 'disconnect gain'])
+      from = rec.log.length
+      p.restart(0, 5)
+      expect(into(rec.wiring(from))).toEqual(['connect gain>music', 'connect gain>musicReverb', 'connect gain>chorus'])
+      // A player built on the mixer, as before, is connected from the start.
+      const usual = rec.log.length
+      void new MusicPlayer(mixer, noise, SONGS.clear, 0, 0, false, true)
+      expect(into(rec.wiring(usual))).toEqual(['connect gain>music', 'connect gain>musicReverb', 'connect gain>chorus'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('work in idle moments', () => {
+  test('one item per moment, none while a stage is played, and it can be stopped', () => {
+    const moments: Array<() => void> = []
+    const timers: Array<() => void> = []
+    const idle = ((run: (room: () => number) => void) => void moments.push(() => run(() => 50))) as never
+    const done: string[] = []
+    let playing = false
+    const stop = inIdleMoments(
+      ['a', 'b', 'c', 'd'],
+      (item) => done.push(item),
+      idle,
+      () => playing,
+      (run) => void timers.push(run)
+    )
+    expect(done).toEqual([])
+    moments.shift()!()
+    expect(done).toEqual(['a'])
+    playing = true
+    moments.shift()!()
+    expect(done).toEqual(['a'])
+    expect(moments).toHaveLength(0)
+    playing = false
+    timers.shift()!()
+    moments.shift()!()
+    expect(done).toEqual(['a', 'b'])
+    stop()
+    moments.shift()!()
+    expect(done).toEqual(['a', 'b'])
+    expect(moments).toHaveLength(0)
+    expect(timers).toHaveLength(0)
   })
 })
 

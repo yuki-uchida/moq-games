@@ -4,7 +4,9 @@
  * intensity layer. Parts have their own gain, pan, reverb and chorus sends.
  *
  * A live player keeps the gains, filters and panners of its voices and builds every later note on them (see `Rack`):
- * a note then makes only its sources, a third of the nodes it would make otherwise.
+ * a note then makes only its sources, a third of the nodes it would make otherwise. A player that has stopped sounding
+ * can be started again from its song's first note (`restart`) on the parts and racks it has, and one can be built
+ * before its theme is asked for, off the mixer: either way a change of music then builds nothing but notes.
  */
 import type { Idle } from './bank'
 import { LEGATO, Rack, VOICES, type VoiceEnv } from './instruments'
@@ -25,6 +27,38 @@ export function compiledSong(def: SongDef): CompiledSong {
 const AHEAD_RETRY_MS = 1000
 
 /**
+ * Does `work` for each of `items`, one per idle moment and never while a stage is played (it looks again a second
+ * later). Returns a function that stops it.
+ */
+export function inIdleMoments<T>(
+  items: readonly T[],
+  work: (item: T) => unknown,
+  idle: Idle,
+  playing: () => boolean,
+  later: (run: () => void, ms: number) => unknown = setTimeout
+): () => void {
+  const left = [...items]
+  let stopped = false
+  const next = () => {
+    if (stopped || !left.length) return
+    if (playing()) {
+      later(next, AHEAD_RETRY_MS)
+      return
+    }
+    idle(() => {
+      if (stopped) return
+      // A stage may have started while this waited for its moment.
+      if (!playing()) work(left.shift()!)
+      next()
+    }, playing)
+  }
+  next()
+  return () => {
+    stopped = true
+  }
+}
+
+/**
  * Compiles songs before they are first played, one per idle moment and never while a stage is played, so that a
  * change of music (the boss's entrance, the stage's end) only has to build its player. Returns a function that
  * stops it.
@@ -36,25 +70,13 @@ export function compileSongsAhead(
   later: (run: () => void, ms: number) => unknown = setTimeout,
   compile: (def: SongDef) => unknown = compiledSong
 ): () => void {
-  const left = defs.filter((def) => !compiled.has(def))
-  let stopped = false
-  const next = () => {
-    if (stopped || !left.length) return
-    if (playing()) {
-      later(next, AHEAD_RETRY_MS)
-      return
-    }
-    idle(() => {
-      if (stopped) return
-      // A stage may have started while this waited for its moment.
-      if (!playing()) compile(left.shift()!)
-      next()
-    }, playing)
-  }
-  next()
-  return () => {
-    stopped = true
-  }
+  return inIdleMoments(
+    defs.filter((def) => !compiled.has(def)),
+    compile,
+    idle,
+    playing,
+    later
+  )
 }
 
 /** Extra stereo width per instrument: a pan multiplier and a default chorus send for parts that set none. */
@@ -102,10 +124,13 @@ export class MusicPlayer {
   finished = false
   private readonly humanise: boolean
   private readonly kept: boolean
+  /** True while the player's outputs are connected to the mixer. */
+  private attached = false
 
   /**
    * `humanise` loosens the timing of the notes a little (a live player). `kept` builds the notes on racks; it
-   * defaults to the same, because a render that schedules a whole song at once has no use for them.
+   * defaults to the same, because a render that schedules a whole song at once has no use for them. Without
+   * `attached` the player is built off the mixer and is silent until it is started with `restart`.
    */
   constructor(
     private readonly mixer: Mixer,
@@ -114,7 +139,8 @@ export class MusicPlayer {
     layer: number,
     startTime: number,
     humanise = true,
-    kept = humanise
+    kept = humanise,
+    attached = true
   ) {
     this.song = compiledSong(def)
     this.layer = layer
@@ -124,11 +150,9 @@ export class MusicPlayer {
     this.env = { ctx, out: mixer.music, noise }
     this.out = ctx.createGain()
     this.out.gain.value = 1
-    this.out.connect(mixer.music)
     this.revBus = ctx.createGain()
-    this.revBus.connect(mixer.musicReverb)
     this.choBus = ctx.createGain()
-    this.choBus.connect(mixer.chorus)
+    if (attached) this.attach()
     for (const p of def.parts) {
       const g = ctx.createGain()
       g.gain.value = this.active(p.layer, p.maxLayer) ? p.vol : 0
@@ -160,6 +184,67 @@ export class MusicPlayer {
 
   private active(layer = 0, maxLayer = 2): boolean {
     return this.layer >= layer && this.layer <= maxLayer
+  }
+
+  /** Connects the player's three outputs to the mixer. */
+  private attach(): void {
+    if (this.attached) return
+    this.attached = true
+    this.out.connect(this.mixer.music)
+    this.revBus.connect(this.mixer.musicReverb)
+    this.choBus.connect(this.mixer.chorus)
+  }
+
+  /** Takes the player off the mixer; its parts and the racks of its voices stay as they are. */
+  private detach(): void {
+    if (!this.attached) return
+    this.attached = false
+    try {
+      this.out.disconnect()
+      this.revBus.disconnect()
+      this.choBus.disconnect()
+    } catch {
+      // Already gone.
+    }
+  }
+
+  /**
+   * The context time from which nothing of this player sounds any more: its last note has rung out. Until then it
+   * must not be started again (the tail of a note of the pass before would be heard under the new one). Infinity
+   * for a player without racks, which does not know when its notes end.
+   */
+  get quietAt(): number {
+    if (!this.kept) return Infinity
+    let at = 0
+    for (const rt of this.parts)
+      for (const list of rt.racks.values()) for (const rack of list) if (rack.freeAt > at) at = rack.freeAt
+    return at
+  }
+
+  /**
+   * Starts the song again from its first note at `startTime`, on the parts and the racks the player has: nothing is
+   * built for it but the sources of its notes. For a player that was faded out and has rung out (`quietAt`), or one
+   * that was built off the mixer.
+   */
+  restart(layer: number, startTime: number): void {
+    const def = this.song.def
+    this.layer = layer
+    this.next = 0
+    this.tickBase = 0
+    this.origin = startTime
+    this.finished = false
+    for (const g of [this.out, this.revBus, this.choBus]) g.gain.cancelScheduledValues(0)
+    this.out.gain.value = def.gain
+    this.revBus.gain.value = 1
+    this.choBus.gain.value = 1
+    def.parts.forEach((p, i) => {
+      const rt = this.parts[i]
+      rt.gain.gain.cancelScheduledValues(0)
+      rt.gain.gain.value = this.active(p.layer, p.maxLayer) ? p.vol : 0
+      rt.lastEnd = -1
+      rt.lastMidi = -1
+    })
+    this.attach()
   }
 
   setLayer(layer: number): void {
@@ -265,7 +350,7 @@ export class MusicPlayer {
     return n
   }
 
-  /** Fades the player out and detaches it after the tail has rung out. */
+  /** Fades the player out and takes it off the mixer once the fade is over. */
   fadeOut(seconds: number, then: () => void): void {
     const ctx = this.mixer.ctx
     const now = ctx.currentTime
@@ -278,13 +363,7 @@ export class MusicPlayer {
     this.choBus.gain.linearRampToValueAtTime(0, now + seconds)
     setTimeout(
       () => {
-        try {
-          this.out.disconnect()
-          this.revBus.disconnect()
-          this.choBus.disconnect()
-        } catch {
-          // Already gone.
-        }
+        this.detach()
         then()
       },
       seconds * 1000 + 300

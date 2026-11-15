@@ -148,6 +148,12 @@ export interface GameAudio {
    * arrangement's intensity (e.g. 1 when the boss gate closes) without restarting the song.
    */
   setMusic(theme: ThemeName | null, layer?: number): void
+  /**
+   * These themes may be asked for soon (a stage's own, its boss's, the jingles of its ends): their players are
+   * built in idle moments, never while a stage is played, so that the change of music itself builds nothing. A
+   * new list replaces the one before. Optional: without it every player is built when its theme is first asked for.
+   */
+  prepareMusic?(themes: readonly ThemeName[]): void
   sfx(name: SfxName, options?: SfxOptions): void
   /** Starts, updates (pitch 0..1 = progress) or with `null` stops the sustained sound for `id`. */
   loop(id: string, name: LoopName | null, options?: SfxOptions & { progress?: number }): void
