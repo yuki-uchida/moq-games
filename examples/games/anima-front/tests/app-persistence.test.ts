@@ -60,6 +60,17 @@ describe('storage', () => {
 })
 
 describe('settings', () => {
+  it('the player name round-trips, is cleaned and cut to 10 characters; empty means the animal name', () => {
+    const store = memoryStore()
+    expect(defaultSettings().playerName).toBe('')
+    const s = withSetting(defaultSettings(), 'playerName', '  <b>ハヤテくんハヤテくんハヤテ</b> ')
+    expect(s.playerName).toBe('bハヤテくんハヤテく')
+    expect(saveSettings(store, s)).toBe(true)
+    expect(loadSettings(store).playerName).toBe(s.playerName)
+    expect([...s.playerName].length).toBeLessThanOrEqual(10)
+    expect(withSetting(s, 'playerName', 42).playerName).toBe('')
+  })
+
   it('defaults follow prefers-reduced-motion', () => {
     expect(defaultSettings(true).reducedMotion).toBe(true)
     expect(loadSettings(memoryStore(), true).reducedMotion).toBe(true)

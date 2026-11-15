@@ -15,6 +15,7 @@
  * once known (only a proven reconnection brings a new one).
  */
 import type { LocalChoice, MatchStart } from '../app/lobby'
+import { uniqueName } from '../app/roster'
 import { botSkill, matchConfig, type MatchSelection, type Seat } from '../app/match'
 import { cloneLoadout } from '../app/loadouts'
 import { createWorld, sanitizeLoadout, type World } from '../sim/api'
@@ -320,7 +321,7 @@ export class HostRoom {
     const plan = planSeats(this.selection, this.seatMembers())
     return [...this.members.values()]
       .filter((m) => !m.host && m.present && plan.bySeat.get(m.id) && !m.profile.ready)
-      .map((m) => m.profile.name)
+      .map((m) => plan.seats.find((s) => s.id === plan.bySeat.get(m.id))?.name ?? m.profile.name)
   }
 
   /** Fixes the seats and the config and moves everyone to the briefing. Throws a Japanese message. */
@@ -627,7 +628,9 @@ export class HostRoom {
   private takeSeat(seat: Seat, profile: Profile) {
     const loadout = sanitizeLoadout(profile.loadout)
     seat.bot = undefined
-    seat.name = profile.name
+    // A name another player of this match already has gets a number.
+    const name = uniqueName(profile.name, new Set(this.matchSeats.filter((s) => s.id !== seat.id).map((s) => s.name)))
+    seat.name = name
     seat.species = profile.species
     seat.loadout = cloneLoadout(loadout)
     seat.loadoutName = profile.loadoutName
@@ -637,7 +640,7 @@ export class HostRoom {
     if (!config || i < 0) return
     const pc: PlayerConfig = {
       id: seat.id,
-      name: profile.name,
+      name,
       species: profile.species,
       loadout: cloneLoadout(loadout),
       team: config.players[i].team
@@ -699,13 +702,23 @@ export class HostRoom {
   roomMsg(): RoomMsg {
     const seatOf = this.seatMap()
     const seats = this.seats()
+    // One display name per member everywhere: a seated member shows its seat's (already unique) name, one without
+    // a seat gets a number when it shares a name.
+    const taken = new Set(seats.map((s) => s.name))
+    const nameOf = (m: RoomMember): string => {
+      const seat = seats.find((s) => s.id === seatOf.get(m.id))
+      if (seat) return seat.name
+      const name = uniqueName(m.profile.name, taken)
+      taken.add(name)
+      return name
+    }
     const members: WireMember[] = [...this.members.values()]
       .filter((m) => m.host || m.present)
       .sort((a, b) => a.order - b.order)
       .map((m) => ({
         id: m.id,
         seat: seatOf.get(m.id) ?? null,
-        name: m.profile.name,
+        name: nameOf(m),
         species: m.profile.species,
         // Seated: its seat's team; a PvP spectator in a match: the team it watches.
         team:

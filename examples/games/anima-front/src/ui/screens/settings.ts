@@ -33,6 +33,27 @@ function control(ctx: AppContext, spec: SettingSpec): HTMLElement {
     paint()
     return h('div', 'set-row', h('label', 'set-label', spec.label), h('div', 'set-control', input, out))
   }
+  if (spec.kind === 'text') {
+    const input = h('input', {
+      class: 'text-input set-text',
+      attrs: {
+        type: 'text',
+        maxlength: String(spec.maxLength),
+        placeholder: spec.placeholder,
+        value: String(value()),
+        'aria-label': spec.label,
+        'data-setting': spec.key,
+        autocomplete: 'off',
+        spellcheck: 'false'
+      }
+    })
+    input.addEventListener('input', () => ctx.updateSetting(spec.key, input.value))
+    // on leaving the field it shows what was stored (cleaned)
+    input.addEventListener('change', () => {
+      input.value = String(value())
+    })
+    return h('div', 'set-row', h('label', 'set-label', spec.label), h('div', 'set-control', input))
+  }
   if (spec.kind === 'toggle') {
     const btn = h(
       'button',

@@ -225,14 +225,28 @@ test.describe('アニマフロント front-end', () => {
     await page.click('[data-setting="invertY"]')
     await page.click('[data-setting="quality"][data-value="high"]')
     await page.locator('[data-setting="volumeMusic"]').fill('0.3')
+    await page.locator('[data-setting="playerName"]').fill('テスト太郎テスト太郎テスト太郎')
     await page.reload()
     await openTitle(page)
     await page.click('[data-menu="settings"]')
     await expect(page.locator('[data-setting="invertY"]')).toHaveAttribute('aria-checked', 'true')
     await expect(page.locator('[data-setting="quality"][data-value="high"]')).toHaveAttribute('aria-checked', 'true')
     await expect(page.locator('[data-setting="volumeMusic"]')).toHaveValue('0.3')
+    // プレイヤー名: at most 10 characters, and it is the name in the squad
+    await expect(page.locator('[data-setting="playerName"]')).toHaveValue('テスト太郎テスト太郎')
     const stored = await page.evaluate(() => localStorage.getItem('anima-front-v1:settings'))
-    expect(JSON.parse(stored ?? '{}')).toMatchObject({ invertY: true, quality: 'high', volumeMusic: 0.3 })
+    expect(JSON.parse(stored ?? '{}')).toMatchObject({
+      invertY: true,
+      quality: 'high',
+      volumeMusic: 0.3,
+      playerName: 'テスト太郎テスト太郎'
+    })
+    await page.keyboard.press('Escape')
+    await page.click('[data-menu="sortie"]')
+    await page.click('[data-mode="pve"]')
+    await page.click('[data-go]')
+    await page.click('[data-room="solo"]')
+    await expect(page.locator('.screen.lobby')).toContainText('テスト太郎テスト太郎')
   })
 
   test('HUD demo renders every block, pauses and reaches the results', async ({ page }) => {
@@ -523,20 +537,22 @@ test.describe('portrait phones', () => {
 // Gamepad pause menu, touch look, tutorial on touch, touch paw readouts, small landscape phones
 
 const PAD = { A: 0, B: 1, DOWN: 13, UP: 12, MENU: 9 } as const
-type PadWindow = { __padButtons: Record<number, boolean> }
+type PadWindow = { __padButtons: Record<number, boolean>; __padAxes: number[] }
 
 /** An emulated standard gamepad: tests flip buttons through window.__padButtons. */
 async function installPad(page: Page) {
   await page.addInitScript(() => {
     const buttons: Record<number, boolean> = {}
     ;(window as unknown as PadWindow).__padButtons = buttons
+    const axes = [0, 0, 0, 0]
+    ;(window as unknown as PadWindow).__padAxes = axes
     const pad = () => ({
       id: 'test pad',
       index: 0,
       connected: true,
       mapping: 'standard',
       timestamp: performance.now(),
-      axes: [0, 0, 0, 0],
+      axes: [...axes],
       buttons: Array.from({ length: 17 }, (_, i) => ({
         pressed: !!buttons[i],
         touched: !!buttons[i],
@@ -588,6 +604,41 @@ async function startTutorial(page: Page) {
   await page.click('.brief-go')
   await expect.poll(() => phaseOf(page), { timeout: 90_000 }).toBe('play')
 }
+
+test.describe('gamepad on the results screen', () => {
+  test('PvP results at 1024×600: the right stick scrolls the table to the last row and A still activates', async ({
+    page
+  }) => {
+    await page.setViewportSize({ width: 1024, height: 600 })
+    await installPad(page)
+    await page.goto('/?hud-demo=pvp&end=8')
+    await expect(current(page, 'results')).toBeVisible({ timeout: 180_000 })
+    await expect(page.locator('.res-table tbody tr')).toHaveCount(12)
+    await page.waitForTimeout(1500) // rows rise in
+    const lastVisible = () =>
+      page.evaluate(() => {
+        const rows = document.querySelectorAll('.res-table tbody tr')
+        const r = rows[rows.length - 1].getBoundingClientRect()
+        const actions = document.querySelector('.res-actions')!.getBoundingClientRect()
+        return r.bottom <= actions.top + 1 && r.top >= 0
+      })
+    await page.screenshot({ path: test.info().outputPath('results-1024x600-before.png') })
+    const start = await page.evaluate(() => document.querySelector('.screen-scroll')!.scrollTop)
+    // push the right stick down
+    await page.evaluate(() => void ((window as unknown as PadWindow).__padAxes[3] = 1))
+    await expect.poll(lastVisible, { timeout: 10_000 }).toBe(true)
+    await page.evaluate(() => void ((window as unknown as PadWindow).__padAxes[3] = 0))
+    expect(await page.evaluate(() => document.querySelector('.screen-scroll')!.scrollTop)).toBeGreaterThan(start)
+    await page.screenshot({ path: test.info().outputPath('results-1024x600-scrolled.png') })
+    // the stick scrolls back up, and the d-pad / A still work afterwards
+    await page.evaluate(() => void ((window as unknown as PadWindow).__padAxes[3] = -1))
+    await expect.poll(() => page.evaluate(() => document.querySelector('.screen-scroll')!.scrollTop)).toBe(0)
+    await page.evaluate(() => void ((window as unknown as PadWindow).__padAxes[3] = 0))
+    await padTap(page, PAD.DOWN)
+    await padTap(page, PAD.A)
+    await expect(current(page, 'results')).toHaveCount(0, { timeout: 30_000 })
+  })
+})
 
 const pauseFocus = (page: Page, which: string) => expect(page.locator(`[data-pause="${which}"]`)).toBeFocused()
 

@@ -3,6 +3,7 @@
  * renderer, audio and input. Pure: storage is injected so the rules are unit-tested.
  */
 import type { RendererOptions } from '../render/api'
+import { cleanName } from '../net/validate'
 import { clampNumber, isRecord, readJson, writeJson, type KeyValueStore } from './storage'
 
 export const SETTINGS_KEY = 'settings'
@@ -28,6 +29,8 @@ export interface Settings {
   controlHints: boolean
   gamepadSensitivity: number
   aimAssist: AimAssist
+  /** プレイヤー名: empty = the animal's own name. */
+  playerName: string
 }
 
 export const defaultSettings = (prefersReducedMotion = false): Settings => ({
@@ -46,7 +49,8 @@ export const defaultSettings = (prefersReducedMotion = false): Settings => ({
   damageNumbers: true,
   controlHints: true,
   gamepadSensitivity: 1,
-  aimAssist: 'low'
+  aimAssist: 'low',
+  playerName: ''
 })
 
 export type SettingKey = Exclude<keyof Settings, 'version'>
@@ -63,11 +67,27 @@ export type SettingSpec =
       format: (v: number) => string
     }
   | { key: SettingKey; label: string; kind: 'toggle' }
+  | { key: SettingKey; label: string; kind: 'text'; maxLength: number; placeholder: string }
   | { key: SettingKey; label: string; kind: 'choice'; options: readonly { value: string; label: string }[] }
 
 const pct = (v: number) => `${Math.round(v * 100)}%`
 
+export const PLAYER_NAME_MAX = 10
+
 export const SETTING_GROUPS: readonly { id: string; label: string; items: readonly SettingSpec[] }[] = [
+  {
+    id: 'player',
+    label: 'プレイヤー',
+    items: [
+      {
+        key: 'playerName',
+        label: 'プレイヤー名',
+        kind: 'text',
+        maxLength: PLAYER_NAME_MAX,
+        placeholder: '空欄なら動物の名前'
+      }
+    ]
+  },
   {
     id: 'controls',
     label: '操作',
@@ -152,11 +172,18 @@ export function sanitizeSettings(raw: unknown, prefersReducedMotion = false): Se
       target[spec.key] = clampNumber(value, spec.min, spec.max, base[spec.key] as number)
     } else if (spec.kind === 'toggle') {
       if (typeof value === 'boolean') target[spec.key] = value
+    } else if (spec.kind === 'text') {
+      target[spec.key] = typeof value === 'string' ? cleanPlayerName(value) : ''
     } else if (typeof value === 'string' && spec.options.some((o) => o.value === value)) {
       target[spec.key] = value
     }
   }
   return out
+}
+
+/** A typed player name: cleaned like every network name (no control or markup characters), at most 10 characters. */
+export function cleanPlayerName(text: string): string {
+  return [...cleanName(text, '')].slice(0, PLAYER_NAME_MAX).join('')
 }
 
 export function loadSettings(store: KeyValueStore | null, prefersReducedMotion = false): Settings {

@@ -10,7 +10,7 @@ import { MISSIONS, type MissionId } from '../data/missions'
 import type { SpeciesId } from '../data/species'
 import type { MapId, MatchConfig, ModeId, PlayerConfig, PropKind, TeamId } from '../sim/types'
 import { cloneLoadout } from './loadouts'
-import { hashString, pickName, pickPreset, pickTeamSpecies, seededRandom } from './roster'
+import { dedupeNames, hashString, pickName, pickPreset, pickTeamSpecies, seededRandom } from './roster'
 
 export interface MatchSelection {
   mode: ModeId
@@ -92,6 +92,9 @@ export function buildSeats(
   const myTeam: TeamId = sel.mode === 'pvp' ? (me.team ?? 0) : 0
   seats.push({ ...me, loadout: cloneLoadout(me.loadout), team: myTeam, local: true, ready: true })
   for (const h of humans) if (seats.length < count) seats.push({ ...h, local: false })
+  // Players who share a name (the same animal's default, or a typed one) get numbers; bots then avoid them all.
+  const unique = dedupeNames(seats.map((s) => s.name))
+  seats.forEach((s, i) => (s.name = unique[i]))
   const skill = botSkill(sel)
   const rnd = seededRandom(variety ?? hashString(`${sel.mode}/${sel.mission ?? ''}/${me.species}`))
   const names = new Set(seats.map((s) => s.name))

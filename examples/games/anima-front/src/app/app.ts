@@ -12,7 +12,8 @@ import { SPECIES, SPECIES_IDS } from '../data/species'
 import { pawLists } from './loadouts'
 import { h } from '../ui/dom'
 import { focusInitial, moveFocus, navRoot, type NavDir } from '../ui/focus'
-import { MenuPad, type MenuAction } from '../input/gamepad'
+import { MENU_SCROLL_PX_PER_S, MenuPad, menuScrollStick, type MenuAction } from '../input/gamepad'
+import { scrollTargetFor } from '../ui/scroll-target'
 import { createBootScreen } from '../ui/screens/boot'
 import { renderItemThumbs } from '../ui/thumbs'
 import { createTitleScreen } from '../ui/screens/title'
@@ -353,12 +354,27 @@ export function startApp(root: HTMLElement, options: AppOptions = {}): AppContex
     else if (a === 'tabNext') current.tab?.(1)
   }
 
+  /** The right stick scrolls the current screen's content (the focused element's scroll area, else the main one). */
+  const scrollMenu = (dt: number) => {
+    const [sx, sy] = menuScrollStick()
+    if (!sx && !sy) return
+    const active = document.activeElement as HTMLElement | null
+    const veil = document.querySelector<HTMLElement>('.modal-veil')
+    const root = veil ?? current!.el
+    const target = scrollTargetFor(root, active, sx, sy)
+    if (!target) return
+    document.documentElement.classList.add('nav-keys')
+    target.scrollLeft += sx * MENU_SCROLL_PX_PER_S * dt
+    target.scrollTop += sy * MENU_SCROLL_PX_PER_S * dt
+  }
+
   // ---- frame loop ----
   let last = performance.now()
   const frame = (now: number) => {
     const dt = Math.min(0.1, Math.max(0, (now - last) / 1000))
     last = now
     if (current && !current.ownsInput && now - navigating > 250) for (const a of pad.poll(now)) onPad(a)
+    if (current && !current.ownsInput) scrollMenu(dt)
     try {
       current?.frame?.(dt, now)
     } catch (err) {

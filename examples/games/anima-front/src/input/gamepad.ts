@@ -109,6 +109,18 @@ const BUTTON_MAP: [number, Button][] = [
 ]
 
 const BOARD_SCROLL_PX_PER_S = 700
+const MENU_SCROLL_DEAD_ZONE = 0.25
+
+/** The right stick as a menu scroll request (x, y in -1..1; y > 0 = down), or zeros. */
+export function menuScrollStick(): [number, number] {
+  const pad = firstPad()
+  if (!pad) return [0, 0]
+  const [x, y] = applyDeadZone(pad.axes[2] ?? 0, pad.axes[3] ?? 0, MENU_SCROLL_DEAD_ZONE)
+  return [x, y]
+}
+
+/** Pixels per second a full right-stick push scrolls a menu. */
+export const MENU_SCROLL_PX_PER_S = 900
 
 /** In-game gamepad: writes into the shared ControlState. */
 export class GamePad {
