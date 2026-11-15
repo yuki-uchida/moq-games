@@ -704,21 +704,22 @@ test.describe('camera next to the lighthouse', () => {
       return { id: l.id, p: l.p }
     })
     const lh = lighthouse.p
-    // walk to a spot close to the lighthouse (about 1.8 m east of its axis)
+    // walk at a spot inside the lighthouse's sandbag foot (1.8 m east of its axis): the solid foot stops the player at
+    // its edge (r 2.1 + the body)
     const spot = [lh[0] + 1.8, lh[1], lh[2] + 0.3]
+    const toward = (s: number[]) => {
+      const a = (window as unknown as { __anima: Hook }).__anima
+      const me = a.view().players.find((p) => p.id === a.match.me)!
+      a.match.aimAt([s[0], me.p[1] + 1, s[2]])
+      return Math.hypot(me.p[0] - s[0], me.p[2] - s[2])
+    }
     await page.keyboard.down('KeyW')
-    await expect
-      .poll(
-        async () =>
-          page.evaluate((s) => {
-            const a = (window as unknown as { __anima: Hook }).__anima
-            const me = a.view().players.find((p) => p.id === a.match.me)!
-            a.match.aimAt([s[0], me.p[1] + 1, s[2]])
-            return Math.hypot(me.p[0] - s[0], me.p[2] - s[2])
-          }, spot),
-        { timeout: 60_000, intervals: [100] }
-      )
-      .toBeLessThan(0.6)
+    await expect.poll(async () => page.evaluate(toward, spot), { timeout: 60_000, intervals: [100] }).toBeLessThan(1.6)
+    // keep pressing into it for a second
+    for (let i = 0; i < 10; i++) {
+      await page.evaluate(toward, spot)
+      await page.waitForTimeout(100)
+    }
     await page.keyboard.up('KeyW')
     const here = await page.evaluate(() => {
       const a = (window as unknown as { __anima: Hook }).__anima
@@ -726,6 +727,7 @@ test.describe('camera next to the lighthouse', () => {
     })
     const close = Math.hypot(here[0] - lh[0], here[2] - lh[2])
     expect(close, 'the player stands close to the lighthouse').toBeLessThan(3)
+    expect(close, 'the player cannot walk into the lighthouse foot').toBeGreaterThan(2.4)
     // the four directions and the eight between them
     const yaws: [string, number][] = [
       ['east', Math.PI / 2],

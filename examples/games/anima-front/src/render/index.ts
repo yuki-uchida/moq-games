@@ -7,6 +7,7 @@
 import * as THREE from 'three'
 import type { ModelKit, Quality } from '../models/api'
 import { FOES } from '../data/enemies'
+import { propSolids, type SolidCyl } from '../sim/prop-solids'
 import { hermitWallBox } from '../sim/wall-box'
 import type { ActorRef, MapDef, PropView, SimEvent, V3, View } from '../sim/types'
 import { Characters } from './actors/characters'
@@ -38,7 +39,10 @@ const BIG_PROPS: Partial<Record<PropView['kind'], [number, number]>> = {
 const NEAR_HIDE = 1
 const CENTRE_HIDE = 2.5
 
-/** Footprints of the solid props a shoulder camera must stay out of (the models' real size, not the cinematic margin). */
+/**
+ * Footprints of the solid props a shoulder camera must stay out of (the models' real size, not the cinematic margin):
+ * the 灯台 and the 巣核 are the sim's own movement colliders (src/sim/prop-solids.ts).
+ */
 function solidsOf(pr: PropView): CameraSolid[] {
   const cyl = (r: number, h: number): CameraSolid => ({
     id: pr.id,
@@ -51,12 +55,12 @@ function solidsOf(pr: PropView): CameraSolid[] {
   })
   switch (pr.kind) {
     case 'lighthouse':
-      // the shaft with its gallery, and the sandbag ring and plinth around its foot
-      return [cyl(1.5, 9), cyl(2.1, 0.8)]
+    case 'node':
+      return propSolids(pr, []).map(
+        (c: SolidCyl): CameraSolid => ({ id: pr.id, kind: 'cyl', x: c.x, z: c.z, r: c.r, y0: c.y0, y1: c.y1 })
+      )
     case 'cart':
       return [cyl(1.3, 2.5)]
-    case 'node':
-      return [cyl(1.6, 3.5)]
     case 'hermit': {
       const w = hermitWallBox(pr)
       return [{ id: pr.id, kind: 'box', min: w.min, max: w.max }]

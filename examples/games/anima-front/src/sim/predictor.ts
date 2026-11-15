@@ -1,13 +1,14 @@
 /**
  * Client-side movement prediction for one player (DESIGN §18): a guest runs the sim's own movement code
  * (readInput + movePlayer on the static map's Physics, fixed pads and frog gadgets) for its own body so walking,
- * jumping, dashing, gliding and pad launches respond at once. Everything else (paws, damage, hooks, lunges,
- * hermit walls) stays on the host; the session reconciles the predicted body against the host's snapshots.
+ * jumping, dashing, gliding and pad launches respond at once; the solid 灯台 / 巣核 of the latest snapshot block it
+ * as on the host. Everything else (paws, damage, hooks, lunges, hermit walls) stays on the host; the session reconciles the predicted body against the host's snapshots.
  */
 import { ITEMS } from '../data/items'
 import { DT } from './constants'
 import { Physics } from './physics'
 import { createPlayer, movePlayer, readInput } from './player'
+import { propSolids } from './prop-solids'
 import { addProp } from './props'
 import type { HandMode, Player, Prop, Sim } from './state'
 import type { MapDef, MoveState, PlayerConfig, PlayerInput, PlayerView, PropView, V3 } from './types'
@@ -30,7 +31,8 @@ export interface Predictor {
   reset(view: PlayerView): void
   /**
    * Copies what movement depends on but prediction does not simulate: anima (dash cost), alive/down, passives
-   * online, active paw modes (shield / zoom slow the walk) and the gadget pads of the latest snapshot.
+   * online, active paw modes (shield / zoom slow the walk), the gadget pads and the solid mission props (灯台, 巣核)
+   * of the latest snapshot.
    */
   sync(view: PlayerView, props?: readonly PropView[]): void
   /** Advances one fixed step (1/60 s) with this input. */
@@ -155,6 +157,9 @@ export function createPredictor(map: MapDef, player: PlayerConfig): Predictor {
           })
         }
         sim.props = [...fixed, ...gadgets]
+        const solids: Sim['phys']['solids'] = []
+        for (const r of props) propSolids(r, solids)
+        sim.phys.solids = solids
       }
     },
     step(input) {

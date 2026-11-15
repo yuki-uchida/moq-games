@@ -5,7 +5,7 @@
  */
 import { ITEMS } from '../../data/items'
 import { targetCenter, type Target } from '../actors'
-import { MAX_PITCH } from '../constants'
+import { MAX_PITCH, STEP_UP } from '../constants'
 import { navGrid } from '../grid'
 import { modsOf, weaponRate } from '../loadout'
 import { muzzleOf, pivotOf } from '../player'
@@ -450,6 +450,7 @@ function moveToward(sim: Sim, p: Player, b: Brain, goal: Vec | null, crawl: bool
   if (!p.grounded && p.launched) {
     target = goal
   }
+  target = besideSolids(sim, p, target)
   if (hdist(target, p.p) < 0.6) return [0, 0]
   const g = navGrid(sim)
   const moved = !b.pathGoal || hdist(b.pathGoal, target) > 3
@@ -464,7 +465,10 @@ function moveToward(sim: Sim, p: Player, b: Brain, goal: Vec | null, crawl: bool
   const dx = wp[0] - p.p[0]
   const dz = wp[1] - p.p[2]
   const l = Math.hypot(dx, dz)
-  const dir: [number, number] = l > 1e-3 ? [dx / l, dz / l] : [0, 0]
+  let dir: [number, number] = l > 1e-3 ? [dx / l, dz / l] : [0, 0]
+  // Round the 灯台 / a 巣核 when it stands between us and the waypoint (the nav grid holds static boxes only).
+  const around = l > 1e-3 ? sim.phys.steerAround(p.p[0], p.p[1], p.p[2], p.r, wp[0], wp[1]) : null
+  if (around) dir = around
   // Stuck: jump, then replan.
   if (sim.time - b.stuckAt > 0.7) {
     if (hdist(b.stuckP, p.p) < 0.35 && l > 0.8) {
@@ -476,6 +480,28 @@ function moveToward(sim: Sim, p: Player, b: Brain, goal: Vec | null, crawl: bool
   }
   if (crawl) setMove(p, dir)
   return dir
+}
+
+/**
+ * A goal inside a solid mission prop (the 灯台's centre, a wander point in its foot, a 巣核) moves to its surface on our
+ * side, so the bot arrives instead of pressing into it.
+ */
+function besideSolids(sim: Sim, p: Player, goal: Vec): Vec {
+  const solids = sim.phys.solids
+  // Parts that block a walker at our height; the prop's widest such part sets where we stand.
+  const blocks = (c: (typeof solids)[number]) => c.y1 > p.p[1] + STEP_UP && c.y0 < p.p[1] + p.h
+  for (const c of solids) {
+    if (!blocks(c) || Math.hypot(goal[0] - c.x, goal[2] - c.z) >= c.r + p.r + 0.4) continue
+    let reach = 0
+    for (const o of solids) if (o.tag === c.tag && blocks(o)) reach = Math.max(reach, o.r + p.r + 0.4)
+    let nx = p.p[0] - c.x
+    let nz = p.p[2] - c.z
+    const l = Math.hypot(nx, nz)
+    if (l < 1e-6) (nx = 1), (nz = 0)
+    else (nx /= l), (nz /= l)
+    return [c.x + nx * reach, goal[1], c.z + nz * reach]
+  }
+  return goal
 }
 
 /** Converts a world x/z direction into mx/mz relative to the input's yaw. */

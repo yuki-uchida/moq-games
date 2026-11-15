@@ -11,6 +11,7 @@ import { DECOY_RADIUS, DT, FOE_AGGRO } from '../constants'
 import { emit, FOE_SIDE, type Foe, type Player, type Prop, type Sim, type TargetRef } from '../state'
 import { r3v, type Vec } from '../vec'
 import { navGrid } from '../grid'
+import { solidReach } from '../prop-solids'
 import { flowDir, flowDist } from './flow'
 
 export interface TargetInfo {
@@ -44,7 +45,9 @@ export function resolve(sim: Sim, ref: TargetRef | null): TargetInfo | null {
     const r = sim.props.find((q) => q.id === ref.id)
     if (!r || r.gone) return null
     const h = r.data.h ?? 2
-    return { ref, pos: r.p, center: [r.p[0], r.p[1] + h * 0.5, r.p[2]], r: r.r ?? 1, player: null, prop: r }
+    // A solid prop's edge is its collider's (the 灯台's sandbag foot): reach is measured to where foes stop.
+    const tr = Math.max(r.r ?? 1, solidReach(r.kind))
+    return { ref, pos: r.p, center: [r.p[0], r.p[1] + h * 0.5, r.p[2]], r: tr, player: null, prop: r }
   }
   const g = sim.foes.find((q) => q.id === ref.id)
   if (!g || g.dead) return null
@@ -175,6 +178,12 @@ export function chase(sim: Sim, f: Foe, t: TargetInfo, speed: number) {
       dir = [-dir[0], -dir[1]]
       sp = speed * 0.5
     } else if (gap < 0.3) sp = 0
+  }
+  // Round a solid mission prop (灯台 / 巣核) in the way instead of pressing into it.
+  if (sp > 0) {
+    const ahead = Math.min(d, 6)
+    const around = sim.phys.steerAround(f.p[0], f.p[1], f.p[2], f.r, f.p[0] + dir[0] * ahead, f.p[2] + dir[1] * ahead)
+    if (around) dir = around
   }
   groundMove(sim, f, dir[0], dir[1], sp)
   if (Math.hypot(f.v[0], f.v[2]) > 0.3) faceTo(f, [f.p[0] + f.v[0], 0, f.p[2] + f.v[2]])
