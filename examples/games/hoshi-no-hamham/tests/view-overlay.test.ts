@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { VIEW_H, VIEW_W } from '../src/art/contract'
 import {
   forgetPopupPictures,
+  hasPopupPicture,
   KNOWN_POPUPS,
   Overlay,
   overlayPictures,
@@ -240,6 +241,12 @@ describe('the pictures of popup texts', () => {
     expect(view.drawn).toHaveLength(KNOWN_POPUPS.length)
     // Asked again, a picture is found, not made.
     expect(warmPopupPicture(KNOWN_POPUPS[0][0], KNOWN_POPUPS[0][1], 3)).toBe(true)
+    expect(canvases).toHaveLength(KNOWN_POPUPS.length)
+    // What is made can be asked without making anything: this text in this colour at this scale, and no other.
+    expect(hasPopupPicture(KNOWN_POPUPS[0][0], KNOWN_POPUPS[0][1], 3)).toBe(true)
+    expect(hasPopupPicture(KNOWN_POPUPS[0][0], KNOWN_POPUPS[0][1], 2)).toBe(false)
+    expect(hasPopupPicture(KNOWN_POPUPS[0][0], POPUP_COLORS.count, 3)).toBe(false)
+    expect(hasPopupPicture('9/9', POPUP_COLORS.count, 3)).toBe(false)
     expect(canvases).toHaveLength(KNOWN_POPUPS.length)
     overlayPictures.enabled = false
     try {
