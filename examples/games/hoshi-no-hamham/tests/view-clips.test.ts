@@ -53,6 +53,8 @@ import {
   flinchRoom,
   flinchFit,
   shotLead,
+  shotDue,
+  SHOT_CUE_SECONDS,
   summonFit,
   FLYER_SHOT_INTERVAL,
   STUN_SHOW_AFTER,
@@ -795,12 +797,15 @@ describe('boss clips', () => {
     }
   })
 
-  it('the final boss shows its shoot hit frame when the volley leaves and follows through', () => {
+  it('the king shows his release frame from the step the volley leaves (the step he recovers on), never before', () => {
     const spec = bossSpecOf('final')
     const shoot = spec.shoot
     const pick = (state: BossState, extra = {}) => bossClip(boss('final', state, extra), 'king', spec)
-    expect(frameOf(shoot, pick('shoot', { stateTime: FINAL_VOLLEY_AT }))).toBe(shoot.hit)
-    expect(frameOf(shoot, pick('shoot', { stateTime: FINAL_VOLLEY_AT - 0.01 }))).toBeLessThan(shoot.hit!)
+    // In `shoot` he only gathers, at any state time (sim.ts fires on the step it passes FINAL_VOLLEY_AT by a hair).
+    for (const t of [FINAL_VOLLEY_AT - 0.01, FINAL_VOLLEY_AT, FINAL_VOLLEY_AT + 1e-9, FINAL_VOLLEY_AT + 0.02])
+      expect(frameOf(shoot, pick('shoot', { stateTime: t })), String(t)).toBe(shoot.hit! - 1)
+    // The volley and the change to `recover` are one step: the release frame begins there.
+    expect(frameOf(shoot, pick('recover', { prevState: 'shoot', stateTime: 0 }))).toBe(shoot.hit)
     expect(frameOf(shoot, pick('shoot', { stateTime: 0 }))).toBe(0)
     // After the volley the follow-through plays on in `recover` until the clip has run out.
     const tail = specDuration(shoot) - hitTime(shoot)
@@ -847,9 +852,15 @@ describe('boss clips', () => {
       expect(frame((k * FINAL_VOLLEY_AT) / hit + 0.001), String(k)).toBe(k)
       expect(frame(((k + 1) * FINAL_VOLLEY_AT) / hit - 0.001), String(k)).toBe(k)
     }
-    // The release on the step the orbs leave, not before.
+    // The release only once the orbs have left (in `recover`): never in `shoot`.
     expect(frame(FINAL_VOLLEY_AT - 0.001)).toBe(hit - 1)
-    expect(frame(FINAL_VOLLEY_AT)).toBe(hit)
+    expect(frame(FINAL_VOLLEY_AT)).toBe(hit - 1)
+    // A gathering a staged moment interrupted begins again at its first frame and shares what is left evenly.
+    const after = (stateTime: number) =>
+      frameOf(shoot, bossClip(boss('final', 'shoot', { stateTime, clipFrom: 0.2 }), 'king', spec))
+    expect(after(0.2)).toBe(0)
+    expect(after(0.2 + 0.3 / hit + 0.001)).toBe(1)
+    expect(after(0.499)).toBe(hit - 1)
   })
 
   it('a clip timed from the state start that takes over inside the state is timed from there (clipFrom)', () => {
@@ -1366,5 +1377,66 @@ describe('a leaping boss that falls is not drawn crouching or slumped in the air
       )
       expect(standing.name, state).not.toBe('air')
     }
+  })
+})
+
+describe('shotDue', () => {
+  const due = (kind: BossKind, state: BossState, stateTime: number, shotTimer: number, extra = {}) =>
+    shotDue(boss(kind, state, { stateTime, shotTimer, projectiles: 1, ...extra }))
+  const steps = (s: number | null) => (s === null ? null : Math.round(s * 60))
+
+  it('the fox and the bee fire when their timer runs out, whatever they do', () => {
+    for (const state of ['idle', 'windup', 'charge', 'recover'] as const) {
+      expect(steps(due('swarm', state, 0.1, 0.19))).toBe(12)
+      expect(steps(due('swarm', state, 0.1, 1 / 60))).toBe(1)
+    }
+  })
+
+  it('the crow fires only from his hover: a timer that ran out in his recovery fires on his first hovering step', () => {
+    // In his hover, on the step the timer runs out.
+    expect(steps(due('flyer', 'idle', 0.1, 0.19))).toBe(12)
+    // Not before his hover ends: past it he winds up and dives (the next shot is beyond any light).
+    expect(due('flyer', 'idle', FLYER_IDLE_SECONDS - 0.05, 0.2)).toBeNull()
+    // In his recovery with the timer gone: the step he hovers again.
+    expect(steps(due('flyer', 'recover', FLYER_RECOVER_SECONDS - 0.105, -0.3))).toBe(7)
+    expect(due('flyer', 'windup', 0.1, -1)).toBeNull()
+    expect(due('flyer', 'dive', 0.1, -1)).toBeNull()
+  })
+
+  it('none while he sleeps, for the others, or for a boss that throws nothing', () => {
+    expect(due('swarm', 'idle', 0, 0.2, { active: false })).toBeNull()
+    expect(due('final', 'shoot', 0, 0.2)).toBeNull()
+    expect(due('tank', 'idle', 0, 0.2)).toBeNull()
+    expect(due('swarm', 'idle', 0, 0.2, { projectiles: 0 })).toBeNull()
+    expect(SHOT_CUE_SECONDS).toBe(0.45)
+  })
+})
+
+describe("a squirrel's throw begun again, and given up", () => {
+  const shoot = ENEMY_SPEC.spitter.shoot
+  const lead = hitTime(shoot)
+  const at = (extra: Partial<EnemySnapshot>) => {
+    const c = enemyClip(enemy('spitter', extra))
+    return { name: c.name, frame: frameOf(shoot, c) }
+  }
+
+  it('begun again with 0.05 s left: from its first frame, squeezed, its release still on the step of the spit', () => {
+    expect(at({ shootTimer: 0.05, throwFrom: 0.05 })).toEqual({ name: 'shoot', frame: 0 })
+    expect(at({ shootTimer: 0.001, throwFrom: 0.05 }).frame).toBe(shoot.hit! - 1)
+    // Its own lead-in, untouched.
+    expect(at({ shootTimer: lead }).frame).toBe(0)
+    // The release on the step of the spit.
+    expect(at({ shootTimer: SPIT_INTERVAL, throwFrom: 0.05 })).toEqual({ name: 'shoot', frame: shoot.hit })
+  })
+
+  it('begun again while it waits loaded: its frames up to the loaded pose over FIT_MIN, then the pulse', () => {
+    expect(at({ shootTimer: -0.5, throwAgainAge: 0 }).frame).toBe(0)
+    expect(at({ shootTimer: -0.5, throwAgainAge: FIT_MIN }).frame).toBeGreaterThanOrEqual(shoot.hit! - 2)
+  })
+
+  it('its acorn gone the other way: no follow-through, and a bite then shows its hurt where it fits', () => {
+    expect(at({ shootTimer: SPIT_INTERVAL - 0.05, throwCut: true }).name).toBe('idle')
+    expect(spitFollowing(SPIT_INTERVAL - 0.05, shoot, true)).toBe(false)
+    expect(spitThrowing(SPIT_INTERVAL - 0.05, shoot, true)).toBe(false)
   })
 })

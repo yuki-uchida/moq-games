@@ -8,16 +8,20 @@
  * - a pose drawn with planted feet does not travel along the ground, and a dash is drawn as one;
  * - a pose drawn in the air (a jump, a fall, a swim, a leap) is not shown on a body that stands on the ground;
  * - a ground cycle advances with the ground covered (`stride` in the contract);
- * - whatever travels faces where it goes, a shot leaves from its release frame towards the side its shooter
- *   faces, and nobody flickers between left and right;
- * - an action starts on its first frame, is not cut by the simulation's next state, and does not come back once
- *   something else has taken its place;
+ * - whatever travels faces where it goes, and nobody flickers between left and right;
+ * - a release waits for its shot, a shot that leaves from a pose leaves from its release frame the way it faces,
+ *   every shot of the crow, the fox and the bee is announced by its gathering light (which always ends in its shot),
+ *   and the king gathers before he fires;
+ * - an action starts on its first frame, is not cut by the simulation's next state (a lead-in only when its target
+ *   has gone to the other side), never turns round (on its release neither), and does not come back once something
+ *   else has taken its place; a boss's landing begins when he comes down;
  * - a knocked-out body lies on ground, and lies still;
  * - the picture of a body is where the body is (the view may hold a shaken body still; it never leaves a walking
  *   one behind, and never jumps), and no ground cycle plays on a body that stays where it is.
  *
  * The view is driven as the game drives it: display frame by display frame, with hit-stops, at 60 Hz and (for some
- * stages) at 120 and 30 Hz with positions interpolated between simulation steps.
+ * stages) at 120 and 30 Hz with positions interpolated between simulation steps. These runs have no director (the
+ * king's transformation is staged by hand); view-session-audit.test.ts plays the real session with its director.
  */
 import { describe, expect, it } from 'vitest'
 import { STAGES } from '../src/game/stages'

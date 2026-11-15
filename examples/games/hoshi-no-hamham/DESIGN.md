@@ -179,8 +179,13 @@ The view adds, on top of the frames:
   before the shot and 0.1 s after it before his next wind-up: the wind-up is played over the time before the shot and
   ends with the release on the step the shot leaves, then the follow-through, over its own length or the time left;
   a summon is the same gesture from the release, fitted the same way. The wind-up begins facing exactly where the
-  simulation aims (the hero's side) and is posed only with the hero clearly to one side (further over than one step
-  of the boss's own travel and 2 px: within that the aim flips as he overshoots); at the release he faces the way the shot really went. The crow's dive skims (`sweep`) once it has levelled out. The king is drawn from his raged sheet
+  simulation aims (the hero's side) and is begun only with its aim settled: the hero clearly to one side (further over
+  than one step of the boss's own travel and 2 px: within that the aim flips as he overshoots) and still on that side
+  when the shot leaves, going by how the two bodies move (the fox and the bee walk at him); not straight after a
+  turn. If the hero goes over to the other side before the release, the wind-up is given up on that frame and, where
+  there is still time and the hero is clearly on a side, begins again once from its first frame facing him; if he
+  crosses on the very step of the shot, no release frame is shown and no follow-through follows. A cast never turns
+  round. The crow's dive skims (`sweep`) once it has levelled out. The king is drawn from his raged sheet
   (`king:raged`) from the end of his transformation until he falls;
 - the hero's skid lasts as long as the braking (and 0.08 s more), his bite away from a stand (in the air, at a run)
   shows only the lunge and the chomp, and his fidget comes back every 8 s of standing;
@@ -204,18 +209,46 @@ The view adds, on top of the frames:
   wall). A drop on to ground so close that it would last no more than 5 steps is not drawn as a fall;
 - a summoned minion is drawn, with its summon's puff, once the simulation has settled where it is: one step after its
   birth when that step carried it no further than its own speed (born in the open), else one step after the step
-  that pushed it out of the solid it was born in (the raised gate, a rock), three steps at most. Every other enemy is drawn
+  that pushed it out of the solid it was born in (the raised gate, a rock), three steps at most; one the simulation
+  leaves overlapping a solid (standing on the floor in the gate's column, walking out of it) is first drawn on the
+  frame its box (but for a pixel at its edges) is out of it, or after 1 s at the latest (the slowest minion, the
+  squirrel, walks its own width in 0.88 s), and once drawn it is never hidden again. Every other enemy is drawn
   wherever the simulation has it, on every frame (a rat caught in the gate's column as it rises is drawn there until
   the next step puts it on top);
 - a loaded リス団員 waiting for the hero to come into range holds the end of its wind-up (cheeks full, leaning in)
   with a small pulse, so its shot never comes out of an idle pose; its release frame shows on the step the acorn
-  leaves (a timer that runs out a hair above zero throws a step later);
-- the king's gathering before his volley (the frames before the release) shares the time up to it evenly; a boss's
+  leaves (a timer that runs out a hair above zero throws a step later). When the hero goes over to its other side
+  before then, it begins its throw again from its first frame facing him, its frames before the release squeezed
+  into the time left (played over 0.1 s while it waits loaded); when he crosses on the very step of the spit it
+  shows no release: it stands, turned to the acorn's side, with no follow-through;
+- every thrown or cast shot of the crow, the fox and the bee is announced by a gathering light for the 0.45 s of
+  simulation time before it leaves (`gather` of the shot's own sheet, its frames by how far the gathering has come,
+  full on the last step before the shot), whatever his body does then (walk, wind-up, dash, recovery, flinch, cast):
+  in front of him, at the height the shot is born, between the edges of his body by where the hero is (on the edge
+  of the hero's side once he is 16 px over, sliding across the body while he passes over or under him), so the side
+  the shot leaves on is read from the picture. The view steps the simulation's own timers to know the shot's step
+  (`shotDue`): a light never promises a shot that does not come. A hit-stop or a staged moment holds the light with
+  the simulation; it shows under reduced motion too. A shot that leaves without a pose leaves from its light: his
+  body turns to it only where that is a clean turn (the hero clearly on that side, no dash, no action, no turn a
+  moment ago), else he keeps his facing. The king has no light: his body gathers;
+- the king only gathers in his `shoot`: the frames before the release share the time up to his volley evenly, and
+  never go back (when the phase change restarts his `shoot`, the gathering goes on from the frame it showed, its
+  frames left sharing the new time up to the volley); the release frame begins in his `recover`, on the step the
+  orbs leave. His volley is a fan to both sides: he keeps
+  the facing he began it with to the end of the follow-through. A boss's
   clip timed from his state's start (a recovery, a wind-up, a stun, a landing) that takes over from another clip
   inside the state (after a landing, a follow-through, a dash, a flinch, a fall) begins on its first frame; a bear,
   an ape or a king whose slam landing slides him off a ledge falls in his leap's `air` (and goes on with his
   recovery from its first frame where he comes down), and on the ground he never shows `air`: the frame he touches
-  down (the simulation still has him in his slam for that step) is the first frame of his landing;
+  down (the simulation still has him in his slam for that step) is the first frame of his landing. A landing and a
+  volley's follow-through run on their own clock from their own cause (the touchdown; the step the volley left): the
+  step on which the king's phase change restarts his state's clock is invisible, nothing is cut or begun again on
+  it (a landing held in his slam by it plays on there and into his recovery), and what is timed from his state's
+  start (a wind-up, a recovery) begins again from its first frame, as his body does; a dash, a leap or a walk goes
+  on with his body. Only a staged moment that had to stop waiting for him (see below) cuts what was showing: a
+  landing or a follow-through it cut does not come back (until he touches down or casts again), and what is timed
+  from his state's start begins again from its first frame after it, a gathering sharing what is left up to the
+  volley;
 - a shockwave rolls (`roll`) while there is ground within 4 px under its middle and flies (`fly`, the crest torn
   free of the ground) where there is none; the dust of a new wave is under its leading edge;
 - ground shadows under every actor that shrink with height.
@@ -225,7 +258,11 @@ poses last as long as their clip: the boss's roar shows its whole `intro` and st
 camera is back, and the phase-2 hold lasts as long as the king's transformation (`rage` and one pass of its
 burning tail; under reduced motion the clip itself). A boss in the air (put down above his ground, or in a leap) is
 not posed there: his roar or his transformation waits until he lands (1.5 s at most) while the fight runs on, and
-meanwhile he falls in his leap's `air` clip on his plain sheet. His entrance and his transformation also wait (in
+meanwhile he falls in his leap's `air` clip on his plain sheet. The transformation waits, in the same 1.5 s, for
+him to be between his actions: not in a leap (in the air or in his slam), no landing, no gathering or
+follow-through of a volley and no flinch showing. He lands with his whole landing and its shockwaves, or fires and
+follows through, and then roars (the longest of these, a leap from its first step to the end of its landing, takes
+1.1 s; a volley from its first step to the end of its follow-through 0.75 s). His entrance and his transformation also wait (in
 the same 1.5 s) for the hero to stand on the ground; then, while the moment holds the simulation, the hero finishes
 what he is doing (a bite under way plays its remaining frames on real time, at its own speed) and stands (`idle`,
 breathing) for the rest of it, instead of hanging in the frame he was in; a bite or a hurt the pose covers does
@@ -266,10 +303,12 @@ dash clip above one and a half times his cruising speed. Walkers that are going 
 has gone (more than 3 px over its last four steps, turning on a step that goes the new way; just set off from a
 stand, the way it set off), and one that would turn twice within 0.16 s, or that shuffled to and fro before it went
 back, is marking time and stands; the others face the hero's side as the simulation aims, turning only once he is
-12 px over and not again straight away (the 0.16 s run on the screen's time, hit-stops included); a dash faces the
-way it goes, a wind-up turns with the hero, and a boss faces his shot. An action keeps the facing it began with,
-from its first frame to its last: a flinch, a landing, a throw or a cast (a squirrel's throw begins facing where the
-simulation aims it; a shot that leaves the other way at the end of a boss's flinch ends the flinch). The hero's
+12 px over and not again straight away (the 0.16 s run on the screen's time, hit-stops included), in a wind-up as
+anywhere else, so nothing follows the sign of the hero's side frame by frame while he is on top of a boss; a dash
+faces the way it goes. An action keeps the facing it began with, from its first frame to its last, without
+exception: a flinch, a landing, a throw or a cast (a throw or a cast begins facing where the simulation aims it; one
+whose target crosses begins again from its first frame or is given up, never turned; a shot that leaves during a
+flinch leaves from the light and the flinch plays on). The hero's
 hurt faces the blow: he is thrown back, away from it. One action shows at a time: it starts
 from its first frame, and once another clip has taken its place it does not come back (a bite cut by a hurt, a
 landing cut by a bite, a flinch or a cast cut by the transformation); a squirrel bitten during its throw finishes
@@ -284,7 +323,9 @@ flash and the shot leaves without a pose.
 dust puffs, landing rings, chomp jaws, hit sparks, impact stars, leaves, wood chips, dirt clods, rock shards,
 water splashes and droplets, bubbles, honey, hearts, sparkles, smoke, shock rings, explosions, confetti, feathers.
 Screen effects: flash, letterbox bars, iris wipe, low-health vignette pulse. Popups (`+1`, `3/8`) use the
-outlined rounded font at `k×` resolution.
+outlined rounded font at `k×` resolution. Not every effect waits for an event: the gathering light that announces a
+boss's shot (§4) is drawn by the actors view before the shot, and the `boss-shoot` smoke and sparkles take over from
+it on the frame the shot leaves.
 
 ## 6. Sound
 
@@ -309,7 +350,7 @@ outlined rounded font at `k×` resolution.
 | stage start   | iris in on the hero, title card slides across, short "ready" beat with input locked (≤ 1.6 s)                       |
 | stage 1 start | ハム代 yells behind the hero, the hero jumps in fright, then the chase begins                                       |
 | boss wakes    | both standing: sim paused; letterbox; pan to boss; `intro` + roar, hero idle; name plate; gate slams; boss music    |
-| boss phase 2  | flash, shock ring, `rage` clip, music layer rises                                                                   |
+| boss phase 2  | both standing, he between actions: sim held; flash, shock ring, `rage`, hero idle, music layer rises; then afresh   |
 | boss defeated | hit-stop, slow motion, chain of explosions, `defeat` clip, music cut and sting, gate opens, cage breaks, goal arrow |
 | goal          | hero cheers, flag rises, confetti, clear jingle, iris out to the result tally (count-up, new record)                |
 | hurt / low HP | hit-stop, red vignette pulse; at 2 hearts or fewer the hearts pulse with a heartbeat tick                           |
@@ -318,7 +359,8 @@ outlined rounded font at `k×` resolution.
 | ending        | illustrated scenes; credits roll over the whole frame and end on 「ありがとう！」; then the final statistics        |
 
 Staging never changes the simulation: it only decides when the app steps the sim, with what input, and what is
-drawn. `prefers-reduced-motion` removes shake, flashes and parallax drift and shortens sequences.
+drawn. A moment that holds the simulation holds everything timed by it with it (a boss's gathering light, his
+state's clips); when the moment ends, what the boss shows next begins, it does not resume (§4). `prefers-reduced-motion` removes shake, flashes and parallax drift and shortens sequences.
 
 ## 8. Screens and phones
 
@@ -405,6 +447,28 @@ are a list scrolled by hand with a button that closes it.
   round in the air without having gone that way (or twice), bodies that lie on
   the ground, no flicker, and a picture that is where its body is. `tests/view-director.test.ts` holds the staged
   moments to the same rules (no pose in the air, none on a step the simulation runs).
+- `tests/view-session-audit.test.ts` (with `tests/play-audit.ts`): the same rules in the real session. Each stage is
+  played by the real `PlaySession` with its `StageDirector` (its pacing, hit-stops, staged moments and their poses,
+  input lock and slow motion), display frame by display frame: every stage with three seeds (every moment played,
+  every one skipped, every one skipped but the boss's fall), stages 2, 7, 9 and 10 on 48, 120 and 144 Hz displays,
+  the king's transformation forced in every state he has (with a hit and without, the hero on the ground and in the
+  air), shots of the crow, the fox, the bee and a squirrel against a hero who crosses to the other side 0 to 21
+  steps before them or stands on the aim line, the fox's and the bee's shots in all four of their states, and a
+  stage under reduced motion. Both audits read two clocks: the time a body stays in a pose its own motion decides
+  (on the spot, in the air, on the ground, facing away from its travel) is counted in view time, the time the clips
+  advance by (none in a hold, a fraction in slow motion); a flicker is counted in real time.
+  The rules about shots and moments: a release waits for its shot (the first frame at or past it is the frame the
+  shot leaves on, at any display rate, and never comes without one); a shot that leaves from a pose leaves from the
+  release frame, facing the way it flies; every shot of the crow, the fox and the bee is announced by its gathering
+  light over the shot's last 0.45 s of simulation time (it never fades, it is full on the frame before, on the
+  shot's side or over his body, and gone on the shot's frame), and a light always ends in its shot (unless he goes
+  down), never on a boss asleep or one that never throws; the king gathers his volley from its first frame up to his
+  release, again from the first frame after a staged moment, and fires from his release; an action never turns, on
+  its release neither (only a throw still on its first frame turns with its target), and a throw's lead-in is given
+  up only when its target has gone to the other side; a boss's landing begins on the frame he comes down; on the
+  first frame after a staged pose ends, an action or a clip timed from its state's start is on its first frame; a
+  squirrel's acorn leaves from its release facing its way, or, when the hero crosses on the very step, without the
+  pose and with no follow-through after it.
 - `tests/ui-story-motion.test.ts`: the story pictures. Over the opening, every stage's story, the ending and the
   credits: every figure whose clip has a stride is tracked by a camera that travels, dashes or patrols (nobody runs
   on the spot); sampled every 1/60 s, the ground that passes under such a figure equals what its clip advances by;

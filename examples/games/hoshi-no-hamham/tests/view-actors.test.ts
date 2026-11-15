@@ -61,7 +61,8 @@ import {
   AIR_SHORT_SECONDS,
   landsSoon,
   DIE_WATER_HOP_SPEED,
-  WATER_TOSS
+  WATER_TOSS,
+  BIRTH_SOLID_SECONDS
 } from '../src/view/actors'
 import {
   BOSS_DEFEAT_GROUND_FRAME,
@@ -78,12 +79,24 @@ import {
   clipLife,
   frameStart,
   heroClip,
+  hitTime,
+  SHOT_CUE_SECONDS,
+  SHOT_CUE_SLIDE,
   specDuration
 } from '../src/view/clips'
 import { frameAt, type Anim } from '../src/art/sheet'
 import { FACE_DEAD_ZONE, FACE_HOLD } from '../src/view/tread'
 import { TILE } from '../src/game/types'
 import { BITE_TIME, INVULN } from '../src/game/sim'
+
+/** A stand-in of the squirrel's `shoot` with its contract timing (no pixels). */
+const spitAnim = () =>
+  ({
+    frames: Array.from({ length: ENEMY_SPEC.spitter.shoot.frames }, () => ({})),
+    fps: ENEMY_SPEC.spitter.shoot.fps,
+    loop: false,
+    hold: ENEMY_SPEC.spitter.shoot.hold
+  }) as unknown as Anim
 
 describe('PositionTrail', () => {
   it('returns the position pushed `age` pushes ago and knows how far its history reaches', () => {
@@ -745,23 +758,54 @@ describe('hero-side facing (frog, crow, squirrel)', () => {
     expect(flip()).toBe(false)
   })
 
-  it('a squirrel faces its shot when it spits, and keeps that through the throw', () => {
+  it('a squirrel whose acorn leaves the other way from its throw stands, turned to it, with no release', () => {
     const { world, view, enemy, flip } = rig('spitter')
     world.player.x = 400
     frame(view)
     frame(view)
     expect(flip()).toBe(false)
+    // The hero crossed on the very step of the spit.
     world.player.x = 290
     enemy.shootTimer = 2.4
     view.handle({ type: 'spit', id: 2, x: 0, y: 0, dir: -1 } as never)
     frame(view)
     expect(flip()).toBe(true)
-    world.player.x = 500
+    // No release frame turned round, and no follow-through of the throw it gave up.
     for (let i = 0; i < 10; i++) {
       enemy.shootTimer -= 1 / 60
       frame(view)
-      expect(flip()).toBe(true)
+      expect(view.selectEnemy(enemy as never).name).not.toBe('shoot')
     }
+  })
+
+  it('a squirrel whose target crosses before the acorn leaves begins its throw again, facing it', () => {
+    const { world, view, enemy, flip } = rig('spitter')
+    const shoot = ENEMY_SPEC.spitter.shoot
+    world.player.x = 400
+    enemy.shootTimer = hitTime(shoot) + 0.02
+    const frames: { name: string; frame: number; left: boolean }[] = []
+    const step = () => {
+      enemy.shootTimer -= 1 / 60
+      if (enemy.shootTimer <= 0) {
+        enemy.shootTimer = 2.4
+        view.handle({ type: 'spit', id: 2, x: 0, y: 0, dir: world.player.x > enemy.x ? 1 : -1 } as never)
+      }
+      frame(view)
+      const c = view.selectEnemy(enemy as never)
+      frames.push({ name: c.name, frame: c.frame ?? frameAt(spitAnim(), c.t), left: flip() })
+    }
+    for (let i = 0; i < 12; i++) step()
+    expect(frames.at(-1)).toMatchObject({ name: 'shoot', left: false })
+    // The hero goes over to its left before the release.
+    world.player.x = 100
+    const before = frames.length
+    for (let i = 0; i < 40; i++) step()
+    const again = frames.slice(before)
+    // It begins again from its first frame, facing left, and releases facing left on the step of the spit.
+    expect(again[0]).toMatchObject({ name: 'shoot', frame: 0, left: true })
+    const release = again.findIndex((r) => r.frame === shoot.hit)
+    expect(release).toBeGreaterThan(0)
+    for (const r of again.filter((r) => r.name === 'shoot')) expect(r.left).toBe(true)
   })
 
   it('a squirrel bitten in its throw shows the white flash over the throw; outside it, the hurt', () => {
@@ -1489,7 +1533,8 @@ describe('the boss: a flinch or a cast starts only where it plays out', () => {
       b.shotTimer -= 1 / 60
       if (b.shotTimer <= 0) {
         b.shotTimer = 2.1
-        view.handle({ type: 'boss-shoot', x: 0, y: 0, count: 1 } as never)
+        // (The event's x is his centre, as sim.ts sends it.)
+        view.handle({ type: 'boss-shoot', x: b.x + b.w / 2, y: 0, count: 1 } as never)
       }
       onStep?.(i)
       view.update(1 / 60)
@@ -1584,15 +1629,22 @@ describe("the boss's facing", () => {
     view.update(1 / 60)
     expect(view.bossFlip(world.boss as never)).toBe(true)
     world.player.x = 305
-    // The event's x is his centre when the shot left (sim.ts aims from there, before he moves on).
+    // The event's x is his centre when the shot left (sim.ts aims from there, before he moves on): the hero clearly
+    // on the shot's side, no action, no dash, no turn a moment ago: a clean turn to the shot.
     view.handle({ type: 'boss-shoot', x: 340, y: 0, count: 1 } as never)
     view.update(1 / 60)
     expect(view.bossFlip(world.boss as never)).toBe(false)
-    // Over the hero the step's own move can carry him across: the shot went the way it was aimed from where he was.
+    // Straight after that turn he does not turn again (his light told the side).
+    world.player.x = 250
+    view.handle({ type: 'boss-shoot', x: 340, y: 0, count: 1 } as never)
+    view.update(1 / 60)
+    expect(view.bossFlip(world.boss as never)).toBe(false)
+    // Over the hero (within a step of his own travel) a shot never turns him.
+    for (let i = 0; i < 20; i++) view.tickReal(1 / 60)
     world.player.x = 302
     view.handle({ type: 'boss-shoot', x: 345, y: 0, count: 1 } as never)
     view.update(1 / 60)
-    expect(view.bossFlip(world.boss as never)).toBe(true)
+    expect(view.bossFlip(world.boss as never)).toBe(false)
   })
 
   it('kicks up dust while he skids out a dash on the ground (not under reduced motion)', () => {
@@ -1673,7 +1725,7 @@ describe(`a flinch and a cast are fitted to the time there is (at least FIT_MIN,
       if (b.shotTimer <= 1e-9) {
         b.shotTimer = 2.1
         shotAt = rows.length
-        view.handle({ type: 'boss-shoot', x: 0, y: 0, count: 1 } as never)
+        view.handle({ type: 'boss-shoot', x: b.x + b.w / 2, y: 0, count: 1 } as never)
       }
       view.update(STEP)
       const c = view.selectBoss(world.boss as never)
@@ -1787,10 +1839,11 @@ describe('C: an action keeps the facing it began with', () => {
   })
 
   it('a cast begins facing exactly where sim.ts aims, and is not posed with the hero on top of him', () => {
-    // The hero clearly on his right, though he faced left: the lead-in begins facing right.
+    // The hero clearly on his right, though he faced left: the lead-in begins facing right. (He stands in his
+    // recovery: walking at the hero he would cross him before the shot, and then it is not begun: see below.)
     const a = setup()
     a.world.player.x = 0
-    a.world.boss = fox({ shotTimer: 0.5 })
+    a.world.boss = fox({ shotTimer: 0.5, state: 'recover', stateTime: 0 })
     for (let i = 0; i < 12; i++) frame(a.view)
     expect(a.view.bossFlip(a.world.boss as never)).toBe(true)
     // Clear of his own step (175 px/s: 2.9 px) and the margin: posed, though within the facing's 12 px dead zone.
@@ -1803,13 +1856,19 @@ describe('C: an action keeps the facing it began with', () => {
     // Within a step of his own travel (where sim.ts's aim flips as he overshoots) the shot leaves without a pose.
     const b = setup()
     b.world.player.x = 300 + zone - 1
-    b.world.boss = fox({ shotTimer: 0.5 })
+    b.world.boss = fox({ shotTimer: 0.5, state: 'recover', stateTime: 0 })
     for (let i = 0; i < 12; i++) frame(b.view)
     const unposed = castRun(b.view, b.world, 30)
     expect(unposed.some((r) => r.name === 'shoot')).toBe(false)
+    // Walking at the hero 20 px ahead of him (175 px/s), he would be past him when the shot leaves: no pose.
+    const c = setup()
+    c.world.player.x = 320
+    c.world.boss = fox({ shotTimer: 0.5 })
+    for (let i = 0; i < 12; i++) frame(c.view)
+    expect(castRun(c.view, c.world, 30).some((r) => r.name === 'shoot')).toBe(false)
   })
 
-  it('a shot that leaves the other way on the last moments of a flinch ends the flinch (a flinch never turns)', () => {
+  it('a shot that leaves the other way during a flinch neither ends it nor turns it (his light told the side)', () => {
     const { world, view } = setup()
     world.player.x = 500
     world.boss = bossBody({ state: 'recover', x: 300, stateTime: 0, def: { kind: 'flyer', art: 'crowBoss' } })
@@ -1824,8 +1883,8 @@ describe('C: an action keeps the facing it began with', () => {
     world.player.x = before ? 600 : 0
     view.handle({ type: 'boss-shoot', x: 340, y: 0, count: 1 } as never)
     frame(view)
-    expect(view.selectBoss(world.boss as never).name).not.toBe('hurt')
-    expect(view.bossFlip(world.boss as never)).toBe(!before)
+    expect(view.selectBoss(world.boss as never).name).toBe('hurt')
+    expect(view.bossFlip(world.boss as never)).toBe(before)
   })
 
   it("a rat's hurt keeps its facing though it is thrown back the other way", () => {
@@ -2151,6 +2210,45 @@ describe('a summoned enemy shows once the simulation has settled where it is', (
     expect(spawned[0].y).toBeCloseTo(GROUND - 200 + 0.4 + 20)
   })
 
+  it('born standing on the floor overlapping a solid it walks out of: shown on the first frame it is out of it', () => {
+    // The raised gate's column is tile 5 (x 320–384); it is born with 16 px of its box inside it and walks left.
+    const { world, view, body, spawned, step, drawn } = summon(GROUND - 40)
+    const solid = world as unknown as { solidAt: (tx: number, ty: number) => boolean }
+    solid.solidAt = (tx, ty) => ty >= 5 || tx === 5
+    body.x = 320 - 44 + 16
+    body.onGround = true
+    body.vx = -100
+    frame(view)
+    const shown: boolean[] = []
+    for (let n = 0; n < 14; n++) {
+      body.x -= 100 / 60
+      step()
+      shown.push(drawn())
+      // Never drawn while its box (but for a pixel at its edges) overlaps the solid.
+      if (body.x + body.w - 2 >= 320) expect(shown.at(-1), `step ${n}`).toBe(false)
+    }
+    expect(shown.at(-1)).toBe(true)
+    // Once shown it stays shown, with its puff where it shows.
+    expect(shown.slice(shown.indexOf(true)).every(Boolean)).toBe(true)
+    expect(spawned.filter((p) => p.name === 'puff')).toHaveLength(1)
+  })
+
+  it(`one that never comes out of the solid is shown after BIRTH_SOLID_SECONDS (${BIRTH_SOLID_SECONDS} s) all the same`, () => {
+    const { world, view, body, step, drawn } = summon(GROUND - 40)
+    const solid = world as unknown as { solidAt: (tx: number, ty: number) => boolean }
+    solid.solidAt = (tx, ty) => ty >= 5 || tx === 5
+    body.x = 320 - 44 + 16
+    body.onGround = true
+    frame(view)
+    let n = 0
+    while (!drawn() && n < 120) {
+      step()
+      n++
+    }
+    expect(n * STEP).toBeGreaterThan(BIRTH_SOLID_SECONDS - 2 * STEP)
+    expect(n * STEP).toBeLessThan(BIRTH_SOLID_SECONDS + 2 * STEP)
+  })
+
   it('on a 30 Hz display (two steps a frame) the same, and an enemy there from the start is shown at once', () => {
     const { view, body, step, drawn } = summon(GROUND + 64 - 40)
     frame(view)
@@ -2214,4 +2312,153 @@ describe('round 5d: a staged pose that faced the other way, and a drop too short
     expect(landsSoon(rig.world as never, { ...rat, y: rat.y - 60 }, 30)).toBe(false)
     expect(AIR_SHORT_SECONDS).toBeLessThanOrEqual(6 / 60)
   })
+})
+
+describe('the gathering light before a shot of the crow, the fox and the bee', () => {
+  const fox = (extra = {}) =>
+    bossBody({
+      x: 300,
+      state: 'recover',
+      stateTime: 0,
+      shotTimer: 1,
+      def: { kind: 'swarm', art: 'foxBoss', speed: 175, projectiles: 1 },
+      ...extra
+    }) as ReturnType<typeof bossBody> & { shotTimer: number; stateTime: number }
+
+  it('shows for SHOT_CUE_SECONDS before the shot, growing to full on its last step, and is gone with the shot', () => {
+    const { world, view } = setup()
+    world.player.x = 600
+    const b = fox()
+    world.boss = b
+    const seen: (number | null)[] = []
+    for (let i = 0; i < 70; i++) {
+      b.stateTime += 1 / 60
+      b.shotTimer -= 1 / 60
+      if (b.shotTimer <= 0) {
+        b.shotTimer = 2.1
+        view.handle({ type: 'boss-shoot', x: b.x + b.w / 2, y: 0, count: 1 } as never)
+        seen.push(-1)
+      }
+      frame(view)
+      seen.push(view.shotCue(b as never)?.progress ?? null)
+    }
+    const shot = seen.indexOf(-1)
+    expect(shot).toBeGreaterThan(30)
+    // The 27 steps before it lit, never going back, full on the last one; dark before them and after the shot.
+    const lit = seen.slice(shot - 27, shot) as number[]
+    expect(lit.every((p) => p !== null)).toBe(true)
+    for (let i = 1; i < lit.length; i++) expect(lit[i]).toBeGreaterThanOrEqual(lit[i - 1])
+    expect(lit.at(-1)).toBe(1)
+    expect(seen[shot - 28]).toBeNull()
+    expect(seen[shot + 1]).toBeNull()
+    expect(SHOT_CUE_SECONDS).toBe(0.45)
+  })
+
+  it('sits on the edge of his body on the hero side, and slides across it while the hero passes over him', () => {
+    const { world, view } = setup()
+    const b = fox({ shotTimer: 0.2 })
+    world.boss = b
+    frame(view)
+    const at = (heroX: number) => {
+      world.player.x = heroX
+      return view.shotCue(b as never)!
+    }
+    expect(at(600)).toMatchObject({ side: 1, x: 340 + 40, sheet: 'prop:orb' })
+    expect(at(0)).toMatchObject({ side: -1, x: 340 - 40 })
+    // Over him: in between, continuously.
+    expect(at(300 + SHOT_CUE_SLIDE / 2).side).toBeCloseTo(0.5)
+    expect(at(300).side).toBe(0)
+    // At the height the shot is born (sim.ts: 0.4 of his height down, its 14 px box's middle).
+    expect(at(600).y).toBeCloseTo(200 + 80 * 0.4 + 7)
+  })
+
+  it('none for the king, before the fight, after it, or for a boss that throws nothing', () => {
+    const { world, view } = setup()
+    world.boss = bossBody({ shotTimer: 0.2, def: { kind: 'final', art: 'king', speed: 120, projectiles: 3 } })
+    frame(view)
+    expect(view.shotCue(world.boss as never)).toBeNull()
+    for (const extra of [{ active: false }, { dead: true }]) {
+      const b = fox({ shotTimer: 0.2, ...extra })
+      world.boss = b
+      expect(view.shotCue(b as never)).toBeNull()
+    }
+    world.boss = bossBody({ shotTimer: 0.2 })
+    expect(view.shotCue(world.boss as never)).toBeNull()
+  })
+
+  it('is drawn in front of him from the gather clip of the shot sheet, by progress, mirrored on his left', () => {
+    const { world, view } = setup()
+    const b = fox({ shotTimer: 0.2 })
+    world.boss = b
+    world.player.x = 0
+    frame(view)
+    blits.length = 0
+    view.drawBoss({} as CanvasRenderingContext2D)
+    // (The mock's clips have no frames: nothing is drawn and nothing throws.)
+    expect(blits.filter((x) => x.anim === 'prop:orb#gather')).toEqual([])
+  })
+})
+
+describe('a release frame shows from the step its shot leaves, never before, at 60 and 120 Hz', () => {
+  const STEP = 1 / 60
+  for (const hz of [60, 120])
+    it(`the fox's cast and the squirrel's throw at ${hz} Hz`, () => {
+      const per = hz / 60
+      // The fox, standing in his recovery, the hero clearly on his right.
+      const fox = setup()
+      fox.world.player.x = 600
+      const b = bossBody({
+        x: 300,
+        state: 'recover',
+        stateTime: 0,
+        shotTimer: 0.5,
+        def: { kind: 'swarm', art: 'foxBoss', speed: 175, projectiles: 1 }
+      }) as ReturnType<typeof bossBody> & { shotTimer: number; stateTime: number }
+      fox.world.boss = b
+      const rows: { frame: number; shot: boolean }[] = []
+      for (let step = 0; step < 50; step++) {
+        b.stateTime += STEP
+        b.shotTimer -= STEP
+        let shot = false
+        if (b.shotTimer <= 0) {
+          b.shotTimer = 2.1
+          shot = true
+          fox.view.handle({ type: 'boss-shoot', x: b.x + b.w / 2, y: 0, count: 1 } as never)
+        }
+        for (let k = 0; k < per; k++) {
+          fox.view.update(STEP / per)
+          const c = fox.view.selectBoss(b as never)
+          rows.push({ frame: c.name === 'shoot' ? frameAt(shootAnim(), c.t) : -1, shot: shot && k === 0 })
+        }
+      }
+      const release = rows.findIndex((r) => r.frame === 3)
+      expect(release).toBeGreaterThan(0)
+      expect(rows[release].shot).toBe(true)
+      // The squirrel.
+      const sq = setup()
+      const enemy = { id: 2, kind: 'spitter', x: 300, y: 0, w: 44, h: 40, vx: 0, vy: 0, facing: 1, onGround: true }
+      const timer = { shootTimer: 0.4 }
+      ;(sq.world as unknown as { enemies: unknown[] }).enemies = [{ ...enemy, ...timer }]
+      const e = (sq.world as unknown as { enemies: { shootTimer: number }[] }).enemies[0]
+      sq.world.player.x = 600
+      const spits: { frame: number; spit: boolean }[] = []
+      for (let step = 0; step < 40; step++) {
+        e.shootTimer -= STEP
+        let spit = false
+        // A timer that runs out to a hair above zero throws a step later.
+        if (e.shootTimer <= 1e-9) {
+          e.shootTimer = 2.4
+          spit = true
+          sq.view.handle({ type: 'spit', id: 2, x: 0, y: 0, dir: 1 } as never)
+        }
+        for (let k = 0; k < per; k++) {
+          sq.view.update(STEP / per)
+          const c = sq.view.selectEnemy(e as never)
+          spits.push({ frame: c.name === 'shoot' ? (c.frame ?? frameAt(spitAnim(), c.t)) : -1, spit: spit && k === 0 })
+        }
+      }
+      const thrown = spits.findIndex((r) => r.frame === ENEMY_SPEC.spitter.shoot.hit)
+      expect(thrown).toBeGreaterThan(0)
+      expect(spits[thrown].spit).toBe(true)
+    })
 })

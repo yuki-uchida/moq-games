@@ -5,7 +5,8 @@
  *
  * Two regimes. A body marks time once it has reached no new ground for `STAND_AFTER` (a rat stopped by a wall; a step
  * back of less than `TURN_PX` is not new ground the other way), or once it keeps turning: two turns within
- * `TURNING_SECONDS` inside `MARK_SPAN_PX` (shaken on the spot, pacing to and fro on a ledge). A body that turns once
+ * `TURNING_SECONDS` inside `MARK_SPAN_PX` (shaken on the spot, pacing to and fro on a ledge; the span is read between the
+ * furthest points its walks reached, so that it is the same at any display rate). A body that turns once
  * and walks on is walking all the time. Marking time, it is shown standing and faces the hero's side when it should;
  * it sets off again when it leaves the span it kept to by more than `TURN_PX`. Otherwise it is going somewhere, and
  * faces the way its walk has gone over the last `NET_SECONDS` (once more than `NET_TURN_PX`); a body that would turn
@@ -67,6 +68,12 @@ export interface Tread {
   turnedAt: number
   shuffled: boolean
   turnedBefore: number
+  /**
+   * The furthest points of the walks its last two turns ended (NaN: none): the span it turns within is read from
+   * them, not from where the turns were seen (a few px after each end, by how the display frames fall on the steps).
+   */
+  turnPeak: number
+  turnPeakBefore: number
   /** It stands, within the span `lo`–`hi` (it sets off when it leaves it); its picture is held at `at`. */
   standing: boolean
   /** The way it set off from its last stand, until its walk since is long enough to tell (0 otherwise). */
@@ -102,6 +109,8 @@ export const newTread = (facing: 1 | -1 = 1): Tread => ({
   path: 0,
   shuffled: false,
   turnedBefore: -Infinity,
+  turnPeak: NaN,
+  turnPeakBefore: NaN,
   standing: false,
   leaving: 0,
   standSince: 0,
@@ -243,6 +252,8 @@ export function stepTread(t: Tread, x: number, dt: number, onGround = true) {
   } else if (t.facing * (t.peak - x) >= TURN_PX) {
     t.shuffled = t.path - t.facing * (t.peak - x) >= SHUFFLE_PX - 1e-6
     t.facing = t.facing > 0 ? -1 : 1
+    t.turnPeakBefore = t.turnPeak
+    t.turnPeak = t.peak
     t.far = x
     t.peak = x
     t.path = 0
@@ -280,8 +291,11 @@ export function stepTread(t: Tread, x: number, dt: number, onGround = true) {
   if (t.stalled >= STAND_AFTER) stand(t, t.stalled, t.stalled)
   else if (t.clock - t.turnedBefore <= TURNING_SECONDS + 1e-6) {
     // Turning on the spot: twice lately, inside a small span.
+    // (Between the furthest points its walks reached: the same span at any display rate.)
     spanOver(t, t.clock - t.turnedBefore, span)
-    if (span.hi - span.lo <= MARK_SPAN_PX) {
+    const lo = Math.min(span.lo, t.turnPeak, t.turnPeakBefore)
+    const hi = Math.max(span.hi, t.turnPeak, t.turnPeakBefore)
+    if (hi - lo <= MARK_SPAN_PX) {
       // Within where it went to and fro: the whole of it when that is small (the turn is seen a few px after the
       // end it turned at), else what lies between the turns.
       spanOver(t, TURNING_SECONDS, span)

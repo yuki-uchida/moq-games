@@ -162,6 +162,77 @@ describe('the shockwave and the stinger', () => {
     }
   })
 
+  // `gather`: the warning light that forms in front of a boss before his shot leaves, beside the shot's own clip
+  for (const [id, shot] of [
+    ['prop:orb', 'pulse'],
+    ['prop:stinger', 'fly'],
+    ['prop:feather', 'spin']
+  ] as const)
+    test(`${id} gather: a ring of light closes on the forming shot and flashes at the end`, () => {
+      const frames = sheet(id).gather.frames
+      expect(frames.length).toBe(6)
+      const isWhite = (c: number) => {
+        if (!c) return false
+        const [r, g, bl] = rgbOf(c)
+        return Math.min(r, g, bl) >= 230
+      }
+      /** Painted pixels within 6 px of the centre (the forming shot), near-white pixels, farthest painted pixel. */
+      const measure = (f: Raster) => {
+        let centre = 0
+        let white = 0
+        let far = 0
+        for (let y = 0; y < f.h; y++)
+          for (let x = 0; x < f.w; x++) {
+            const c = f.get(x, y)
+            if (!c) continue
+            const d = Math.hypot(x + 0.5 - 16, y + 0.5 - 16)
+            if (d <= 6) centre++
+            if (isWhite(c)) white++
+            far = Math.max(far, d)
+          }
+        return { centre, white, far }
+      }
+      const m = frames.map(measure)
+      const log = JSON.stringify(m.map((q) => [q.centre, q.white, Math.round(q.far * 10) / 10]))
+      for (const [i, f] of frames.entries()) {
+        expect([f.w, f.h], `frame ${i} size`).toEqual([32, 32])
+        // one pixel of margin
+        const b = f.bounds()!
+        expect(b.x, `frame ${i} left`).toBeGreaterThanOrEqual(1)
+        expect(b.y, `frame ${i} top`).toBeGreaterThanOrEqual(1)
+        expect(b.x + b.w, `frame ${i} right`).toBeLessThanOrEqual(31)
+        expect(b.y + b.h, `frame ${i} bottom`).toBeLessThanOrEqual(31)
+        // a light in every frame
+        expect(m[i].white, `frame ${i} near-white pixels ${log}`).toBeGreaterThanOrEqual(1)
+        if (i === 0) continue
+        // each frame clearly differs from the one before
+        const prev = frames[i - 1]
+        let differ = 0
+        for (let k = 0; k < f.data.length; k++) if (f.data[k] !== prev.data[k]) differ++
+        expect(differ, `frame ${i} vs ${i - 1}`).toBeGreaterThanOrEqual(30)
+        // the shot at the centre grows, and the ring never moves outwards
+        expect(m[i].centre, `frame ${i} shot at the centre ${log}`).toBeGreaterThanOrEqual(m[i - 1].centre)
+        expect(m[i].far, `frame ${i} farthest pixel ${log}`).toBeLessThanOrEqual(m[i - 1].far)
+      }
+      // loud from the first frame: a few dozen pixels and a light
+      expect(frames[0].count(), 'frame 0 painted area').toBeGreaterThanOrEqual(36)
+      // the ring has closed in by the end, and the shot has grown well beyond the first core
+      expect(m[5].far, `ring closed ${log}`).toBeLessThanOrEqual(m[0].far - 2)
+      expect(m[5].centre, `shot grown ${log}`).toBeGreaterThanOrEqual(m[0].centre * 2)
+      // frame 5 flashes: the most near-white pixels of all
+      for (let i = 0; i < 5; i++) expect(m[5].white, `frame 5 vs ${i} light ${log}`).toBeGreaterThan(m[i].white)
+      // the sign is centred on the cell
+      const b = frames[5].bounds()!
+      expect(Math.abs(b.x + b.w / 2 - 16), 'frame 5 centred across').toBeLessThanOrEqual(2)
+      expect(Math.abs(b.y + b.h / 2 - 16), 'frame 5 centred down').toBeLessThanOrEqual(2)
+      // and it is the same object as the shot: most of the shot's colours are in it
+      const own = new Set<number>()
+      for (const f of sheet(id)[shot].frames) for (const c of f.colors()) own.add(c)
+      const ready = frames[5].colors()
+      const shared = [...own].filter((c) => ready.has(c)).length
+      expect(shared / own.size, `${id} frame 5 shares the colours of ${shot}`).toBeGreaterThanOrEqual(0.6)
+    })
+
   test('the stinger ends in a single dark tip', () => {
     for (const [i, f] of sheet('prop:stinger').fly.frames.entries()) {
       const b = f.bounds()!
