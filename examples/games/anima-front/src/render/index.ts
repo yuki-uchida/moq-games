@@ -564,6 +564,11 @@ class Renderer implements GameRenderer {
     return [p.x, p.y, p.z]
   }
 
+  cameraPivot(): V3 {
+    const p = this.rig.aimPoint
+    return [p.x, p.y, p.z]
+  }
+
   stats(): RendererStats {
     return { ...this.lastStats }
   }

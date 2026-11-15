@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test'
+import { getMap } from '../examples/games/anima-front/src/sim/api'
 
 /** Collects console errors and page errors (dev-server dependency re-optimisation noise excluded). */
 function watchErrors(page: Page): string[] {
@@ -801,6 +802,85 @@ test.describe('camera next to the lighthouse', () => {
         `crosshair ray ${name}: tower ${entry.toFixed(2)} m ahead and not hidden`
       ).toBe(true)
     }
+  })
+})
+
+test.describe('camera in the harbor container yard', () => {
+  test('港湾: running and aiming at flyers through the container yard, the shoulder pivot and the camera stay out of every container (both shoulders)', async ({
+    page
+  }) => {
+    const boxes = getMap('harbor').boxes.filter((b) => b.solid !== false && b.kind !== 'barrier')
+    const inside = (q: number[]) =>
+      boxes.find(
+        (b) =>
+          q[0] > b.min[0] && q[0] < b.max[0] && q[1] > b.min[1] && q[1] < b.max[1] && q[2] > b.min[2] && q[2] < b.max[2]
+      )
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'anima-front-v1:progress',
+        JSON.stringify({ cleared: ['sakura', 'harbor', 'nightraid', 'blight', 'maw'], best: {} })
+      )
+      localStorage.setItem('anima-front-v1:guide', JSON.stringify({ seen: true }))
+    })
+    await openTitle(page)
+    await page.click('[data-menu="sortie"]')
+    await page.click('[data-mode="pve"]')
+    await page.click('[data-mission="harbor"]')
+    await page.click('[data-go]')
+    await page.click('[data-room="solo"]')
+    await page.click('.lobby-go')
+    await page.click('.brief-go')
+    await expect.poll(() => phaseOf(page), { timeout: 90_000 }).toBe('play')
+    type Hook = {
+      match: {
+        me: string
+        view(): {
+          players: { id: string; p: number[] }[]
+          foes: { p: number[]; state: string }[]
+        }
+        aimAt(p: number[]): void
+        hold(b: 'R', on: boolean): void
+        cameraPos(): number[] | null
+        cameraPivot(): number[] | null
+      }
+    }
+    // The review's route (scripts .build/review/harbor-camera.mjs): run forward, jump, dash, and keep aiming at the
+    // nearest foe (the flyers over the yard) while firing; the second half on the left shoulder.
+    await page.mouse.click(640, 360)
+    await page.keyboard.down('KeyW')
+    await page.keyboard.press('Space')
+    await page.keyboard.press('Shift')
+    const bad: string[] = []
+    for (let i = 0; i < 28; i++) {
+      if (i === 14) await page.keyboard.press('KeyV')
+      const rec = await page.evaluate(() => {
+        const m = (window as unknown as { __anima: Hook }).__anima.match
+        const v = m.view()
+        const me = v.players.find((p) => p.id === m.me)!
+        const f = v.foes
+          .filter((x) => x.state !== 'spawn' && x.state !== 'dying')
+          .sort(
+            (a, b) => Math.hypot(a.p[0] - me.p[0], a.p[2] - me.p[2]) - Math.hypot(b.p[0] - me.p[0], b.p[2] - me.p[2])
+          )[0]
+        if (f) {
+          m.aimAt([f.p[0], f.p[1] + 0.6, f.p[2]])
+          m.hold('R', true)
+        }
+        return { p: me.p, camera: m.cameraPos(), pivot: m.cameraPivot() }
+      })
+      if (i === 3 || i === 17)
+        await page.screenshot({ path: test.info().outputPath(`harbor-yard-${i < 14 ? 'right' : 'left'}.png`) })
+      for (const [name, q] of [
+        ['camera', rec.camera],
+        ['pivot', rec.pivot]
+      ] as const) {
+        const b = q && inside(q)
+        if (b) bad.push(`${i}: ${name} ${q!.map((x) => x.toFixed(2))} inside ${b.kind} ${b.min} – ${b.max}`)
+      }
+      await page.waitForTimeout(500)
+    }
+    await page.keyboard.up('KeyW')
+    expect(bad).toEqual([])
   })
 })
 

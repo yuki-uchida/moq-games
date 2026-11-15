@@ -365,6 +365,8 @@ export function bossHitModifier(sim: Sim, f: Foe, d: DamageInfo): { mult: number
             f.mem.kneelHp = f.hp
           }
         }
+        // A direct hit is the leg's alone; an area effect (blast, melee sweep) also reaches the armoured hull.
+        if (d.area) return { mult: capTo(f, d, GOUTETSU_ARMOR, floor), weak: false }
         return { mult: 1, weak: false, absorbed: true }
       }
     }
