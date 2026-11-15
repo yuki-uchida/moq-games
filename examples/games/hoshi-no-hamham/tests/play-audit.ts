@@ -6,17 +6,25 @@
  * where) next to what its body does (where it is, how fast it moves, whether it is on the ground). The checks at the
  * bottom read those rows. They are about a picture and a motion that contradict each other, which no clip shows on
  * its own: a standing pose that slides, a dash that faces away from where it goes, an action that is cut and comes
- * back, a body that lies in the air, a picture that is not where its body is.
+ * back, a body that lies in the air, a picture that is not where its body is, a shot that leaves before its throw
+ * or without the light that announces it.
+ *
+ * Two kinds of run feed the rows. The hand-made scenarios (`playthrough`, `hitSweep`, ...) step a `World` and an
+ * `ActorsView` of their own, without a director, and sweep hits and crossings in ways no player does. The session
+ * scenarios (`sessionPlay` and the scripts built on it) play the real `PlaySession` with its `StageDirector`: its
+ * pacing, its hit-stops, its staged moments, its slow motion and its poses, display frame by display frame.
  */
 import { ENEMY_SPEC, allSheetSpecs, type AnimSpec, type EnemyArt } from '../src/art/contract'
 import { anchorOf, frameAt, type Anim } from '../src/art/sheet'
 import { Interpolator } from '../src/app/interpolate'
+import { PlaySession } from '../src/app/play'
 import type { SimEvent } from '../src/game/events'
-import { TILE, World, emptyInput, type InputState, type Prop, type Shot } from '../src/game/sim'
+import { TILE, World, emptyInput, type Boss, type Enemy, type InputState, type Prop, type Shot } from '../src/game/sim'
 import { clip } from '../src/view/bake'
 import { newPlaced, paintedAt } from '../src/view/bounds'
 import { STAGES } from '../src/game/stages'
 import { AIR_SHORT_SECONDS, ActorsView, aloft, groundBelow } from '../src/view/actors'
+import * as viewClips from '../src/view/clips'
 import {
   BOSS_DEFEAT_GROUND_FRAME,
   ENEMY_DEFEAT_GROUND_FRAME,
@@ -25,14 +33,31 @@ import {
   clipLife,
   type ClipChoice
 } from '../src/view/clips'
+import type { StageDirector } from '../src/view/director'
 import { playFx, type FxApi } from '../src/view/fx-map'
 import type { FxPool } from '../src/view/fx'
 import { PropsView, shotClip, shotSkin, type Shooter } from '../src/view/props'
+import { SILENT_AUDIO } from '../src/view/sound-map'
 import { RAGE_POSE_MARGIN } from '../src/view/staging'
 import { botInput, type BotMemory } from './bot'
 
 export const STEP = 1 / 60
 const SPECS = allSheetSpecs()
+
+/**
+ * How long (s of simulation time) the light of a boss's coming shot gathers before the shot (the view's own
+ * constant; a tree without it, as the pre-round-6 copy, is audited with the length the view was given).
+ */
+export const SHOT_CUE_SECONDS = (viewClips as unknown as { SHOT_CUE_SECONDS?: number }).SHOT_CUE_SECONDS ?? 0.45
+
+/** The gathering light of a boss's next shot as the view draws it on one frame (`ActorsView.shotCue`). */
+export interface CueRow {
+  sheet: string
+  /** 0 when it begins, 1 when it is full. */
+  progress: number
+  /** Where it is, across his body: -1 his left edge, 1 his right edge. */
+  side: number
+}
 
 /** A stand-in Anim with a contract clip's timing and no pixels (the view's frame for a clip time). */
 const standIn = (spec: AnimSpec): Anim =>
@@ -61,6 +86,25 @@ export interface Row {
   t: number
   dt: number
   held: boolean
+  /**
+   * View time: the seconds this frame advanced the clips by (`viewDt`: 0 when the simulation is held, `dt` times
+   * the director's time scale in slow motion) and their sum over the run so far (`vt`). How long a body stays in a
+   * pose its own motion decides is measured on this clock; what the eye sees as a flicker, on `t`.
+   */
+  viewDt: number
+  vt: number
+  /** Simulation steps this frame showed (0 in a hit-stop or a held moment, 2 on some frames at 48 Hz). */
+  steps: number
+  /** Simulation steps run up to and including the ones this frame showed. */
+  sim: number
+  /** The director's staged moment (`director.current`), or null (and always null without a director). */
+  moment: string | null
+  /** The hero and the boss: the staged pose shown on him (`ActorsView.posing`), or null. */
+  posed: string | null
+  /** Bosses: the gathering light of his next shot as the view draws it, or null. */
+  cue: CueRow | null
+  /** On a frame a shot leaves (a boss's `boss-shoot`, a squirrel's `spit`): the side it flies to; else 0. */
+  shot: 1 | -1 | 0
   sheet: string
   clip: string
   frame: number
@@ -114,7 +158,22 @@ export interface Track {
   art: string
   /** The boss's cruising speed (px/s); 0 for the others. */
   speed: number
+  /** Bosses: his kind (`def.kind`); '' for the others. */
+  bossKind: string
   rows: Row[]
+}
+
+/** The bosses whose shots are thrown and announced by a light: the crow, the fox, the bee (the king gathers his). */
+const THROWN_ART: readonly string[] = ['crowBoss', 'foxBoss', 'beeBoss']
+
+/** What the driver of a session tells the recorder about one display frame. */
+export interface FrameInfo {
+  /** Simulation steps the frame ran. */
+  steps: number
+  /** The view time the frame advanced the clips by. */
+  viewDt: number
+  /** The director's staged moment, or null. */
+  moment: string | null
 }
 
 const HERO_EVENTS = new Set(['bite', 'hurt', 'dead', 'land', 'jump', 'clear'])
@@ -143,13 +202,15 @@ type AnimalChoice = (prop: Prop) => ClipChoice | null
  * holds the simulation while frames go by with no time for the clips.
  */
 export class Recorder {
-  readonly view: ActorsView
-  readonly props: PropsView
+  /** The views read (its own, or a session's: `views` of the constructor; scratch harnesses set them by hand). */
+  view: ActorsView
+  props: PropsView
   readonly tracks = new Map<string, Track>()
-  /** Display frames recorded, simulation steps run, display time (s). */
+  /** Display frames recorded, simulation steps run, display time (s), view time (s). */
   step = 0
   steps = 0
   time = 0
+  viewTime = 0
   /** Seconds per display frame. */
   readonly frameDt: number
   private memory: BotMemory
@@ -165,7 +226,7 @@ export class Recorder {
   readonly shotBirths: { who: string; behind: boolean }[] = []
   private shotFront = new WeakMap<object, boolean>()
   private shooterPlaced = newPlaced()
-  private movedNow = new Set<string>()
+  protected movedNow = new Set<string>()
   private ghostIds = new WeakMap<object, number>()
   private ghostCount = 0
   private mover = new Interpolator()
@@ -173,20 +234,25 @@ export class Recorder {
   private freeze = 0
   private owed = 0
   private pending: SimEvent[] = []
-  /** The side the boss's latest shot really flew to (the simulation aims before it moves him), until a row has it. */
-  private shotSide: 1 | -1 | 0 = 0
+  /**
+   * The side the boss's latest shot really flew to (the simulation aims before it moves him), until a row has it
+   * (a session's driver sets it from the `boss-shoot` event).
+   */
+  shotSide: 1 | -1 | 0 = 0
   private readonly fx: FxApi
 
   constructor(
     readonly world: World,
     readonly label: string,
-    readonly hz = 60
+    readonly hz = 60,
+    /** A session's own views (its `StageView` already lets a shot stay behind its shooter); else the recorder's. */
+    views?: { actors: ActorsView; props: PropsView }
   ) {
     const pool = { rand: () => 0.5, spawn: () => {}, burst: () => {} } as unknown as FxPool
-    this.view = new ActorsView(world, pool)
-    this.props = new PropsView(world, pool)
+    this.view = views?.actors ?? new ActorsView(world, pool)
+    this.props = views?.props ?? new PropsView(world, pool)
     // As the stage view does: a shot stays behind its shooter while it overlaps his drawing.
-    this.props.drawnFrame = (body, out) => this.view.drawnFrame(body, out)
+    if (!views) this.props.drawnFrame = (body, out) => this.view.drawnFrame(body, out)
     this.frameDt = 1 / hz
     this.memory = { x: world.player.x, stuck: 0, reverse: 0 }
     // The effects of an event: only the hit-stop matters here.
@@ -207,15 +273,19 @@ export class Recorder {
     this.movedNow.add(who)
   }
 
-  private track(who: string, kind: ActorKind, art: string, speed = 0) {
+  private track(who: string, kind: ActorKind, art: string, speed = 0, bossKind = '') {
     let track = this.tracks.get(who)
-    if (!track) this.tracks.set(who, (track = { who, kind, art, speed, rows: [] }))
+    if (!track) this.tracks.set(who, (track = { who, kind, art, speed, bossKind, rows: [] }))
     return track
   }
 
   bot(): InputState {
     return botInput(this.world, this.memory)
   }
+
+  /** Simulation steps run that no display frame has shown yet; the last count read from the world's clock. */
+  private unshown = 0
+  private simSeen = 0
 
   /** One display frame: the view moves on (`anim` seconds for its clips, 0 in a hit-stop) and its rows are written. */
   private show(anim: number) {
@@ -224,7 +294,8 @@ export class Recorder {
     this.props.update(anim)
     this.props.tickReal(this.frameDt)
     this.time += this.frameDt
-    this.record(this.pending, anim <= 0)
+    this.record(this.pending, anim <= 0, { steps: this.unshown, viewDt: anim, moment: null })
+    this.unshown = 0
     this.pending = []
   }
 
@@ -242,6 +313,7 @@ export class Recorder {
     const bossBefore = world.boss ? world.boss.x : 0
     world.step(STEP, input)
     this.steps++
+    this.unshown++
     const events = world.events.splice(0)
     // The side his shot flew to, as sim.ts decides it: the hero (already moved this step) against the boss (not yet).
     if (events.some((event) => event.type === 'boss-shoot')) this.shotSide = world.player.x > bossBefore ? 1 : -1
@@ -280,17 +352,44 @@ export class Recorder {
     this.movedNow.clear()
   }
 
-  /** A row for everything the view would draw now. */
-  private record(events: SimEvent[], held: boolean) {
+  /**
+   * A row for everything the view would draw now. `held`: the clips stood still on this frame; `info`: what the
+   * frame showed (a session's driver passes it; without it, a frame of one step and `1 / hz` of view time, or none
+   * when held, as a run without a director has).
+   */
+  record(events: SimEvent[], held: boolean, info?: FrameInfo) {
     const { world, view } = this
     this.step++
+    // (A driver that passes no `info`, as the scratch harnesses do, has its steps counted from the world's clock.)
+    let sim = this.steps
+    if (!info) {
+      sim = Math.round(world.time / STEP)
+      this.simSeen = Math.min(this.simSeen, sim)
+    }
+    const frame: FrameInfo = info ?? {
+      steps: sim - this.simSeen,
+      viewDt: held ? 0 : this.frameDt,
+      moment: null
+    }
+    if (!info) this.simSeen = sim
+    this.viewTime += frame.viewDt
     const types = (pick: (event: SimEvent) => boolean) => events.filter(pick).map((event) => event.type)
     const p = world.player
+    const posing = (who: 'hero' | 'boss') =>
+      (view as unknown as { posing?: (who: string) => string | null }).posing?.(who) ?? null
     const base = {
       step: this.step,
       t: this.time,
       dt: this.frameDt,
       held,
+      viewDt: frame.viewDt,
+      vt: this.viewTime,
+      steps: frame.steps,
+      sim,
+      moment: frame.moment,
+      posed: null,
+      cue: null,
+      shot: 0 as const,
       state: null,
       heroSide: 1 as 1 | -1,
       heroDx: 0,
@@ -302,24 +401,35 @@ export class Recorder {
 
     const hero = view.selectHero()
     if (hero && !SPECS.hero[hero.name]) this.missing.push(`hero.${hero.name} at step ${this.step}`)
-    if (hero && SPECS.hero[hero.name])
+    if (hero && SPECS.hero[hero.name]) {
+      // Where he is drawn: a clear touched in the air brings him down to the ground (the view's own point).
+      const point = (view as unknown as { heroPoint?: () => { x: number; y: number } | null }).heroPoint?.()
+      const ending = world.state !== 'play' && point
+      const feet = ending ? point.y + p.h / 2 : p.y + p.h
+      let onGround = p.onGround
+      if (ending && !p.onGround) {
+        const ground = groundBelow(world, point.x, feet, 2)
+        onGround = ground !== null && Math.abs(ground - feet) <= 1
+      }
       this.track('hero', 'hero', 'hero').rows.push({
         ...base,
         sheet: 'hero',
         clip: hero.name,
         frame: frameOf(SPECS.hero[hero.name], hero),
-        x: p.x + p.w / 2,
+        x: ending ? point.x : p.x + p.w / 2,
         body: p.x + p.w / 2,
-        feet: p.y + p.h,
+        feet,
         vx: p.vx,
         vy: p.vy,
-        onGround: p.onGround,
+        onGround,
         water: p.inWater,
         flip: (view as unknown as { heroFlip?: () => boolean }).heroFlip?.() ?? p.facing < 0,
+        posed: posing('hero'),
         events: types((event) => HERO_EVENTS.has(event.type)),
         // After his knock-out the view moves the body itself.
         moved: this.movedNow.has('hero') || p.dead || world.state !== 'play'
       })
+    }
 
     if (world.state === 'play') {
       for (const enemy of world.enemies) {
@@ -330,6 +440,9 @@ export class Recorder {
           this.missing.push(`${enemy.kind}.${choice.name} at step ${this.step}`)
           continue
         }
+        const spit = events.find((event) => event.type === 'spit' && event.id === enemy.id) as
+          | Extract<SimEvent, { type: 'spit' }>
+          | undefined
         this.track(`enemy#${enemy.id}`, 'enemy', enemy.kind).rows.push({
           ...base,
           sheet: enemy.kind,
@@ -345,6 +458,7 @@ export class Recorder {
           inSolid: inSolid(world, enemy),
           flip: view.enemyFlip(enemy),
           heroDx: p.x - enemy.x,
+          shot: spit ? spit.dir : 0,
           events: types((event) => ofEnemy(event, enemy.id)),
           moved: false
         })
@@ -354,9 +468,11 @@ export class Recorder {
         const sheet = view.bossSheet(boss)
         const choice = view.selectBoss(boss)
         const spec = SPECS[sheet]?.[choice.name]
+        const shoots = events.some((event) => event.type === 'boss-shoot')
+        const side: 1 | -1 = shoots && this.shotSide !== 0 ? this.shotSide : p.x > boss.x ? 1 : -1
         if (!spec) this.missing.push(`${sheet}.${choice.name} at step ${this.step}`)
         if (spec)
-          this.track('boss', 'boss', boss.def.art, boss.def.speed).rows.push({
+          this.track('boss', 'boss', boss.def.art, boss.def.speed, boss.def.kind).rows.push({
             ...base,
             sheet,
             clip: choice.name,
@@ -372,14 +488,12 @@ export class Recorder {
             events: types((event) => BOSS_EVENTS.has(event.type)),
             moved: this.movedNow.has('boss'),
             heroDx: p.x - boss.x,
-            heroSide:
-              events.some((event) => event.type === 'boss-shoot') && this.shotSide !== 0
-                ? this.shotSide
-                : p.x > boss.x
-                  ? 1
-                  : -1
+            heroSide: side,
+            shot: shoots ? side : 0,
+            posed: posing('boss'),
+            cue: this.cueOf(boss)
           })
-        if (events.some((event) => event.type === 'boss-shoot')) this.shotSide = 0
+        if (shoots) this.shotSide = 0
       }
       // The piglet, awake: the props view draws it where its body is.
       const animalChoice = (this.props as unknown as { selectAnimal?: AnimalChoice }).selectAnimal?.bind(this.props)
@@ -479,6 +593,14 @@ export class Recorder {
     }
   }
 
+  /** The light of the boss's next shot as the view draws it now (null: none; a view without `shotCue` has none). */
+  private cueOf(boss: Boss): CueRow | null {
+    type Cue = { sheet: string; progress: number; side: number }
+    const view = this.view as unknown as { shotCue?: (boss: Boss) => Cue | null }
+    const cue = view.shotCue?.(boss)
+    return cue ? { sheet: cue.sheet, progress: cue.progress, side: cue.side } : null
+  }
+
   /** How many pixels of a shot, drawn as the props view draws it now, lie on its shooter's drawing. */
   private shotOverlap(shot: Shot, shooter: Shooter) {
     const body = this.shooterPlaced
@@ -512,6 +634,526 @@ export class Recorder {
       this.advance(input())
     }
   }
+}
+
+// ------------------------------------------------------------------------------------------------- the session
+
+/** What a session's scripts can reach. */
+export interface SessionContext {
+  readonly world: World
+  readonly session: PlaySession
+  readonly rec: SessionRecorder
+}
+
+export interface SessionOptions {
+  /** Re-seeds the world's random numbers after it is built (the session seeds it from the stage otherwise). */
+  seed?: number
+  /** Display frames a second (default 60). */
+  hz?: number
+  /**
+   * Presses the skip (bite) on every display frame while the director locks the input: in every moment, or (a list)
+   * only in the moments named.
+   */
+  skip?: boolean | readonly string[]
+  reducedMotion?: boolean
+  /** The hero is kept alive (default true). */
+  keepAlive?: boolean
+  /** The switches are bitten and, on a stage without a boss, the twigs and berries taken (default true). */
+  prep?: boolean
+  /** The input of every simulation step the director does not lock (default: the bot's plan, see `stagePlan`). */
+  plan?: (ctx: SessionContext) => InputState
+  /** Runs before every simulation step (scripts that set the simulation up by hand). */
+  beforeStep?: (ctx: SessionContext) => void
+  /** Runs once before the session starts. */
+  setup?: (ctx: SessionContext) => void
+  label?: string
+}
+
+/** One display frame of a session as the driver saw it. */
+export interface SessionFrame {
+  /** The director's time scale and whether the view held the simulation (hit-stop), as the frame began. */
+  scale: number
+  frozen: boolean
+  locked: boolean
+  steps: number
+  viewDt: number
+  moment: string | null
+}
+
+/** A stand-in for the HUD: every call does nothing (a line on the deck is never shown). */
+const silentHud = () =>
+  new Proxy({ speak: () => false } as Record<string, unknown>, {
+    get: (target, key) => (key in target ? target[key as string] : () => {})
+  })
+
+/**
+ * A `Recorder` that plays the real `PlaySession` with its `StageDirector`: one `PlaySession.frame(1 / hz)` per
+ * display frame, its pacer and its hit-stops, the director's staged moments, poses, input lock and slow motion, the
+ * rows written from the session's own `ActorsView` and `PropsView` after each frame. The hero is kept alive; the
+ * director's skip is pressed when asked (`skip`); the input comes from `plan` (the bot by default).
+ */
+export class SessionRecorder extends Recorder implements SessionContext {
+  readonly session: PlaySession
+  readonly director: StageDirector
+  readonly frames: SessionFrame[] = []
+  /** The bot's plan: 'walk' to the boss, 'fight' him, 'rest' a moment, then 'out' to the goal. */
+  phase: 'walk' | 'fight' | 'rest' | 'out' = 'walk'
+  private phaseSteps = 0
+  private botMemory: BotMemory
+  private events: SimEvent[] = []
+  private stepsNow = 0
+  private animDt = 0
+
+  constructor(
+    readonly no: number,
+    readonly options: SessionOptions = {}
+  ) {
+    const hz = options.hz ?? 60
+    const input = { poll: () => emptyInput(), consumePresses() {} }
+    const deps = {
+      renderer: { k: 1 },
+      hud: silentHud(),
+      audio: SILENT_AUDIO,
+      input,
+      reducedMotion: Boolean(options.reducedMotion)
+    } as unknown as ConstructorParameters<typeof PlaySession>[1]
+    const session = new PlaySession(STAGES[no - 1], deps)
+    const world = session.world
+    if (options.seed !== undefined) (world as unknown as { rng: { state: number } }).rng.state = options.seed >>> 0 || 1
+    const keepAlive = options.keepAlive !== false
+    if (keepAlive) {
+      world.player.maxHp = 999
+      world.player.hp = 999
+    }
+    const label =
+      options.label ??
+      `stage ${no}, seed ${options.seed ?? 'of the stage'}: the session plays${options.skip === true ? ', skipping' : options.skip ? ` skipping ${options.skip.join(', ')}` : ''}${options.reducedMotion ? ', reduced motion' : ''}${atRate(hz)}`
+    super(world, label, hz, { actors: session.view.actors, props: session.view.props })
+    this.session = session
+    this.director = session.director as StageDirector
+    this.botMemory = { x: world.player.x, stuck: 0, reverse: 0 }
+    // Every simulation step: the script's hook, the boss's place (the simulation aims his shot from there), the step,
+    // the hero topped up.
+    const step = world.step.bind(world)
+    let bossBefore = 0
+    world.step = (dt: number, stepInput: InputState) => {
+      options.beforeStep?.(this)
+      bossBefore = world.boss ? world.boss.x : 0
+      this.stepsNow++
+      this.steps++
+      step(dt, stepInput)
+      if (keepAlive) world.player.hp = world.player.maxHp
+    }
+    const view = session.view
+    const handle = view.handle.bind(view)
+    view.handle = (event: SimEvent) => {
+      this.events.push(event)
+      if (event.type === 'boss-shoot') this.shotSide = world.player.x > bossBefore ? 1 : -1
+      handle(event)
+    }
+    const update = view.update.bind(view)
+    view.update = (dt: number, animDt?: number) => {
+      this.animDt = animDt ?? (view.frozen ? 0 : dt)
+      update(dt, animDt)
+    }
+    // The director polls the same input for its skip while it locks; the session polls it once a step otherwise.
+    input.poll = () => {
+      if (this.director.inputLocked) {
+        const moment = this.director.current ?? ''
+        const skip = options.skip === true || (Array.isArray(options.skip) && options.skip.includes(moment))
+        return { ...emptyInput(), bitePressed: skip }
+      }
+      return options.plan ? options.plan(this) : this.stagePlan()
+    }
+    if (options.prep !== false) {
+      for (const prop of world.props) if (prop.kind === 'switch') world.biteProp(prop, 1)
+      if (!world.boss)
+        for (const prop of [...world.props]) if (prop.kind === 'twig' || prop.kind === 'berry') world.collect(prop)
+      world.events.length = 0
+    }
+    options.setup?.(this)
+    session.start()
+  }
+
+  get rec(): SessionRecorder {
+    return this
+  }
+
+  /**
+   * The bot's plan: it walks to the boss (40 s at most on a chase, 120 s otherwise), fights him once he is awake
+   * (`fightInput`, 90 s at most), rests 2 s once he is down, and walks on to the goal.
+   */
+  stagePlan(): InputState {
+    const { world } = this
+    const chase = STAGES[this.no - 1].boss.kind === 'chaser'
+    if (this.phase === 'walk' && (this.phaseSteps >= (chase ? 40 : 120) * 60 || (!chase && world.boss?.active))) {
+      this.phase = world.boss && !chase ? 'fight' : 'out'
+      this.phaseSteps = 0
+    }
+    if (this.phase === 'fight' && (this.phaseSteps >= 90 * 60 || !world.boss || world.boss.dead)) {
+      this.phase = 'rest'
+      this.phaseSteps = 0
+    }
+    if (this.phase === 'rest' && this.phaseSteps >= 120) {
+      this.phase = 'out'
+      this.phaseSteps = 0
+    }
+    this.phaseSteps++
+    if (this.phase === 'fight') return fightInput(world)
+    if (this.phase === 'rest') return emptyInput()
+    return botInput(world, this.botMemory)
+  }
+
+  /** One display frame: `PlaySession.frame`, then the rows of what it shows. */
+  frame() {
+    const { session, director } = this
+    const scale = session.view.frozen ? 0 : director.timeScale
+    const frozen = session.view.frozen
+    const locked = director.inputLocked
+    this.stepsNow = 0
+    session.frame(this.frameDt)
+    this.time += this.frameDt
+    const events = this.events
+    this.events = []
+    const moment = director.current ?? null
+    this.record(events, this.animDt <= 0, { steps: this.stepsNow, viewDt: this.animDt, moment })
+    this.frames.push({ scale, frozen, locked, steps: this.stepsNow, viewDt: this.animDt, moment })
+    this.movedNow.clear()
+  }
+
+  /** Display frames for at most `seconds` of real time, until `until` holds (default: the session's outcome). */
+  play(seconds: number, until: () => boolean = () => this.session.outcome !== null) {
+    for (let n = Math.round(seconds * this.hz); n > 0; n--) {
+      this.frame()
+      if (until()) return true
+    }
+    return false
+  }
+}
+
+/** Stage `no` played by the real session with its director, to its outcome (or `seconds` of real time). */
+export function sessionPlay(no: number, options: SessionOptions & { seconds?: number } = {}) {
+  const r = new SessionRecorder(no, options)
+  r.play(options.seconds ?? 600)
+  return r
+}
+
+/** The hero keeps out of the boss's way: he walks away from a boss closer than `near` px, and stands otherwise. */
+const keepAway =
+  (near = 150) =>
+  ({ world }: SessionContext) => {
+    const boss = world.boss
+    const input = emptyInput()
+    if (!boss || boss.dead) return input
+    const dx = boss.x + boss.w / 2 - (world.player.x + world.player.w / 2)
+    if (Math.abs(dx) < near) input[dx > 0 ? 'left' : 'right'] = true
+    return input
+  }
+
+/** The hero cannot be hurt (the session keeps his health topped up too). */
+const untouchable = ({ world }: SessionContext) => {
+  world.player.invuln = 99999
+}
+
+/** The boss's states as the session's scripts follow them: the state before the one he is in. */
+function stateHistory() {
+  let last = ''
+  let prev = ''
+  return (boss: Boss) => {
+    if (boss.state !== last) {
+      prev = last
+      last = boss.state
+    }
+    return prev
+  }
+}
+
+/**
+ * The moments of the king's cycle at which his transformation is forced: `when` holds on the step it is forced
+ * (before the step runs: his state, the time in it, the state before it, the clip the view drew him with last).
+ */
+export const KING_MOMENTS: readonly { name: string; when: (boss: Boss, prev: string, clip: string) => boolean }[] = [
+  { name: 'idle, early', when: (b) => b.state === 'idle' && b.stateTime >= 0.1 },
+  { name: 'idle, late', when: (b) => b.state === 'idle' && b.stateTime >= 0.6 },
+  { name: 'windup, early', when: (b) => b.state === 'windup' && b.stateTime >= 0.05 },
+  { name: 'windup, late', when: (b) => b.state === 'windup' && b.stateTime >= 0.3 },
+  { name: 'charge, early', when: (b) => b.state === 'charge' && b.stateTime >= 0.1 },
+  { name: 'charge, late', when: (b) => b.state === 'charge' && b.stateTime >= 0.7 },
+  { name: 'shoot, early', when: (b) => b.state === 'shoot' && b.stateTime >= 0.1 },
+  { name: 'shoot, late', when: (b) => b.state === 'shoot' && b.stateTime >= 0.45 },
+  { name: 'slam, in the air', when: (b) => b.state === 'slam' && !b.onGround && b.stateTime >= 0.15 },
+  { name: 'slam, on the ground', when: (b) => b.state === 'slam' && b.onGround },
+  {
+    name: 'recover after a charge, early',
+    when: (b, prev) => b.state === 'recover' && prev === 'charge' && b.stateTime >= 0.05
+  },
+  {
+    name: 'recover after a charge, late',
+    when: (b, prev) => b.state === 'recover' && prev === 'charge' && b.stateTime >= 0.6
+  },
+  {
+    name: 'recover after a slam, mid-landing',
+    when: (b, prev, clip) => b.state === 'recover' && prev === 'slam' && clip === 'land' && b.stateTime >= 0.03
+  },
+  {
+    name: 'recover after a slam, landed',
+    when: (b, prev, clip) => b.state === 'recover' && prev === 'slam' && clip !== 'land' && b.stateTime >= 0.3
+  },
+  {
+    name: 'recover after a volley, mid-follow-through',
+    when: (b, prev, clip) => b.state === 'recover' && prev === 'shoot' && clip === 'shoot' && b.stateTime >= 0.03
+  },
+  {
+    name: 'recover after a volley, done',
+    when: (b, prev, clip) => b.state === 'recover' && prev === 'shoot' && clip !== 'shoot' && b.stateTime >= 0.3
+  }
+]
+
+/**
+ * The king's transformation forced at one moment of his cycle (`KING_MOMENTS`): the session fight on stage 10, the
+ * hero kept out of his way and out of harm, and on the step the moment comes his health is set to half by hand
+ * (`hit`: by a last hit, `world.damageBoss`), with the hero standing on the ground (the staged moment begins at once)
+ * or just jumped (`air`: the director waits for him to land while the simulation runs on). `reached` says whether
+ * the moment came within the fight (and on which step the transformation was forced).
+ */
+export function kingTransforms(
+  moment: (typeof KING_MOMENTS)[number],
+  options: { hit: boolean; air: boolean; seed?: number; hz?: number }
+) {
+  const history = stateHistory()
+  let forced = -1
+  let home: { x: number; y: number } | null = null
+  const r = new SessionRecorder(10, {
+    seed: options.seed ?? 3,
+    hz: options.hz,
+    skip: true,
+    label: `stage 10: the king transforms at ${moment.name}, ${options.hit ? 'hit' : 'not hit'}, the hero ${options.air ? 'in the air' : 'on the ground'}${atRate(options.hz ?? 60)}`,
+    setup: (ctx) => enterArena(ctx.rec),
+    plan: () => emptyInput(),
+    beforeStep: (ctx) => {
+      untouchable(ctx)
+      const { world, rec } = ctx
+      const boss = world.boss
+      if (!boss || boss.dead) return
+      const prev = history(boss)
+      if (!boss.active || forced >= 0 || rec.director.inputLocked) return
+      // (His charges and leaps go the open way, so that they play out instead of ending against a wall.)
+      if (boss.state === 'windup' && boss.stateTime < EPS) {
+        home ??= { x: boss.x, y: boss.y }
+        openSide(rec, home)
+      }
+      const rows = rec.tracks.get('boss')?.rows
+      const clip = rows?.[rows.length - 1]?.clip ?? ''
+      if (!moment.when(boss, prev, clip)) return
+      const p = world.player
+      if (options.air) {
+        if (!p.onGround) return
+        // A jump by hand: the body is thrown up from where it stands, the simulation carries it.
+        p.vy = -560
+        p.onGround = false
+      } else if (!p.onGround) return
+      forced = rec.steps
+      const half = Math.floor(boss.maxHp / 2)
+      if (options.hit) {
+        boss.hp = half + 1
+        boss.invuln = 0
+        world.damageBoss(1)
+      } else boss.hp = half
+    }
+  })
+  // The fight until the moment comes (60 s at most), then the transformation and 3 s of the fight after it.
+  r.play(70, () => forced >= 0)
+  if (forced >= 0) r.play(8, () => r.director.log.includes('boss-phase') && !r.director.current)
+  if (forced >= 0) r.play(3, () => false)
+  return { r, reached: forced >= 0 }
+}
+
+/**
+ * The steps until a shooter's next shot leaves, the coming step counted, as sim.ts counts it down (its timer less a
+ * step each step, the shot on the step it reads zero or less; the crow throws only while he hovers, `idle`, which
+ * he leaves after 1.4 s and comes back to 0.9 s into his recovery); null when it cannot be told from here.
+ */
+function shotIn(shooter: Boss | Enemy): number | null {
+  if (!('def' in shooter)) {
+    let t = shooter.shootTimer
+    for (let n = 1; n <= 600; n++) if ((t -= STEP) <= 0) return n
+    return null
+  }
+  let t = shooter.shotTimer
+  let state = shooter.state
+  let time = shooter.stateTime
+  const flyer = shooter.def.kind === 'flyer'
+  for (let n = 1; n <= 600; n++) {
+    time += STEP
+    if (flyer) {
+      if (state === 'idle' && time > 1.4) return null
+      if (state === 'recover' && time > 0.9) {
+        state = 'idle'
+        time = 0
+      } else if (state !== 'idle' && state !== 'recover') return null
+    }
+    if ((t -= STEP) <= 0 && (!flyer || state === 'idle')) return n
+  }
+  return null
+}
+
+/** The shooters `crossingShots` puts the hero round: the crow, the fox, the bee (their stages) and a squirrel. */
+export const CROSSING_SHOOTERS = ['crowBoss', 'foxBoss', 'beeBoss', 'spitter'] as const
+export type CrossingShooter = (typeof CROSSING_SHOOTERS)[number]
+const SHOOTER_STAGE: Record<Exclude<CrossingShooter, 'spitter'>, number> = { crowBoss: 2, foxBoss: 7, beeBoss: 9 }
+
+/**
+ * Shots against a crossing hero: the session on the shooter's stage, the hero standing some way off; `k` steps
+ * before each shot is due (as the simulation counts it down) he is put on the other side of the shooter, the same
+ * distance away (by hand: `moved`). With `k: 'aim'` he is put on the shooter's aim line instead (closer than
+ * `aimClear`, where the simulation's aim flips as the shooter moves) from 8 steps before each shot until it leaves.
+ * `crossed` counts the shots that left after such a move.
+ */
+export function crossingShots(
+  shooter: CrossingShooter,
+  k: number | 'aim',
+  options: { hz?: number; seconds?: number } = {}
+) {
+  const squirrel = shooter === 'spitter'
+  const no = squirrel
+    ? STAGES.find((s) => new World(s, { seed: 5 }).enemies.some((e) => e.kind === 'spitter'))!.no
+    : SHOOTER_STAGE[shooter]
+  let crossed = 0
+  let armed = false
+  let enemy: Enemy | null = null
+  const lead = k === 'aim' ? 8 : k
+  const r = new SessionRecorder(no, {
+    seed: 5,
+    hz: options.hz,
+    skip: true,
+    label: `${shooter} on stage ${no}: the hero ${k === 'aim' ? 'on its aim line' : `crosses ${k} steps before each shot`}${atRate(options.hz ?? 60)}`,
+    setup: ({ world, rec }) => {
+      if (!squirrel) {
+        for (const other of world.enemies) other.dead = true
+        enterArena(rec)
+        return
+      }
+      const it = (enemy = world.enemies.find((e) => e.kind === 'spitter')!)
+      for (const other of world.enemies) if (other !== it) other.dead = true
+      const p = world.player
+      p.x = it.x + it.w / 2 + 160 - p.w / 2
+      p.y = it.y + it.h - p.h
+      p.vx = 0
+      p.vy = 0
+      rec.moved('hero')
+    },
+    plan: () => emptyInput(),
+    beforeStep: (ctx) => {
+      untouchable(ctx)
+      const { world, rec } = ctx
+      const boss = world.boss
+      const body = squirrel ? enemy : boss
+      if (!body || body.dead || rec.director.inputLocked) return
+      if (!squirrel && !boss!.active) return
+      const due = shotIn(squirrel ? enemy! : boss!)
+      if (due === null) return
+      if (due > lead + 1) {
+        armed = true
+        return
+      }
+      if (!armed) return
+      const p = world.player
+      if (k === 'aim') {
+        // On the line the simulation aims along (its `player.x - shooter.x`): a px off it, well within `aimClear`.
+        p.x = body.x + (p.x >= body.x ? 1 : -1)
+        p.vx = 0
+        rec.moved('hero')
+        if (due <= 1) {
+          armed = false
+          crossed++
+        }
+        return
+      }
+      if (due !== lead + 1) return
+      armed = false
+      const centre = body.x + body.w / 2
+      const mine = p.x + p.w / 2
+      const gate = world.bossGate
+      const min = gate ? (gate.x + 1) * TILE + 4 : TILE
+      p.x = Math.max(min, Math.min(world.w * TILE - TILE - p.w, centre - (mine - centre) - p.w / 2))
+      p.vx = 0
+      rec.moved('hero')
+      crossed++
+    }
+  })
+  r.play(options.seconds ?? 9, () => false)
+  return { r, crossed }
+}
+
+/**
+ * As the boss settles into a wind-up: puts the hero `distance` px from him on the side with more open floor (no
+ * wall or pillar at the height of his body), so that his dash goes that way and ends short of what would stun him;
+ * a boss with too little room for a dash either way (down in a pit) is put back where `home` is first (by hand).
+ */
+function openSide(r: Recorder, home: { x: number; y: number }, distance = 170) {
+  const { world } = r
+  const boss = world.boss!
+  const p = world.player
+  const room = () => {
+    const row = Math.floor((boss.y + boss.h) / TILE) - 1
+    const open = (tx: number) => tx >= 0 && tx < world.w && !world.solidAt(tx, row) && !world.solidAt(tx, row - 1)
+    const centre = boss.x + boss.w / 2
+    let left = Math.floor(centre / TILE)
+    let right = left
+    while (open(left - 1)) left--
+    while (open(right + 1)) right++
+    return { centre, left: centre - left * TILE, right: (right + 1) * TILE - centre }
+  }
+  let space = room()
+  if (Math.max(space.left, space.right) < 7 * TILE) {
+    boss.x = home.x
+    boss.y = home.y
+    boss.vx = 0
+    boss.vy = 0
+    r.moved('boss')
+    space = room()
+  }
+  const centre = space.centre
+  const dir = space.right > space.left ? 1 : -1
+  p.x = centre + dir * distance - p.w / 2
+  p.y = boss.y + boss.h - p.h
+  p.vx = 0
+  p.vy = 0
+  r.moved('hero')
+}
+
+/**
+ * The fox's or the bee's shots in every state: a long session fight with the hero out of harm, standing still; as
+ * the boss begins a wind-up the hero is put some way off on his more open side (by hand), so that the dash ends
+ * short of the walls that would stun him. Their timer runs whatever they do, so shots leave while they walk, wind
+ * up, dash and recover.
+ */
+export function shotsInEveryState(no: number, options: { seconds?: number; hz?: number; seed?: number } = {}) {
+  let last = ''
+  let home: { x: number; y: number } | null = null
+  const r = new SessionRecorder(no, {
+    seed: options.seed ?? 5,
+    hz: options.hz,
+    skip: true,
+    label: `stage ${no}: the boss shoots in every state${atRate(options.hz ?? 60)}`,
+    setup: ({ world, rec }) => {
+      for (const enemy of world.enemies) enemy.dead = true
+      enterArena(rec)
+    },
+    plan: () => emptyInput(),
+    beforeStep: (ctx) => {
+      untouchable(ctx)
+      const boss = ctx.world.boss
+      if (!boss || boss.dead || !boss.active) return
+      if (boss.state === 'windup' && last !== 'windup') {
+        home ??= { x: boss.x, y: boss.y }
+        openSide(ctx.rec, home)
+      }
+      last = boss.state
+    }
+  })
+  r.play(options.seconds ?? 45, () => false)
+  return r
 }
 
 // ------------------------------------------------------------------------------------------------- scenarios
@@ -1032,12 +1674,21 @@ function finding(rule: string, r: Recorder, track: Track, row: Row, detail: stri
   return { rule, run: r.label, who: track.who, sheet: row.sheet, clip: row.clip, step: row.step, detail }
 }
 
+/**
+ * The simulation time a frame carried the bodies by (s): its view time, or the steps it showed when they are more
+ * (the frame a hit-stop begins on shows a whole step and no view time; at 30 Hz a frame shows two steps; in slow
+ * motion a step lands on one frame out of three).
+ */
+const span = (row: Row) => Math.max(row.viewDt, row.steps * STEP)
+
 /** Whether `b` is the frame after `a` and the body got there by its own motion (not a respawn, not the script's hand). */
 const continuous = (a: Row, b: Row) =>
-  !b.moved && b.step === a.step + 1 && Math.abs(b.body - a.body) <= Math.max(Math.abs(a.vx), Math.abs(b.vx)) * b.dt + 6
+  !b.moved &&
+  b.step === a.step + 1 &&
+  Math.abs(b.body - a.body) <= Math.max(Math.abs(a.vx), Math.abs(b.vx)) * span(b) + 6
 
-/** The drawn body's speed along the ground from one frame to the next (px/s). */
-const moved = (a: Row, b: Row) => (b.x - a.x) / b.dt
+/** The drawn body's speed along the ground from one frame to the next (px/s of simulation time; for the details). */
+const moved = (a: Row, b: Row) => (b.x - a.x) / (span(b) || b.dt)
 
 /** Maximal stretches of rows drawn with the same clip on consecutive frames. */
 function* stretches(rows: Row[]) {
@@ -1126,8 +1777,9 @@ export function dashesAreDrawnAsDashes(r: Recorder): Finding[] {
       (row) =>
         row.state !== null && !row.moved && !row.held && Math.abs(row.vx) > DASH_FACTOR * track.speed && !travels(row)
     )
-    // A single step is the simulation changing its mind (a crash into a wall); longer is seen.
-    if (fast.length && fast[fast.length - 1].t - fast[0].t >= STEP - EPS)
+    // A single step is the simulation changing its mind (a crash into a wall); longer is seen. (View time: in slow
+    // motion one step is shown over several frames.)
+    if (fast.length && fast[fast.length - 1].vt - fast[0].vt >= STEP - EPS)
       out.push(
         finding(
           'dash speed in a pose that does not travel',
@@ -1182,7 +1834,8 @@ export function cyclesFollowTheGround(r: Recorder): Finding[] {
       const per = spec.stride / spec.frames
       // A jump in the body (a respawn, the script's hand) ends a piece: each piece is checked on its own.
       for (const stretch of CYCLE_CHECK.split ? pieces(whole) : [whole]) {
-        if (stretch[stretch.length - 1].t - stretch[0].t < CYCLE_CHECK.minSteps * STEP - EPS) continue
+        // (View time: the steps of motion the piece covers.)
+        if (stretch[stretch.length - 1].vt - stretch[0].vt < CYCLE_CHECK.minSteps * STEP - EPS) continue
         let distance = 0
         let frames = 0
         let ok = true
@@ -1237,7 +1890,8 @@ export function cyclesNeedGround(r: Recorder): Finding[] {
           still = 0
           continue
         }
-        if (!b.held) still += b.dt
+        // View time: a rat walking through the slow motion of a boss's fall is not standing still.
+        still += b.viewDt
         if (still >= ON_THE_SPOT_SECONDS - EPS && still > worst) {
           worst = still
           first ??= anchor
@@ -1265,7 +1919,8 @@ export function travelFacesItsWay(r: Recorder): Finding[] {
         (clip === 'attack' || clip === 'sweep' || (clip === 'air' && stretch[0].state === 'slam'))
       if (!spec.stride && !dash) continue
       // Net motion over a moment: a body the simulation shakes on the spot goes nowhere, and a turn at a wall may
-      // lag the body by a step or two.
+      // lag the body by a step or two. (View time throughout: the moment and the grace are steps of the body's own
+      // motion, which slow motion stretches and a hit-stop holds.)
       let first: Row | null = null
       let speed = 0
       let wrong = 0
@@ -1277,15 +1932,15 @@ export function travelFacesItsWay(r: Recorder): Finding[] {
         }
         const b = stretch[i]
         let j = i
-        while (j > from && b.t - stretch[j].t < FACE_SECONDS - EPS) j--
-        if (b.t - stretch[j].t < FACE_SECONDS - EPS) continue
+        while (j > from && b.vt - stretch[j].vt < FACE_SECONDS - EPS) j--
+        if (b.vt - stretch[j].vt < FACE_SECONDS - EPS) continue
         const net = b.x - stretch[j].x
         if (Math.abs(net) > FACE_NET && b.flip !== net < 0) {
           if (!first) {
             first = b
-            speed = net / (b.t - stretch[j].t)
+            speed = net / (b.vt - stretch[j].vt)
           }
-          wrong += b.dt
+          wrong += b.viewDt
         }
       }
       if (first && wrong >= (dash ? DASH_WRONG_SECONDS : FACE_WRONG_SECONDS) - EPS)
@@ -1303,25 +1958,33 @@ export function travelFacesItsWay(r: Recorder): Finding[] {
   return out
 }
 
-/** I7: a shot leaves from the frame that releases it, towards the side the shooter faces. */
+const side = (s: number) => (s < 0 ? 'left' : 'right')
+/** The shot events: a boss's throw or volley, a squirrel's acorn, a summon (whose gesture starts at its release). */
+const SHOT_EVENTS: readonly string[] = ['boss-shoot', 'spit', 'minion']
+const leaves = (row: Row) => row.events.some((event) => SHOT_EVENTS.includes(event))
+
+/**
+ * I7: a shot that leaves from a pose leaves the way the pose faces. On the frame a boss's shot leaves while he is
+ * drawn throwing (`shoot`), the frame is the release and he faces the side the shot flies to (the king's volley is
+ * a fan to both sides: his facing is not compared, see `actionsKeepTheirFacing` for his turning). A shot that leaves
+ * without a pose (in a dash, a hover) leaves from its light (`shotsAreAnnounced`), not from his facing.
+ *
+ * The squirrel's acorn leaves from its release frame facing the acorn's way, with one exception: the hero changing
+ * sides on the very step of the spit (the frame before faces the other way and shows the lead-in), when it leaves
+ * without the pose and no follow-through comes after it.
+ */
 export function shotsLeaveFromTheirPose(r: Recorder): Finding[] {
   const out: Finding[] = []
   for (const track of r.tracks.values()) {
-    for (const row of track.rows) {
-      if (track.kind === 'boss' && row.events.includes('boss-shoot')) {
-        const dashing = row.clip === 'attack' || row.clip === 'sweep' || row.clip === 'air'
-        if (!dashing && row.flip !== row.heroSide < 0)
-          out.push(
-            finding(
-              'shot leaves behind the shooter',
-              r,
-              track,
-              row,
-              `drawn facing ${row.flip ? 'left' : 'right'}, the shot goes ${row.heroSide < 0 ? 'left' : 'right'}`
-            )
-          )
+    if (track.kind !== 'boss' && track.kind !== 'enemy') continue
+    const rows = track.rows
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]
+      if (row.shot === 0) continue
+      if (track.kind === 'boss') {
+        if (row.clip !== 'shoot') continue
         const hit = specOf(row)?.hit
-        if (row.clip === 'shoot' && hit !== undefined && row.frame !== hit)
+        if (hit !== undefined && row.frame !== hit)
           out.push(
             finding(
               'shot leaves off its release frame',
@@ -1331,20 +1994,389 @@ export function shotsLeaveFromTheirPose(r: Recorder): Finding[] {
               `frame ${row.frame}, the release is frame ${hit}`
             )
           )
-      }
-      if (row.events.includes('spit')) {
-        const hit = ENEMY_SPEC.spitter.shoot.hit!
-        if (row.clip !== 'shoot' || row.frame !== hit)
+        if (track.bossKind !== 'final' && row.flip !== row.shot < 0)
           out.push(
             finding(
-              'acorn leaves off its release frame',
+              'shot leaves against its pose',
               r,
               track,
               row,
-              `${row.clip} frame ${row.frame} on the step of the spit${row.events.includes('enemy-down') ? ' (knocked out on the same step)' : row.events.includes('enemy-hit') ? ' (bitten on the same step)' : ''}`
+              `drawn facing ${side(row.flip ? -1 : 1)} on frame ${row.frame}, the shot goes ${side(row.shot)}`
             )
           )
+        continue
       }
+      const hit = ENEMY_SPEC.spitter.shoot.hit!
+      if (row.clip === 'shoot' && row.frame === hit) {
+        if (row.flip !== row.shot < 0)
+          out.push(
+            finding(
+              'shot leaves against its pose',
+              r,
+              track,
+              row,
+              `drawn facing ${side(row.flip ? -1 : 1)} on its release, the acorn goes ${side(row.shot)}`
+            )
+          )
+        continue
+      }
+      const before = rows[i - 1]
+      const turned =
+        before &&
+        before.step === row.step - 1 &&
+        before.clip === 'shoot' &&
+        before.frame < hit &&
+        before.flip !== row.shot < 0
+      if (!turned) {
+        out.push(
+          finding(
+            'acorn leaves off its release frame',
+            r,
+            track,
+            row,
+            `${row.clip} frame ${row.frame} on the step of the spit${row.events.includes('enemy-down') ? ' (knocked out on the same step)' : row.events.includes('enemy-hit') ? ' (bitten on the same step)' : ''}`
+          )
+        )
+        continue
+      }
+      // It left without its pose: nothing of the throw's follow-through comes after it.
+      for (let j = i + 1; j < rows.length && rows[j].step === rows[j - 1].step + 1 && rows[j].clip === 'shoot'; j++)
+        if (rows[j].frame > hit) {
+          out.push(
+            finding(
+              'follow-through of an acorn that left without its pose',
+              r,
+              track,
+              rows[j],
+              `frame ${rows[j].frame} ${rows[j].step - row.step} frames after the acorn left (the hero crossed on its step)`
+            )
+          )
+          break
+        }
+    }
+  }
+  return out
+}
+
+/**
+ * I7c: a release waits for its shot. In every run of a throw or a cast (`shoot`), the first frame at or past its
+ * release frame (`hit`) is the frame its shot leaves on (`boss-shoot`, `spit`; for a summon gesture, which starts at
+ * the release, its `minion`): never a display frame earlier, at any display rate, and never without a shot (a
+ * follow-through that replays where nothing is thrown, as at the transformation).
+ */
+export function releasesWaitForTheirShots(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  for (const track of r.tracks.values())
+    for (const { rows } of actionRuns(track)) {
+      if (rows[0].clip !== 'shoot') continue
+      const hit = specOf(rows[0])?.hit
+      if (hit === undefined) continue
+      const at = rows.find((row) => row.frame >= hit)
+      if (!at || leaves(at)) continue
+      const all = track.rows
+      const from = all.indexOf(at)
+      let later = -1
+      for (let j = from + 1; j < all.length && j <= from + 60 && all[j].step === all[j - 1].step + 1; j++)
+        if (leaves(all[j])) {
+          later = j
+          break
+        }
+      const there = `frame ${at.frame} (the release is ${hit})`
+      if (later >= 0 && all.slice(from, later).every((row) => row.clip === 'shoot'))
+        out.push(
+          finding(
+            'release shown before its shot',
+            r,
+            track,
+            at,
+            `${there} shows ${all[later].step - at.step} frames (${all[later].sim - at.sim} steps) before the shot leaves`
+          )
+        )
+      else
+        out.push(
+          finding(
+            'release without its shot',
+            r,
+            track,
+            at,
+            `${there} with no shot${at.events.length ? ` (${at.events.join(', ')})` : ''}${at.state ? `, state ${at.state}` : ''}`
+          )
+        )
+    }
+  return out
+}
+
+/** The steps of slack at the start of a shot's announcement (the light may begin a step or two late). */
+export const CUE_SLACK_STEPS = 2
+
+/**
+ * I7d: every shot of the crow, the fox and the bee is announced. For the `SHOT_CUE_SECONDS` of simulation time
+ * before the frame a shot leaves on (counted in simulation steps, not in frames: a hit-stop or a staged moment holds
+ * it, slow motion stretches it), every frame of the boss shows the gathering light, its progress never goes down,
+ * it is full on the last frame before the shot, and there it is on the side the shot flies to or over his body; on
+ * the frame of the shot itself it is gone. (A light that begins with his fight, less than that before his first
+ * shot, is held to the frames since he woke.)
+ */
+export function shotsAreAnnounced(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  const need = Math.round(SHOT_CUE_SECONDS / STEP)
+  const hero = new Map((r.tracks.get('hero')?.rows ?? []).map((row) => [row.step, row]))
+  for (const track of r.tracks.values()) {
+    if (track.kind !== 'boss' || !THROWN_ART.includes(track.art)) continue
+    const rows = track.rows
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i]
+      if (!row.events.includes('boss-shoot')) continue
+      if (row.cue)
+        out.push(
+          finding(
+            'light outlives its shot',
+            r,
+            track,
+            row,
+            `progress ${row.cue.progress.toFixed(2)} on the frame the shot leaves`
+          )
+        )
+      // The frames that show the steps before the shot (back to the previous shot, and while he is awake).
+      const window: Row[] = []
+      for (let j = i - 1; j >= 0; j--) {
+        const a = rows[j]
+        if (a.step !== rows[j + 1].step - 1 || a.state === null || a.events.includes('boss-shoot')) break
+        if (a.sim < row.sim - need + CUE_SLACK_STEPS) break
+        window.unshift(a)
+      }
+      if (!window.length) continue
+      const dark = window.filter((a) => !a.cue)
+      if (dark.length) {
+        out.push(
+          finding(
+            'shot is not announced',
+            r,
+            track,
+            row,
+            `no light on ${dark.length} of the ${window.length} frames before the shot (from ${row.sim - dark[0].sim} steps before it), drawn ${row.clip} frame ${row.frame} facing ${side(row.flip ? -1 : 1)}, the shot goes ${side(row.shot)}`
+          )
+        )
+        continue
+      }
+      const fades = window.findIndex((a, k) => k > 0 && a.cue!.progress < window[k - 1].cue!.progress - EPS)
+      if (fades > 0)
+        out.push(
+          finding(
+            'light fades before its shot',
+            r,
+            track,
+            window[fades],
+            `progress ${window[fades - 1].cue!.progress.toFixed(2)} then ${window[fades].cue!.progress.toFixed(2)}, ${row.sim - window[fades].sim} steps before the shot`
+          )
+        )
+      const last = window[window.length - 1]
+      const cue = last.cue!
+      // The side it must be on: the shot's, unless a script put the hero on the other side by hand on the very step
+      // the shot left (no frame could show that before it): then the side he was on.
+      const jumped = hero.get(row.step)?.moved && !hero.get(last.step)?.moved
+      const aim = jumped ? (last.heroDx > 0 ? 1 : -1) : row.shot
+      if (cue.progress < 1 - EPS)
+        out.push(
+          finding(
+            'light is not full before its shot',
+            r,
+            track,
+            last,
+            `progress ${cue.progress.toFixed(2)} on the frame before the shot`
+          )
+        )
+      if (Math.abs(cue.side) >= 1 - EPS && Math.sign(cue.side) !== aim)
+        out.push(
+          finding(
+            'light on the far side of its shot',
+            r,
+            track,
+            last,
+            `the light is at ${cue.side.toFixed(2)} across him, the shot goes ${side(row.shot)}${jumped ? ` (the hero was put on the other side by hand on its step; he was to the ${side(aim)})` : ''}`
+          )
+        )
+    }
+  }
+  return out
+}
+
+/**
+ * I7e: a light keeps its promise. A run of frames with a boss's light ends with his shot (on the frame after its
+ * last, or within it), unless he went down; no light shows on a boss that is asleep, and none ever on a boss whose
+ * shots are not thrown (the simulation never throws for him).
+ */
+export function lightsKeepTheirPromise(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  for (const track of r.tracks.values()) {
+    if (track.kind !== 'boss') continue
+    const throws = THROWN_ART.includes(track.art) || track.bossKind === 'final'
+    const rows = track.rows
+    let reported = false
+    for (let i = 0; i < rows.length; i++) {
+      if (!rows[i].cue) continue
+      let end = i
+      while (end + 1 < rows.length && rows[end + 1].cue && rows[end + 1].step === rows[end].step + 1) end++
+      const run = rows.slice(i, end + 1)
+      const lit = run[0]
+      if (!throws && !reported) {
+        reported = true
+        out.push(
+          finding('light on a boss that never throws', r, track, lit, `${run.length} frames of ${lit.cue!.sheet}`)
+        )
+      }
+      const asleep = run.find((row) => row.state === null)
+      if (asleep) out.push(finding('light on a sleeping boss', r, track, asleep, `${lit.cue!.sheet} before he woke`))
+      const next = rows[end + 1]
+      const kept =
+        run.some((row) => row.events.includes('boss-shoot')) ||
+        !next ||
+        next.step !== rows[end].step + 1 ||
+        next.events.includes('boss-shoot')
+      if (!kept)
+        out.push(
+          finding(
+            'light without its shot',
+            r,
+            track,
+            next,
+            `lit ${run.length} frames to progress ${rows[end].cue!.progress.toFixed(2)}, then gone with no shot: ${next.clip} frame ${next.frame}${next.state ? `, state ${next.state}` : ''}${next.moment ? `, moment ${next.moment}` : ''}`
+          )
+        )
+      i = end
+    }
+  }
+  return out
+}
+
+/**
+ * I7f: the king gathers before he fires. Before each of his volleys, the frames of that `shoot` state show his
+ * `shoot` clip below its release frame, never going back, from its first frame up to the last frame before the
+ * release on the frame before the volley. Where a staged moment cut the cast, the gather begins again on its first
+ * frame after the moment. And the volley itself leaves from his release frame (he has no light to leave from).
+ */
+export function kingGathersBeforeHeFires(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  for (const track of r.tracks.values()) {
+    if (track.kind !== 'boss' || track.bossKind !== 'final') continue
+    const rows = track.rows
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i]
+      if (!row.events.includes('boss-shoot')) continue
+      let from = i
+      while (from > 0 && rows[from - 1].state === 'shoot' && rows[from - 1].step === rows[from].step - 1) from--
+      let posedAt = -1
+      for (let j = from; j < i; j++) if (rows[j].posed !== null) posedAt = j - from
+      const gather = rows.slice(posedAt >= 0 ? from + posedAt + 1 : from, i)
+      const hit = SPECS[row.sheet]?.shoot?.hit ?? 0
+      // He has no light: his volley leaves from his release, or from nothing at all.
+      if (row.clip !== 'shoot' || row.frame < hit)
+        out.push(
+          finding(
+            'volley leaves without its release',
+            r,
+            track,
+            row,
+            `${row.clip} frame ${row.frame} on the frame the volley leaves (after ${rows[i - 1].clip} frame ${rows[i - 1].frame})`
+          )
+        )
+      // (A release shown before the volley is `releasesWaitForTheirShots`'s finding; the gather is what came before.)
+      while (gather.length > 1 && gather[gather.length - 1].clip === 'shoot' && gather[gather.length - 1].frame >= hit)
+        gather.pop()
+      const fail = (at: Row, detail: string) =>
+        out.push(
+          finding(
+            'volley without its gather',
+            r,
+            track,
+            at,
+            `${detail}${posedAt >= 0 ? ' (after a staged moment)' : ''}`
+          )
+        )
+      if (!gather.length) {
+        fail(row, 'no frame of his shoot state before the volley')
+        continue
+      }
+      const wrong = gather.find((a) => a.clip !== 'shoot' || a.frame >= hit)
+      if (wrong) {
+        fail(wrong, `${wrong.clip} frame ${wrong.frame} ${row.sim - wrong.sim} steps before the volley`)
+        continue
+      }
+      const back = gather.findIndex((a, k) => k > 0 && a.frame < gather[k - 1].frame)
+      if (back > 0) {
+        fail(gather[back], `frame ${gather[back].frame} after frame ${gather[back - 1].frame}`)
+        continue
+      }
+      // (A gather from the start of the state, or begun again after a moment, starts on its first frame.)
+      const first = gather[0]
+      if (first.frame !== 0 && (posedAt >= 0 || from > 0)) fail(first, `the gather begins on frame ${first.frame}`)
+      else if (gather[gather.length - 1].frame !== hit - 1)
+        fail(gather[gather.length - 1], `the gather reaches frame ${gather[gather.length - 1].frame} of ${hit - 1}`)
+    }
+  }
+  return out
+}
+
+/**
+ * I4d: a landing needs a touchdown. A run of a boss's `land` begins on the frame he comes down: the frame before
+ * shows him in the air, or is the first frame of his `slam` on the ground (the step he touches down on). A landing
+ * that begins anywhere else (after a staged pose, on the step of his transformation, after a flinch) is a landing
+ * with nothing to land from.
+ */
+export function landingsNeedATouchdown(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  const track = r.tracks.get('boss')
+  if (!track) return out
+  const rows = track.rows
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i]
+    const a = rows[i - 1]
+    if (row.clip !== 'land' || a.step !== row.step - 1 || (a.clip === 'land' && a.sheet === row.sheet)) continue
+    if (!a.onGround) continue
+    const b = rows[i - 2]
+    const touchdown = a.state === 'slam' && (!b || b.step !== a.step - 1 || !b.onGround || b.state !== 'slam')
+    if (touchdown) continue
+    out.push(
+      finding(
+        'landing without a touchdown',
+        r,
+        track,
+        row,
+        `land frame ${row.frame} after ${a.clip} frame ${a.frame}${a.posed ? ` (staged ${a.posed})` : ''} on the ground${row.state ? `, state ${row.state}` : ''}`
+      )
+    )
+  }
+  return out
+}
+
+/**
+ * I4e: a staged moment hands over cleanly. On the first frame after a staged pose on the hero or the boss ends, an
+ * action, or a boss's clip timed from his state's start (a wind-up, a recovery, a landing, the king's gather), is on
+ * its first frame, whether or not the state is the one it was before the moment (the pose's own clip carrying on
+ * is not a new one).
+ */
+export function stagedMomentsHandOverCleanly(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  for (const track of r.tracks.values()) {
+    if (track.kind !== 'hero' && track.kind !== 'boss') continue
+    const actions = ACTIONS[track.kind]
+    const rows = track.rows
+    for (let i = 1; i < rows.length; i++) {
+      const a = rows[i - 1]
+      const b = rows[i]
+      if (a.posed === null || b.posed !== null || b.step !== a.step + 1) continue
+      const timed = actions.includes(b.clip) || (track.kind === 'boss' && STATE_TIMED_CLIPS.includes(b.clip))
+      if (!timed || b.frame === 0) continue
+      if (b.clip === a.posed && b.clip === a.clip && b.frame >= a.frame) continue
+      out.push(
+        finding(
+          'staged moment hands over in the middle',
+          r,
+          track,
+          b,
+          `${b.clip} frame ${b.frame} after the staged ${a.posed}${a.moment ? ` (${a.moment})` : ''}${b.state ? `, state ${b.state}` : ''}`
+        )
+      )
     }
   }
   return out
@@ -1434,7 +2466,8 @@ const MAY_CUT = ['hurt', 'rage', 'stunned', 'air']
 /**
  * I5: an enemy's or a boss's action plays to its last frame. (The hero's are cut by the player's next input, which
  * is his to give.) A state of the simulation changing under it is not a reason: the view starts an action only
- * when it fits.
+ * when it fits. A throw's lead-in (no release frame shown yet) may be given up when, and only when, the hero is no
+ * longer on the side it faces (on the frame it is given up, or the frame before).
  */
 export function actionsPlayOut(r: Recorder): Finding[] {
   const out: Finding[] = []
@@ -1448,6 +2481,12 @@ export function actionsPlayOut(r: Recorder): Finding[] {
       // The same action again from its start is a new cause (a second hit).
       if (after.clip === rows[0].clip && after.frame === 0) continue
       if (MAY_CUT.includes(after.clip)) continue
+      const end = rows[rows.length - 1]
+      // (Where a shot leaves, its side is where the simulation saw the hero; the frame's own positions may be
+      // interpolated half a step behind it.)
+      const away = (row: Row) =>
+        row.shot !== 0 ? row.shot !== (end.flip ? -1 : 1) : end.flip ? row.heroDx >= 0 : row.heroDx <= 0
+      if (rows[0].clip === 'shoot' && spec.hit !== undefined && last < spec.hit && (away(end) || away(after))) continue
       out.push(
         finding(
           'action is cut short',
@@ -1520,6 +2559,7 @@ export function facingDoesNotFlicker(r: Recorder): Finding[] {
       const a = track.rows[i - 1]
       const b = track.rows[i]
       if (b.step !== a.step + 1 || a.flip === b.flip) continue
+      // Real (display) time: two turns close together flicker on the screen, held simulation or not.
       if (b.t - last < FLICKER_SECONDS - EPS) {
         count++
         first ??= b
@@ -1563,7 +2603,8 @@ export function pictureStaysWithTheBody(r: Recorder): Finding[] {
       if (i === 0 || !continuous(track.rows[i - 1], row)) continue
       const a = track.rows[i - 1]
       const slip = Math.abs(row.x - a.x - (row.body - a.body))
-      if (slip > Math.max(DRAWN_STEP, DRAWN_SLEW * row.dt) + EPS && slip > by) {
+      // (The view eases a held picture back on view time; a frame that shows two steps may slip by two.)
+      if (slip > Math.max(DRAWN_STEP, DRAWN_SLEW * span(row)) + EPS && slip > by) {
         by = slip
         jump = row
       }
@@ -1590,7 +2631,8 @@ export function groundPosesNeedGround(r: Recorder): Finding[] {
   const out: Finding[] = []
   for (const track of r.tracks.values()) {
     if (track.kind === 'ghost') continue
-    const start = track.rows[0]?.t ?? 0
+    // View time: the settling is the simulation's, and the time in the air is the body's own fall.
+    const start = track.rows[0]?.vt ?? 0
     for (const stretch of stretches(track.rows)) {
       const spec = specOf(stretch[0])
       if (!spec) continue
@@ -1607,7 +2649,7 @@ export function groundPosesNeedGround(r: Recorder): Finding[] {
         // An inactive boss waits where the stage put him; a lunge frame of the bite is thrown off the feet.
         const counts =
           !row.onGround &&
-          row.t - start > SETTLE_SECONDS &&
+          row.vt - start > SETTLE_SECONDS &&
           !(track.kind === 'boss' && row.state === null) &&
           planted(row) === planted(stretch[0])
         if (!counts) {
@@ -1616,7 +2658,7 @@ export function groundPosesNeedGround(r: Recorder): Finding[] {
           continue
         }
         from ??= row
-        if (!row.held) air += row.dt
+        air += row.viewDt
         if (air > limit + EPS && air > worst) {
           worst = air
           first ??= from
@@ -1749,8 +2791,9 @@ export function bodiesAppearInPlace(r: Recorder): Finding[] {
       const a = rows[i - 1]
       const b = rows[i]
       if (b.step !== a.step + 1 || b.moved) continue
-      // (A frame may show a whole step at once: the frame a hit-stop begins shows the true positions.)
-      const dt = Math.max(b.dt, STEP)
+      // The simulation time the frame carried it by (`span`), a step at least: a frame may show a whole step at once
+      // (the frame a hit-stop begins on shows the true positions).
+      const dt = Math.max(span(b), STEP)
       const dx = Math.abs(b.x - a.x) - Math.max(Math.abs(a.vx), Math.abs(b.vx)) * dt
       const dy = Math.abs(b.feet - a.feet) - Math.max(Math.abs(a.vy), Math.abs(b.vy)) * dt
       if (dx > STEP_SLACK || dy > STEP_SLACK) {
@@ -1810,7 +2853,8 @@ export function walkersDoNotWalkOnAir(r: Recorder): Finding[] {
           continue
         }
         from ??= row
-        if (!row.held) air += row.dt
+        // View time: how long it walks off its ledge is its own motion.
+        air += row.viewDt
         if (air > WALK_ON_AIR_SECONDS + EPS && air > worst) {
           worst = air
           first ??= from
@@ -1844,7 +2888,8 @@ export function airPosesNeedAir(r: Recorder): Finding[] {
           continue
         }
         from ??= row
-        if (!row.held) ground += row.dt
+        // View time: how long it stays on the ground is its own motion.
+        ground += row.viewDt
         if (ground > GROUNDED_SECONDS + EPS && ground > worst) {
           worst = ground
           first ??= from
@@ -1872,9 +2917,11 @@ export function airPosesNeedAir(r: Recorder): Finding[] {
 export const AIM_CLEAR = aimClear
 
 /**
- * I12: an action does not turn round. While an enemy's or a boss's action plays (a flinch, a throw, a landing) the
- * picture keeps its facing; the one exception is a throw or a cast on the very frame its shot leaves, when the hero
- * has changed sides since it began. And a throw or a cast begins facing where the simulation aims: the hero's side.
+ * I12: an action does not turn round. While an enemy's or a boss's action plays (a flinch, a throw, a cast, a
+ * landing, the transformation) the picture keeps its facing, on the frame its shot leaves too: a release never
+ * turns. The one turn that is not inside an action is a throw still on its first frame turning with its target (a
+ * new beginning: frame 0 before and after; a lead-in whose target has gone to the other side is given up or begun
+ * again from its first frame). And a throw or a cast begins facing where the simulation aims: the hero's side.
  */
 export function actionsKeepTheirFacing(r: Recorder): Finding[] {
   const out: Finding[] = []
@@ -1895,16 +2942,18 @@ export function actionsKeepTheirFacing(r: Recorder): Finding[] {
           )
       }
       for (let i = 1; i < rows.length; i++) {
-        if (rows[i].flip === rows[i - 1].flip) continue
-        const leaves = rows[i].events.includes('boss-shoot') || rows[i].events.includes('spit')
-        if (rows[i].clip === 'shoot' && leaves) continue
+        const a = rows[i - 1]
+        const b = rows[i]
+        if (b.flip === a.flip) continue
+        // A throw on its first frame, turning to where its target now is, begins anew.
+        if (b.clip === 'shoot' && a.frame === 0 && b.frame === 0 && b.flip === b.heroDx < 0) continue
         out.push(
           finding(
             'action turns round',
             r,
             track,
-            rows[i],
-            `frame ${rows[i].frame} turns to face ${rows[i].flip ? 'left' : 'right'}`
+            b,
+            `frame ${b.frame} turns to face ${side(b.flip ? -1 : 1)} (after frame ${a.frame})${leaves(b) ? ' on the frame its shot leaves' : ''}`
           )
         )
         break
@@ -1956,6 +3005,10 @@ export const CHECKS = [
   cyclesNeedGround,
   travelFacesItsWay,
   shotsLeaveFromTheirPose,
+  releasesWaitForTheirShots,
+  shotsAreAnnounced,
+  lightsKeepTheirPromise,
+  kingGathersBeforeHeFires,
   shotsComeOutFromBehind,
   actionsStartAtTheirStart,
   actionsPlayOut,
@@ -1970,6 +3023,8 @@ export const CHECKS = [
   airTurnsFollowTheBody,
   takeOversStartAtTheirStart,
   leapsLandOnTheirLanding,
+  landingsNeedATouchdown,
+  stagedMomentsHandOverCleanly,
   actionsKeepTheirFacing,
   hurtFacesTheBlow
 ] as const

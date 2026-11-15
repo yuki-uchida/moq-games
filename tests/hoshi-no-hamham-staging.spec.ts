@@ -269,3 +269,109 @@ test('dying plays the death sequence and reaches the game-over screen within 6 s
   expect(Date.now() - died).toBeLessThan(6000)
   expect(errors).toEqual([])
 })
+
+/** What the light test reads through the hook (the view's own accessor for the gathering light of a boss's shot). */
+type LightHook = {
+  world: {
+    player: { invuln: number }
+    boss: { dead: boolean; active: boolean } | null
+    shots: { hostile: boolean; dead: boolean }[]
+  }
+  app: {
+    renderer: { k: number; ctx: CanvasRenderingContext2D; canvas: HTMLCanvasElement }
+    session: {
+      view: {
+        draw(): void
+        toCanvas(x: number, y: number): { x: number; y: number }
+        actors: {
+          shotCue(boss: unknown): { sheet: string; progress: number; x: number; y: number; side: number } | null
+        }
+      }
+    } | null
+  }
+}
+
+test("a boss's shot is announced on the canvas by its gathering light, which is gone when the shot leaves", async ({
+  page
+}) => {
+  test.setTimeout(60_000)
+  const errors = collectErrors(page)
+  // The fox casts one orb every 2.1 s, whatever he is doing.
+  await openStage(page, 7)
+  await waitForMoment(page, null)
+  await enterArena(page)
+  await waitForMoment(page, 'boss-intro')
+  await page.keyboard.press('KeyX')
+  await waitForMoment(page, null, 1000)
+  const result = await page.evaluate(
+    () =>
+      new Promise<{
+        sheet: string
+        progress: number
+        inside: number
+        outside: number
+        k: number
+        lightAtShot: boolean
+        frames: number
+      }>((resolve, reject) => {
+        const h = (window as unknown as { __hamham: LightHook }).__hamham
+        const view = h.app.session!.view
+        const actors = view.actors
+        const { canvas, ctx, k } = h.app.renderer
+        const started = performance.now()
+        let seen: { sheet: string; progress: number; inside: number; outside: number } | null = null
+        let frames = 0
+        const tick = () => {
+          const boss = h.world.boss
+          if (!boss || boss.dead) return reject(new Error('the boss is gone'))
+          if (performance.now() - started > 20_000) return reject(new Error('no light and no shot within 20 s'))
+          h.world.player.invuln = 999
+          frames += 1
+          const shots = h.world.shots.filter((s) => s.hostile && !s.dead).length
+          const cue = actors.shotCue(boss)
+          if (!seen && shots === 0 && cue && cue.progress >= 0.5) {
+            // The same state drawn with the light and without it: only the light's place may differ.
+            view.draw()
+            const withLight = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+            const at = view.toCanvas(cue.x, cue.y)
+            const own = actors as unknown as { shotCue?: unknown }
+            own.shotCue = () => null
+            view.draw()
+            delete own.shotCue
+            const without = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+            let inside = 0
+            let outside = 0
+            const reach = 20 * k
+            for (let i = 0; i < withLight.length; i += 4) {
+              if (
+                withLight[i] === without[i] &&
+                withLight[i + 1] === without[i + 1] &&
+                withLight[i + 2] === without[i + 2]
+              )
+                continue
+              const px = (i / 4) % canvas.width
+              const py = Math.floor(i / 4 / canvas.width)
+              if (Math.abs(px - at.x) <= reach && Math.abs(py - at.y) <= reach) inside += 1
+              else outside += 1
+            }
+            view.draw()
+            seen = { sheet: cue.sheet, progress: cue.progress, inside, outside }
+          }
+          // The frame on which his orb is in the world: the light has gone.
+          if (seen && shots > 0) return resolve({ ...seen, k, lightAtShot: cue !== null, frames })
+          requestAnimationFrame(tick)
+        }
+        requestAnimationFrame(tick)
+      })
+  )
+  console.log(
+    `[light] ${result.sheet} at ${result.progress.toFixed(2)}: ${result.inside} px differ at its place, ${result.outside} elsewhere (k ${result.k}, ${result.frames} frames)`
+  )
+  expect(result.sheet).toBe('prop:orb')
+  // The light is on the canvas where the view says it is (at least a 6 x 6 px patch of the art at the canvas's scale)
+  // and it is the only thing that differs.
+  expect(result.inside).toBeGreaterThanOrEqual(36 * result.k * result.k)
+  expect(result.outside).toBe(0)
+  expect(result.lightAtShot).toBe(false)
+  expect(errors).toEqual([])
+})

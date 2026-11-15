@@ -312,6 +312,234 @@ function drawOrb(f: number): Raster {
   return out.blit(l)
 }
 
+// ------------------------------------------------------------------------------------------ gathering light
+
+/**
+ * `gather`: the warning light that forms in front of a boss in the 0.45 s before his shot leaves (to the right). Six
+ * frames, each louder than the one before: a bright core with a broken ring of the shot's own light round it from the
+ * first frame; the ring closes in and thickens while the core takes the shot's own shape; the last frame (held until
+ * the shot leaves) flashes: the shot as good as formed, at the size of its flying sprite, hugged by the ring as a
+ * bright aura, a long four-point glint across it. The whole sign is about 24–26 px across from frame 3 on.
+ */
+const GATHER = 32
+const GC = 16
+
+/** The ring per frame: radius, thickness and the share of each arc's slot that is lit (it fills in as it closes). */
+const RING_R = [13, 12, 11, 10, 9.5, 9]
+const RING_W = [1, 1.2, 1.4, 1.6, 1.8, 2.2]
+const RING_FILL = [0.42, 0.47, 0.52, 0.58, 0.66, 0.76]
+
+/**
+ * The closing ring: `n` arcs of `light`, each led by a hot head of `hot` (a mote riding in on it), turning a little
+ * each frame, with the material's dark outline round them. On frame 5 the arcs burn hot along half their length.
+ */
+function ring(out: Raster, f: number, n: number, light: number, hot: number) {
+  const r = RING_R[f]
+  const w = RING_W[f] / 2 + 0.25
+  const fill = RING_FILL[f]
+  const slot = (Math.PI * 2) / n
+  const turn = 0.3 + f * 0.42
+  layer(out, (l) => {
+    for (let y = 0; y < GATHER; y++)
+      for (let x = 0; x < GATHER; x++) {
+        const dx = x + 0.5 - GC
+        const dy = y + 0.5 - GC
+        const off = Math.abs(Math.hypot(dx, dy) - r)
+        const a = Math.atan2(dy, dx) - turn
+        const pos = (((a % slot) + slot) % slot) / slot
+        if (pos > fill) continue
+        const head = pos > fill - 0.1
+        // the head is a fatter mote; the tail a line of light
+        if (off > (head && f < 5 ? w + 0.6 : w)) continue
+        l.set(x, y, head || (f === 5 && pos > fill * 0.4) ? hot : light)
+      }
+  })
+}
+
+/** The core of the first two frames: a white plus with arms of `light` (frame 0), a 3x3 white heart (frame 1). */
+function core(out: Raster, f: number, light: number) {
+  layer(out, (l) => {
+    for (const [dx, dy] of [
+      [0, 0],
+      [-1, 0],
+      [1, 0],
+      [0, -1],
+      [0, 1]
+    ])
+      l.set(GC + dx, GC - 1 + dy, C.white)
+    if (f === 1)
+      for (const [dx, dy] of [
+        [-1, -1],
+        [1, -1],
+        [-1, 1],
+        [1, 1]
+      ])
+        l.set(GC + dx, GC - 1 + dy, C.white)
+    for (const [dx, dy] of [
+      [-2, 0],
+      [2, 0],
+      [0, -2],
+      [0, 2]
+    ])
+      l.set(GC + dx, GC - 1 + dy, light)
+    if (f === 1)
+      for (const [dx, dy] of [
+        [-1, -1],
+        [1, -1],
+        [-1, 1],
+        [1, 1]
+      ])
+        l.set(GC + dx * 2, GC - 1 + dy * 2, light)
+  })
+}
+
+/**
+ * The "ready" flash: a four-point glint laid across the shot, arms of `len` px (white, their last pixels `tip`), with
+ * no outline of its own so the shot shows through between its arms.
+ */
+function flash(out: Raster, x: number, y: number, len: number, tip: number) {
+  out.set(x, y, C.white)
+  for (let k = 1; k <= len; k++) {
+    const col = k <= len - 2 ? C.white : tip
+    out.set(x - k, y, col)
+    out.set(x + k, y, col)
+    out.set(x, y - k, col)
+    out.set(x, y + k, col)
+  }
+  // a small heart of light round the crossing
+  for (const [dx, dy] of [
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
+    [1, 1]
+  ])
+    out.set(x + dx, y + dy, tip)
+}
+
+/** The dark-fire ball of `drawOrb` at radius `r`, centred in the gather cell, its tongues `tongues` long (0..1). */
+function orbBall(out: Raster, r: number, tongues: number, turn: number) {
+  const l = new Raster(GATHER, GATHER)
+  const c = GC
+  if (tongues > 0)
+    for (let i = 0; i < 6; i++) {
+      const a = (i * Math.PI) / 3 + turn
+      const len = r + (2.6 + (i % 2) * 0.8) * tongues
+      l.poly(
+        [
+          c + Math.cos(a - 0.32) * r * 0.8,
+          c + Math.sin(a - 0.32) * r * 0.8,
+          c + Math.cos(a + 0.25) * len,
+          c + Math.sin(a + 0.25) * len,
+          c + Math.cos(a + 0.32) * r * 0.8,
+          c + Math.sin(a + 0.32) * r * 0.8
+        ],
+        DARK[2]
+      )
+    }
+  ball(l, c, c, r, r, DARK, false)
+  l.ellipse(c, c, r * 0.62, r * 0.62, DARK[0])
+  l.ellipse(c, c, r * 0.42, r * 0.42, C.glow)
+  l.ellipse(c - 0.4, c - 0.4, Math.max(0.6, r * 0.24), Math.max(0.6, r * 0.24), C.white)
+  outline(l)
+  out.blit(l)
+}
+
+/** きつね旋風 / 黒ハム王: a violet ring closes on a white-hot core that swells into the ball of dark fire. */
+function drawOrbGather(f: number): Raster {
+  const out = new Raster(GATHER, GATHER)
+  ring(out, f, 5, DARK[0], C.white)
+  if (f < 2) core(out, f, DARK[0])
+  else orbBall(out, [0, 0, 3.4, 4.2, 4.8, 5.4][f], [0, 0, 0.2, 0.5, 0.8, 1][f], f * 0.28)
+  if (f === 5) flash(out, GC, GC - 1, 7, DARK[0])
+  return out
+}
+
+/**
+ * The bee's barb of `drawStinger` in the gather cell, its body grown to `cols` columns from the back (1..8) and its
+ * needle to `needle` pixels (0..8), at rest (no wobble, no motion streaks).
+ */
+function stingerBarb(out: Raster, cols: number, needle: number) {
+  const ox = 2
+  const cy = 16
+  const l = new Raster(GATHER, GATHER)
+  for (let x = 7; x < 7 + cols; x++) {
+    const round = x === 7 ? 1 : 0
+    for (let y = cy - 3 + round; y <= cy + 2 - round; y++) {
+      const band = (x >= 9 && x <= 10) || x >= 13
+      const base = y === cy - 3 + round ? R.honey[0] : y >= cy + 1 ? R.honey[2] : R.honey[1]
+      l.set(x + ox, y, band ? (y === cy - 3 + round ? C.inkWarm : C.black) : base)
+    }
+  }
+  outline(l)
+  if (needle > 0) {
+    l.rect(15 + ox, cy - 1, Math.min(2, needle), 3, C.black)
+    if (needle > 2) l.rect(17 + ox, cy - 1, Math.min(3, needle - 2), 2, C.black)
+    if (needle > 5) l.rect(20 + ox, cy, Math.min(2, needle - 5), 1, C.black)
+    if (needle > 7) l.set(22 + ox, cy, C.black)
+    l.set(16 + ox, cy - 1, R.dark[1])
+    if (needle > 2) l.set(17 + ox, cy - 1, R.dark[1])
+    if (needle > 3) l.set(18 + ox, cy - 1, R.dark[2])
+  }
+  out.blit(l)
+}
+
+/** ハチ女王: a ring of gold dust closes on a glowing grain, then the banded barb forms and grows its needle. */
+function drawStingerGather(f: number): Raster {
+  const out = new Raster(GATHER, GATHER)
+  ring(out, f, 6, R.honey[0], C.white)
+  if (f < 2) core(out, f, R.honey[0])
+  else if (f === 2)
+    layer(out, (l) => {
+      // a grain of gold the size of the barb's back end, hot in the middle
+      l.ellipse(GC, GC - 0.5, 3.2, 2.6, R.honey[1])
+      l.ellipse(GC - 0.5, GC - 1, 2, 1.5, R.honey[0])
+      l.rect(GC - 1, GC - 2, 2, 2, C.white)
+    })
+  else stingerBarb(out, [0, 0, 0, 7, 8, 8][f], [0, 0, 0, 0, 5, 8][f])
+  if (f === 3) out.set(GC - 3, GC - 2, C.white)
+  if (f === 5) flash(out, GC - 1, GC - 1, 7, R.honey[0])
+  return out
+}
+
+/** The crow's feather of `drawFeather`, held upright-forward (its tip up and to the right), `k` times its length. */
+function featherAt(out: Raster, k: number) {
+  const theta = -1.05
+  const c = Math.cos(theta)
+  const s = Math.sin(theta)
+  const cr = R.crowBlue
+  const l = new Raster(GATHER, GATHER)
+  for (let y = 0; y < GATHER; y++)
+    for (let x = 0; x < GATHER; x++) {
+      const dx = x + 0.5 - GC
+      const dy = y + 0.5 - GC
+      const u = (dx * c + dy * s) / k
+      const v0 = (-dx * s + dy * c) / Math.max(0.7, k)
+      if (u < -10 || u > 10) continue
+      const v = v0 - 0.02 * u * u
+      const t = (u + 10) / 20
+      const half = u < -6.5 ? 0.9 : 4.2 * Math.pow(Math.sin(Math.PI * Math.min(1, (t - 0.17) / 0.83)), 0.65)
+      if (Math.abs(v) > Math.max(0.9, half)) continue
+      let col: number = cr[1]
+      const side = shadeIndex(-s * Math.sign(v), c * Math.sign(v), 0.3, false)
+      if (Math.abs(v) < 0.7) col = cr[0]
+      else if (side >= 2) col = cr[2]
+      if (Math.abs(v) > half - 0.9 && Math.round(u) % 3 === 0 && u > -3 && k > 0.7) col = cr[3]
+      l.set(x, y, col)
+    }
+  outline(l)
+  out.blit(l)
+}
+
+/** カラス助: a ring of pale wind closes round a white core, and the dark feather forms upright inside it. */
+function drawFeatherGather(f: number): Raster {
+  const out = new Raster(GATHER, GATHER)
+  ring(out, f, 4, R.cloud[2], C.white)
+  if (f < 2) core(out, f, R.cloud[2])
+  else featherAt(out, [0, 0, 0.5, 0.7, 0.85, 1][f])
+  if (f === 5) flash(out, GC, GC - 1, 7, R.cloud[2])
+  return out
+}
+
 function drawShock(f: number): Raster {
   const out = new Raster(48, 32)
   // The crest rolls forward: the curl tip travels over the top while the whole wave creeps right.
@@ -487,9 +715,18 @@ export const sheets: SheetModule = {
   'prop:twig': () => ({ idle: lazyAnim(() => [drawTwig(0), drawTwig(1)], 3, true) }),
   'prop:berry': () => ({ idle: lazyAnim(() => [drawBerry(0), drawBerry(1)], 3, true) }),
   'prop:seed': () => ({ spin: lazyAnim(() => [0, 1, 2, 3].map(drawSeed), 14, true) }),
-  'prop:feather': () => ({ spin: lazyAnim(() => [0, 1, 2, 3].map(drawFeather), 14, true) }),
-  'prop:stinger': () => ({ fly: lazyAnim(() => [drawStinger(0), drawStinger(1)], 14, true) }),
-  'prop:orb': () => ({ pulse: lazyAnim(() => [0, 1, 2, 3].map(drawOrb), 12, true) }),
+  'prop:feather': () => ({
+    spin: lazyAnim(() => [0, 1, 2, 3].map(drawFeather), 14, true),
+    gather: lazyAnim(() => [0, 1, 2, 3, 4, 5].map(drawFeatherGather), 14, false)
+  }),
+  'prop:stinger': () => ({
+    fly: lazyAnim(() => [drawStinger(0), drawStinger(1)], 14, true),
+    gather: lazyAnim(() => [0, 1, 2, 3, 4, 5].map(drawStingerGather), 14, false)
+  }),
+  'prop:orb': () => ({
+    pulse: lazyAnim(() => [0, 1, 2, 3].map(drawOrb), 12, true),
+    gather: lazyAnim(() => [0, 1, 2, 3, 4, 5].map(drawOrbGather), 14, false)
+  }),
   'prop:shock': () => ({
     roll: lazyAnim(() => [0, 1, 2, 3].map(drawShock), 14, true, { anchor: [24, 30] }),
     fly: lazyAnim(() => [0, 1, 2, 3].map(drawShockFly), 14, true, { anchor: [24, 30] })

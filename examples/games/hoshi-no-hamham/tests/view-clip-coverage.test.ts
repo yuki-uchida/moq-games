@@ -648,6 +648,26 @@ function wallDodge(r: PlayRecorder) {
   )
 }
 
+/**
+ * The fox and the bee cast only with their aim settled (the hero clearly to one side, and still there when the shot
+ * leaves): a hero who keeps his distance for a few seconds, as a careful player does, sees their casts.
+ */
+function standOff(r: PlayRecorder, seconds: number) {
+  const { world } = r
+  const boss = world.boss!
+  const p = world.player
+  r.run(
+    seconds,
+    () => !boss.dead,
+    () => {
+      const input = emptyInput()
+      const dx = boss.x + boss.w / 2 - (p.x + p.w / 2)
+      if (Math.abs(dx) < 150) input[dx > 0 ? 'left' : 'right'] = true
+      return input
+    }
+  )
+}
+
 /** Floods a burst pipe and walks the hero into its water (stage 4). */
 function swim(r: PlayRecorder) {
   const { world } = r
@@ -706,6 +726,7 @@ function playStage(no: number) {
   r.run(chase ? 20 : 100, () => chase || !world.boss?.active)
   const boss = world.boss
   if (boss?.active && stage.boss.kind === 'brute') wallDodge(r)
+  if (boss?.active && stage.boss.kind === 'swarm') standOff(r, 4)
   if (boss) {
     const fight = () => fightInput(world)
     const going = () => !boss.dead && !(chase && boss.state === 'tired' && boss.stateTime > 1)

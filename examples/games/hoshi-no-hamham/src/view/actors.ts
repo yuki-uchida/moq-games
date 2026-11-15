@@ -29,6 +29,9 @@ import {
   bossSheetSpec,
   aimClear,
   castFit,
+  shotDue,
+  SHOT_CUE_SECONDS,
+  SHOT_CUE_SLIDE,
   castLeadTime,
   castRoom,
   clipLife,
@@ -50,7 +53,7 @@ import {
 import type { Placed } from './bounds'
 import type { FxPool } from './fx'
 import { summonPuff } from './fx-map'
-import { ENEMY_SPEC, HERO_SPEC, KING_RAGED, MOM_SPEC, bossSpec, type BossArt } from '../art/contract'
+import { ENEMY_SPEC, HERO_SPEC, KING_RAGED, MOM_SPEC, bossSpec, type AnimSpec, type BossArt } from '../art/contract'
 import {
   FACE_HOLD,
   drawnGain,
@@ -396,6 +399,14 @@ interface EnemyTimers {
   spitAt: number
   /** A rat or a mole drawn in the air: from when it is `aloft` until it is back on the ground. */
   air: boolean
+  /**
+   * A squirrel's throw begun again facing the other side (see `EnemySnapshot.throwFrom`): the shot timer it began
+   * again at, or the view time it began again at while it waits loaded; and whether its acorn left the other way
+   * (its follow-through does not show).
+   */
+  throwFrom: number | undefined
+  throwAgainAt: number | null
+  throwCut: boolean
   /** In the air: the furthest point its body has reached the way it faces (it turns once it is well back from it). */
   airX: number
   /** It has turned once in this fall: it does not turn again before it lands (a body zigzagging over the hero). */
@@ -422,6 +433,21 @@ export const AIR_TURN_PX = 4
 /** One simulation step (s), and the steps after its birth a summoned enemy is shown at the latest. */
 const SIM_STEP = 1 / 60
 export const BIRTH_SETTLE_STEPS = 3
+/**
+ * A summoned enemy born overlapping a solid that the simulation does not push out (it stands on the floor in the
+ * raised gate's column and walks out of it) is shown once it is out, or after this long (s) at the latest: the
+ * slowest minion (the squirrel, 52 px/s) walking its whole width (46 px) out of it takes 0.88 s, so it never stays
+ * unseen longer than a body that walks out would, even when it does not walk out at all.
+ */
+export const BIRTH_SOLID_SECONDS = 1
+
+/** Whether a body's box, but for a pixel at its edges, overlaps a solid tile. */
+export function boxInSolid(world: Pick<World, 'solidAt'>, body: { x: number; y: number; w: number; h: number }) {
+  for (let ty = Math.floor((body.y + 1) / TILE); ty <= Math.floor((body.y + body.h - 2) / TILE); ty++)
+    for (let tx = Math.floor((body.x + 1) / TILE); tx <= Math.floor((body.x + body.w - 2) / TILE); tx++)
+      if (world.solidAt(tx, ty)) return true
+  return false
+}
 
 /**
  * A hero within this many px of the ground under him and moving up or down no faster than this (px/s) is standing
@@ -549,6 +575,30 @@ function groundNear(world: Pick<World, 'solidAt' | 'tileAt' | 'h'>, x: number, f
   return ground !== null && ground - feet <= ENEMY_AIR_GAP
 }
 
+/** The gathering light of a boss's next shot as it is drawn (see `ActorsView.shotCue`). */
+export interface ShotCue {
+  /** The sheet it is drawn from (`prop:orb`, `prop:stinger`, `prop:feather`); its clip is `gather`. */
+  sheet: string
+  /** 0 … 1 through the gathering (1: the shot is about to leave). */
+  progress: number
+  /** Where it is drawn (world px). */
+  x: number
+  y: number
+  /** Where between the two edges of his body it sits: -1 his left edge … 1 his right edge. */
+  side: number
+}
+
+/** The last step before a shot (s): the light is full there. */
+const CUE_LAST_STEP = 1 / 60
+const newShotCue = (): ShotCue => ({ sheet: '', progress: 0, x: 0, y: 0, side: 0 })
+const shotCueScratch = newShotCue()
+/** The sheet of the gathering light of each boss that throws or casts (sim.ts `bossSkin`; the king has none). */
+const CUE_SHEETS: Record<string, string> = {
+  crowBoss: 'prop:feather',
+  foxBoss: 'prop:orb',
+  beeBoss: 'prop:stinger'
+}
+
 export class ActorsView {
   private time = 0
   // hero timers
@@ -616,6 +666,15 @@ export class ActorsView {
   private castRefused = false
   /** The side the shot went (the facing is kept there while the cast plays out), or 0. */
   private castSide: 0 | 1 | -1 = 0
+  /** The side the lead-in of the cast faces (its aim), and how often it began again for this shot (once at most). */
+  private castAim: 1 | -1 = 1
+  private castRestarts = 0
+  /** Counts for tests and the review kit: lead-ins given up, and lead-ins begun again. */
+  readonly castStats = { givenUp: 0, begunAgain: 0 }
+  /** A landing a cut ended (the phase change, a staged pose) is over for good until he touches down again. */
+  private landCut = false
+  /** The gathering light is drawn mirrored (it last sat to the left of his middle). */
+  private cueMirror = false
   /** The transformation cut the king's volley: its follow-through does not come back. */
   private volleyCut = false
   /** View time his last dash began, and his tread's gain then. */
@@ -636,8 +695,26 @@ export class ActorsView {
   /** The state time the clip timed from the state's start took over at, and the clip of the last update. */
   private clipFrom = 0
   private clipLast = ''
-  /** The state time the boss last touched down at inside his state (0 with the state), and whether he was grounded. */
+  /**
+   * The time on his state's own clock (`ownTime`) at which the boss's landing began inside his state (0 with the
+   * state; in his slam, the step after he touched down; before 0: it began before the state did, and plays on), and
+   * whether he was grounded.
+   */
   private bossLandedAt = 0
+  /**
+   * The simulation time his state began at, and whether the phase change has restarted the state's clock since: a
+   * landing and a volley's follow-through then run on in their own time from their own cause (`ownTime`).
+   */
+  private stateStart = 0
+  private stateReset = false
+  /**
+   * How far the king's gathering had come (0–1 of its frames before the release) when the phase change restarted his
+   * `shoot` (it goes on from there, its frames left sharing the time up to the volley), and the frame it last showed.
+   */
+  private gatherFrom = 0
+  private gatherFrame = 0
+  /** The simulation time the landing of the last slam began (the step after he touched down), when it is known. */
+  private slamLandWorld: number | null = null
   private bossGrounded = true
   /** The king has transformed: once his `rage` is over he is drawn from his raged sheet. */
   private phased = false
@@ -736,6 +813,32 @@ export class ActorsView {
     if (!pose) return
     delete this.poses[who]
     if (who === 'hero' && pose.face !== 0 && pose.face !== this.world.player.facing) this.turnAge = 0
+    // The state's clock stood still while the pose played: what shows next begins, it does not resume.
+    const boss = this.world.boss
+    if (who === 'boss' && boss && !boss.dead) this.cutState(boss.stateTime)
+  }
+
+  /**
+   * Whether a landing cut on the ground in his slam (he touched down while a moment held him, or on the step of the
+   * phase change) stays cut into the recovery that follows: there is no new touchdown to land on.
+   */
+  private carriesCut(state: BossState, before: BossState | null) {
+    return this.landCut && state === 'recover' && before === 'slam'
+  }
+
+  /**
+   * A cut in the boss's state (the phase change restarts its clock; a staged pose held it): a landing or a
+   * follow-through that was showing or over is over for good, and the clips timed from the state's start (a wind-up,
+   * a recovery, the king's gathering) begin again from their first frame at state time `from`.
+   */
+  private cutState(from: number) {
+    this.landCut = true
+    // (A volley still gathering in `shoot` is not over: its release and follow-through come with it.)
+    if (this.world.boss?.state !== 'shoot') this.volleyCut = true
+    this.clipFrom = from
+    this.clipLast = ''
+    this.bossLandedAt = from
+    this.gatherFrom = 0
   }
 
   /**
@@ -912,18 +1015,29 @@ export class ActorsView {
         const enemy = this.world.enemies.find((e) => e.id === event.id)
         if (!enemy) break
         // A bite a squirrel survives during its throw (or just before it) is the white flash over the throw.
-        this.timersOf(enemy).hurtShown = enemy.kind !== 'spitter' || spitterHurtShows(enemy.shootTimer)
+        const timers = this.timersOf(enemy)
+        timers.hurtShown =
+          enemy.kind !== 'spitter' || spitterHurtShows(enemy.shootTimer, ENEMY_SPEC.spitter.shoot, timers.throwCut)
         break
       }
       case 'spit': {
         const enemy = this.world.enemies.find((e) => e.id === event.id)
         if (!enemy) break
         const timers = this.timersOf(enemy)
-        if (timers.face !== event.dir) timers.faceAge = 0
-        timers.face = event.dir
         timers.spitAt = this.world.time
-        // (Its throw is under way from here on, facing the shot.)
-        timers.action = 'shoot'
+        if (timers.face === event.dir) {
+          // Its release, facing the shot.
+          timers.action = 'shoot'
+          break
+        }
+        // The hero crossed on the very step of the spit: no release frame turned round, no follow-through; it stands,
+        // turned to the acorn's side (not straight after another turn).
+        timers.throwCut = true
+        timers.action = ''
+        if (timers.faceAge >= FACE_HOLD) {
+          timers.face = event.dir
+          timers.faceAge = 0
+        }
         break
       }
       case 'enemy-down':
@@ -982,20 +1096,32 @@ export class ActorsView {
         if (!boss) break
         const side = shotSide(p.x, event.x, boss.w)
         if (this.cast === 'lead') {
-          this.cast = 'release'
-          this.castFresh = true
-          this.castSide = side
+          if (side === this.castAim) {
+            this.cast = 'release'
+            this.castFresh = true
+            this.castSide = side
+          } else {
+            // The hero crossed on the very step of the shot: no release frame turned round, no follow-through.
+            this.dropCast()
+            this.castStats.givenUp++
+          }
         }
         // A shot that leaves without a pose: the next shot is decided afresh.
         this.castRefused = false
-        // He faces the shot, unless a dash carries him (his dash clip faces the way he goes).
-        if (!isDashClip(this.bossChoice(boss).name)) {
-          // (A flinch that has not quite ended by then ends with the shot: a flinch never turns round.)
-          if (this.flinching() && side !== this.bossFace) this.flinchAt = null
-          if (this.bossFace !== side) this.bossFaceAge = 0
-          this.bossFace = side
-          // The facing of the step of the shot is the shot's.
-          this.faceSnapped = true
+        this.castRestarts = 0
+        // His light was on the shot's side: his body turns to it only where that is a clean turn (never the
+        // king's, whose fan goes both ways; not in a dash, not in an action, the hero clearly on that side, and not
+        // straight after another turn). Otherwise he keeps his facing.
+        if (this.cast === 'release') this.faceSnapped = true
+        else if (boss.def.kind !== 'final' && side !== this.bossFace && this.bossFaceAge >= FACE_HOLD) {
+          const name = this.bossChoice(boss).name
+          const action = name === 'hurt' || name === 'shoot' || name === 'land' || name === 'rage'
+          const clear = Math.abs(event.x - boss.w / 2 - p.x) > aimClear(boss.def.speed)
+          if (!isDashClip(name) && !action && clear) {
+            this.bossFace = side
+            this.bossFaceAge = 0
+            this.faceSnapped = true
+          }
         }
         break
       }
@@ -1016,6 +1142,17 @@ export class ActorsView {
       case 'boss-phase':
         this.rageAt = this.time
         this.phased = true
+        // sim.ts restarts his state's clock on this step, whatever the state. A landing and a follow-through run on
+        // their own clock (`ownTime`) and play out through it; what is timed from the state's start (a wind-up, a
+        // recovery, his gathering) begins again from its first frame, as his body does.
+        this.stateReset = true
+        this.clipFrom = 0
+        this.clipLast = ''
+        // (His gathering never goes back: it goes on from the frame it showed.)
+        if (this.world.boss?.state === 'shoot') {
+          const hit = bossSheetSpec(this.world.boss.def.kind, this.world.boss.def.art).shoot?.hit ?? 0
+          this.gatherFrom = hit > 0 ? Math.min(1, this.gatherFrame / hit) : 0
+        }
         break
       default:
         break
@@ -1040,6 +1177,9 @@ export class ActorsView {
           action: '',
           hurtShown: true,
           spitAt: NaN,
+          throwFrom: undefined,
+          throwAgainAt: null,
+          throwCut: false,
           air: false,
           airX: enemy.x + enemy.w / 2,
           airTurned: false,
@@ -1059,8 +1199,10 @@ export class ActorsView {
    * next step pushes it out. It is shown from the first frame after a whole step has passed since its birth when
    * that step carried it no further than its own speed does (born in the open: at once, one step on); a step that
    * put it elsewhere is waited out, so it shows once a further step has run from where it was put (never in the
-   * solid, never smeared through it between steps); at most `BIRTH_SETTLE_STEPS` steps after its birth. It comes
-   * with its summon's puff, where it shows.
+   * solid, never smeared through it between steps); at most `BIRTH_SETTLE_STEPS` steps after its birth. One that
+   * still overlaps a solid then (the simulation leaves it standing in the gate's column, and it walks out) waits on:
+   * it is shown on the first frame its box is out of the solid, or after `BIRTH_SOLID_SECONDS`. It comes with its
+   * summon's puff, where it shows; once shown it is never hidden again.
    */
   private settleBirth(enemy: Enemy, timers: EnemyTimers) {
     const age = enemy.t - timers.bornT
@@ -1073,6 +1215,7 @@ export class ActorsView {
       if (put) timers.pushedT = enemy.t
       else show = true
     } else if (enemy.t - timers.pushedT > SIM_STEP / 2) show = true
+    if (show && age < BIRTH_SOLID_SECONDS - SIM_STEP / 2 && boxInSolid(this.world, enemy)) show = false
     if (!show) return
     timers.shown = true
     // Whether it shows in the air is decided afresh where it shows (a short drop to the ground is no fall).
@@ -1120,7 +1263,8 @@ export class ActorsView {
       at,
       groundFrame,
       // Knocked out on the very step it spat (compared on the simulation's clock).
-      opening: event.kind === 'spitter' && timers !== undefined && timers.spitAt === this.world.time
+      // (Not when the acorn left the other way: it showed no release.)
+      opening: event.kind === 'spitter' && timers !== undefined && timers.spitAt === this.world.time && !timers.throwCut
     })
     this.enemyTimers.delete(event.id)
   }
@@ -1202,8 +1346,11 @@ export class ActorsView {
         const began = action && clipName !== timers.action
         timers.action = action ? clipName : ''
         let face = timers.face
+        if (enemy.kind === 'spitter') this.settleThrow(enemy, timers)
         if (action) {
           if (began && clipName === 'shoot') face = enemy.facing
+          // A throw whose target has gone to the other side begins again from its first frame, facing it.
+          else if (clipName === 'shoot' && enemy.kind === 'spitter') face = this.throwAgain(enemy, timers, face)
           if (enemy.kind === 'walker' || enemy.kind === 'tough') forgetMotion(timers.tread)
         } else if (timers.air) {
           // In the air a rat or a mole faces the way its body has really gone: once it is `AIR_TURN_PX` past the
@@ -1525,6 +1672,33 @@ export class ActorsView {
     })
   }
 
+  /** A squirrel's records of its throw: cleared once the throw is over, its cut cleared when a new one begins. */
+  private settleThrow(enemy: Enemy, timers: EnemyTimers) {
+    if (enemy.shootTimer > hitTime(ENEMY_SPEC.spitter.shoot)) {
+      timers.throwFrom = undefined
+      timers.throwAgainAt = null
+    } else timers.throwCut = false
+  }
+
+  /**
+   * A squirrel in its lead-in (or waiting loaded) whose target is now on the other side (the sign the simulation aims
+   * by) begins its throw again from its first frame, facing it: its frames before the release squeezed into the time
+   * left, or played over `FIT_MIN` while it waits. Not straight after another turn. The facing it throws with.
+   */
+  private throwAgain(enemy: Enemy, timers: EnemyTimers, face: 1 | -1): 1 | -1 {
+    if (enemy.shootTimer > hitTime(ENEMY_SPEC.spitter.shoot)) return face
+    const d = this.world.player.x - enemy.x
+    const aim: 1 | -1 = d > 0 ? 1 : -1
+    if (d === 0 || aim === face || timers.faceAge < FACE_HOLD) return face
+    if (enemy.shootTimer > 0) timers.throwFrom = enemy.shootTimer
+    else timers.throwAgainAt = this.time
+    this.throwStats.begunAgain++
+    return aim
+  }
+
+  /** Counts for tests and the review kit: squirrels' throws begun again. */
+  readonly throwStats = { begunAgain: 0 }
+
   /** The clip a live enemy is drawn with now (without drawing). */
   selectEnemy(enemy: Enemy): ClipChoice {
     const timers = this.enemyTimers.get(enemy.id)
@@ -1540,6 +1714,9 @@ export class ActorsView {
     snapshot.standing = timers ? shownStanding(timers.tread) : false
     snapshot.time = this.time + enemy.id * 0.13
     snapshot.airborne = timers ? timers.air : this.goesAloft(enemy, false)
+    snapshot.throwFrom = timers?.throwFrom
+    snapshot.throwAgainAge = timers?.throwAgainAt == null ? null : this.time - timers.throwAgainAt
+    snapshot.throwCut = timers?.throwCut ?? false
     return enemyClip(snapshot)
   }
 
@@ -1595,7 +1772,10 @@ export class ActorsView {
 
   drawBoss(ctx: CanvasRenderingContext2D) {
     const boss = this.world.boss
-    if (boss && !boss.dead) this.drawLiveBoss(ctx, boss)
+    if (boss && !boss.dead) {
+      this.drawLiveBoss(ctx, boss)
+      this.drawShotCue(ctx, boss)
+    }
     for (const g of this.ghosts) {
       if (g.end !== 'boom') continue
       const anim = clip(g.sheet, g.clip)
@@ -1628,6 +1808,29 @@ export class ActorsView {
     return KING_RAGED
   }
 
+  /**
+   * The time into the boss's state on its own clock: his state time, or, once the phase change has restarted it, the
+   * simulation time since the state began (a landing and a follow-through are timed on it, from their own cause).
+   */
+  private ownTime(boss: Boss) {
+    if (boss.state !== this.bossLast || !this.stateReset) return boss.stateTime
+    return this.world.time - this.stateStart
+  }
+
+  /**
+   * Whether the live boss is between his actions: not in a leap (in the air, or in his slam), no landing, no gathering
+   * or follow-through of a volley, no flinch showing. The staged transformation waits for it (see `StageDirector`).
+   */
+  bossBetweenActions(): boolean {
+    const boss = this.world.boss
+    if (!boss || boss.dead || !boss.active) return true
+    const leaps = boss.def.kind === 'tank' || boss.def.kind === 'final'
+    if (leaps && (boss.state === 'slam' || !boss.onGround)) return false
+    if (boss.def.kind === 'final' && boss.state === 'shoot') return false
+    const name = this.bossChoice(boss).name
+    return name !== 'land' && name !== 'shoot' && name !== 'hurt'
+  }
+
   /** Whether a flinch is playing. */
   private flinching() {
     const boss = this.world.boss
@@ -1639,6 +1842,74 @@ export class ActorsView {
   private dropCast() {
     this.cast = 'none'
     this.castSide = 0
+  }
+
+  /**
+   * Begins the lead-in of a cast for the shot due in `until` seconds, if it fits (`castFit`) and its aim is settled:
+   * the hero clearly to one side now (`aimClear`) and still on that side when the shot leaves, going by how the two
+   * bodies move now; and not straight after a turn (it begins facing that side). Whether it began.
+   */
+  private beginCast(boss: Boss, s: BossSnapshot, spec: Record<string, AnimSpec>, until: number) {
+    const p = this.world.player
+    const dx = p.x - boss.x
+    const clear = aimClear(boss.def.speed)
+    if (Math.abs(dx) <= clear) return false
+    // (Walking at the hero in his `idle`, he goes at his own speed towards him whatever he does on this step.)
+    const walks = boss.state === 'idle' && WALKERS.includes(boss.def.kind)
+    const bossVx = walks ? Math.sign(dx) * boss.def.speed : boss.vx
+    const later = dx + (p.vx - bossVx) * until
+    if (later * dx <= 0 || Math.abs(later) <= clear) return false
+    const aim: 1 | -1 = dx > 0 ? 1 : -1
+    if (aim !== this.bossFace && this.bossFaceAge < FACE_HOLD) return false
+    const tail = castFit(s, spec)
+    if (tail <= 0) return false
+    this.cast = 'lead'
+    this.castFrom = until
+    this.castTail = tail
+    this.castAim = aim
+    if (aim !== this.bossFace) {
+      this.bossFace = aim
+      this.bossFaceAge = 0
+    }
+    return true
+  }
+
+  /**
+   * The gathering light of the live boss's next shot as it is drawn on this frame, or null when none shows: from
+   * `SHOT_CUE_SECONDS` before a shot of the crow, the fox or the bee leaves (`shotDue`), whatever his body does,
+   * held on its last frame until the shot leaves, gone on the frame that shows it. It sits at the height the shot is
+   * born, between the edges of his body by where the hero is (`SHOT_CUE_SLIDE`), so the side it will leave on is read
+   * from the picture, and while the hero passes over him it slides across his body.
+   */
+  shotCue(boss: Boss, out: ShotCue = newShotCue()): ShotCue | null {
+    const sheet = CUE_SHEETS[boss.def.art]
+    if (!sheet || boss.dead || !boss.active) return null
+    const due = shotDue(this.fillBoss(boss))
+    if (due === null || due > SHOT_CUE_SECONDS + 1e-9) return null
+    const side = Math.max(-1, Math.min(1, (this.world.player.x - boss.x) / SHOT_CUE_SLIDE))
+    const jolt = this.reducedMotion || this.joltAt === null ? 0 : bossJolt(this.time - this.joltAt, this.joltDir)
+    out.sheet = sheet
+    // (Full on the last frame before the shot: the frame before the one that shows it shows the light whole, also
+    // when a display frame spans more than a step.)
+    const last = Math.ceil(this.frameDt / CUE_LAST_STEP - 1e-6) * CUE_LAST_STEP
+    out.progress = Math.max(0, Math.min(1, (SHOT_CUE_SECONDS - due) / (SHOT_CUE_SECONDS - last)))
+    out.x = this.bossX(boss) + jolt + (side * boss.w) / 2
+    out.y = boss.y + boss.h * (boss.def.kind === 'flyer' ? 0.5 : 0.4) + 7
+    out.side = side
+    return out
+  }
+
+  /** Draws the gathering light (`shotCue`) in front of the boss: `gather` of the shot's sheet, played by progress. */
+  private drawShotCue(ctx: CanvasRenderingContext2D, boss: Boss) {
+    const cue = this.shotCue(boss, shotCueScratch)
+    if (!cue) return
+    if (cue.side < 0) this.cueMirror = true
+    else if (cue.side > 0) this.cueMirror = false
+    const anim = clip(cue.sheet, 'gather')
+    // (Not drawn before its art is there.)
+    if (!anim?.frames?.length) return
+    const frame = Math.min(anim.frames.length - 1, Math.floor(cue.progress * anim.frames.length))
+    blit(ctx, anim, 0, cue.x, cue.y, brush(this.cueMirror, undefined, frame))
   }
 
   /** The boss snapshot, refilled from the body and the view's records. */
@@ -1672,7 +1943,12 @@ export class ActorsView {
     // (Before `update` has seen a new state, what it recorded belongs to the state before: the new one starts clean.)
     const fresh = boss.state !== this.bossLast
     s.clipFrom = fresh ? 0 : this.clipFrom
-    s.landedAt = fresh ? 0 : this.bossLandedAt
+    s.landedAt = fresh ? this.freshLandedAt(boss) : this.bossLandedAt
+    s.ownTime = this.ownTime(boss)
+    s.stateReset = !fresh && this.stateReset
+    s.gatherFrom = fresh ? 0 : this.gatherFrom
+    s.landCut = fresh ? this.carriesCut(boss.state, this.bossLast) : this.landCut
+    s.projectiles = boss.def.projectiles
     s.castAge = null
     if (this.cast === 'lead' && spec.shoot) s.castAge = castLeadTime(s, spec, this.castFrom)
     else if (this.cast === 'release' && spec.shoot) {
@@ -1687,6 +1963,15 @@ export class ActorsView {
         : lead + Math.min(natural - 1e-6, ((this.time - this.castAt) * natural) / seconds)
     }
     return s
+  }
+
+  /**
+   * Where the landing begins on the clock of a state the view has not recorded yet: a recovery after a slam whose
+   * landing began before it (in his slam, held there by the phase change) carries it on; else with the state.
+   */
+  private freshLandedAt(boss: Boss) {
+    if (boss.state !== 'recover' || this.bossLast !== 'slam' || this.slamLandWorld === null) return 0
+    return Math.min(0, this.slamLandWorld - (this.world.time - boss.stateTime))
   }
 
   /** The boss's clip from his state and the view's records (no staged pose). */
@@ -1708,16 +1993,32 @@ export class ActorsView {
     }
     const newState = boss.state !== this.bossLast
     if (newState) {
+      this.bossLandedAt = this.freshLandedAt(boss)
+      // (Only a slam the phase change held on the ground carries its landing over: see `freshLandedAt`.)
+      if (boss.state !== 'recover') this.slamLandWorld = null
       this.bossPrev = this.bossLast
       this.bossLast = boss.state
+      this.stateStart = this.world.time - boss.stateTime
+      this.stateReset = false
+      this.gatherFrom = 0
+      this.gatherFrame = 0
       this.clipFrom = 0
-      this.bossLandedAt = 0
+      this.landCut = this.carriesCut(boss.state, this.bossPrev)
       if (boss.state === 'charge' || boss.state === 'dive') {
         this.dashAt = this.time
         this.dashGain = this.bossGain
       }
       if (boss.state === 'shoot') this.volleyCut = false
-    } else if (boss.onGround && !this.bossGrounded) this.bossLandedAt = boss.stateTime
+    } else if (boss.onGround && !this.bossGrounded) {
+      // In his slam the landing begins on the step after the touchdown (the step the simulation ends the slam on).
+      const slam = boss.state === 'slam'
+      this.bossLandedAt = this.ownTime(boss) + (slam ? SIM_STEP : 0)
+      if (slam) this.slamLandWorld = this.stateReset ? this.world.time + SIM_STEP : null
+      this.landCut = false
+    }
+    // The phase change restarting his slam's clock on the ground: the landing that began goes on into the recovery.
+    if (boss.state === 'slam' && this.stateReset && boss.onGround && this.slamLandWorld === null)
+      this.slamLandWorld = this.stateStart + this.bossLandedAt
     this.bossGrounded = boss.onGround
     stepTread(this.bossTread, boss.x + boss.w / 2, dt, boss.onGround)
     // Only a boss walking on the ground (and ハム代 running) is ever held still; elsewhere the picture is the body.
@@ -1730,24 +2031,21 @@ export class ActorsView {
     if (spec.shoot) {
       const lead = hitTime(spec.shoot)
       const until = shotLead(s)
+      if (this.cast === 'lead' && until !== null && (this.world.player.x - boss.x) * this.castAim < 0) {
+        // The hero has gone to the other side before the release: the lead-in is given up on this frame (it never
+        // carries on to a release that would have to turn), and begins again facing the new side where it can.
+        this.dropCast()
+        this.castStats.givenUp++
+        if (this.castRestarts === 0 && this.beginCast(boss, s, spec, until)) {
+          this.castRestarts++
+          this.castStats.begunAgain++
+        } else this.castRefused = true
+      }
       if (this.cast === 'none') {
-        if (until === null || until > lead) this.castRefused = false
-        else if (!this.castRefused && !this.flinching()) {
-          // Posed only with the hero clearly to one side (within a step of the boss's own travel the simulation's
-          // aim flips as he overshoots), and begun facing exactly where it aims.
-          const dx = this.world.player.x - boss.x
-          const tail = Math.abs(dx) > aimClear(boss.def.speed) ? castFit(s, spec) : 0
-          if (tail > 0) {
-            this.cast = 'lead'
-            this.castFrom = until
-            this.castTail = tail
-            const aim: 1 | -1 = dx > 0 ? 1 : -1
-            if (aim !== this.bossFace) {
-              this.bossFace = aim
-              this.bossFaceAge = 0
-            }
-          }
-        }
+        if (until === null || until > lead) {
+          this.castRefused = false
+          this.castRestarts = 0
+        } else if (!this.castRefused && !this.flinching()) this.beginCast(boss, s, spec, until)
       } else if (this.cast === 'lead' && until === null) this.dropCast()
       else if (this.cast === 'release' && this.castFresh) {
         // The frame that shows the shot shows its release; the follow-through runs from here, fitted to the time
@@ -1764,21 +2062,29 @@ export class ActorsView {
       s = this.fillBoss(boss)
     }
     const choice = bossClip(s, boss.def.art, spec)
-    // The drawn facing.
+    // The drawn facing. An action (a flinch, a throw or cast, a landing) keeps the facing it began with to its last
+    // frame. The king's volley begins facing the hero when he is clearly on one side (on its first frame, also when a
+    // hit-stop holds it, and not straight after another turn); a cast of the others begins facing its aim (`beginCast`).
+    const action = choice.name === 'hurt' || choice.name === 'shoot' || choice.name === 'land'
+    const began = action && choice.name !== this.bossAction
+    this.bossAction = action ? choice.name : ''
+    if (boss.active && began && choice.name === 'shoot' && this.cast === 'none' && this.bossFaceAge >= FACE_HOLD) {
+      const d = this.world.player.x - boss.x
+      const aim: 1 | -1 = d > 0 ? 1 : -1
+      if (Math.abs(d) > aimClear(boss.def.speed) && aim !== this.bossFace) {
+        this.bossFace = aim
+        this.bossFaceAge = 0
+      }
+    }
     if (dt > 0 && boss.active) {
       const d = this.world.player.x - boss.x
       const age = this.bossFaceAge
       // A walk is read from its own steps: out of one (another state, or standing over the hero) it starts anew.
       if (boss.state !== 'idle') forgetMotion(this.bossTread)
       let face = this.bossFace
-      // An action (a flinch, a throw or cast, a landing) keeps the facing it began with; a throw or a volley begins
-      // facing the hero's exact side when he is clearly on one, and its release turns him to the shot's side.
-      const action = choice.name === 'hurt' || choice.name === 'shoot' || choice.name === 'land'
-      const began = action && choice.name !== this.bossAction
-      this.bossAction = action ? choice.name : ''
       if (this.faceSnapped) this.faceSnapped = false
       else if (action) {
-        if (began && choice.name === 'shoot' && Math.abs(d) > aimClear(boss.def.speed)) face = d > 0 ? 1 : -1
+        // (It keeps its facing.)
       } else if (boss.def.kind === 'chaser') face = heldSideFacing(face, d, age)
       else if (this.cast === 'release' && this.castSide !== 0) face = this.castSide
       // Through a cast he keeps the facing he aimed with (the shot turns him to its side if the hero has crossed;
@@ -1796,8 +2102,8 @@ export class ActorsView {
         const aiming = boss.def.projectiles > 0 && boss.shotTimer > 0 && boss.shotTimer < FACE_HOLD
         if (!aiming) face = walkFacing(this.bossTread, face, d, true, age)
       }
-      // Once he has settled into his wind-up it turns with the hero all the way: the attack starts the way he faces.
-      else if (boss.state === 'windup' && Math.abs(boss.vx) <= FLINCH_MAX_SPEED) face = heldSideFacing(face, d, age, 0)
+      // In his wind-up, too, he turns only once the hero is clearly on the other side (on top of him the sign of
+      // `player.x - boss.x` changes every few steps), and not twice in a moment.
       else face = heldSideFacing(face, d, age)
       if (face !== this.bossFace) {
         this.bossFace = face
@@ -1829,7 +2135,9 @@ export class ActorsView {
     }
     // A clip timed from the state's start that takes over from another clip inside the state begins on its first
     // frame: it is timed from there (`BossSnapshot.clipFrom`).
-    const name = this.bossChoice(boss).name
+    const shown = this.bossChoice(boss)
+    const name = shown.name
+    if (boss.state === 'shoot' && name === 'shoot') this.gatherFrame = shown.frame ?? 0
     if (!newState && name !== this.clipLast && STATE_TIMED.includes(name)) this.clipFrom = boss.stateTime
     this.clipLast = name
   }

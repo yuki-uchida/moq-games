@@ -84,6 +84,8 @@ interface Pending {
 interface Landing extends Pending {
   waited: number
   hero: boolean
+  /** It also waits for the boss to be between his actions (`ActorsView.bossBetweenActions`). */
+  between: boolean
 }
 
 export class StageDirector implements Director {
@@ -151,8 +153,10 @@ export class StageDirector implements Director {
       case 'boss-phase':
         // (The view leaves his transformation to the moment: it is not played on the simulation's time.) Like the
         // entrance it waits for the hero to land too: he is not held in mid-air or in the first frame of a bite.
+        // It also waits for him to be between his actions: he lands with his whole landing, or fires and follows
+        // through, and then roars.
         this.host.view.actors.stageRage()
-        this.whenLanded(PRIORITY.phase, () => this.staging.bossPhase(), true)
+        this.whenLanded(PRIORITY.phase, () => this.staging.bossPhase(), true, true)
         break
       case 'boss-down':
         this.hideBossBar()
@@ -264,17 +268,19 @@ export class StageDirector implements Director {
    * Requests a boss's moment once he stands on the ground: one that holds him in a planted pose (his roar, his
    * transformation) is not begun while he is in the air (the simulation runs on meanwhile). A flier hovers, and one
    * that never lands is posed after `LAND_WAIT_SECONDS`. With `hero` it also waits (in the same wait) for the hero
-   * to stand on the ground (the boss's entrance poses him standing; swimming he is off the ground).
+   * to stand on the ground (the boss's entrance poses him standing; swimming he is off the ground), and with
+   * `between` for the boss to be between his actions (no leap, landing, volley or flinch showing).
    */
-  private whenLanded(priority: number, make: () => Sequence | null, hero = false) {
+  private whenLanded(priority: number, make: () => Sequence | null, hero = false, between = false) {
     if (this.ended) return
-    if (this.landed(hero)) this.request(priority, make)
-    else this.landings.push({ priority, make, waited: 0, hero })
+    if (this.landed(hero, between)) this.request(priority, make)
+    else this.landings.push({ priority, make, waited: 0, hero, between })
   }
 
-  private landed(hero: boolean) {
+  private landed(hero: boolean, between = false) {
     const { boss, player } = this.host.world
     const bossDown = !boss || boss.dead || boss.onGround || boss.def.kind === 'flyer'
+    if (between && this.host.view.actors.bossBetweenActions?.() === false) return false
     return bossDown && (!hero || player.onGround || player.dead)
   }
 
@@ -284,7 +290,7 @@ export class StageDirector implements Director {
       const l = this.landings[i]
       l.waited += dt * this.claimed.scale
       if (this.ended) this.landings.splice(i, 1)
-      else if (this.landed(l.hero) || l.waited >= LAND_WAIT_SECONDS - 1e-9) {
+      else if (this.landed(l.hero, l.between) || l.waited >= LAND_WAIT_SECONDS - 1e-9) {
         this.landings.splice(i, 1)
         this.request(l.priority, l.make)
       } else i++

@@ -407,3 +407,96 @@ describe('the same at another display rate', () => {
       }
     })
 })
+
+describe('the same decisions at every display rate, hit-stops and all', () => {
+  /**
+   * The body as `PlaySession` shows it at `hz`: the pacer runs the steps a frame owes (the simulation one step ahead
+   * of the picture), the picture is interpolated between the last two steps by its alpha (`app/interpolate.ts`),
+   * and a hit-stop holds the simulation for `held` frames now and then (the view is updated with no time passing; a
+   * body's turn clock runs on). The decisions are read for each simulation step from the last frame that showed it.
+   */
+  const replay = (at: (n: number) => number, steps: number, hz: number, stops: readonly number[] = []) => {
+    const b = new Body()
+    const out: { standing: boolean; face: number }[] = []
+    let acc = 0
+    let n = 0
+    let prev = at(0)
+    let stopped = -1
+    while (n < steps) {
+      const stop = stops.includes(n) && stopped !== n
+      if (stop) {
+        // A hit-stop of 0.1 s of real time: no step, the current state shown.
+        stopped = n
+        for (let k = 0; k < Math.round(0.1 * hz); k++) {
+          stepTread(b.t, at(n), 0)
+          stepPicture(b.t, at(n), 0, true)
+          b.age += 1 / hz
+        }
+        acc = 0
+        prev = at(n)
+        continue
+      }
+      acc += 1 / hz
+      while (acc > STEP * 1e-6 && n < steps) {
+        prev = at(n)
+        n++
+        acc -= STEP
+      }
+      const alpha = Math.min(1, Math.max(0, 1 + acc / STEP))
+      b.step(prev + (at(n) - prev) * alpha, 1 / hz)
+      out[n] = { standing: b.t.standing, face: b.face }
+    }
+    // (A step no frame showed on its own takes the decisions of the frame that showed the next.)
+    for (let k = steps - 1; k >= 0; k--) out[k] ??= out[k + 1] ?? { standing: false, face: 1 }
+    return { b, out }
+  }
+  /** Pacing to and fro over `span` px at `speed` px/s (a rat in a pocket of a ledge). */
+  const pacing = (span: number, speed: number) => (n: number) => {
+    const leg = Math.round((span / speed) * 60)
+    const k = n % (2 * leg)
+    return (speed / 60) * (k < leg ? k : 2 * leg - k)
+  }
+  /** Shaken on the spot over the hero (the simulation flips its speed every step), then off it goes. */
+  const shakenThenOff = (n: number) =>
+    n < 40 ? (n % 2) * 1.66 : n < 80 ? 1.66 + (n - 40) * 1.66 : 68 - (n - 80) * 1.66
+  const RATES = [30, 48, 60, 90, 120, 144]
+  const MOTIONS: [string, (n: number) => number, number][] = [
+    // The rat of stage 10 (seed 1): a pocket 20 px wide at 74 px/s, a turn every 0.27 s. It walks there.
+    ['pacing a pocket 20 px wide', pacing(20, 74), 300],
+    // Narrower than MARK_SPAN_PX it marks time.
+    [`pacing a pocket ${MARK_SPAN_PX - 4} px wide`, pacing(MARK_SPAN_PX - 4, 74), 300],
+    ['shaken on the spot, then walking off and back', shakenThenOff, 200],
+    ['a long walk and a turn', (n) => (n < 100 ? 1.2 * n : 120 - 1.2 * (n - 100)), 200]
+  ]
+  for (const [name, at, steps] of MOTIONS)
+    it(`${name}: the same facing and standing at ${RATES.join(', ')} Hz`, () => {
+      const base = replay(at, steps, 60).out
+      const stands = (o: { standing: boolean }[]) =>
+        o.filter((d, k) => k > 0 && d.standing && !o[k - 1].standing).length
+      for (const hz of RATES)
+        for (const stops of [[], [37, 133]]) {
+          const { out } = replay(at, steps, hz, stops)
+          const what = `${hz} Hz${stops.length ? ' with hit-stops' : ''}`
+          expect(stands(out), `${what}: stands`).toBe(stands(base))
+          // Step by step, give or take the frame that shows a change (two simulation steps at 30 Hz).
+          for (let k = 0; k < steps; k++) {
+            const near = (f: (d: { standing: boolean; face: number }) => unknown) => {
+              for (let j = Math.max(0, k - 3); j <= Math.min(steps - 1, k + 3); j++)
+                if (f(base[j]) === f(out[k])) return true
+              return false
+            }
+            expect(
+              near((d) => d.face),
+              `${what}: facing at step ${k}`
+            ).toBe(true)
+            expect(
+              near((d) => d.standing),
+              `${what}: standing at step ${k}`
+            ).toBe(true)
+          }
+        }
+      // (What the decisions are: a 20 px pocket is walked, a narrower one is marked time in.)
+      if (name.startsWith('pacing a pocket 20')) expect(stands(base)).toBe(0)
+      if (name.startsWith(`pacing a pocket ${MARK_SPAN_PX - 4}`)) expect(stands(base)).toBeGreaterThan(0)
+    })
+})

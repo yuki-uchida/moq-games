@@ -403,9 +403,12 @@ const BASE_PROP_SPEC: Record<string, Specs> = {
   'prop:twig': { idle: small(32, 2, 3, true) },
   'prop:berry': { idle: small(32, 2, 3, true) },
   'prop:seed': { spin: small(16, 4, 14, true) }, // acorn spat by リス団員
-  'prop:feather': { spin: small(24, 4, 14, true) }, // カラス助
-  'prop:stinger': { fly: small(24, 2, 14, true) }, // ハチ女王
-  'prop:orb': { pulse: small(24, 4, 12, true) }, // きつね旋風 and 黒ハム王
+  // A boss's shot and, before it, `gather`: the light that forms in front of him in the 0.45 s before the shot leaves
+  // (drawn for a shot leaving to the right). The view plays its six frames by progress over those 0.45 s, about 75 ms
+  // a frame, and holds the last one until the shot leaves; its 14 fps is nominal.
+  'prop:feather': { spin: small(24, 4, 14, true), gather: small(32, 6, 14, false) }, // カラス助
+  'prop:stinger': { fly: small(24, 2, 14, true), gather: small(32, 6, 14, false) }, // ハチ女王
+  'prop:orb': { pulse: small(24, 4, 12, true), gather: small(32, 6, 14, false) }, // きつね旋風 and 黒ハム王
   // The shockwave of a slam or a charge. `roll` hugs the ground it runs along. The simulation keeps a wave going
   // level when the ground ends under it (off a mound, a step, a platform): there it is drawn as `fly`, the same
   // crest torn free of the ground, a blade of air with nothing under it.

@@ -1092,7 +1092,7 @@ describe('a boss is posed only on the ground, and only while the fight is held',
     expect([...clips]).toEqual(['air'])
   })
 
-  it('stage 10: half health in his leap: the transformation is staged once he lands, on his plain sheet till then', () => {
+  it('stage 10: half health in his leap: the transformation is staged once he has landed, whole, on his plain sheet till then', () => {
     const rig = started(10)
     wakeBoss(rig)
     rig.director.skip()
@@ -1102,18 +1102,22 @@ describe('a boss is posed only on the ground, and only while the fight is held',
     expect(boss.state).toBe('slam')
     emit(rig, { type: 'boss-phase', phase: 2, x: boss.x, y: boss.y })
     let waited = 0
-    while (!boss.onGround && waited < 2) {
-      expect(rig.director.current).toBeNull()
+    const lands: number[] = []
+    while (rig.director.current !== 'boss-phase' && waited < 2) {
       expect(rig.view.actors.posing('boss')).toBeNull()
       expect(rig.view.actors.bossSheet(boss)).toBe('king')
-      expect(rig.view.actors.selectBoss(boss).name).not.toBe('rage')
+      const choice = rig.view.actors.selectBoss(boss)
+      expect(choice.name).not.toBe('rage')
+      if (choice.name === 'land') lands.push(frameOf(bossSpec('king').land, choice))
       rig.frame()
       waited += STEP
     }
+    // He lands with his whole landing (its frames in order, to the last), and then roars.
     expect(waited).toBeGreaterThan(0.1)
-    expect(waited).toBeLessThan(1.5)
-    rig.frame()
-    expect(rig.director.current).toBe('boss-phase')
+    expect(waited).toBeLessThan(LAND_WAIT_SECONDS)
+    expect(lands.length).toBeGreaterThan(0)
+    for (let i = 1; i < lands.length; i++) expect(lands[i]).toBeGreaterThanOrEqual(lands[i - 1])
+    expect(lands.at(-1)).toBe(bossSpec('king').land.frames - 1)
     expect(rig.view.actors.posing('boss')).toBe('rage')
     watch(rig, 2.5)
     expect(rig.view.actors.bossSheet(boss)).toBe('king:raged')
@@ -1273,4 +1277,137 @@ describe('ハム姫 waits standing for her moment, and cheers with it', () => {
     expect(her(rig, cage).name).toBe('cheer')
     expect(her(rig, cage).frame).toBeGreaterThan(0)
   })
+})
+
+describe("the king's phase change cuts nothing, and his transformation waits for him to be between actions", () => {
+  const SPECS = allSheetSpecs()
+  const TIMED = ['windup', 'recover', 'stunned', 'land', 'tired']
+  type King = NonNullable<Rig['world']['boss']>
+  /** The states the king can be in when the phase event comes (and his state before, where it matters). */
+  const CASES: [string, (b: King, prev: string | null) => boolean][] = [
+    ['idle', (b) => b.state === 'idle' && b.stateTime > 0.2],
+    ['his wind-up', (b) => b.state === 'windup' && b.stateTime > 0.15],
+    ['his charge', (b) => b.state === 'charge' && b.stateTime > 0.2],
+    ['his cast, gathering', (b) => b.state === 'shoot' && b.stateTime > 0.25],
+    ['his leap, in the air', (b) => b.state === 'slam' && !b.onGround && b.stateTime > 0.2],
+    ['his recovery after a charge', (b, prev) => b.state === 'recover' && prev === 'charge' && b.stateTime > 0.1],
+    ['his landing', (b, prev) => b.state === 'recover' && prev === 'slam' && b.stateTime > 0.05 && b.stateTime < 0.15],
+    ['his recovery after a landing', (b, prev) => b.state === 'recover' && prev === 'slam' && b.stateTime > 0.4],
+    ['the follow-through of his volley', (b, prev) => b.state === 'recover' && prev === 'shoot' && b.stateTime < 0.12],
+    ['his recovery after his volley', (b, prev) => b.state === 'recover' && prev === 'shoot' && b.stateTime > 0.4]
+  ]
+
+  for (const [what, when] of CASES)
+    for (const wait of [false, true])
+      it(`the phase comes in ${what}${wait ? ', the hero in the air (the moment waits for him)' : ''}`, () => {
+        const rig = started(10)
+        wakeBoss(rig)
+        rig.director.skip()
+        const { world, view, director } = rig
+        const boss = world.boss!
+        const p = world.player
+        let prev: string | null = null
+        let last = boss.state as string
+        let reached = false
+        for (let n = 0; n < 60 * 60 && !reached; n++) {
+          p.hp = p.maxHp
+          p.invuln = 999
+          rig.frame()
+          if (boss.state !== last) {
+            prev = last
+            last = boss.state
+          }
+          reached = when(boss, prev)
+        }
+        expect(reached, `the king came to ${what}`).toBe(true)
+        // The events the view answers from here on.
+        const events: string[] = []
+        const handle = view.handle.bind(view)
+        view.handle = (event) => {
+          events.push(event.type)
+          handle(event)
+        }
+        boss.hp = Math.floor(boss.maxHp / 2)
+        if (wait) {
+          p.y -= 2 * TILE
+          p.vy = 0
+          p.onGround = false
+        }
+        const rows: {
+          clip: string
+          frame: number
+          posed: boolean
+          shot: boolean
+          touched: boolean
+          state: string
+          ground: boolean
+          sheet: string
+        }[] = []
+        let touched = false
+        let grounded = boss.onGround
+        let shots = 0
+        let began = false
+        let after = 0
+        for (let n = 0; n < 60 * 8 && after < 40; n++) {
+          p.hp = p.maxHp
+          p.invuln = 999
+          rig.frame()
+          if (boss.dead) break
+          if (boss.onGround && !grounded && events.includes('boss-phase')) touched = true
+          grounded = boss.onGround
+          shots = events.filter((e) => e === 'boss-shoot').length
+          const posed = view.actors.posing('boss') === 'rage'
+          began ||= posed
+          if (began && !posed) after++
+          const choice = view.actors.selectBoss(boss)
+          const spec = SPECS[view.actors.bossSheet(boss)][choice.name]
+          rows.push({
+            clip: choice.name,
+            frame: frameOf(spec, choice),
+            posed,
+            shot: shots > 0,
+            touched,
+            state: boss.state,
+            ground: boss.onGround,
+            sheet: view.actors.bossSheet(boss)
+          })
+        }
+        expect(director.log).toContain('boss-phase')
+        const hit = SPECS.king.shoot.hit!
+        // (The first frame recorded is the one the phase event came on.)
+        const unposed = rows.slice(
+          0,
+          rows.findIndex((row) => row.posed)
+        )
+        // A landing or a follow-through showing when the phase came plays on through it, its frames in order: the
+        // step is invisible. One that begins later comes from a touchdown or a volley.
+        const carried = (i: number) => {
+          let k = i
+          while (k > 0 && unposed[k - 1].clip === unposed[i].clip) k--
+          return k === 0
+        }
+        unposed.forEach((row, i) => {
+          if (i > 0 && unposed[i - 1].clip === row.clip && (row.clip === 'land' || row.clip === 'shoot'))
+            expect(row.frame, `${row.clip} at ${i}`).toBeGreaterThanOrEqual(unposed[i - 1].frame)
+          if (row.clip === 'land') expect(row.touched || carried(i), `land at ${i}`).toBe(true)
+          if (row.clip === 'shoot' && row.frame >= hit) expect(row.shot || carried(i), `release at ${i}`).toBe(true)
+        })
+        // The transformation begins between his actions: not in a leap, a landing, a gathering, a follow-through or
+        // a flinch.
+        const before = unposed.at(-1)
+        if (before) {
+          // (Shown last on the frame before: an action shows its last frame.)
+          if (['land', 'shoot', 'hurt'].includes(before.clip))
+            expect(before.frame, before.clip).toBe(SPECS[before.sheet][before.clip].frames - 1)
+          expect(before.clip).not.toBe('air')
+          expect(['slam', 'shoot']).not.toContain(before.state)
+          expect(before.ground).toBe(true)
+        }
+        // After the moment: what shows begins (a state-timed clip or a gathering on its first frame).
+        const end = rows.findIndex((row, i) => i > 0 && rows[i - 1].posed && !row.posed)
+        expect(end).toBeGreaterThan(0)
+        const first = rows[end]
+        if (TIMED.includes(first.clip) || first.clip === 'shoot')
+          expect(first.frame, `${first.clip} after the moment`).toBe(0)
+      })
 })
