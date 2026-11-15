@@ -166,3 +166,45 @@ for (const viewport of [
     await context.close()
   })
 }
+
+test('the pictures of the popups every stage shows are made while the title is up', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  interface Pictures {
+    popupPictureCount(): number
+    hasPopupPicture(text: string, color: string, k: number): boolean
+    warmPopupPicture(text: string, color: string, k: number): boolean
+    KNOWN_POPUPS: readonly (readonly [string, string])[]
+  }
+  await openGame(page)
+  // The game's own copy of the module, where the wait below can look without awaiting anything.
+  const first = await page.evaluate(async () => {
+    const pictures = (await import('/src/view/overlay.ts')) as Pictures
+    ;(window as unknown as { __pictures: Pictures }).__pictures = pictures
+    const k = window.__hamham.app.renderer.k
+    return pictures.KNOWN_POPUPS.map(([text, color]) => pictures.hasPopupPicture(text, color, k))
+  })
+  // The title's work ahead starts half a second after the title is up, and makes a picture per slice.
+  await page.waitForFunction(
+    () => {
+      const pictures = (window as unknown as { __pictures: Pictures }).__pictures
+      const k = window.__hamham.app.renderer.k
+      return pictures.KNOWN_POPUPS.every(([text, color]) => pictures.hasPopupPicture(text, color, k))
+    },
+    null,
+    { timeout: 30_000 }
+  )
+  const made = await page.evaluate(() => {
+    const pictures = (window as unknown as { __pictures: Pictures }).__pictures
+    const k = window.__hamham.app.renderer.k
+    const before = pictures.popupPictureCount()
+    // Asked for again at the canvas's scale, each is found: no new picture is made.
+    const found = pictures.KNOWN_POPUPS.map(([text, color]) => pictures.warmPopupPicture(text, color, k))
+    return { before, after: pictures.popupPictureCount(), found, screen: window.__hamham.app.screen }
+  })
+  expect(first).toHaveLength(4)
+  expect(made.screen).toBe('title')
+  expect(made.found.every(Boolean)).toBe(true)
+  expect(made.after).toBe(made.before)
+  expect(errors).toEqual([])
+})

@@ -156,6 +156,7 @@ export const POPUP_PICTURES = 40
  * hit. Every popup of the same text, colour, size and scale shows the one picture.
  */
 const popupPictures = new Map<string, TextPicture>()
+const pictureKey = (text: string, color: string, size: number, k: number) => `${k}|${size}|${color}|${text}`
 
 /**
  * A popup's text with its outline as a picture, so that the frames it is on screen draw one image instead of
@@ -163,7 +164,7 @@ const popupPictures = new Map<string, TextPicture>()
  */
 function popupPicture(text: string, color: string, size: number, k: number): TextPicture | null {
   if (!overlayPictures.enabled || typeof document === 'undefined') return null
-  const key = `${k}|${size}|${color}|${text}`
+  const key = pictureKey(text, color, size, k)
   const held = popupPictures.get(key)
   if (held) {
     // Used again: it is the newest now.
@@ -212,6 +213,10 @@ export function warmPopupPicture(text: string, color: string, k: number, size = 
 
 /** The pictures of popup texts held now (for tests). */
 export const popupPictureCount = () => popupPictures.size
+
+/** Whether the picture of a popup is made already, for a canvas of `k` device pixels per view pixel (tests and tools). */
+export const hasPopupPicture = (text: string, color: string, k: number, size = POPUP_SIZE) =>
+  popupPictures.has(pictureKey(text, color, size, k))
 
 /** Forgets every picture of a popup text (tests). */
 export const forgetPopupPictures = () => popupPictures.clear()

@@ -373,6 +373,9 @@ export class App {
     void fetchArt('select', selectArt())
     void fetchShots(next.scene, 0, 1)
     this.planAhead([
+      // The pictures of the popups every stage shows, at the canvas's scale: a story that is paged through at once
+      // leaves no time for them (a stage's own, the counter of a collecting stage, are made while its story is read).
+      () => runAhead(popupSteps(this.newestStage(), this.renderer.k)),
       () => help.then(() => runAhead(helpUrlSteps())),
       this.prepare({ screen: 'help' }),
       this.prepare({ screen: 'select', stages: STAGES, save: this.save }),
