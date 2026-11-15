@@ -11,6 +11,7 @@ import { blit, brush, clip, type BlitCall } from './bake'
 import { princessClip, specDuration, strideTime, type ClipChoice } from './clips'
 import { PROP_SPEC, themedProp } from '../art/contract'
 import type { FxPool } from './fx'
+import type { Sight } from './sight'
 import { groundBelow } from './actors'
 import { anchorOf } from '../art'
 import { clipBounds, newBox, newPlaced, opaqueBounds, overlaps, placeBox, type Box, type Placed } from './bounds'
@@ -157,6 +158,8 @@ export class PropsView {
    * behind while it overlaps the shooter's physics box.
    */
   drawnFrame: ((body: Shooter, out: Placed) => boolean) | null = null
+  /** The stretch of the stage the frame draws (the stage view's); without one every prop is drawn. */
+  sight: Sight | null = null
   /** Real seconds (they run while the simulation is held or slowed). */
   private realTime = 0
   /** Each freed ハム姫's cheer: the real time it began, null while it waits for her moment, -Infinity: given up. */
@@ -312,7 +315,9 @@ export class PropsView {
   drawProps(ctx: CanvasRenderingContext2D) {
     const time = this.time
     const logSheet = this.themed('prop:log')
+    const sight = this.sight
     for (const log of this.logs) {
+      if (sight && !sight.sees(log.tx * TILE, (log.tx + log.length) * TILE)) continue
       // The trunk, and a post piece in each cell of the row below it that is not ground (see `logPieces`).
       for (let i = 0; i < log.length; i++)
         if (!this.isGround(log.tx + i, log.ty + 1))
@@ -328,6 +333,7 @@ export class PropsView {
       )
     }
     for (const prop of this.world.props) {
+      if (sight && !sight.sees(prop.x, prop.x + Math.max(1, prop.w) * TILE)) continue
       switch (prop.kind) {
         case 'tree':
         case 'pine':
@@ -502,6 +508,7 @@ export class PropsView {
     for (const prop of this.world.props) {
       if (prop.state !== 'idle') continue
       if (prop.kind !== 'fruit' && prop.kind !== 'star' && prop.kind !== 'twig' && prop.kind !== 'berry') continue
+      if (this.sight && !this.sight.sees(prop.x, prop.x + Math.max(1, prop.w) * TILE)) continue
       const x = prop.x + (prop.w * TILE) / 2
       const y = prop.y + (prop.h * TILE) / 2 + Math.round(Math.sin(this.time * 3 + prop.id) * 3)
       if (prop.kind === 'star') {
@@ -555,6 +562,7 @@ export class PropsView {
     const hero = this.world.player
     for (const prop of this.world.props) {
       if (prop.kind !== 'princess') continue
+      if (this.sight && !this.sight.sees(prop.x, prop.x + Math.max(1, prop.w) * TILE)) continue
       const caged = prop.data === 1
       const freed = this.since(prop, 'free')
       const cageBreak = freed !== null && freed < duration('prop:cage', 'break')

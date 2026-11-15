@@ -15,6 +15,7 @@ import { playFx, type FxApi } from './fx-map'
 import { Overlay } from './overlay'
 import { PropsView } from './props'
 import type { Renderer } from './renderer'
+import { Sight } from './sight'
 import { TerrainView } from './terrain'
 import { WaterView } from './water'
 
@@ -54,6 +55,8 @@ export class StageView {
   readonly props: PropsView
   readonly actors: ActorsView
   readonly reducedMotion: boolean
+  /** The stretch of the stage a frame draws: props and enemies outside it are left out (`sight.ts`). */
+  readonly sight = new Sight()
   /** Seconds of hit-stop left. */
   freezeTime = 0
   /**
@@ -112,6 +115,8 @@ export class StageView {
       underWater: (x, y) => this.world.waterAt(Math.floor(x / TILE), Math.floor(y / TILE))
     }
     this.props.drawnFrame = (body, out) => this.actors.drawnFrame(body, out)
+    this.props.sight = this.sight
+    this.actors.sight = this.sight
   }
 
   get frozen() {
@@ -179,6 +184,7 @@ export class StageView {
     const ctx = r.ctx
     const v = this.viewPosition(this.lastView)
     const k = r.k
+    this.sight.look(v.x)
     r.clear()
     r.screen()
     this.backdrop.drawBack(ctx, v.x, v.y)
