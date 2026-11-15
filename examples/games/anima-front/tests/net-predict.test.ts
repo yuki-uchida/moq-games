@@ -23,7 +23,11 @@ async function measure(latency: number, jitter: number, script: (t: number) => P
   const host = await provider(hub).host({ mode: 'pvp' }, choice('ホスト'), 'pred-1234')
   const guest = await settle(provider(hub).join('pred-1234', choice('ゲスト', 'rabbit', 0)))
   guest.setReady(true)
+  // The host starts once the guest's ready flag has reached it: on a slow link that takes a few round trips
+  // (and a 1 s profile heartbeat when a message was missed), so wait for it rather than for a fixed time.
   await run(4 * latency + 100)
+  for (let i = 0; i < 60 && (host.state().online?.notReady.length ?? 0) > 0; i++) await run(100)
+  expect(host.state().online?.notReady).toEqual([])
   const hostSession = host.start().connect()
   await run(2 * latency + 100)
   const g = guest.online!.takeMatch()!.start.connect() as Session & GuestMatch
