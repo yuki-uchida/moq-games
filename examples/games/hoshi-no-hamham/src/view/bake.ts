@@ -5,20 +5,28 @@
 import { anchorOf, flashSheet, frameAt, sheet, type Anim, type Backdrop } from '../art'
 import type { Raster } from '../art/raster'
 
-const baked = new WeakMap<Raster, HTMLCanvasElement>()
+/**
+ * Where a raster keeps the canvas it was baked into: on itself. A canvas lives exactly as long as its raster this
+ * way, as it did in a WeakMap from rasters to canvases; but a WeakMap holds its values by ephemerons, and in a
+ * full collection Chromium marked the two thousand canvases and their contexts, reachable through ephemerons
+ * only, inside the pause (up to 11 ms of a 25 ms pause at a fourfold CPU throttle). Held by the raster, they are
+ * marked beside the running page like everything else.
+ */
+const BAKED = Symbol('baked')
+type Baked = Raster & { [BAKED]?: HTMLCanvasElement }
 
 /** The raster as a canvas, baked on first use (palette colours resolved at bake time). */
 export function bake(r: Raster): HTMLCanvasElement {
-  let canvas = baked.get(r)
-  if (canvas) return canvas
-  canvas = document.createElement('canvas')
+  const held = (r as Baked)[BAKED]
+  if (held) return held
+  const canvas = document.createElement('canvas')
   canvas.width = r.w
   canvas.height = r.h
   const ctx = canvas.getContext('2d')!
   const image = ctx.createImageData(r.w, r.h)
   image.data.set(r.rgba())
   ctx.putImageData(image, 0, 0)
-  baked.set(r, canvas)
+  ;(r as Baked)[BAKED] = canvas
   return canvas
 }
 
