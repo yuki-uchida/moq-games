@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AFTER_A_FALL, PlaySession, STEP } from '../src/app/play'
+import { AFTER_A_FALL, JUDGEMENTS, judges, PlaySession, STEP } from '../src/app/play'
 import type { SimEvent } from '../src/game/events'
 import type { Input } from '../src/game/input'
 import { STAGES } from '../src/game/stages'
@@ -169,5 +169,69 @@ describe('the frames of a boss fall', () => {
     }
     const at = s.frame()
     expect(s.of('director')).toContain(`${at}:goal-open`)
+  })
+})
+
+describe('the judgements of damage a session counts', () => {
+  it('counts the hits the hero takes and the hits he deals, and nothing else', () => {
+    expect([...JUDGEMENTS].sort()).toEqual(
+      ['boss-crash', 'boss-down', 'boss-hit', 'dead', 'enemy-down', 'enemy-hit', 'hurt', 'rock-break'].sort()
+    )
+    // A bite is a judgement when it landed on something, and only then; a hop or a pickup never is.
+    expect(judges({ type: 'bite', x: 0, y: 0, dir: 1, hit: true })).toBe(true)
+    expect(judges({ type: 'bite', x: 0, y: 0, dir: 1, hit: false })).toBe(false)
+    expect(judges({ type: 'boss-down', x: 0, y: 0 })).toBe(true)
+    expect(judges({ type: 'gate-down', x: 0, y: 0 } as SimEvent)).toBe(false)
+    expect(judges({ type: 'goal-open', x: 0, y: 0 })).toBe(false)
+    const s = bossSession()
+    s.wake()
+    s.world.player.x = Math.min(s.world.boss!.x - 60, s.world.goalX - 200)
+    const before = s.session.judged
+    s.fell()
+    s.frame()
+    // The hit and the fall are two judgements; the gate and the goal, answered in the frames after, are none.
+    expect(s.session.judged).toBe(before + 2)
+    for (let i = 0; i < 4; i++) s.frame()
+    expect(s.session.judged).toBe(before + 2)
+    // A hurt is one, and it is also the damage the result screen shows.
+    s.session.view.freezeTime = 0
+    const damage = s.session.damage
+    const step = s.world.step.bind(s.world)
+    s.world.step = (dt, input) => {
+      s.world.step = step
+      s.world.player.invuln = 0
+      s.world.hurtPlayer(1, s.world.player.x + 100)
+      step(dt, input)
+    }
+    s.frame()
+    expect(s.session.judged).toBe(before + 3)
+    expect(s.session.damage).toBe(damage + 1)
+  })
+})
+
+describe('a stage played without its hit-stops', () => {
+  it('holds the picture at a fall as ever, and not at all once the holds are off', () => {
+    const held = bossSession()
+    held.wake()
+    held.world.player.x = Math.min(held.world.boss!.x - 60, held.world.goalX - 200)
+    held.fell()
+    held.frame()
+    expect(held.session.view.frozen).toBe(true)
+
+    const free = bossSession()
+    free.session.view.holds = false
+    free.wake()
+    free.world.player.x = Math.min(free.world.boss!.x - 60, free.world.goalX - 200)
+    free.fell()
+    free.frame()
+    expect(free.session.view.frozen).toBe(false)
+    expect(free.session.view.freezeTime).toBe(0)
+    // The simulation goes on in the very next frame, and the events of the fall are answered as ever, one a frame.
+    const time = free.world.time
+    free.frame()
+    expect(free.world.time).toBeGreaterThan(time)
+    free.frame()
+    const got = free.of('view').filter((entry) => /:(boss-hit|boss-down|gate-down|goal-open)$/.test(entry))
+    expect(got.map((entry) => entry.split(':')[1])).toEqual(['boss-hit', 'boss-down', 'gate-down', 'goal-open'])
   })
 })

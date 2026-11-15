@@ -168,6 +168,8 @@ export class App {
   private startToken = 0
   /** The bot plays the stages instead of the player (test hook for the performance checks). */
   private autopilot = false
+  /** The stages stage their hit-stops (see `setStagedHolds`). */
+  private stagedHolds = true
   private frames = 0
   /** How many milliseconds after its own timestamp the last frame's work ended. */
   private frameBusy = 0
@@ -301,6 +303,26 @@ export class App {
     return this.startToken
   }
 
+  /** The judgements of damage answered so far in the stage being played (the `?perf` readout). */
+  get judgements(): number {
+    return this.session?.judged ?? 0
+  }
+
+  /** True while the stage being played holds its picture for a hit-stop (the `?perf` readout). */
+  get holding(): boolean {
+    return Boolean(this.session?.view.frozen)
+  }
+
+  /**
+   * Whether the stages stage their hit-stops: `false` plays the stage that is on, the one that stands by and every
+   * later one without them (`?perf=nohold`, the check that tells a staged hold from a picture that came late).
+   */
+  setStagedHolds(on: boolean) {
+    this.stagedHolds = on
+    if (this.session) this.session.view.holds = on
+    if (this.ready) this.ready.session.view.holds = on
+  }
+
   /** The live stage view, or null outside play (test hook). */
   get view(): StageView | null {
     return this.session?.view ?? null
@@ -335,13 +357,15 @@ export class App {
 
   /** A session of `stage` for the player. */
   private newSession(stage: StageDef) {
-    return new PlaySession(stage, {
+    const session = new PlaySession(stage, {
       renderer: this.renderer,
       hud: this.hud,
       audio: this.audio,
       input: this.input,
       reducedMotion: reducedMotion()
     })
+    session.view.holds = this.stagedHolds
+    return session
   }
 
   /**
