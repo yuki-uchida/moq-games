@@ -300,3 +300,111 @@ export function blitRaster(ctx, r, anchor, x, y, o) {
   expect(result.differing).toBe(0)
   expect(errors).toEqual([])
 })
+
+test('a frame without what stands outside the view is the same picture as a frame with everything', async ({
+  page
+}) => {
+  test.setTimeout(180_000)
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  // Stage 3 holds about forty props and fifteen enemies; a view shows a handful of them.
+  await openStage(page, 3)
+  await page.evaluate(() => window.__hamham.autopilot(true))
+  await page.waitForTimeout(2500)
+  // Stop the loop: every frame from here on is drawn by the test, twice, from one frozen state.
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#pause-screen')).toBeVisible()
+  const result = await page.evaluate(async () => {
+    const { SIGHT_MARGIN } = (await import('/src/view/sight.ts')) as { SIGHT_MARGIN: number }
+    interface SightProp {
+      kind: string
+      state: string
+      x: number
+      w: number
+      timer: number
+      dir: number
+    }
+    interface SightView {
+      sight: { margin: number }
+      camera: { snap(target: unknown): void }
+      draw(): void
+      viewPosition(): { x: number; y: number }
+    }
+    const h = window.__hamham
+    const world = h.world! as unknown as { w: number; props: SightProp[]; player: { x: number; y: number; w: number } }
+    const view = h.app.session!.view as unknown as SightView
+    const { ctx, canvas } = h.app.renderer
+    const hero = world.player
+    const tile = 64
+    // Every call that puts a picture or a rectangle on the canvas, counted.
+    let calls = 0
+    const drawImage = ctx.drawImage
+    const fillRect = ctx.fillRect
+    ctx.drawImage = function (...args: unknown[]) {
+      calls += 1
+      return (drawImage as (...a: unknown[]) => void).apply(this, args)
+    } as typeof ctx.drawImage
+    ctx.fillRect = function (...args: Parameters<typeof fillRect>) {
+      calls += 1
+      return fillRect.apply(this, args)
+    }
+    const frame = (all: boolean) => {
+      view.sight.margin = all ? Infinity : SIGHT_MARGIN
+      calls = 0
+      view.draw()
+      return { data: ctx.getImageData(0, 0, canvas.width, canvas.height).data, calls }
+    }
+    let frames = 0
+    let differing = 0
+    let cut = 0
+    let whole = 0
+    const firstDifference: number[] = []
+    const compare = (x: number) => {
+      hero.x = x
+      view.camera.snap(hero)
+      const a = frame(false)
+      const b = frame(true)
+      frames += 1
+      cut += a.calls
+      whole += b.calls
+      let bytes = 0
+      for (let i = 0; i < a.data.length; i++) if (a.data[i] !== b.data[i]) bytes += 1
+      if (bytes && !firstDifference.length) firstDifference.push(x, view.viewPosition().x, bytes)
+      differing += bytes
+    }
+    // Along the whole stage, the view moved by a little under half its width each time.
+    const width = world.w * tile
+    for (let x = 0; x < width; x += 300) compare(x)
+    // Past a tree, in small steps: its crown reaches half a tile out of its cell on both sides, so it shows while
+    // its cell is already (or still) outside the view. Then the same tree as it comes down to either side.
+    const tree = world.props.find((p) => (p.kind === 'tree' || p.kind === 'pine') && p.state === 'idle' && p.x > 800)
+    if (tree) {
+      for (let dx = -720; dx <= 720; dx += 24) compare(tree.x + dx)
+      const was = { state: tree.state, timer: tree.timer, dir: tree.dir }
+      tree.state = 'falling'
+      for (const dir of [1, -1]) {
+        tree.dir = dir
+        for (const timer of [0.3, 0.1, 0.01]) {
+          tree.timer = timer
+          for (let dx = -720; dx <= 720; dx += 48) compare(tree.x + dx)
+        }
+      }
+      Object.assign(tree, was)
+    }
+    view.sight.margin = SIGHT_MARGIN
+    ctx.drawImage = drawImage
+    ctx.fillRect = fillRect
+    return { frames, differing, cut, whole, tree: Boolean(tree), firstDifference }
+  })
+  console.log(
+    `[draw, out of sight] ${result.frames} frames drawn both ways: ${result.differing} bytes differ; ` +
+      `${(result.cut / result.frames).toFixed(0)} calls a frame against ${(result.whole / result.frames).toFixed(0)}`
+  )
+  expect(result.tree).toBe(true)
+  expect(result.frames).toBeGreaterThan(100)
+  expect(result.firstDifference).toEqual([])
+  expect(result.differing).toBe(0)
+  // And it is worth it: a third of the calls or more are gone.
+  expect(result.cut).toBeLessThan(result.whole * 0.67)
+  expect(errors).toEqual([])
+})

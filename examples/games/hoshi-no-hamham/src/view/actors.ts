@@ -55,6 +55,7 @@ import {
 } from './clips'
 import type { Placed } from './bounds'
 import type { FxPool } from './fx'
+import type { Sight } from './sight'
 import { summonPuff } from './fx-map'
 import { ENEMY_SPEC, HERO_SPEC, KING_RAGED, MOM_SPEC, bossSpec, type AnimSpec, type BossArt } from '../art/contract'
 import {
@@ -649,6 +650,8 @@ const CUE_SHEETS: Record<string, string> = {
 }
 
 export class ActorsView {
+  /** The stretch of the stage the frame draws (the stage view's); without one every live enemy is drawn. */
+  sight: Sight | null = null
   private time = 0
   /**
    * The clock the boss's and the enemies' clips run on: view time while the stage is in play; held once it is over
@@ -1922,8 +1925,10 @@ export class ActorsView {
   // ------------------------------------------------------------------------------------------- enemies
 
   drawEnemies(ctx: CanvasRenderingContext2D) {
+    const sight = this.sight
     for (const enemy of this.world.enemies) {
       if (enemy.dead) continue
+      if (sight && !sight.sees(enemy.x, enemy.x + enemy.w)) continue
       this.drawEnemy(ctx, enemy)
     }
     for (const g of this.ghosts) {
