@@ -516,6 +516,7 @@ function installPerf() {
     lastHurt: 0,
     hurtEvery: 0,
     topUp: false,
+    keepAlive: false,
     calm: 0,
     longtasks: [],
     lafs: [],
@@ -677,6 +678,13 @@ function installPerf() {
         perf.calm = isCalm() ? perf.calm + 1 : 0
       }
       if (!perf.on) {
+        // Between two recordings of one session (the boss section's fight and its defeat) the hero is kept on his
+        // feet, as he is while one is made: the boss goes on hitting him while the first is worked out, and the
+        // stage must still be on when the second begins.
+        if (perf.keepAlive) {
+          const w = window.__hamham?.app?.session?.world
+          if (w && w.state === 'play' && w.player.hp <= 2) w.player.hp = w.player.maxHp
+        }
         callback(ts)
         return
       }
@@ -750,7 +758,7 @@ function installPerf() {
     // The hero 220 px to the boss's left, feet on his floor, speed zero, facing him.
     nearBoss: () => {
       const w = window.__hamham.world
-      const b = w.boss
+      const b = w?.boss
       if (!b) return false
       w.player.x = b.x - 220
       w.player.y = b.y + b.h - w.player.h
@@ -759,8 +767,11 @@ function installPerf() {
       w.player.facing = 1
       return true
     },
+    // False when there is no boss to defeat any more: the stage is over (the bot beat him, or the hero fell).
     killBoss: () => {
-      window.__hamham.world.damageBoss(999)
+      const w = window.__hamham.world
+      if (!w || w.state !== 'play' || !w.boss || w.boss.dead) return false
+      w.damageBoss(999)
       return true
     }
   }
@@ -773,6 +784,7 @@ function installPerf() {
     perf.ticks = []
     perf.hurtEvery = hurtEvery
     perf.topUp = topUp
+    perf.keepAlive = hurtEvery > 0 || topUp
     perf.lastHurt = performance.now()
     perf.startSnap = snap()
     perf.logStart = session ? session.director.log.length : 0
@@ -1498,7 +1510,13 @@ async function recordFor(page, ms, options, name = 'run', rate = throttle) {
     const moved = await page.evaluate((o) => window.__perf.begin(o), options)
     if (!moved) {
       await page.evaluate(() => window.__perf.end())
-      throw new Error(`the move "${options.action}" could not be made (stage 2 has no boss?)`)
+      // The caller may make the session again: the stage was over before the move (or it has no boss).
+      throw Object.assign(
+        new Error(`the move "${options.action}" could not be made: no boss to move to or to defeat`),
+        {
+          moveFailed: true
+        }
+      )
     }
     const started = Date.now()
     while (Date.now() - started < ms) {
@@ -1810,6 +1828,9 @@ async function sectionPlay() {
   return { md: [overview, '', ...parts].join('\n'), json: { runs }, summary }
 }
 
+/** How many sessions the boss section makes at most to record both its phases. */
+const BOSS_SESSIONS = 3
+
 async function sectionBoss() {
   const profile = PROFILES.landscape
   const summary = []
@@ -1818,28 +1839,47 @@ async function sectionBoss() {
     { name: 'boss fight', ms: 15_000, action: 'nearBoss' },
     { name: 'boss defeat', ms: 5000, action: 'killBoss' }
   ]
-  // The two phases are one session: when either was disturbed from outside, both are made again.
+  // The two phases are one session: when either was disturbed from outside, both are made again. So are they when
+  // the stage is over before the defeat can be recorded (the bot beat the boss by itself, or the hero fell, while
+  // the fight was being worked out): what is left out then is said in the report, never passed over.
+  let incomplete = null
   const { made: runs, note } = await undisturbed('boss', async () => {
-    const run = await newRun('boss', profile)
-    const made = []
-    try {
-      await toTitle(run.page)
-      environment.renderer ||= await rendererName(run.page)
-      await enterStage(run.page, 2)
-      await run.page.evaluate(() => window.__hamham.autopilot(true))
-      await waitCalm(run.page)
-      for (const phase of phases) {
-        const data = await recordFor(run.page, phase.ms, { ...HIT, action: phase.action }, phase.name)
-        rawFile(phase.name, data)
-        const m = analyze(data)
-        made.push({ name: phase.name, ...m })
-        if (m.ended !== 'play') break
+    for (let attempt = 1; ; attempt++) {
+      const run = await newRun('boss', profile)
+      const made = []
+      incomplete = null
+      try {
+        await toTitle(run.page)
+        environment.renderer ||= await rendererName(run.page)
+        await enterStage(run.page, 2)
+        await run.page.evaluate(() => window.__hamham.autopilot(true))
+        await waitCalm(run.page)
+        for (const phase of phases) {
+          let data
+          try {
+            data = await recordFor(run.page, phase.ms, { ...HIT, action: phase.action }, phase.name)
+          } catch (error) {
+            if (!error.moveFailed) throw error
+            incomplete = `"${phase.name}" was not recorded: ${error.message}`
+            break
+          }
+          rawFile(phase.name, data)
+          const m = analyze(data)
+          made.push({ name: phase.name, ...m })
+          if (m.ended !== 'play') {
+            if (phase !== phases.at(-1))
+              incomplete = `"${phases.at(-1).name}" was not recorded: the stage ended on ${m.ended} during "${phase.name}"`
+            break
+          }
+        }
+      } finally {
+        await run.close()
       }
-    } finally {
-      await run.close()
+      if (!incomplete || attempt >= BOSS_SESSIONS) return made
+      console.log(`[boss] ${incomplete}: the session once more (${attempt + 1} of ${BOSS_SESSIONS})`)
     }
-    return made
   })
+  if (incomplete) problems.push(`boss: ${incomplete} (in ${BOSS_SESSIONS} sessions)`)
   for (const m of runs) {
     const notes = [
       `stage 2, ${profile.width}x${profile.height} at ratio ${profile.dpr}, ${throttleText}, ${dev ? 'dev server' : 'production build'}`

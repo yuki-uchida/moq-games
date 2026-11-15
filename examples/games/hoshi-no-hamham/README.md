@@ -92,6 +92,8 @@ node scripts/hoshi-no-hamham-perf.mjs     # .build/hoshi-no-hamham-perf/ にス�
 `window.__hamham.autopilot(true)` のボットにステージを遊ばせます。節は `boot`（起動）、`menus`（画面遷移の1手ごと）、`play`（ステージ×
 縦横）、`boss`（ステージ2のボス戦と倒れる場面）、`pacing`（絵の進み方のそろい方）です。`--stages 1,3,5|all`、`--seconds 30`、
 `--profiles landscape,portrait`、`--throttle 4`（CPUを何倍遅くするか。表題に必ず出ます）で絞れます。
+`boss` はボス戦と倒れる場面をひとつのセッションで続けて録ります。倒れる場面を録る前にステージが終わっていたら（主人公が倒れた、
+ボットがボスを倒した）セッションを最大3回やり直し、それでも録れなければレポートの Problems に書いて終了コード1にします。
 
 - レポート先頭の予算表（P1〜P7、A1、G1、L1、S1、C1、M1、M2、B1）が結論です。値と上限を並べて PASS／FAIL を付けます。予算は `--throttle 4` を前提にしています。
   `--check` を付けると、FAIL が1つでもあれば終了コード1になります（ページエラー、コンソールエラー、失敗したリクエスト、動かなかった節は常に1）。
