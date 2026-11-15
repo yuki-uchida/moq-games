@@ -17,6 +17,8 @@ export interface MatchProbe {
   cameraPos(): V3 | null
   /** Whether this solid prop (lighthouse…) is hidden by the camera. */
   propHidden(id: number): boolean
+  /** 0 (opaque) .. 1: how faded this prop is. */
+  propFade(id: number): number
   /** Local player id. */
   me: string
   /** Turns the camera (and aim) toward a world point, as if the player moved the mouse. */

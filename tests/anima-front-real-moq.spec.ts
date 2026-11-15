@@ -245,10 +245,11 @@ test('防衛任務: host + 3 guests play through a real MoQ relay', async () => 
     await startMatch(host, guests)
     const ids = await Promise.all([host, ...guests].map(async (p) => (await hook(p))!.me!))
     expect(new Set(ids).size).toBe(4)
-    for (const p of [host, ...guests]) {
-      const v = (await hook(p))!.view!
-      expect(v.players.filter((q) => !q.bot)).toHaveLength(4)
-    }
+    // A guest's seat is played by a bot until its game screen is in the match: wait for all four humans.
+    for (const p of [host, ...guests])
+      await expect
+        .poll(async () => (await hook(p))!.view!.players.filter((q) => !q.bot).length, { timeout: 30_000 })
+        .toBe(4)
     await exchange(host, guests)
     // The host aborts the mission: every guest is told and goes back to the lobby; then the host closes the room.
     await host.keyboard.press('Escape')

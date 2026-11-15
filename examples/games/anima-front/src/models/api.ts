@@ -126,6 +126,8 @@ export interface PropModel {
   update(dt: number, t: number, state: number, life: number | undefined): void
   /** 0..1 health for props with hp (lighthouse, hermit wall, nodes, cart): cracks, flicker. */
   setHealth?(fraction: number): void
+  /** 0 = opaque, 1 = almost see-through (a big prop the camera is next to: still there, never covering the aim). */
+  setCloak?(amount: number): void
   dispose(): void
 }
 

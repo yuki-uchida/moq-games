@@ -694,6 +694,7 @@ test.describe('camera next to the lighthouse', () => {
         cameraPos(): number[] | null
         cameraYaw(): number | null
         propHidden(id: number): boolean
+        propFade(id: number): number
       }
       view(): { players: { id: string; p: number[] }[]; props: { id: number; kind: string; p: number[] }[] }
     }
@@ -745,6 +746,14 @@ test.describe('camera next to the lighthouse', () => {
         const m = (window as unknown as { __anima: Hook }).__anima.match
         return { cam: m.cameraPos()!, camYaw: m.cameraYaw()!, hidden: m.propHidden(id) }
       }, lighthouse.id)
+      if (hidden) {
+        // it is faded to see-through (still there, so it can be seen and shot), never removed from the scene
+        await expect
+          .poll(() =>
+            page.evaluate((id) => (window as unknown as { __anima: Hook }).__anima.match.propFade(id), lighthouse.id)
+          )
+          .toBeGreaterThan(0.5)
+      }
       await page.screenshot({ path: test.info().outputPath(`lighthouse-${name}.png`) })
       // outside the lighthouse's shaft (radius ≈ 1.4 with its gallery), above its top, or the tower is hidden (the player stands inside it)
       const d = Math.hypot(cam[0] - lh[0], cam[2] - lh[2])

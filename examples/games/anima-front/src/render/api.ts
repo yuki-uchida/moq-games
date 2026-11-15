@@ -88,6 +88,8 @@ export interface GameRenderer {
   cameraPosition(): V3
   /** Whether a solid prop is hidden because it would cover the aim (debug probe). */
   isPropHidden(id: number): boolean
+  /** How see-through a solid prop is now, 0 (opaque) to 1 (debug probe). */
+  propFade(id: number): number
   dispose(): void
 }
 

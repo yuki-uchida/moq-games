@@ -234,6 +234,8 @@ export interface Foe {
 
 export interface Shot {
   id: number
+  /** The prop (node, cart…) this shot is aimed at from inside its volume: the only one it may hit while inside. */
+  aimedProp?: number
   kind: ShotKind
   item: ItemId | undefined
   foeAttack: FoeAttack | undefined

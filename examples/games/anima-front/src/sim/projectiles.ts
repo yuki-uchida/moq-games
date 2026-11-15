@@ -40,6 +40,7 @@ export interface ShotSpec {
   puddle?: boolean
   explodeOnActor?: boolean
   knock?: number
+  aimedProp?: number
 }
 
 export function spawnShot(sim: Sim, s: ShotSpec): Shot | null {
@@ -70,6 +71,7 @@ export function spawnShot(sim: Sim, s: ShotSpec): Shot | null {
     puddle: s.puddle ?? false,
     explodeOnActor: s.explodeOnActor ?? false,
     knock: s.knock ?? 0,
+    ...(s.aimedProp !== undefined ? { aimedProp: s.aimedProp } : {}),
     gone: false
   }
   sim.shots.push(shot)
@@ -162,7 +164,8 @@ export function shotsTick(sim: Sim) {
     s.v[1] -= s.gravity * DT
     const seg: Vec = [s.v[0] * DT, s.v[1] * DT, s.v[2] * DT]
     const wall = sim.phys.raycast(s.p, seg, 1, s.r, s.side)
-    const act = rayActors(sim, s.side, s.p, seg, wall ? wall.t : 1, s.r, s.owner)
+    // A shot inside a prop's volume (fired from within a node, say) passes it unless it is aimed at that prop.
+    const act = rayActors(sim, s.side, s.p, seg, wall ? wall.t : 1, s.r, s.owner, false, (r) => r.id === s.aimedProp)
     if (act && (!wall || act.t <= wall.t)) {
       const at: Vec = [s.p[0] + seg[0] * act.t, s.p[1] + seg[1] * act.t, s.p[2] + seg[2] * act.t]
       s.travelled += Math.hypot(seg[0], seg[1], seg[2]) * act.t

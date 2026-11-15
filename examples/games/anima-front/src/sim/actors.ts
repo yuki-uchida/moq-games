@@ -63,17 +63,27 @@ export function rayActors(
   maxT: number,
   inflate = 0,
   skip?: ActorRef,
-  wide = false
+  wide = false,
+  /** Props that already contain the ray's origin are skipped unless this says they are the one aimed at. */
+  insideProp?: (r: Prop) => boolean
 ): ActorHit | null {
   let best: ActorHit | null = null
+  // A target whose volume already contains the ray's origin (the muzzle is inside it) is only a fallback: a shot
+  // fired from inside or against a body goes on to what it is aimed at, and only hits the body it started in when
+  // nothing else lies on the ray (point-blank at it).
+  let inside: ActorHit | null = null
   let bestT = maxT
+  const take = (t: number, target: ActorHit['target'], head: boolean) => {
+    if (t <= 1e-9) inside ??= { t: 0, target, head }
+    else if (t <= bestT) {
+      bestT = t
+      best = { t, target, head }
+    }
+  }
   for (const p of sim.players) {
     if (p.side === side || p.state !== 'alive' || p.id === skip) continue
     const h = rayBody(o, d, bestT, p, inflate)
-    if (h && h.t <= bestT) {
-      bestT = h.t
-      best = { t: h.t, target: { k: 'p', p }, head: h.head }
-    }
+    if (h && h.t <= bestT) take(h.t, { k: 'p', p }, h.head)
   }
   if (side !== FOE_SIDE) {
     const len = Math.hypot(d[0], d[2]) * maxT
@@ -82,22 +92,29 @@ export function rayActors(
     for (const f of foes) {
       if (f.dead || f.id === skip) continue
       const h = rayFoe(o, d, bestT, f, inflate)
-      if (h && h.t <= bestT) {
-        bestT = h.t
-        best = { t: h.t, target: { k: 'f', f }, head: h.head }
-      }
+      if (h && h.t <= bestT) take(h.t, { k: 'f', f }, h.head)
     }
   }
   for (const r of sim.props) {
     if (!isShootableProp(r) || (r.side !== -1 && r.side === side)) continue
     if (r.side === -1 && side === FOE_SIDE) continue
     const t = rayCylinder(o, d, bestT, r.p[0], r.p[2], (r.r ?? 1) + inflate, r.p[1], r.p[1] + propHeight(r))
-    if (t >= 0 && t <= bestT) {
-      bestT = t
-      best = { t, target: { k: 'r', r }, head: false }
-    }
+    if (t >= 0 && t <= 1e-9 && insideProp && !insideProp(r)) continue
+    if (t >= 0 && t <= bestT) take(t, { k: 'r', r }, false)
   }
-  return best
+  return best ?? inside
+}
+
+/** The hostile shootable prop whose hit volume (grown by `pad`) contains the point, if any. */
+export function propContaining(sim: Sim, side: Side, at: Vec, pad = 0.15): Prop | undefined {
+  for (const r of sim.props) {
+    if (!isShootableProp(r) || (r.side !== -1 && r.side === side)) continue
+    if (r.side === -1 && side === FOE_SIDE) continue
+    const rr = (r.r ?? 1) + pad
+    if ((at[0] - r.p[0]) ** 2 + (at[2] - r.p[2]) ** 2 > rr * rr) continue
+    if (at[1] >= r.p[1] - pad && at[1] <= r.p[1] + propHeight(r) + pad) return r
+  }
+  return undefined
 }
 
 /** Applies damage to any target kind. */

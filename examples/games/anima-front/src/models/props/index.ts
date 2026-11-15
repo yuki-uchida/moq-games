@@ -37,6 +37,7 @@ export interface PropAsset {
 /** A prop model with the optional health hook (cracks / lamp flicker) on top of the contract. */
 export interface PropModelExt extends PropModel {
   setHealth(fraction: number): void
+  setCloak(amount: number): void
 }
 
 const RECIPES: Partial<Record<PropKind, () => PropRecipe>> = {
@@ -111,6 +112,8 @@ export function createPropModel(asset: PropAsset): PropModelExt {
   if (fu) fu.uOutline.value = look.outline * 1.6
 
   const materials: THREE.Material[] = []
+  /** Part materials: toon ones fade through uCloak, creature ones through their opacity. */
+  const faders: { material: THREE.Material; foe: boolean }[] = []
   const outline = asset.quality !== 'low' && asset.parts.some((p) => (p.part.mat ?? 'toon') === 'toon')
   const outlineMat = outline ? createOutlineMaterial(u) : null
   if (outlineMat) materials.push(outlineMat)
@@ -131,10 +134,12 @@ export function createPropModel(asset: PropAsset): PropModelExt {
         set.uHolo.value = 1
         m.transparent = true
         m.depthWrite = false
+        m.userData.holo = true
       }
       material = m
     }
     materials.push(material)
+    faders.push({ material, foe: mat === 'foe' })
     const pivot = part.pivot ?? [0, 0, 0]
     for (let i = 0; i < (part.copies ?? 1); i++) {
       const g = new THREE.Group()
@@ -202,6 +207,21 @@ export function createPropModel(asset: PropAsset): PropModelExt {
       u.uTime.value = u2.uTime.value = ctx.clock
       if (fu) fu.uTime.value = ctx.clock
       recipe.animate(ctx)
+    },
+    setCloak(amount) {
+      const a = Number.isFinite(amount) ? Math.min(1, Math.max(0, amount)) : 0
+      u.uCloak.value = u2.uCloak.value = a
+      const transparent = a > 0.001
+      for (const f of faders) {
+        const m = f.material
+        if (f.foe) m.opacity = 1 - a * 0.94
+        if (m.transparent !== transparent && !(m.userData.holo as boolean | undefined)) {
+          m.transparent = transparent
+          m.needsUpdate = true
+        }
+      }
+      // the single-draw outline would stay solid around a see-through body
+      if (outlineMat) outlineMat.visible = a < 0.05
     },
     setHealth(fraction) {
       ctx.health = Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : 1

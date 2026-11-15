@@ -11,7 +11,7 @@ import { BEAR_KNOCK, BLAST_EDGE, CREDIT_WINDOW, OBJECTIVE_ARMOR } from './consta
 import { bossHitModifier } from './foes/bosses'
 import { onFoeDeath } from './foes/index'
 import { modsOf } from './loadout'
-import { emit, FOE_SIDE, sideTeam, type Foe, type Player, type Prop, type Side, type Sim } from './state'
+import { emit, FOE_SIDE, isOver, sideTeam, type Foe, type Player, type Prop, type Side, type Sim } from './state'
 import type { ActorRef, HitSurface, ShotKind } from './types'
 import { angleFromYaw, deg, r3, r3v, vdist, type Vec } from './vec'
 
@@ -88,6 +88,8 @@ function knockback(v: Vec, from: Vec, to: Vec, speed: number, up: number) {
 /** Applies damage to a player; returns the anima removed. */
 export function damagePlayer(sim: Sim, t: Player, d: DamageInfo): number {
   if (t.state !== 'alive' || d.side === t.side || d.amount <= 0) return 0
+  // Once a PvP result is decided nothing changes it: no further damage, KOs, points or stats (the MVP is final).
+  if (sim.cfg.mode === 'pvp' && isOver(sim)) return 0
   const fur: HitSurface = 'fur'
   const base = {
     type: 'hit' as const,
@@ -162,7 +164,20 @@ export function damagePlayer(sim: Sim, t: Player, d: DamageInfo): number {
     ...(d.head ? { head: true } : {}),
     ...(blocked ? { blocked: true } : {})
   })
-  // ハリネズミ: melee attackers take a share back.
+  if (d.knock || d.knockUp) {
+    const k = t.species.trait === 'strong' ? BEAR_KNOCK : 1
+    knockback(t.v, d.from, t.p, (d.knock ?? 0) * k, (d.knockUp ?? 0) * k)
+    if ((d.knockUp ?? 0) > 0) t.grounded = false
+  }
+  if (t.infinite) t.anima = Math.max(t.anima, 1)
+  if (t.anima <= 1e-6) breakArmor(sim, t, d)
+  // The hit and its KO are resolved first; only then does the damage come back (so a mutual KO has a defined order).
+  reflectBack(sim, t, d)
+  return applied
+}
+
+/** ハリネズミ: melee attackers take a share back. */
+function reflectBack(sim: Sim, t: Player, d: DamageInfo) {
   if ((d.kind === 'melee' || d.kind === 'contact') && t.online && t.build.reflect > 0) {
     if (typeof d.by === 'number') {
       const f = sim.foes.find((x) => x.id === d.by)
@@ -191,14 +206,6 @@ export function damagePlayer(sim: Sim, t: Player, d: DamageInfo): number {
         })
     }
   }
-  if (d.knock || d.knockUp) {
-    const k = t.species.trait === 'strong' ? BEAR_KNOCK : 1
-    knockback(t.v, d.from, t.p, (d.knock ?? 0) * k, (d.knockUp ?? 0) * k)
-    if ((d.knockUp ?? 0) > 0) t.grounded = false
-  }
-  if (t.infinite) t.anima = Math.max(t.anima, 1)
-  if (t.anima <= 1e-6) breakArmor(sim, t, d)
-  return applied
 }
 
 export function breakArmor(sim: Sim, t: Player, d: { by?: ActorRef; item?: ShotKind | FoeAttack }) {

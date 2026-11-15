@@ -3,7 +3,7 @@
  * click, use bookkeeping (uses counter, cloak reveal, same antique in both paws alternating) and bullets.
  */
 import { ITEMS, type ItemDef, type ItemId } from '../../data/items'
-import { rayActors } from '../actors'
+import { propContaining, rayActors } from '../actors'
 import { spend } from '../anima'
 import { AIM_RANGE, AVATAR_DAMAGE, BEAR_MELEE, EMPTY_GAP, SHOT_RADIUS } from '../constants'
 import { itemCost, modsOf, periodScale } from '../loadout'
@@ -57,7 +57,8 @@ export function aimPoint(sim: Sim, p: Player, range = AIM_RANGE): Vec {
   const skip = p.foe ? p.foe.id : p.id
   const wall = sim.phys.raycast(o, d, range, 0, p.side)
   const act = rayActors(sim, p.side, o, d, wall ? wall.t : range, 0, skip, true)
-  const t = act ? act.t : wall ? wall.t : range
+  // A volume the aim ray only starts inside of is not what it points at.
+  const t = act && act.t > 1e-9 ? act.t : wall ? wall.t : range
   return [o[0] + d[0] * t, o[1] + d[1] * t, o[2] + d[2] * t]
 }
 
@@ -106,6 +107,9 @@ export function bullet(
     r: SHOT_RADIUS,
     falloff: o.falloff
   }
+  // Fired from inside a prop's volume: it may only hit that prop when the aim point is on or in it too.
+  const inside = propContaining(sim, p.side, from, 0)
+  if (inside && propContaining(sim, p.side, target) === inside) spec.aimedProp = inside.id
   spawnShot(sim, spec)
   p.stats.shots++
   if (event) fireEvent(sim, p, h, def.id, from, dir)

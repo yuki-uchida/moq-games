@@ -310,7 +310,7 @@ class Renderer implements GameRenderer {
 
     this.updateCamera(input, dt)
     this.rig.camera.updateMatrixWorld()
-    this.fadeSolids(view)
+    this.fadeSolids(view, dt)
     if (!input.cinematic) this.characters.nearFade(input.follow ?? input.me, this.rig.camera.position)
     this.sound.setListener(this.rig.camera)
 
@@ -435,11 +435,11 @@ class Renderer implements GameRenderer {
   private readonly hiddenProps = new Set<number>()
 
   /**
-   * A solid prop is hidden while it would cover the view of the aim: when the camera, the aim pivot or the line
+   * A solid prop is faded to see-through (never hidden: it can still be shot, so it must stay visible) while it would cover the view of the aim: when the camera, the aim pivot or the line
    * between them is inside it, when the camera is within a metre of its surface, or when the view's centre ray
    * enters it within a few metres of the camera. Near props never fill the screen over the crosshair.
    */
-  private fadeSolids(view: View) {
+  private fadeSolids(view: View, dt: number) {
     this.hiddenProps.clear()
     const cam = this.rig.camera.position
     const pivot = this.rig.aimPoint
@@ -458,7 +458,7 @@ class Renderer implements GameRenderer {
         if (near) this.hiddenProps.add(s.id)
       }
     }
-    this.props.setHidden(this.hiddenProps)
+    this.props.setFaded(this.hiddenProps, dt)
     void view
   }
 
@@ -549,6 +549,10 @@ class Renderer implements GameRenderer {
 
   isPropHidden(id: number): boolean {
     return this.hiddenProps.has(id)
+  }
+
+  propFade(id: number): number {
+    return this.props.fadeOf(id)
   }
 
   cameraPosition(): V3 {
