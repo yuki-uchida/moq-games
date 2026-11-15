@@ -24,9 +24,9 @@
  *   --every     the page gets only every nth frame of the display (default 1: all of them). The monitor of the
  *               machine sets the display's rate; on a 120 Hz monitor `--every 2` gives the page the 60 frames a
  *               second of most phones, each with 16.7 ms to do its work in
- *   --awake     keep one processor of the machine at work while a run is recorded. On a machine with nothing else
- *               to do the processors sleep between frames and the browser's own frame timer wakes late: frames
- *               arrive late with every thread of the page idle (most of all at --throttle 1; see `keepAwake`)
+ *   --awake     keep one processor of the machine at work while a run is recorded. At --throttle 1, frames arrive
+ *               late with every thread of the page and of its drawing idle, and the idler the machine the more of
+ *               them; with one processor kept at work there are few (what was seen is under `keepAwake`)
  *   --dist      measure the production build in this folder instead of building this checkout: the build of
  *               another commit, made there with `vite build`, so that two commits are measured by one kit
  *   --out       output folder (default .build/hoshi-no-hamham-perf/, ignored by Git)
@@ -468,10 +468,16 @@ for (const signal of ['SIGINT', 'SIGTERM'])
 
 /**
  * With --awake: keeps one processor of the machine at work while a run is recorded (a child process that does
- * nothing but loop). On a machine with nothing else to do the processors sleep between the frames, the browser's
- * own frame timer wakes late, and frames arrive late with every thread of the page and of its drawing idle: at no
- * CPU throttle, 59 late frames in 30 s of a stage on the machine this was written on, and none with one processor
- * kept awake. (Under the CPU throttle there are far fewer of them without it.) Returns the function that ends it.
+ * nothing but loop). Returns the function that ends it.
+ *
+ * What it is for was seen, not explained. At no CPU throttle, frames arrive late with every thread of the page and
+ * of its drawing idle, and the idler the machine, the more of them. On the machine this was written on (16
+ * processors), over 26 runs of a stage of up to 30 s each: about 155 such frames a minute in the 7 runs made
+ * while fewer than three processors were at work, about 24 a minute in the 4 runs made while other programs kept
+ * three or more at work, and about 8 a minute in the 15 runs made with --awake, however busy the machine was. The
+ * game's thread was busy through none of them. That the processors' sleep between frames makes the browser's own
+ * frame signal late is a guess that fits this; when the browser issued each frame was not looked at. The trace has
+ * no cause for these frames, and the kit counts them as "not explained", with or without --awake.
  */
 function keepAwake() {
   if (!awake) return () => {}
