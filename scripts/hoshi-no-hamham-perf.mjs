@@ -5,7 +5,7 @@
  * Usage: node scripts/hoshi-no-hamham-perf.mjs [--only boot,menus,play,boss,pacing] [--stages 1,3,5 | all]
  *                                             [--seconds 30] [--profiles landscape,portrait] [--throttle 4]
  *                                             [--dev] [--gpu] [--check] [--raw] [--tries 3] [--every 2]
- *                                             [--dist DIR] [--out DIR]
+ *                                             [--awake] [--dist DIR] [--out DIR]
  *   --only      sections to run (default: all five). A section that fails is reported and the others still run.
  *   --stages    stages of the play section (default 1,3,5; `all` is 1 to 10)
  *   --seconds   seconds recorded per stage and profile in the play section (default 30)
@@ -24,6 +24,9 @@
  *   --every     the page gets only every nth frame of the display (default 1: all of them). The monitor of the
  *               machine sets the display's rate; on a 120 Hz monitor `--every 2` gives the page the 60 frames a
  *               second of most phones, each with 16.7 ms to do its work in
+ *   --awake     keep one processor of the machine at work while a run is recorded. On a machine with nothing else
+ *               to do the processors sleep between frames and the browser's own frame timer wakes late: frames
+ *               arrive late with every thread of the page idle (most of all at --throttle 1; see `keepAwake`)
  *   --dist      measure the production build in this folder instead of building this checkout: the build of
  *               another commit, made there with `vite build`, so that two commits are measured by one kit
  *   --out       output folder (default .build/hoshi-no-hamham-perf/, ignored by Git)
@@ -38,7 +41,7 @@
  * The production build goes to the output folder (dist/ is not touched) and is served by `vite preview` on a free
  * port. Servers and browsers are closed on success, on failure and on Ctrl-C.
  */
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { createServer as createNetServer } from 'node:net'
 import { cpus } from 'node:os'
@@ -91,6 +94,7 @@ const raw = flag('--raw')
 const trace = flag('--trace')
 const tries = Number(valueOf('--tries') ?? 1)
 if (!Number.isInteger(tries) || tries < 1) usage('--tries must be a whole number, 1 or more')
+const awake = flag('--awake')
 const every = Number(valueOf('--every') ?? 1)
 if (!Number.isInteger(every) || every < 1) usage('--every must be a whole number, 1 or more')
 /**
@@ -383,7 +387,7 @@ const slug = (text) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
-const throttleText = `CPU throttle ${throttle}x${every > 1 ? `, one display frame in ${every}` : ''}`
+const throttleText = `CPU throttle ${throttle}x${every > 1 ? `, one display frame in ${every}` : ''}${awake ? ', one processor kept awake while recording' : ''}`
 
 /**
  * Runs in the page before anything else: animation-frame callbacks are called on every nth frame of the display
@@ -461,6 +465,23 @@ for (const signal of ['SIGINT', 'SIGTERM'])
   process.on(signal, () => {
     cleanup().finally(() => process.exit(130))
   })
+
+/**
+ * With --awake: keeps one processor of the machine at work while a run is recorded (a child process that does
+ * nothing but loop). On a machine with nothing else to do the processors sleep between the frames, the browser's
+ * own frame timer wakes late, and frames arrive late with every thread of the page and of its drawing idle: at no
+ * CPU throttle, 59 late frames in 30 s of a stage on the machine this was written on, and none with one processor
+ * kept awake. (Under the CPU throttle there are far fewer of them without it.) Returns the function that ends it.
+ */
+function keepAwake() {
+  if (!awake) return () => {}
+  const child = spawn(process.execPath, ['-e', 'for(;;){}'], { stdio: 'ignore' })
+  const rest = () => {
+    if (child.exitCode === null && !child.killed) child.kill()
+  }
+  cleanups.push(rest)
+  return rest
+}
 
 // ------------------------------------------------------------------------------------------------- recorder
 
@@ -1071,7 +1092,7 @@ function runMarkdown(name, m, notes = []) {
   }
   if (m.machine)
     lines.push(
-      `- the machine while this was recorded: ${f1(m.machine.mean)} of its ${m.machine.processors} processors at work on average, ${f1(m.machine.peak)} at the most; more than ${f1(m.machine.limit)} for ${f0(m.machine.over * 100)} % of the time${busyMachine(m) ? `. **That is more than ${f0(BUSY_SHARE * 100)} %: something else was running beside the kit, and this run's durations are the machine's as much as the page's**` : ` (the kit's own browser is between one and two of them)`}`
+      `- the machine while this was recorded: ${f1(m.machine.mean)} of its ${m.machine.processors} processors at work on average, ${f1(m.machine.peak)} at the most; more than ${f1(m.machine.limit)} for ${f0(m.machine.over * 100)} % of the time${busyMachine(m) ? `. **That is more than ${f0(BUSY_SHARE * 100)} %: something else was running beside the kit, and this run's durations are the machine's as much as the page's**` : ` (the kit's own browser is between one and two of them${awake ? ', and --awake keeps one more at work' : ''})`}`
     )
   if (m.machine?.busy.length)
     lines.push(
@@ -1465,6 +1486,7 @@ function traceStats(buffer, rate = throttle, data = null) {
 async function recordFor(page, ms, options, name = 'run', rate = throttle) {
   await browser.startTracing(page, { categories: trace ? TRACE_CATEGORIES : LIGHT_CATEGORIES })
   let buffer = null
+  const rest = keepAwake()
   const meter = loadMeter()
   try {
     const moved = await page.evaluate((o) => window.__perf.begin(o), options)
@@ -1484,6 +1506,7 @@ async function recordFor(page, ms, options, name = 'run', rate = throttle) {
     return data
   } finally {
     meter.stop()
+    rest()
     if (!buffer) buffer = await browser.stopTracing().catch(() => null)
     if (trace && buffer) {
       mkdirSync(out, { recursive: true })
