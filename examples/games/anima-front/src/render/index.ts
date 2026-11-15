@@ -7,13 +7,14 @@
 import * as THREE from 'three'
 import type { ModelKit, Quality } from '../models/api'
 import { FOES } from '../data/enemies'
+import { hermitWallBox } from '../sim/wall-box'
 import type { ActorRef, MapDef, PropView, SimEvent, V3, View } from '../sim/types'
 import { Characters } from './actors/characters'
 import { Foes } from './actors/foes'
 import { Props } from './actors/props'
 import { Shots } from './actors/shots'
 import type { CreateGameRenderer, FrameInput, GameRenderer, RendererOptions, RendererStats, ScreenPoint } from './api'
-import { CameraRig, type CinematicSubject } from './camera'
+import { CameraRig, pointInSolid, type CameraSolid, type CinematicSubject } from './camera'
 import { BoxGrid } from './core/box-grid'
 import { PostChain } from './core/post'
 import { AutoQuality, FrameMeter, QUALITY_PRESETS, type QualityPreset } from './core/quality'
@@ -31,6 +32,34 @@ const BIG_PROPS: Partial<Record<PropView['kind'], [number, number]>> = {
   node: [2.4, 4],
   cart: [2, 2.5],
   target: [0.8, 2]
+}
+
+/** Footprints of the solid props a shoulder camera must stay out of (the models' real size, not the cinematic margin). */
+function solidsOf(pr: PropView): CameraSolid[] {
+  const cyl = (r: number, h: number): CameraSolid => ({
+    id: pr.id,
+    kind: 'cyl',
+    x: pr.p[0],
+    z: pr.p[2],
+    r,
+    y0: pr.p[1],
+    y1: pr.p[1] + h
+  })
+  switch (pr.kind) {
+    case 'lighthouse':
+      // the shaft with its gallery, and the sandbag ring and plinth around its foot
+      return [cyl(1.5, 9), cyl(2.1, 0.8)]
+    case 'cart':
+      return [cyl(1.3, 2.5)]
+    case 'node':
+      return [cyl(1.6, 3.5)]
+    case 'hermit': {
+      const w = hermitWallBox(pr)
+      return [{ id: pr.id, kind: 'box', min: w.min, max: w.max }]
+    }
+    default:
+      return []
+  }
 }
 
 class Renderer implements GameRenderer {
@@ -276,6 +305,7 @@ class Renderer implements GameRenderer {
 
     this.updateCamera(input, dt)
     this.rig.camera.updateMatrixWorld()
+    this.fadeSolids(view)
     if (!input.cinematic) this.characters.nearFade(input.follow ?? input.me, this.rig.camera.position)
     this.sound.setListener(this.rig.camera)
 
@@ -395,8 +425,28 @@ class Renderer implements GameRenderer {
     this.debugCamera = pos && target ? { pos, target } : null
   }
 
+  /** Solids near the followed player (for the arm of the shoulder camera). */
+  private readonly solids: CameraSolid[] = []
+  private readonly hiddenProps = new Set<number>()
+
+  /** A solid prop that still contains the camera (or the pivot) is hidden so it never fills the screen. */
+  private fadeSolids(view: View) {
+    this.hiddenProps.clear()
+    const cam = this.rig.camera.position
+    for (const s of this.solids) {
+      if (
+        pointInSolid(cam.x, cam.y, cam.z, s, 0.4) ||
+        pointInSolid(this.focus.x, this.focus.y + 1, this.focus.z, s, 0.1)
+      )
+        this.hiddenProps.add(s.id)
+    }
+    this.props.setHidden(this.hiddenProps)
+    void view
+  }
+
   private updateCamera(input: FrameInput, dt: number) {
     const view = input.view
+    this.solids.length = 0
     if (this.debugCamera) {
       const cam = this.rig.camera
       cam.position.set(...this.debugCamera.pos)
@@ -417,6 +467,10 @@ class Renderer implements GameRenderer {
       return
     }
     this.focus.set(pv.p[0], pv.p[1], pv.p[2])
+    for (const pr of view.props) {
+      if (Math.hypot(pr.p[0] - pv.p[0], pr.p[2] - pv.p[2]) < 30) this.solids.push(...solidsOf(pr))
+    }
+    this.rig.setSolids(this.solids)
     if (pv.state === 'down') {
       this.rig.down(pv.p, dt)
       return
@@ -473,6 +527,11 @@ class Renderer implements GameRenderer {
   cameraYaw(): number {
     this.rig.camera.getWorldDirection(this.v)
     return Math.atan2(this.v.x, this.v.z)
+  }
+
+  cameraPosition(): V3 {
+    const p = this.rig.camera.position
+    return [p.x, p.y, p.z]
   }
 
   stats(): RendererStats {

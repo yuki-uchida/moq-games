@@ -296,6 +296,37 @@ test.describe('アニマフロント front-end', () => {
     })
   })
 
+  test('room code dialog: Enter during an IME conversion does not submit, a normal Enter does', async ({ page }) => {
+    await openTitle(page)
+    await page.click('[data-menu="sortie"]')
+    await page.click('[data-mode="pve"]')
+    await page.click('[data-go]')
+    for (const kind of ['join', 'host']) {
+      await page.click(`[data-room="${kind}"]`)
+      const input = page.locator('.room-code-input')
+      await expect(input).toBeVisible()
+      await input.fill('')
+      await input.focus()
+      const note = page.locator('.room-dialog-note')
+      // Enter that commits an IME conversion: composing, keyCode 229 or key 'Process'
+      await input.evaluate((el) => {
+        const fire = (init: KeyboardEventInit & { keyCode?: number }) =>
+          el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }))
+        fire({ key: 'Enter', isComposing: true })
+        fire({ key: 'Enter', isComposing: false, keyCode: 229 } as KeyboardEventInit)
+        fire({ key: 'Process', keyCode: 229 } as KeyboardEventInit)
+      })
+      await page.waitForTimeout(300)
+      await expect(note).not.toContainText('入力してください')
+      // a normal Enter submits (an empty code is refused with a message, without any network)
+      await page.keyboard.press('Enter')
+      await expect(note).toContainText('ルームコードを入力してください')
+      await page.keyboard.press('Escape') // leaves the field
+      await page.keyboard.press('Escape') // closes the dialog
+      await expect(page.locator('.room-dialog')).toHaveCount(0)
+    }
+  })
+
   test('HUD demo renders every block, pauses and reaches the results', async ({ page }) => {
     const errors = watchErrors(page)
     await page.goto('/?hud-demo=pve&end=8')
@@ -651,6 +682,68 @@ async function startTutorial(page: Page) {
   await page.click('.brief-go')
   await expect.poll(() => phaseOf(page), { timeout: 90_000 }).toBe('play')
 }
+
+test.describe('camera next to the lighthouse', () => {
+  test('サクラ通り: beside the lighthouse the camera stays outside its model at every yaw', async ({ page }) => {
+    await startSoloPve(page)
+    type Hook = {
+      match: {
+        me: string
+        view(): unknown
+        aimAt(p: number[]): void
+        cameraPos(): number[] | null
+      }
+      view(): { players: { id: string; p: number[] }[]; props: { kind: string; p: number[] }[] }
+    }
+    const lh = await page.evaluate(() => {
+      const a = (window as unknown as { __anima: Hook }).__anima
+      return a.view().props.find((p) => p.kind === 'lighthouse')!.p
+    })
+    // walk to the reviewer's spot: 2.3 m east of the lighthouse
+    const spot = [lh[0] + 2.3, lh[1], lh[2] + 0.5]
+    await page.keyboard.down('KeyW')
+    await expect
+      .poll(
+        async () =>
+          page.evaluate((s) => {
+            const a = (window as unknown as { __anima: Hook }).__anima
+            const me = a.view().players.find((p) => p.id === a.match.me)!
+            a.match.aimAt([s[0], me.p[1] + 1, s[2]])
+            return Math.hypot(me.p[0] - s[0], me.p[2] - s[2])
+          }, spot),
+        { timeout: 60_000, intervals: [100] }
+      )
+      .toBeLessThan(0.6)
+    await page.keyboard.up('KeyW')
+    const here = await page.evaluate(() => {
+      const a = (window as unknown as { __anima: Hook }).__anima
+      return a.view().players.find((p) => p.id === a.match.me)!.p
+    })
+    expect(Math.hypot(here[0] - lh[0], here[2] - lh[2])).toBeLessThan(4)
+    // the four directions and the eight between them
+    const yaws: [string, number][] = [
+      ['east', Math.PI / 2],
+      ['north', 0],
+      ['west', -Math.PI / 2],
+      ['south', Math.PI],
+      ['north-east', Math.PI / 4]
+    ]
+    for (let k = 0; k < 12; k++) yaws.push([`k${k}`, (k / 12) * Math.PI * 2])
+    for (const [name, yaw] of yaws) {
+      await page.evaluate((y) => {
+        const a = (window as unknown as { __anima: Hook }).__anima
+        const me = a.view().players.find((p) => p.id === a.match.me)!
+        a.match.aimAt([me.p[0] + Math.sin(y) * 20, me.p[1] + 1.2, me.p[2] + Math.cos(y) * 20])
+      }, yaw)
+      await page.waitForTimeout(700)
+      const cam = await page.evaluate(() => (window as unknown as { __anima: Hook }).__anima.match.cameraPos()!)
+      await page.screenshot({ path: test.info().outputPath(`lighthouse-${name}.png`) })
+      // outside the lighthouse's shaft (radius ≈ 1.4 with its gallery) or above its top
+      const d = Math.hypot(cam[0] - lh[0], cam[2] - lh[2])
+      expect(d > 1.4 || cam[1] > lh[1] + 9, `camera ${name}: ${d.toFixed(2)} m from the lighthouse axis`).toBe(true)
+    }
+  })
+})
 
 test.describe('gamepad on the results screen', () => {
   test('PvP results at 1024×600: the right stick scrolls the table to the last row and A still activates', async ({

@@ -143,6 +143,11 @@ export class Props {
     return r
   }
 
+  /** Hides the models of these props (a solid prop the camera is inside); every other model is shown. */
+  setHidden(ids: ReadonlySet<number>) {
+    for (const [id, e] of this.models) e.model.root.visible = !ids.has(id)
+  }
+
   update(view: View, myTeam: TeamId | undefined, dt: number) {
     this.frameId++
     this.time += dt
