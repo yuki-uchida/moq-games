@@ -41,8 +41,21 @@ export interface Tone {
   saturate?: number
 }
 
+const toneKey = (tone: Tone) => `${tone.brightness ?? 1}:${tone.saturate ?? 1}`
+
+/** The toned copies made of a baked sprite, by tone: the pixels of each are worked out once. */
+const tonedCopies = new WeakMap<HTMLCanvasElement, Map<string, HTMLCanvasElement>>()
+
 /** The pixels of `source` with `tone` applied (the rules of the CSS filter functions, in sRGB). */
 function toned(source: HTMLCanvasElement, tone: Tone): HTMLCanvasElement {
+  let copies = tonedCopies.get(source)
+  if (!copies) {
+    copies = new Map()
+    tonedCopies.set(source, copies)
+  }
+  const key = toneKey(tone)
+  const made = copies.get(key)
+  if (made) return made
   const canvas = document.createElement('canvas')
   canvas.width = source.width
   canvas.height = source.height
@@ -61,6 +74,7 @@ function toned(source: HTMLCanvasElement, tone: Tone): HTMLCanvasElement {
     px[i + 2] = (0.213 - 0.213 * s) * r + (0.715 - 0.715 * s) * g + (0.072 + 0.928 * s) * bl
   }
   ctx.putImageData(image, 0, 0)
+  copies.set(key, canvas)
   return canvas
 }
 
@@ -68,12 +82,21 @@ function toned(source: HTMLCanvasElement, tone: Tone): HTMLCanvasElement {
 const sized = new WeakMap<HTMLCanvasElement, string>()
 
 /**
+ * What a canvas shows since `drawRaster` last drew it: the raster and the tone. A canvas that was drawn in rows,
+ * or given another size (which clears it), shows nothing that is known here.
+ */
+const shown = new WeakMap<HTMLCanvasElement, { raster: Raster; tone: string }>()
+
+/**
  * Makes the canvas the size of the raster: its backing store, and `--w` / `--h` for the CSS that scales it up. A
  * canvas that has the size already is left alone (a write to its style would cost the page a style pass).
  */
 function fit(canvas: HTMLCanvasElement, raster: Raster) {
-  if (canvas.width !== raster.w) canvas.width = raster.w
-  if (canvas.height !== raster.h) canvas.height = raster.h
+  if (canvas.width !== raster.w || canvas.height !== raster.h) {
+    shown.delete(canvas)
+    if (canvas.width !== raster.w) canvas.width = raster.w
+    if (canvas.height !== raster.h) canvas.height = raster.h
+  }
   const size = `${raster.w}x${raster.h}`
   if (sized.get(canvas) === size) return
   sized.set(canvas, size)
@@ -81,12 +104,20 @@ function fit(canvas: HTMLCanvasElement, raster: Raster) {
   canvas.style.setProperty('--h', String(raster.h))
 }
 
-/** Replaces the canvas content with the raster (resizing the backing store to the art size), in `tone` if given. */
+/**
+ * Replaces the canvas content with the raster (resizing the backing store to the art size), in `tone` if given.
+ * A canvas that shows this very picture already is left as it is: a stage that starts asks for every picture of
+ * the HUD anew, and most of them are the ones the stage before left there.
+ */
 export function drawRaster(canvas: HTMLCanvasElement, raster: Raster, tone?: Tone) {
   fit(canvas, raster)
+  const key = tone ? toneKey(tone) : ''
+  const was = shown.get(canvas)
+  if (was && was.raster === raster && was.tone === key) return
   const ctx = canvas.getContext('2d')!
   ctx.clearRect(0, 0, raster.w, raster.h)
   ctx.drawImage(tone ? toned(bake(raster), tone) : bake(raster), 0, 0)
+  shown.set(canvas, { raster, tone: key })
 }
 
 /**
@@ -96,6 +127,7 @@ export function drawRaster(canvas: HTMLCanvasElement, raster: Raster, tone?: Ton
  */
 export function drawRasterRows(canvas: HTMLCanvasElement, raster: Raster, top: number) {
   fit(canvas, raster)
+  shown.delete(canvas)
   const ctx = canvas.getContext('2d')!
   ctx.clearRect(0, 0, raster.w, raster.h)
   const from = Math.max(0, Math.min(raster.h, Math.round(top)))

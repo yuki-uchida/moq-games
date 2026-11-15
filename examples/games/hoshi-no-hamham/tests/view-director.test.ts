@@ -61,6 +61,7 @@ function stubHud() {
     show() {},
     hide() {},
     setStage() {},
+    settle() {},
     update() {}
   }
   return {

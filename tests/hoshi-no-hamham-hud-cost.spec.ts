@@ -487,3 +487,130 @@ test.describe('the texts laid out ahead at the start of a stage', () => {
     })
   }
 })
+
+test.describe('the HUD at the start of a stage', () => {
+  test.setTimeout(120_000)
+
+  /** What the page calls of the HUD here (private in TypeScript, plain members at run time). */
+  interface StartHud {
+    stage: unknown
+    heartSlots: { el: HTMLCanvasElement }[]
+    tagEmblem: HTMLCanvasElement
+    reveal(): void
+    setStage(stage: unknown): void
+    settle(world: unknown): void
+    update(world: unknown, dt: number): void
+    drawEmblem(canvas: HTMLCanvasElement): void
+  }
+
+  for (const profile of PROFILES) {
+    test(`${profile.name}: the tap that starts a stage writes the HUD, and the stage's first frame has nothing left to draw`, async ({
+      browser
+    }) => {
+      const { page, context, errors } = await open(browser, profile.width, profile.height, 3)
+      const start = await page.evaluate(() => {
+        const h = hook()
+        h.autopilot(false)
+        const hud = h.app.hud as unknown as StartHud
+        const world = h.world
+        // Every drawing on a canvas of the HUD, and every text written into it, from here on.
+        const seen = { draws: 0, texts: 0 }
+        const inHud = (node: unknown) => node instanceof Element && Boolean(node.closest('#hud'))
+        const draw = CanvasRenderingContext2D.prototype.drawImage
+        CanvasRenderingContext2D.prototype.drawImage = function (this: CanvasRenderingContext2D, ...args: unknown[]) {
+          if (inHud(this.canvas)) seen.draws += 1
+          return (draw as (...a: unknown[]) => void).apply(this, args)
+        } as typeof draw
+        const text = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent')!
+        Object.defineProperty(Node.prototype, 'textContent', {
+          ...text,
+          set(this: Node, value: string | null) {
+            if (inHud(this)) seen.texts += 1
+            text.set!.call(this, value)
+          }
+        })
+        const take = () => {
+          const now = { ...seen }
+          seen.draws = 0
+          seen.texts = 0
+          return now
+        }
+        const hearts = hud.heartSlots.map((slot) => slot.el)
+        // The hero is whole, as at the start of a stage; the HUD shows it before the stage is set again.
+        world.player.hp = world.player.maxHp
+        hud.update(world, 0)
+        take()
+        // What the tap that starts a stage does to the HUD (play.ts, `start`): the same stage again.
+        hud.reveal()
+        hud.setStage(hud.stage)
+        hud.settle(world)
+        const tap = take()
+        // The stage's first frame.
+        hud.update(world, 1 / 60)
+        const first = take()
+        // A picture that is on a canvas already is not drawn again; another one is.
+        hud.drawEmblem(hud.tagEmblem)
+        const same = take()
+        return {
+          tap,
+          first,
+          same,
+          heartsKept:
+            hud.heartSlots.length === hearts.length && hud.heartSlots.every((slot, i) => slot.el === hearts[i]),
+          hearts: hearts.length
+        }
+      })
+      // The same stage again: every picture is on its canvas already, the hearts' canvases are the ones before.
+      expect(start.hearts).toBeGreaterThan(0)
+      expect(start.heartsKept).toBe(true)
+      expect(start.tap.draws).toBe(0)
+      // The first frame finds the HUD written: no picture to draw, and no text but what the frame's time moved.
+      expect(start.first.draws).toBe(0)
+      expect(start.first.texts).toBeLessThanOrEqual(1)
+      expect(start.same.draws).toBe(0)
+      expect(errors).toEqual([])
+      await context.close()
+    })
+  }
+
+  test('a stage of another world draws its own pictures once, in the tap', async ({ browser }) => {
+    const { page, context, errors } = await open(browser, 390, 844, 3)
+    const other = await page.evaluate(() => {
+      const h = hook()
+      h.autopilot(false)
+      const hud = h.app.hud as unknown as StartHud
+      const world = h.world
+      let draws = 0
+      const draw = CanvasRenderingContext2D.prototype.drawImage
+      CanvasRenderingContext2D.prototype.drawImage = function (this: CanvasRenderingContext2D, ...args: unknown[]) {
+        if (this.canvas instanceof Element && this.canvas.closest('#hud')) draws += 1
+        return (draw as (...a: unknown[]) => void).apply(this, args)
+      } as typeof draw
+      const stage = hud.stage as { theme: string }
+      // The same stage with another world's emblem.
+      const elsewhere = { ...stage, theme: stage.theme === 'castle' ? 'forest' : 'castle' }
+      hud.setStage(elsewhere)
+      hud.settle(world)
+      const tap = draws
+      draws = 0
+      hud.update(world, 1 / 60)
+      const first = draws
+      // The picture on the emblem's canvas is the other world's now.
+      const emblem = hud.tagEmblem
+      const pixels = emblem.getContext('2d')!.getImageData(0, 0, emblem.width, emblem.height).data
+      let inked = 0
+      for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 0) inked += 1
+      hud.setStage(stage)
+      hud.settle(world)
+      return { tap, first, back: draws, inked }
+    })
+    // The emblems of the tag, the banner and the deck are drawn anew, in the tap; the frame after has nothing to draw.
+    expect(other.tap).toBeGreaterThanOrEqual(2)
+    expect(other.first).toBe(0)
+    expect(other.inked).toBeGreaterThan(10)
+    // Back to the stage's own world: its emblems are drawn again.
+    expect(other.back).toBeGreaterThanOrEqual(2)
+    expect(errors).toEqual([])
+    await context.close()
+  })
+})
