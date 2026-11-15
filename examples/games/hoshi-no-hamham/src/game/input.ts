@@ -118,12 +118,24 @@ export class Input {
       const keys = Array.from(pad.querySelectorAll<HTMLElement>('[data-key]'))
       marked.push(...keys)
       // The pad's place is read when a finger lands, not on every move: asking the layout while the HUD is
-      // changing it forces a layout pass for each pointer event.
+      // changing it forces a layout pass for each pointer event. A finger can stay down while the pad moves,
+      // though (the phone is turned, the window resized): the place is then forgotten and read again on the
+      // finger's next move.
       let rect: { left: number; width: number } | null = null
       const side = (event: PointerEvent) => {
         rect ??= pad.getBoundingClientRect()
         return padSide(event.clientX, rect.left, rect.width)
       }
+      const forget = () => {
+        rect = null
+      }
+      window.addEventListener('resize', forget)
+      const resized = typeof ResizeObserver === 'function' ? new ResizeObserver(forget) : null
+      resized?.observe(pad)
+      this.disposers.push(() => {
+        window.removeEventListener('resize', forget)
+        resized?.disconnect()
+      })
       lock(pad)
       listen(pad, 'pointerdown', (event) => {
         event.preventDefault()
