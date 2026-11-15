@@ -23,6 +23,8 @@ const TICK_BUDGET_MS = 3
  * its boss's, the two jingles of its ends and the story's before it.
  */
 export const KEPT_PLAYERS = 5
+/** The seconds of a song whose racks are built ahead with its player (see `primeMusic`). */
+const PRIME_SECONDS = 4
 
 export class AudioEngine {
   readonly mixer: Mixer
@@ -210,6 +212,15 @@ export class AudioEngine {
     if (!song) return false
     this.park(theme, new MusicPlayer(this.mixer, this.noise, song, 0, 0, true, true, false))
     return true
+  }
+
+  /**
+   * Builds, for a player that was built ahead and has not sounded, the racks of its song's first notes, for at most
+   * `budgetMs` of the main thread. True while there is more to build (ask again in another idle moment).
+   */
+  primeMusic(theme: ThemeName, budgetMs: number): boolean {
+    if (!this.live || this.disposed) return false
+    return this.parked.get(theme)?.prime(PRIME_SECONDS, budgetMs) ?? false
   }
 
   /** The themes whose players are put away now, the one put away longest ago first (tests and tools). */

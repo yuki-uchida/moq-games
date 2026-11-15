@@ -213,6 +213,104 @@ describe('a player that is started again', () => {
   })
 })
 
+describe('the racks built ahead', () => {
+  const noise = { duration: 2 } as AudioBuffer
+  /** A player built off the mixer, as the engine builds one ahead. */
+  const ahead = (rec: ReturnType<typeof recordingContext>, theme: keyof typeof SONGS = 'meadow') =>
+    new MusicPlayer(rec.mixer(), noise, SONGS[theme], 0, 0, false, true, false)
+  /** Plays the first seconds as the engine does: a look half a second ahead, twenty-five times a second. */
+  function play(rec: ReturnType<typeof recordingContext>, p: MusicPlayer, from: number, seconds: number) {
+    p.restart(0, from)
+    for (let t = from; t < from + seconds; t += 0.04) {
+      rec.at(t)
+      p.pump(t + 0.5)
+    }
+  }
+
+  test('are built with one stand-in and no source, off the mixer, and the first notes then make only sources', () => {
+    const rec = recordingContext()
+    const p = ahead(rec)
+    const from = rec.log.length
+    expect(p.prime(4)).toBe(false)
+    const built = rec.kept(from).length
+    expect(built).toBeGreaterThan(60)
+    // The one oscillator that stands in for every source; it is taken off the racks when they are done.
+    expect(rec.sources(from)).toEqual(['osc'])
+    expect(rec.wiring(from)).toEqual([])
+    expect(rec.log.slice(from).filter((line) => /^disconnect osc/.test(line))).toHaveLength(1)
+    expect(p.quietAt).toBe(0)
+    const start = rec.log.length
+    play(rec, p, 50, 4)
+
+    // The same seconds of a player whose racks were not built ahead.
+    const plain = recordingContext()
+    const q = ahead(plain)
+    const plainStart = plain.log.length
+    play(plain, q, 50, 4)
+    const unprepared = plain.kept(plainStart).length
+    expect(unprepared).toBeGreaterThan(60)
+    expect(rec.sources(start)).toHaveLength(plain.sources(plainStart).length)
+    expect(rec.kept(start).length).toBeLessThan(unprepared / 5)
+  })
+
+  test('in slices of a budget the same racks are built', () => {
+    const whole = recordingContext()
+    const one = ahead(whole)
+    const wholeFrom = whole.log.length
+    one.prime(4)
+    const rec = recordingContext()
+    const p = ahead(rec)
+    const from = rec.log.length
+    let clock = 0
+    let slices = 1
+    while (p.prime(4, 3, () => clock++)) {
+      slices += 1
+      expect(slices).toBeLessThan(10000)
+    }
+    expect(slices).toBeGreaterThan(5)
+    expect(rec.made(from)).toEqual(whole.made(wholeFrom))
+    // Done: asked again there is nothing more.
+    const done = rec.log.length
+    expect(p.prime(4)).toBe(false)
+    expect(rec.made(done)).toEqual([])
+  })
+
+  test('a player that is on the mixer, or has sounded, has nothing built ahead', () => {
+    const rec = recordingContext()
+    const on = new MusicPlayer(rec.mixer(), noise, SONGS.meadow, 0, 0, false, true)
+    let from = rec.log.length
+    expect(on.prime(4)).toBe(false)
+    expect(rec.made(from)).toEqual([])
+    const p = ahead(rec)
+    p.restart(0, 1)
+    from = rec.log.length
+    expect(p.prime(4)).toBe(false)
+    expect(rec.made(from)).toEqual([])
+    // Half built when its theme is asked for: it starts all the same, and the rest is built by its notes.
+    const half = ahead(rec)
+    let clock = 0
+    expect(half.prime(4, 3, () => clock++)).toBe(true)
+    half.restart(0, 10)
+    expect(half.prime(4)).toBe(false)
+    expect(half.quietAt).toBe(0)
+  })
+
+  test('the notes of a player whose racks were built ahead are the song\u2019s own', () => {
+    const notes = recordVoices()
+    const p = player('meadow', 0)
+    p.pump(6)
+    const plain = notes.splice(0)
+    const mixer = { ctx: fake(), music: fake(), musicReverb: fake(), chorus: fake() } as never
+    const q = new MusicPlayer(mixer, fake() as AudioBuffer, SONGS.meadow, 0, 0, false, true, false)
+    q.prime(4)
+    // (The recorder stands in for the voices here, so the racks' own notes are written down too: not meant.)
+    notes.splice(0)
+    q.restart(0, 0)
+    q.pump(6)
+    expect(notes.splice(0)).toEqual(plain)
+  })
+})
+
 describe('work in idle moments', () => {
   test('one item per moment, none while a stage is played, and it can be stopped', () => {
     const moments: Array<() => void> = []
@@ -243,6 +341,32 @@ describe('work in idle moments', () => {
     expect(done).toEqual(['a', 'b'])
     expect(moments).toHaveLength(0)
     expect(timers).toHaveLength(0)
+  })
+
+  test('work that says it has more to do is called for the same item again, a moment at a time', () => {
+    const moments: Array<() => void> = []
+    const idle = ((run: (room: () => number) => void) => void moments.push(() => run(() => 50))) as never
+    const calls: string[] = []
+    const left = new Map([
+      ['a', 2],
+      ['b', 0]
+    ])
+    inIdleMoments(
+      ['a', 'b'],
+      (item) => {
+        calls.push(item)
+        const more = left.get(item)!
+        left.set(item, more - 1)
+        return more > 0
+      },
+      idle,
+      () => false
+    )
+    while (moments.length) {
+      expect(moments).toHaveLength(1)
+      moments.shift()!()
+    }
+    expect(calls).toEqual(['a', 'a', 'a', 'b'])
   })
 })
 
