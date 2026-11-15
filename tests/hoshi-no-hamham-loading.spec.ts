@@ -221,6 +221,164 @@ for (const no of [1, 10]) {
   })
 }
 
+for (const size of [
+  { name: 'on its side', width: 844, height: 390 },
+  { name: 'upright', width: 390, height: 844 }
+]) {
+  test(`${size.name}: the HUD stands by while the story is read, unseen and out of reach, and the tap only shows it`, async ({
+    page
+  }) => {
+    test.setTimeout(120_000)
+    interface Standby {
+      app: {
+        screen: string
+        ready: { stage: { no: number }; session: { world: { marked?: boolean } } } | null
+        session: { world: { marked?: boolean; time: number; player: { hp: number; maxHp: number } } } | null
+        hud: { standingBy: boolean; shown: boolean; hide(): void }
+      }
+    }
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    page.on('console', (message) => message.type() === 'error' && errors.push(message.text()))
+    await page.setViewportSize({ width: size.width, height: size.height })
+    await openTitle(page)
+    await openStory(page, 3)
+    // The stage's art is built, the screens after it are laid out, and then its start is prepared.
+    await page.waitForFunction(() => (window as unknown as { __hamham: Standby }).__hamham.app.hud.standingBy, null, {
+      timeout: 60_000
+    })
+    await page.evaluate(() => {
+      const ready = (window as unknown as { __hamham: Standby }).__hamham.app.ready
+      if (ready) ready.session.world.marked = true
+    })
+    const standing = await page.evaluate(() => {
+      const hud = document.querySelector<HTMLElement>('#hud')!
+      const style = getComputedStyle(hud)
+      const buttons = [...hud.querySelectorAll<HTMLButtonElement>('button')].filter(
+        (b) => b.getClientRects().length > 0
+      )
+      const under = buttons.map((button) => {
+        const box = button.getBoundingClientRect()
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+        return Boolean(hit && hud.contains(hit))
+      })
+      const app = (window as unknown as { __hamham: Standby }).__hamham.app
+      return {
+        screen: app.screen,
+        ready: app.ready?.stage.no ?? null,
+        hidden: hud.hidden,
+        visibility: style.visibility,
+        opacity: Number(style.opacity),
+        aria: hud.getAttribute('aria-hidden'),
+        laidOut: hud.getBoundingClientRect().width > 0 && hud.querySelectorAll('canvas').length > 0,
+        hearts: hud.querySelectorAll('canvas.heart').length,
+        tabs: buttons.map((b) => b.tabIndex),
+        buttons: buttons.length,
+        hitsTheHud: under.filter(Boolean).length,
+        // A part of the HUD says it is visible itself: only the root is hidden from sight.
+        part: getComputedStyle(hud.firstElementChild!).visibility
+      }
+    })
+    expect(standing).toMatchObject({
+      screen: 'story',
+      ready: 3,
+      hidden: false,
+      visibility: 'hidden',
+      aria: 'true',
+      laidOut: true,
+      hitsTheHud: 0,
+      part: 'visible'
+    })
+    expect(standing.opacity).toBeLessThan(0.01)
+    expect(standing.hearts).toBeGreaterThan(0)
+    expect(standing.buttons).toBeGreaterThan(0)
+    expect(standing.tabs.every((tab) => tab === -1)).toBe(true)
+    // To anything that asks whether the HUD is on screen, it is not; the story is, and takes the keys.
+    await expect(page.locator('#hud')).toBeHidden()
+    await expect(page.locator('#story-screen')).toBeVisible()
+    await page.keyboard.press('Tab')
+    await page.keyboard.press('Tab')
+    await page.keyboard.press('Tab')
+    expect(await page.evaluate(() => Boolean(document.activeElement?.closest('#hud')))).toBe(false)
+
+    await finishStory(page)
+    await expect(page.locator('#hud')).toBeVisible()
+    const started = await page.evaluate(() => {
+      const hud = document.querySelector<HTMLElement>('#hud')!
+      const app = (window as unknown as { __hamham: Standby }).__hamham.app
+      const buttons = [...hud.querySelectorAll<HTMLButtonElement>('button')].filter(
+        (b) => b.getClientRects().length > 0
+      )
+      return {
+        standing: app.hud.standingBy,
+        ready: app.ready,
+        // The session that plays is the one that was built ahead.
+        prepared: Boolean(app.session?.world.marked),
+        visibility: getComputedStyle(hud).visibility,
+        opacity: Number(getComputedStyle(hud).opacity),
+        aria: hud.getAttribute('aria-hidden'),
+        standby: hud.classList.contains('is-standby'),
+        tabs: buttons.map((b) => b.getAttribute('tabindex')),
+        pointer: buttons.map((b) => b.style.pointerEvents),
+        hearts:
+          document.querySelector('.hudx-hearts, #hearts, [aria-label^="たいりょく"]')?.getAttribute('aria-label') ?? '',
+        name: hud.textContent ?? ''
+      }
+    })
+    expect(started).toMatchObject({
+      standing: false,
+      ready: null,
+      prepared: true,
+      visibility: 'visible',
+      opacity: 1,
+      aria: null,
+      standby: false
+    })
+    expect(started.tabs.every((tab) => tab === null)).toBe(true)
+    expect(started.pointer.every((value) => value === '')).toBe(true)
+    expect(started.hearts).toMatch(/たいりょく \d+\/\d+/)
+    // The buttons work again: the pause button pauses.
+    await page.waitForFunction(
+      () =>
+        (window as unknown as { __hamham: { app: { session: { director: { current: string | null } } } } }).__hamham.app
+          .session.director.current === null,
+      null,
+      { timeout: 30_000 }
+    )
+    await page.locator('#pause').click()
+    await expect(page.locator('#pause-screen')).toBeVisible()
+    expect(errors).toEqual([])
+  })
+}
+
+test('a HUD that stands by is put away when the story is left without starting the stage', async ({ page }) => {
+  test.setTimeout(120_000)
+  interface App {
+    app: { ready: unknown; hud: { standingBy: boolean; hide(): void }; openSelect(): void }
+  }
+  await openTitle(page)
+  await openStory(page, 2)
+  await page.waitForFunction(() => (window as unknown as { __hamham: App }).__hamham.app.hud.standingBy, null, {
+    timeout: 60_000
+  })
+  const after = await page.evaluate(() => {
+    const app = (window as unknown as { __hamham: App }).__hamham.app
+    app.openSelect()
+    const hud = document.querySelector<HTMLElement>('#hud')!
+    return {
+      standing: app.hud.standingBy,
+      ready: app.ready,
+      hidden: hud.hidden,
+      standby: hud.classList.contains('is-standby'),
+      aria: hud.getAttribute('aria-hidden'),
+      tabs: [...hud.querySelectorAll('button')].map((b) => b.getAttribute('tabindex'))
+    }
+  })
+  expect(after).toMatchObject({ standing: false, ready: null, hidden: true, standby: false, aria: null })
+  expect(after.tabs.every((tab) => tab === null)).toBe(true)
+  await expect(page.locator('#select-screen')).toBeVisible()
+})
+
 test('play waits behind a loading card when the story ends before the stage is ready', async ({
   page,
   browserName

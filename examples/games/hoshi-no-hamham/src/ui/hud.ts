@@ -185,6 +185,9 @@ export class Hud implements HudApi, PrimeTarget {
   private trailShown = 1
   private staminaShown: boolean | null = null
   private timers: { left: number; run: () => void }[] = []
+  /** True while the HUD stands by for a stage (see `standby`), and the stage it was set for ahead. */
+  private standing = false
+  private setAhead: StageDef | null = null
   private observer: ResizeObserver | null = null
   private right: HTMLElement
   private buttons: HTMLButtonElement[]
@@ -446,7 +449,48 @@ export class Hud implements HudApi, PrimeTarget {
 
   show() {
     this.primer.interrupt()
+    this.endStandby()
     this.reveal()
+  }
+
+  /**
+   * Lays the HUD out for a stage before the stage starts, while its story is still on screen: the stage is set,
+   * the HUD is measured and laid out, and what the first frame would write (the hearts, the deck's lines and
+   * pictures) is written, all where nobody sees it (see `is-standby` in hud.css), its buttons out of reach of the
+   * keys and of a tap, and no reader of the page told of it. The tap that starts the stage then shows it by a
+   * change of the root's style alone. `hide` ends it; so does `show`, which the start of the stage calls.
+   */
+  standby(stage: StageDef, world: World) {
+    // A walk of the priming ends first and leaves the HUD put away.
+    this.primer.interrupt()
+    if (this.shown) return
+    this.standing = true
+    this.root.classList.add('is-standby')
+    this.root.setAttribute('aria-hidden', 'true')
+    for (const button of this.buttons) {
+      button.tabIndex = -1
+      button.style.pointerEvents = 'none'
+    }
+    this.setStage(stage)
+    this.setAhead = stage
+    this.reveal()
+    this.settle(world)
+  }
+
+  /** True while the HUD stands by for a stage that has not started. */
+  get standingBy() {
+    return this.standing
+  }
+
+  private endStandby() {
+    if (!this.standing) return
+    this.standing = false
+    this.root.classList.remove('is-standby')
+    this.root.removeAttribute('aria-hidden')
+    for (const button of this.buttons) {
+      button.removeAttribute('tabindex')
+      button.style.removeProperty('pointer-events')
+    }
   }
 
   /** Puts the HUD on screen (what `show` does, without ending a walk of the priming). */
@@ -463,6 +507,8 @@ export class Hud implements HudApi, PrimeTarget {
   hide() {
     // The menus put the HUD away on their way; a walk of the priming is out of sight already and carries on.
     if (this.primer.busy) return
+    this.endStandby()
+    this.setAhead = null
     this.root.hidden = true
     this.clearTransient()
     // Back in a menu: a layout whose walk a stage cut short, or that came with a turn of the phone during one, is
@@ -485,6 +531,11 @@ export class Hud implements HudApi, PrimeTarget {
 
   setStage(stage: StageDef) {
     this.primer.interrupt()
+    // The stage that starts is the one the HUD stood by for: everything is written, and writing a text again
+    // would have the browser lay it out again.
+    const written = this.setAhead === stage
+    this.setAhead = null
+    if (written) return
     this.stage = stage
     this.hp = -1
     this.maxHp = -1

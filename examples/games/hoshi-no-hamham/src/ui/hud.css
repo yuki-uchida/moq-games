@@ -28,6 +28,32 @@
   display: none;
 }
 
+/*
+ * The HUD is on screen while a stage is played, and there the page is not zoomed by a pinch (touch.css says so on
+ * <html> when the touch controls come on). Saying it here too keeps what the browser hands down the HUD the same
+ * whether that lock is on or off: the lock coming on in the tap that starts a stage then leaves every style in
+ * here as it was (the browser hands an element's touch action on to everything inside it).
+ */
+#hud.hudx {
+  touch-action: pan-x pan-y;
+}
+
+/*
+ * Standing by (hud.ts, `standby`): the HUD is laid out for a stage that is about to start while the story is
+ * still read. Only the root is hidden from sight, by two properties that showing it flips back. Its parts say that
+ * they are visible themselves and take nothing of this from the root, so that the flip works out the root's style
+ * and no other: a hundred and sixty styles in the tap that starts a stage otherwise. (The box whose text is only
+ * measured stays unseen by its own rule.)
+ */
+#hud.hudx > :not(.hudx-ahead) {
+  visibility: visible;
+}
+
+#hud.hudx.is-standby {
+  visibility: hidden;
+  opacity: 0.004;
+}
+
 #hud.hudx * {
   box-sizing: border-box;
 }
