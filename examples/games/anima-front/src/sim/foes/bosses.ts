@@ -3,6 +3,8 @@
  * and ゴウテツ (walking fortress: four breakable legs, kneels with its core exposed, missiles, sweeping laser,
  * stomp). bossHitModifier applies their weak points / armour to incoming hits.
  */
+import { GRAVITY } from '../../data/species'
+import { placeEffect } from '../actors'
 import { blast, damagePlayer, type DamageInfo } from '../combat'
 import {
   DT,
@@ -90,8 +92,10 @@ export function kuitsukushi(sim: Sim, f: Foe) {
     const atk = f.attack!
     launchAttack(sim, f)
     if (atk.id === 'slam') {
+      // From the maw out to the aimed point, stopped in front of the first wall / solid prop on the way.
       const aim = f.aim ?? f.p
-      blast(sim, [aim[0], aim[1] + 0.3, aim[2]], atk.radius ?? 3.5, atk.damage * f.dmgMul, FOE_SIDE, f.id, 'slam', {
+      const at = placeEffect(sim, [f.p[0], f.p[1] + f.h * 0.5, f.p[2]], [aim[0], aim[1] + 0.3, aim[2]], FOE_SIDE)
+      blast(sim, at, atk.radius ?? 3.5, atk.damage * f.dmgMul, FOE_SIDE, f.id, 'slam', {
         knock: 6,
         knockUp: 5
       })
@@ -290,14 +294,13 @@ export function goutetsu(sim: Sim, f: Foe) {
   if (f.state !== 'move') setState(f, 'move')
   const d = hDist(f.p, target.p)
   faceTo(f, target.p, 0.5)
-  if (d > 20) {
-    const sp = f.def.speed
-    f.p[0] += Math.sin(f.yaw) * sp * DT
-    f.p[2] += Math.cos(f.yaw) * sp * DT
-    const b = sim.map.bounds
-    f.p[0] = Math.max(b.min[0] + 2, Math.min(b.max[0] - 2, f.p[0]))
-    f.p[2] = Math.max(b.min[1] + 2, Math.min(b.max[1] - 2, f.p[2]))
-  }
+  // Walks along its heading through the physics (map boxes, ヤドカリ walls, the solid props, the map edge): it slides
+  // along a wall in its way instead of passing through it.
+  const sp = d > 20 ? f.def.speed : 0
+  f.v[0] = Math.sin(f.yaw) * sp
+  f.v[2] = Math.cos(f.yaw) * sp
+  f.v[1] = Math.min(0, f.v[1]) - GRAVITY * DT
+  sim.phys.move(f, DT, FOE_SIDE)
   if (sim.time < f.mem.nextAct) return
   const stomp = attackDef(f, 'stomp')!
   const missile = attackDef(f, 'missile')!

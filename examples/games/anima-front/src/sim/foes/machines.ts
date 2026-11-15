@@ -1,4 +1,5 @@
 /** 蝕機 behaviours (DESIGN §11): ミツメ, アシナガ, コロガシ, タテガミ. */
+import { bodyDistance, targetVisible } from '../actors'
 import { blast, killFoe } from '../combat'
 import { DT } from '../constants'
 import { ballistic, spawnShot } from '../projectiles'
@@ -171,7 +172,10 @@ export function korogashiBurst(sim: Sim, f: Foe, share: number) {
     // Chain: a destroyed コロガシ sets off its neighbours.
     for (const g of sim.foes) {
       if (g === f || g.dead || g.kind !== 'korogashi' || g.state === 'spawn') continue
-      if (Math.hypot(g.p[0] - f.p[0], g.p[2] - f.p[2]) <= r + g.r) killFoe(sim, g, undefined, false, 'explode')
+      // Like any blast, the chain needs a clear line to the neighbour (walls, ヤドカリ walls, the 灯台 / 巣核).
+      if (bodyDistance(g, at) > r || !targetVisible(sim, [at[0], at[1] + 0.3, at[2]], { k: 'f', f: g }, FOE_SIDE))
+        continue
+      killFoe(sim, g, undefined, false, 'explode')
     }
   }
 }

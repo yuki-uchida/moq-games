@@ -10,6 +10,7 @@ import {
   edgeDist,
   eye,
   faceTo,
+  flyMove,
   flyTo,
   hDist,
   hitPlayersNear,
@@ -244,11 +245,10 @@ export function kagerou(sim: Sim, f: Foe) {
     const l = Math.hypot(dx, dy, dz)
     const sp = 20
     if (l > 1e-6) {
-      const k = Math.min(1, (sp * DT) / l)
-      f.v = [(dx / l) * sp, (dy / l) * sp, (dz / l) * sp]
-      f.p[0] += dx * k
-      f.p[1] += dy * k
-      f.p[2] += dz * k
+      // Dives through the physics too (never through a wall): the velocity covers at most the rest of the way.
+      const v = Math.min(sp, l / DT)
+      f.v = [(dx / l) * v, (dy / l) * v, (dz / l) * v]
+      flyMove(sim, f)
     }
     hitPlayersNear(sim, f, f.p, 1.3, dive.damage, 'dive', hitSet(f))
     const floor = sim.phys.groundHeight(f.p[0], f.p[2], f.r, f.p[1] + 0.5)

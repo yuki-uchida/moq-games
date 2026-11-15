@@ -15,8 +15,10 @@ export const sustainFraction = (s: number) => (!Number.isFinite(s) ? 1 : Math.ma
 export const formatSustain = (s: number) => {
   if (!Number.isFinite(s)) return '∞'
   if (s >= 600) return '10分以上'
-  if (s >= 60) return `${Math.floor(s / 60)}分${String(Math.round(s % 60)).padStart(2, '0')}秒`
-  return `${Math.round(s)}秒`
+  // Round to whole seconds first, so 119.6 s reads 2分00秒 (never 1分60秒).
+  const t = Math.round(s)
+  if (t >= 60) return `${Math.floor(t / 60)}分${String(t % 60).padStart(2, '0')}秒`
+  return `${t}秒`
 }
 
 export const sustainGrade = (s: number): 'good' | 'ok' | 'bad' =>
