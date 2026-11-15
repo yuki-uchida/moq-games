@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  CAPPED_SLACK,
   CHECK_EVERY,
   MAIN_SHARE,
+  MISSED_SHARE,
   Renderer,
   SCALE_WINDOW,
   SETTLE_FRAMES,
@@ -10,11 +12,27 @@ import {
   dropHelped,
   median,
   nextScale,
-  windowStats
+  windowStats,
+  worseThanCapped
 } from '../src/view/renderer'
 
 const slow = (n = SCALE_WINDOW) => Array.from({ length: n }, () => SLOW_FRAME_MS + 10)
 const fast = (n = SCALE_WINDOW) => Array.from({ length: n }, () => 16.7)
+
+describe('worseThanCapped', () => {
+  const held = { median: 33.3, quartile: 33.3, missed: 0.05, bound: false }
+
+  it('is true for a median a quarter longer than in the window the unhelpful drop was made for', () => {
+    expect(worseThanCapped(held, { ...held, median: 33.3 * (1 + CAPPED_SLACK) + 0.1 })).toBe(true)
+    expect(worseThanCapped(held, { ...held, median: 33.3 * (1 + CAPPED_SLACK) - 0.1 })).toBe(false)
+    expect(worseThanCapped(held, held)).toBe(false)
+  })
+
+  it('is true for a fifth more of the frames missed', () => {
+    expect(worseThanCapped(held, { ...held, missed: 0.05 + MISSED_SHARE })).toBe(true)
+    expect(worseThanCapped(held, { ...held, missed: 0.05 + MISSED_SHARE - 0.01 })).toBe(false)
+  })
+})
 
 describe('computeScale', () => {
   it('is ceil(width × ratio / 640) clamped to 1..4', () => {
@@ -331,7 +349,7 @@ describe('Renderer frame watching', () => {
     expect(renderer.k).toBe(3)
   })
 
-  it('gives the pixels back and stops adapting when a drop did not make the frames shorter (capped rate)', () => {
+  it('gives the pixels back and leaves the scale alone while the frames keep the rate a drop did not shorten (capped rate)', () => {
     const renderer = new Renderer(canvas as unknown as HTMLCanvasElement)
     let t = frames(renderer, 0, FULL, 33.3)
     expect(renderer.k).toBe(3)
@@ -341,6 +359,74 @@ describe('Renderer frame watching', () => {
     expect(canvas.width).toBe(2560)
     frames(renderer, t, 2000, 33.3)
     expect(renderer.k).toBe(4)
+  })
+
+  it('drops again when a scene makes the frames clearly slower than the rate it is held to, and stops at that rate', () => {
+    const renderer = new Renderer(canvas as unknown as HTMLCanvasElement)
+    // Held to 30 frames a second: one drop is tried, does not help, and is taken back.
+    let t = frames(renderer, 0, 2 * FULL, 33.3)
+    expect(renderer.k).toBe(4)
+    expect(renderer.adaptationOff).toBe(true)
+    // A new stage (the sampling starts over), and a scene whose frames follow the pixel count: 96, 54 and 24 ms
+    // at k = 4, 3 and 2, but never shorter than the 33.3 ms the system allows.
+    renderer.resetSampling()
+    const cost = (k: number) => Math.max(33.3, 6 * k * k)
+    t = phone(renderer, t, FULL, cost)
+    expect(renderer.k).toBe(3)
+    t = phone(renderer, t, FULL, cost)
+    expect(renderer.k).toBe(2)
+    // Back at the rate it is held to: no drop is tried for that again, however long it goes on.
+    let changed = 0
+    for (let i = 0; i < 2000; i++) {
+      t += cost(renderer.k)
+      if (renderer.observeFrame(t, true, false)) changed += 1
+    }
+    expect(changed).toBe(0)
+    expect(renderer.k).toBe(2)
+    expect(renderer.adaptationOff).toBe(true)
+  })
+
+  it('does not try again for frames that are only a little slower than the rate it is held to', () => {
+    const renderer = new Renderer(canvas as unknown as HTMLCanvasElement)
+    let t = frames(renderer, 0, 2 * FULL, 33.3)
+    expect(renderer.k).toBe(4)
+    let changed = 0
+    for (let i = 0; i < 2000; i++) {
+      t += 33.3 * (1 + CAPPED_SLACK) - 0.5
+      if (renderer.observeFrame(t, true, false)) changed += 1
+    }
+    expect(changed).toBe(0)
+    expect(renderer.k).toBe(4)
+  })
+
+  it('tries again when many more frames are missed than at the rate it is held to', () => {
+    const renderer = new Renderer(canvas as unknown as HTMLCanvasElement)
+    let t = frames(renderer, 0, 2 * FULL, 33.3)
+    expect(renderer.k).toBe(4)
+    // Still 33.3 ms as a rule, but every fourth frame takes twice as long at the full scale.
+    let n = 0
+    const rhythm = (k: number) => (k === 4 && ++n % 4 === 0 ? 66.6 : 33.3)
+    t = phone(renderer, t, FULL, rhythm)
+    expect(renderer.k).toBe(3)
+    phone(renderer, t, FULL, rhythm)
+    expect(renderer.k).toBe(3)
+  })
+
+  it('forgets the rate it was held to once the page runs clearly faster than that', () => {
+    const renderer = new Renderer(canvas as unknown as HTMLCanvasElement)
+    let t = frames(renderer, 0, 2 * FULL, 33.3)
+    expect(renderer.adaptationOff).toBe(true)
+    // The system lets the page run at 60 frames a second again (a power-saving mode switched off, say).
+    t = frames(renderer, t, FULL, 16.7)
+    expect(renderer.adaptationOff).toBe(false)
+    expect(renderer.k).toBe(4)
+    // From here on it adapts as a renderer that was never held: all the way down while the drops help.
+    const cost = (k: number) => 6 * k * k
+    t = phone(renderer, t, 3 * FULL, cost)
+    expect(renderer.k).toBe(1)
+    const fresh = new Renderer(canvas as unknown as HTMLCanvasElement)
+    phone(fresh, 0, 3 * FULL, cost)
+    expect(fresh.k).toBe(1)
   })
 
   it('adapts again after the canvas is resized', () => {

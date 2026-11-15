@@ -8,8 +8,11 @@
  * frames are missed ones. A smaller canvas only helps where painting its pixels is what takes the time, so a frame
  * that is late because the page's own work ran into it does not count: the caller says how far into each frame
  * the game was still working. The renderer looks at the next window to see whether a drop helped: when it did
- * not, the system caps the rate (not the canvas), k goes back up and the renderer stops adapting. It never goes
- * back up otherwise until the window is resized or the page is reloaded.
+ * not, the system holds the page to that rate (not the canvas), k goes back up, and the window the drop was made
+ * for is kept: from then on only a window that is clearly worse than it (`worseThanCapped`) is a reason for
+ * another drop, so a phone that is held to 30 frames a second is left alone until a scene makes it slower than
+ * that. A window clearly better than the kept one says the system no longer holds the page there, and it is
+ * forgotten. The scale never goes back up otherwise until the window is resized or the page is reloaded.
  */
 import { VIEW_H, VIEW_W } from '../art/contract'
 import { setBaseTransform } from './bake'
@@ -47,6 +50,11 @@ export const MISSED_FACTOR = 1.6
 export const MISSED_SHARE = 0.2
 /** After a drop, the median must be this much shorter (a fraction) for the drop to have been the reason. */
 export const HELPED_GAIN = 0.1
+/**
+ * Once a drop did not help, the median must be this much longer (a fraction) than in the window that drop was made
+ * for before another drop is tried.
+ */
+export const CAPPED_SLACK = 0.25
 /**
  * A frame in which the game was still working this far in (a share of the display's period) leaves the browser
  * too little time to show it by the next refresh: the frame after it is late because of the main thread, whatever
@@ -139,13 +147,30 @@ export function dropHelped(before: WindowStats, after: WindowStats): boolean {
   return before.missed >= MISSED_SHARE && after.missed <= before.missed / 2
 }
 
+/**
+ * True when `stats` is clearly worse than `capped`, the window a drop was made for that did not help: a median
+ * a quarter longer, or a fifth more of the frames missed. The rate the system holds the page to does not explain
+ * such a window, so a smaller canvas is worth another try.
+ */
+export function worseThanCapped(capped: WindowStats, stats: WindowStats): boolean {
+  return stats.median > capped.median * (1 + CAPPED_SLACK) || stats.missed >= capped.missed + MISSED_SHARE
+}
+
 export class Renderer {
   readonly ctx: CanvasRenderingContext2D
   k = 1
   /** The scale the canvas size and pixel ratio allow (the upper limit for the adaptive scale). */
   maxK = 1
-  /** True once a drop did not help: the rate is capped by the system and the scale is left alone. */
-  adaptationOff = false
+  /**
+   * The window a drop was made for that did not help: the rate the system holds the page to, as far as it is
+   * known. Null until a drop fails, and again once the page runs clearly faster than this or the canvas is resized.
+   */
+  private capped: WindowStats | null = null
+  /** True while a rate the system holds the page to is known (a drop was tried and did not help). */
+  get adaptationOff(): boolean {
+    return this.capped !== null
+  }
+
   private observer: ResizeObserver | null = null
   private onResize = () => this.resize()
   private onVisible = () => {
@@ -187,7 +212,7 @@ export class Renderer {
     this.ratio = ratio
     this.maxK = computeScale(cssWidth, ratio)
     if (changed) {
-      this.adaptationOff = false
+      this.capped = null
       this.probe = null
     }
     this.setScale(changed ? this.maxK : Math.min(this.k, this.maxK))
@@ -238,20 +263,25 @@ export class Renderer {
     this.ringNext = (this.ringNext + 1) % SCALE_WINDOW
     if (this.ringCount < SCALE_WINDOW) this.ringCount += 1
     this.sinceCheck += 1
-    if (this.adaptationOff || held || this.ringCount < SCALE_WINDOW || this.sinceCheck < CHECK_EVERY) return false
+    if (held || this.ringCount < SCALE_WINDOW || this.sinceCheck < CHECK_EVERY) return false
     this.sinceCheck = 0
     const stats = windowStats(this.ring, 0, SCALE_WINDOW, this.busyRing)
     if (this.probe) {
       const before = this.probe
       this.probe = null
       if (!dropHelped(before, stats)) {
-        // The frame rate did not follow the canvas: the system caps it. Give the pixels back and stop adapting.
-        this.adaptationOff = true
+        // The frame rate did not follow the canvas: the system holds the page to it. Give the pixels back, and
+        // keep the window the drop was made for: only a clearly worse one is a reason to try again.
+        this.capped = before
         this.setScale(Math.min(this.maxK, this.k + 1))
         return true
       }
     }
+    // The page runs clearly faster than the rate it was held to: that rate is no longer known.
+    const capped = this.capped
+    if (capped && stats.median < capped.median * (1 - HELPED_GAIN) && stats.missed <= capped.missed) this.capped = null
     if (this.k <= 1 || !isSlow(stats)) return false
+    if (this.capped && !worseThanCapped(this.capped, stats)) return false
     this.probe = stats
     this.setScale(this.k - 1)
     return true
