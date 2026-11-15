@@ -13,6 +13,8 @@ export interface MatchProbe {
   stats(): RendererStats | null
   /** Yaw the camera looks along now (null before the first frame). */
   cameraYaw(): number | null
+  /** Where the camera is now. */
+  cameraPos(): V3 | null
   /** Local player id. */
   me: string
   /** Turns the camera (and aim) toward a world point, as if the player moved the mouse. */

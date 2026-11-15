@@ -6,6 +6,7 @@ import { MODE_LABELS } from '../../app/match'
 import { loadoutBlocker, resolveLoadout } from '../../app/saves'
 import { SPECIES } from '../../data/species'
 import { h } from '../dom'
+import { isImeKey } from '../ime'
 import { hintBar, screenHead } from '../widgets'
 import { cleanRoom, randomRoom, validRoom } from '../../app/online'
 
@@ -199,7 +200,7 @@ function openRoomDialog(ctx: AppContext, screen: HTMLElement, kind: 'host' | 'jo
     on: {
       input: () => validate(false),
       keydown: (e) => {
-        if (e.key === 'Enter' && !e.isComposing) {
+        if (e.key === 'Enter' && !isImeKey(e)) {
           e.preventDefault()
           void submit()
         }

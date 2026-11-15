@@ -104,6 +104,76 @@ const SHOT_KINDS = 5
 /** Subjects within this radius of the hero are framed with it. */
 const CLUSTER_R = 16
 
+/** A solid prop the shoulder camera must not enter: an upright cylinder or an axis-aligned box. */
+export type CameraSolid =
+  | { id: number; kind: 'cyl'; x: number; z: number; r: number; y0: number; y1: number }
+  | { id: number; kind: 'box'; min: V3; max: V3 }
+
+/** Distance along the ray (o + t·d, 0 ≤ t ≤ len) where it first enters the solid grown by `pad`; Infinity when it never does (or starts inside). */
+export function rayHitsSolid(
+  ox: number,
+  oy: number,
+  oz: number,
+  dx: number,
+  dy: number,
+  dz: number,
+  len: number,
+  s: CameraSolid,
+  pad: number
+): number {
+  if (s.kind === 'box') {
+    let t0 = 0
+    let t1 = len
+    const lo = [s.min[0] - pad, s.min[1] - pad, s.min[2] - pad]
+    const hi = [s.max[0] + pad, s.max[1] + pad, s.max[2] + pad]
+    const o = [ox, oy, oz]
+    const d = [dx, dy, dz]
+    for (let i = 0; i < 3; i++) {
+      if (Math.abs(d[i]) < 1e-9) {
+        if (o[i] < lo[i] || o[i] > hi[i]) return Infinity
+        continue
+      }
+      let a = (lo[i] - o[i]) / d[i]
+      let b = (hi[i] - o[i]) / d[i]
+      if (a > b) [a, b] = [b, a]
+      t0 = Math.max(t0, a)
+      t1 = Math.min(t1, b)
+      if (t0 > t1) return Infinity
+    }
+    // starting inside: the pivot is already in it (the prop is faded instead)
+    return t0 > 0 ? t0 : Infinity
+  }
+  const r = s.r + pad
+  const fx = ox - s.x
+  const fz = oz - s.z
+  const A = dx * dx + dz * dz
+  const C = fx * fx + fz * fz - r * r
+  if (C < 0) return Infinity
+  if (A < 1e-9) return Infinity
+  const B = 2 * (fx * dx + fz * dz)
+  const disc = B * B - 4 * A * C
+  if (disc < 0) return Infinity
+  const t = (-B - Math.sqrt(disc)) / (2 * A)
+  if (t < 0 || t > len) return Infinity
+  const y = oy + dy * t
+  return y >= s.y0 - pad && y <= s.y1 + pad ? t : Infinity
+}
+
+/** Whether the point is inside the solid grown by `pad`. */
+export function pointInSolid(x: number, y: number, z: number, s: CameraSolid, pad: number): boolean {
+  if (s.kind === 'box')
+    return (
+      x >= s.min[0] - pad &&
+      x <= s.max[0] + pad &&
+      y >= s.min[1] - pad &&
+      y <= s.max[1] + pad &&
+      z >= s.min[2] - pad &&
+      z <= s.max[2] + pad
+    )
+  const r = s.r + pad
+  return (x - s.x) ** 2 + (z - s.z) ** 2 <= r * r && y >= s.y0 - pad && y <= s.y1 + pad
+}
+
 type Mode = 'shoulder' | 'down' | 'away' | 'cinematic'
 
 /**
@@ -157,6 +227,7 @@ export class CameraRig {
   private hasSmooth = false
   private grid: BoxGrid | null = null
   private spheres: readonly number[] = []
+  private solids: readonly CameraSolid[] = []
   private hero = ''
   private heroTurn = 0
   private azimuth = 0
@@ -172,6 +243,11 @@ export class CameraRig {
 
   setGrid(grid: BoxGrid | null) {
     this.grid = grid
+  }
+
+  /** Solid props near the player this frame (lighthouse, cart, nodes, ヤドカリ walls): the arm stops short of them. */
+  setSolids(solids: readonly CameraSolid[]) {
+    this.solids = solids
   }
 
   /** Static camera obstacles without collision (tree crowns) as [x, y, z, r] quadruples. */
@@ -260,7 +336,7 @@ export class CameraRig {
     aimPivot(p.feet, p.yaw, p.species, p.shoulder, this.pivot)
     aimDirection(p.yaw, p.pitch, this.dir)
     const target = ARM_LENGTH * armScale(p.species) * (1 - 0.35 * this.zoom)
-    const blocked = this.grid
+    let blocked = this.grid
       ? this.grid.raycast(
           this.pivot.x,
           this.pivot.y,
@@ -272,6 +348,20 @@ export class CameraRig {
           0.12
         )
       : target + ARM_PAD
+    for (const s of this.solids) {
+      const t = rayHitsSolid(
+        this.pivot.x,
+        this.pivot.y,
+        this.pivot.z,
+        -this.dir.x,
+        -this.dir.y,
+        -this.dir.z,
+        target + ARM_PAD,
+        s,
+        0.15
+      )
+      if (t < blocked) blocked = t
+    }
     // Looking up swings the camera down: shorten the arm (staying on the aim line) before it reaches the ground.
     const ground = this.dir.y > 1e-3 ? (this.pivot.y - 0.2) / this.dir.y + ARM_PAD : Infinity
     const len = this.arm.update(target, Math.min(blocked, ground), dt)

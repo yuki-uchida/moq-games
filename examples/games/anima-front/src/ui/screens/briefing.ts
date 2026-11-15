@@ -1,7 +1,7 @@
 /** Briefing (DESIGN §17.7): ゲンブ and ルリ portraits, typewriter lines, map, objective, squad, 出撃. */
 import type { AppContext, Screen } from '../../app/context'
 import type { Lobby, MatchStart } from '../../app/lobby'
-import { MODE_LABELS, mapLabel, type MatchSelection } from '../../app/match'
+import { MODE_LABELS, mapLabel, type MatchSelection, type Seat } from '../../app/match'
 import { DIFFICULTIES } from '../../data/enemies'
 import { MISSIONS, PVP_RADIO, type RadioLine } from '../../data/missions'
 import { h, setText } from '../dom'
@@ -53,6 +53,20 @@ export function briefingLines(sel: MatchSelection): RadioLine[] {
   if (sel.mode === 'pve') return MISSIONS[sel.mission ?? 'sakura'].briefing
   if (sel.mode === 'pvp') return PVP_BRIEFING
   return TRAINING_BRIEFING[sel.training?.tutorial ? 'tutorial' : 'free']
+}
+
+/**
+ * The four members of the local player's team (its seat is `me`), for the briefing's 「あなたの隊」 / 小隊 list.
+ * A spectator has no side: the first team's seats, under a neutral heading (`watching`).
+ */
+export function briefingSquad(
+  seats: readonly Seat[],
+  me: string,
+  spectator = false
+): { seats: Seat[]; watching: boolean } {
+  const mine = spectator ? undefined : seats.find((s) => s.id === me)
+  const team = mine?.team ?? seats[0]?.team ?? 0
+  return { seats: seats.filter((s) => s.team === team).slice(0, 4), watching: !mine }
 }
 
 export function createBriefingScreen(
@@ -139,10 +153,7 @@ export function createBriefingScreen(
       : sel.mode === 'pvp'
         ? MODE_LABELS.pvp
         : MODE_LABELS.training
-  const squad = lobby
-    .state()
-    .seats.filter((s) => s.team === lobby.state().seats[0].team)
-    .slice(0, 4)
+  const { seats: squad, watching } = briefingSquad(lobby.state().seats, start.me, start.spectator)
 
   const back = () => {
     if (sel.mode === 'training') ctx.open('training')
@@ -181,7 +192,7 @@ export function createBriefingScreen(
           'brief-info',
           info.map(([k, v]) => [h('dt', null, k), h('dd', null, v)])
         ),
-        h('h3', 'panel-title', sel.mode === 'pvp' ? 'あなたの隊' : '小隊'),
+        h('h3', 'panel-title', watching ? '観戦' : sel.mode === 'pvp' ? 'あなたの隊' : '小隊'),
         h(
           'div',
           'brief-squad',

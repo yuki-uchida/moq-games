@@ -84,6 +84,8 @@ export interface GameRenderer {
   stats(): RendererStats
   /** Yaw (radians, 0 = +z) the camera currently looks along (debug probe). */
   cameraYaw(): number
+  /** Where the camera is (debug probe). */
+  cameraPosition(): V3
   dispose(): void
 }
 

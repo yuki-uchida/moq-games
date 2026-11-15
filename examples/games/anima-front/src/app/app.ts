@@ -13,6 +13,7 @@ import { pawLists } from './loadouts'
 import { h } from '../ui/dom'
 import { focusInitial, moveFocus, navRoot, type NavDir } from '../ui/focus'
 import { MENU_SCROLL_PX_PER_S, MenuPad, menuScrollStick, type MenuAction } from '../input/gamepad'
+import { isImeKey } from '../ui/ime'
 import { scrollTargetFor } from '../ui/scroll-target'
 import { createBootScreen } from '../ui/screens/boot'
 import { renderItemThumbs } from '../ui/thumbs'
@@ -285,7 +286,7 @@ export function startApp(root: HTMLElement, options: AppOptions = {}): AppContex
   window.addEventListener('keydown', (e) => {
     if (!current || current.ownsInput) return
     // An IME conversion owns its keys (candidate arrows, Enter to commit, Esc to cancel).
-    if (e.isComposing || e.keyCode === 229 || e.key === 'Process') return
+    if (isImeKey(e)) return
     document.documentElement.classList.add('nav-keys')
     const tag = (e.target as HTMLElement)?.tagName
     const typing = tag === 'INPUT' && (e.target as HTMLInputElement).type === 'text'
