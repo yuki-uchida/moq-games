@@ -57,9 +57,12 @@ interface RingVis {
   seen: number
 }
 
+/** How see-through a faded big prop gets (1 = invisible). */
+const FADE_LEVEL = 0.75
+
 export class Props {
   readonly group = new THREE.Group()
-  private readonly models = new Map<number, { model: PropModel; seen: number }>()
+  private readonly models = new Map<number, { model: PropModel; seen: number; fade: number; shownFade: number }>()
   private readonly rings = new Map<string, RingVis>()
   private readonly ringGeo = new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2)
   private readonly curtainGeo = new THREE.CylinderGeometry(1, 1, 1, 48, 1, true).translate(0, 0.5, 0)
@@ -143,9 +146,23 @@ export class Props {
     return r
   }
 
-  /** Hides the models of these props (a solid prop the camera is inside); every other model is shown. */
-  setHidden(ids: ReadonlySet<number>) {
-    for (const [id, e] of this.models) e.model.root.visible = !ids.has(id)
+  /** Fades the models of these props to see-through (a big prop the camera is next to) and back; it stays in the world. */
+  setFaded(ids: ReadonlySet<number>, dt: number) {
+    const k = Math.min(1, dt * 10)
+    for (const [id, e] of this.models) {
+      const target = ids.has(id) ? FADE_LEVEL : 0
+      e.fade += (target - e.fade) * k
+      if (Math.abs(e.fade - target) < 0.01) e.fade = target
+      if (e.fade !== e.shownFade) {
+        e.shownFade = e.fade
+        e.model.setCloak?.(e.fade)
+      }
+    }
+  }
+
+  /** How faded (0..1) a prop's model is now (debug probe). */
+  fadeOf(id: number): number {
+    return this.models.get(id)?.fade ?? 0
   }
 
   update(view: View, myTeam: TeamId | undefined, dt: number) {
@@ -163,7 +180,7 @@ export class Props {
           o.receiveShadow = true
         })
         this.group.add(model.root)
-        e = { model, seen: 0 }
+        e = { model, seen: 0, fade: 0, shownFade: 0 }
         this.models.set(pr.id, e)
       }
       e.seen = this.frameId

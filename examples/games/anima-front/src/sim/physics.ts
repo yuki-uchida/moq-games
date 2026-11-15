@@ -549,43 +549,36 @@ export function rayCylinder(
   y0: number,
   y1: number
 ): number {
+  // The side (radial interval) and the two caps (height slab) are intersected, so a side entry outside the y range
+  // never hides a later cap entry.
   const ox = o[0] - cx
   const oz = o[2] - cz
   const a = d[0] * d[0] + d[2] * d[2]
   const c = ox * ox + oz * oz - r * r
-  let t: number
-  if (c <= 0) {
-    // Starts inside the infinite cylinder: hit if inside the y range now, else check the caps.
-    if (o[1] >= y0 && o[1] <= y1) return 0
-    t = -1
+  let ta = -Infinity
+  let tb = Infinity
+  if (a < 1e-12) {
+    if (c > 0) return -1 // a vertical ray outside the radius
   } else {
-    if (a < 1e-12) return -1
     const bq = ox * d[0] + oz * d[2]
     const disc = bq * bq - a * c
     if (disc < 0) return -1
-    t = (-bq - Math.sqrt(disc)) / a
-    if (t >= 0 && t <= maxT) {
-      const y = o[1] + d[1] * t
-      if (y >= y0 && y <= y1) return t
-    }
+    const sq = Math.sqrt(disc)
+    ta = (-bq - sq) / a
+    tb = (-bq + sq) / a
   }
-  // Caps.
+  const eps = 1e-6
+  let tc = -Infinity
+  let td = Infinity
   if (Math.abs(d[1]) > 1e-12) {
-    for (const yc of [y0, y1]) {
-      const tc = (yc - o[1]) / d[1]
-      if (tc < 0 || tc > maxT) continue
-      const x = ox + d[0] * tc
-      const z = oz + d[2] * tc
-      if (x * x + z * z <= r * r) {
-        if (t < 0 || tc < t) t = tc
-      }
-    }
-    if (t >= 0 && t <= maxT) {
-      const y = o[1] + d[1] * t
-      if (y >= y0 - 1e-6 && y <= y1 + 1e-6) return t
-    }
-  }
-  return -1
+    tc = (y0 - eps - o[1]) / d[1]
+    td = (y1 + eps - o[1]) / d[1]
+    if (tc > td) [tc, td] = [td, tc]
+  } else if (o[1] < y0 - eps || o[1] > y1 + eps) return -1
+  const t0 = Math.max(ta, tc, 0)
+  const t1 = Math.min(tb, td, maxT)
+  if (t0 > t1) return -1
+  return t0
 }
 
 /** Ray against a sphere; returns entry t or −1 (0 when starting inside). */
