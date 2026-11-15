@@ -312,7 +312,36 @@ export class HostRoom {
     return this.phase === 'lobby' ? planSeats(this.selection, this.seatMembers()).bySeat : this.matchSeatOf
   }
 
+  /**
+   * Gives every member a display name that stays its own: made when it first appears or changes its profile
+   * name, unique against every name held now (members incl. spectators, and the seats of a running match incl.
+   * bots), and kept while the member stays. A newcomer never takes a name someone holds.
+   */
+  private refreshNames() {
+    const present = [...this.members.values()].filter((m) => m.host || m.present).sort((a, b) => a.order - b.order)
+    const ownSeat = (m: RoomMember) => this.matchSeatOf.get(m.id)
+    const running = this.phase === 'lobby' ? [] : this.matchSeats
+    const seatNames = (m?: RoomMember) => running.filter((s) => !m || s.id !== ownSeat(m)).map((s) => s.name)
+    const held = new Set<string>()
+    // names that are still valid stay (the earlier member wins a clash)
+    const pending: RoomMember[] = []
+    for (const m of present) {
+      const clash = m.display === undefined || m.displayBase !== m.profile.name || held.has(m.display)
+      if (clash || seatNames(m).includes(m.display!)) pending.push(m)
+      else held.add(m.display!)
+    }
+    for (const n of seatNames()) held.add(n)
+    for (const m of pending) {
+      for (const n of seatNames(m)) held.add(n)
+      const name = uniqueName(m.profile.name, held)
+      m.display = name
+      m.displayBase = m.profile.name
+      held.add(name)
+    }
+  }
+
   private seatMembers(): SeatMember[] {
+    this.refreshNames()
     return [...this.members.values()].filter((m) => m.host || m.present)
   }
 
@@ -618,18 +647,17 @@ export class HostRoom {
 
   /** `m` plays `seat` from now on (its former owner, who left, loses it). */
   private seatMember(m: RoomMember, seat: Seat) {
+    this.refreshNames()
     const old = this.seatOwners().get(seat.id)
     if (old) this.matchSeatOf.delete(old)
     this.matchSeatOf.set(m.id, seat.id)
-    this.takeSeat(seat, m.profile)
+    this.takeSeat(seat, m.profile, m.display ?? m.profile.name)
   }
 
   /** The seat (and the match config the guests read) becomes this player's: its animal, loadout and name. */
-  private takeSeat(seat: Seat, profile: Profile) {
+  private takeSeat(seat: Seat, profile: Profile, name: string) {
     const loadout = sanitizeLoadout(profile.loadout)
     seat.bot = undefined
-    // A name another player of this match already has gets a number.
-    const name = uniqueName(profile.name, new Set(this.matchSeats.filter((s) => s.id !== seat.id).map((s) => s.name)))
     seat.name = name
     seat.species = profile.species
     seat.loadout = cloneLoadout(loadout)
@@ -704,13 +732,10 @@ export class HostRoom {
     const seats = this.seats()
     // One display name per member everywhere: a seated member shows its seat's (already unique) name, one without
     // a seat gets a number when it shares a name.
-    const taken = new Set(seats.map((s) => s.name))
+    this.refreshNames()
     const nameOf = (m: RoomMember): string => {
       const seat = seats.find((s) => s.id === seatOf.get(m.id))
-      if (seat) return seat.name
-      const name = uniqueName(m.profile.name, taken)
-      taken.add(name)
-      return name
+      return seat?.name ?? m.display ?? m.profile.name
     }
     const members: WireMember[] = [...this.members.values()]
       .filter((m) => m.host || m.present)

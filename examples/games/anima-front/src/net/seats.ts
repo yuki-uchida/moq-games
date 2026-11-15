@@ -13,6 +13,10 @@ export interface SeatMember {
   /** Join order (0 = host); the match player id is `h<order>`. */
   order: number
   profile: Profile
+  /** The name shown for this member (unique in the room, kept while it stays; see HostRoom.refreshNames). */
+  display?: string
+  /** The profile name `display` was made from. */
+  displayBase?: string
   /** Host override: team `team`, valid while the member still asks for `pref`. */
   hostTeam?: { team: TeamId; pref: TeamId }
 }
@@ -72,7 +76,7 @@ function seatOf(m: SeatMember, team: TeamId): Omit<Seat, 'bot' | 'local'> & { me
   return {
     member: m.id,
     id: humanSeatId(m.order),
-    name: m.profile.name,
+    name: m.display ?? m.profile.name,
     species: m.profile.species,
     loadout: m.profile.loadout,
     loadoutName: m.profile.loadoutName,

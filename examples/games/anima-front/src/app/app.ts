@@ -284,6 +284,8 @@ export function startApp(root: HTMLElement, options: AppOptions = {}): AppContex
   }
   window.addEventListener('keydown', (e) => {
     if (!current || current.ownsInput) return
+    // An IME conversion owns its keys (candidate arrows, Enter to commit, Esc to cancel).
+    if (e.isComposing || e.keyCode === 229 || e.key === 'Process') return
     document.documentElement.classList.add('nav-keys')
     const tag = (e.target as HTMLElement)?.tagName
     const typing = tag === 'INPUT' && (e.target as HTMLInputElement).type === 'text'
@@ -309,7 +311,9 @@ export function startApp(root: HTMLElement, options: AppOptions = {}): AppContex
         break
       case 'Escape':
         e.preventDefault()
-        goBack()
+        // In a text field Esc just leaves the field; the next one goes back.
+        if (typing) (e.target as HTMLInputElement).blur()
+        else goBack()
         break
       case 'Backspace':
         if (typing) return
