@@ -9,6 +9,9 @@
 export interface Mover {
   x: number
   y: number
+  /** Its own speed (px/s), when it has one: a move it cannot explain is not smeared. */
+  vx?: number
+  vy?: number
 }
 
 /** The part of `World` that moves. */
@@ -23,12 +26,20 @@ export interface MoverSource {
 
 /** Something that moved this far in one step was teleported (a respawn, a swap), not carried: it is not smeared. */
 export const JUMP_PX = 96
+/**
+ * A body moved further in a step than its own speed (before or after the step) carries it, by more than this (px),
+ * was put there (a falling tree pushing the hero aside, a crash throwing a boss back): it is not interpolated.
+ */
+export const PUSH_SLACK_PX = 2
+const STEP_SECONDS = 1 / 60
 
 export class Interpolator {
   private objects: Mover[] = []
   // Typed arrays, so that remembering positions every frame allocates nothing.
   private prevX = new Float64Array(64)
   private prevY = new Float64Array(64)
+  private prevVX = new Float64Array(64)
+  private prevVY = new Float64Array(64)
   private curX = new Float64Array(64)
   private curY = new Float64Array(64)
   private moved = new Uint8Array(64)
@@ -68,10 +79,17 @@ export class Interpolator {
       const dx = this.curX[i] - this.prevX[i]
       const dy = this.curY[i] - this.prevY[i]
       if ((dx === 0 && dy === 0) || Math.abs(dx) > JUMP_PX || Math.abs(dy) > JUMP_PX) continue
+      if (o.vx !== undefined && !this.explained(dx, o.vx, this.prevVX[i])) continue
+      if (o.vy !== undefined && !this.explained(dy, o.vy, this.prevVY[i])) continue
       o.x = this.shownX[i] = this.prevX[i] + dx * alpha
       o.y = this.shownY[i] = this.prevY[i] + dy * alpha
       this.moved[i] = 1
     }
+  }
+
+  /** Whether a move of `d` px in a step is what a speed of `v` (after it) or `was` (before it) carries. */
+  private explained(d: number, v: number, was: number) {
+    return Math.abs(d) <= Math.max(Math.abs(v), Math.abs(was)) * STEP_SECONDS + PUSH_SLACK_PX
   }
 
   /** Puts the true values back (safe to call at any time and more than once). */
@@ -96,6 +114,8 @@ export class Interpolator {
     }
     this.prevX = widen(this.prevX)
     this.prevY = widen(this.prevY)
+    this.prevVX = widen(this.prevVX)
+    this.prevVY = widen(this.prevVY)
     this.curX = widen(this.curX)
     this.curY = widen(this.curY)
     this.shownX = widen(this.shownX)
@@ -111,6 +131,8 @@ export class Interpolator {
     this.objects[i] = o
     this.prevX[i] = o.x
     this.prevY[i] = o.y
+    this.prevVX[i] = o.vx ?? 0
+    this.prevVY[i] = o.vy ?? 0
     this.curX[i] = o.x
     this.curY[i] = o.y
     this.moved[i] = 0

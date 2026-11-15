@@ -111,6 +111,18 @@ export type Shooter = Boss | Enemy
 /** The sheet (`prop:<skin>`) and the clip a shot is drawn with. */
 export const shotSkin = (shot: Shot) => shot.skin ?? 'seed'
 export const shotClip = (shot: Shot) => (shot.skin === 'stinger' ? 'fly' : shot.skin === 'orb' ? 'pulse' : 'spin')
+/** A shockwave is looked for within this many px of the slam that bore it, on its first step. */
+const SHOCK_BIRTH_PX = 64
+/** The steps a dart is drawn at (rad). */
+export const FLIGHT_ANGLE_STEP = Math.PI / 8
+/**
+ * The rotation a dart drawn facing right (mirrored when it flies left) is drawn with to point along its flight,
+ * to the nearest `FLIGHT_ANGLE_STEP` (0: level).
+ */
+export function flightAngle(vx: number, vy: number) {
+  const a = Math.round(Math.atan2(vy, Math.abs(vx)) / FLIGHT_ANGLE_STEP) * FLIGHT_ANGLE_STEP
+  return vx < 0 ? -a : a
+}
 /** Whether (x, y) is inside a body's box. */
 const contains = (body: Shooter, x: number, y: number) =>
   x >= body.x && x < body.x + body.w && y >= body.y && y < body.y + body.h
@@ -125,6 +137,8 @@ function propSheet(key: string): string {
 
 export class PropsView {
   private time = 0
+  /** The clock shots, shockwaves and bees spin on: held once the stage is over or the hero is down. */
+  private shotTime = 0
   private marks = new Map<number, Record<string, number>>()
   private logs: LogRecord[] = []
   private gate: { tx: number; top: number; bottom: number; at: number; down: number | null } | null = null
@@ -210,6 +224,13 @@ export class PropsView {
       case 'gate-up':
         this.gate = { tx: event.tx, top: event.top, bottom: event.bottom, at: this.time, down: null }
         break
+      case 'shot-hit':
+        for (const shot of this.flying) if (shot.x === event.x && shot.y === event.y) this.hitShots.add(shot)
+        if (event.kind === 'shock') this.shockHits.push({ x: event.x })
+        break
+      case 'boss-slam':
+        this.slams.push({ x: event.x, y: event.y })
+        break
       case 'gate-down':
         if (this.gate) this.gate.down = this.time
         else this.gate = { tx: event.tx, top: event.top, bottom: event.bottom, at: -9, down: this.time }
@@ -221,6 +242,7 @@ export class PropsView {
 
   update(dt: number) {
     this.time += dt
+    if (this.world.state === 'play') this.shotTime += dt
     // The ground each awake うりぼう covers (a jump of more than a few tiles is not running), and whether it has
     // been stopped: then it sits dazed from the moment it stopped (after its leap) while it stays there. In the air
     // (off a ledge) it neither runs nor sits: it kicks as it sinks, and what it does there counts for neither.
@@ -560,7 +582,9 @@ export class PropsView {
     let record = this.shooters.get(shot)
     if (record === undefined) {
       const shooter = this.bornIn(shot)
-      this.shooters.set(shot, (record = { shooter, behind: shooter !== null }))
+      // (A boss's shot is born from its light, in front of him: only a squirrel's acorn comes out from behind it.)
+      const behind = shooter !== null && shooter !== this.world.boss
+      this.shooters.set(shot, (record = { shooter, behind }))
     }
     if (!record.behind) return false
     const shooter = record.shooter!
@@ -568,10 +592,46 @@ export class PropsView {
     if (!shooter.dead && overlaps(extent, this.shooterExtent(shooter))) return true
     // A squirrel minion standing in the boss's drawing throws from behind him: its acorn comes out past him too.
     const boss = this.world.boss
-    if (boss && boss !== shooter && !boss.dead && overlaps(extent, this.shooterExtent(boss))) return true
+    if (boss && !boss.dead && overlaps(extent, this.shooterExtent(boss))) return true
     record.behind = false
     return false
   }
+
+  /**
+   * One simulation step has run: a hostile shot (not a shockwave) that is gone without having hit a wall (a
+   * `shot-hit`) and before its time ran out ended on a body (the simulation drops a shot that touches a hero who
+   * cannot be hurt just then, with no event): it ends with a small burst where it was.
+   */
+  simStep() {
+    if (this.world.state !== 'play') return
+    // A shockwave that died on the step it was born (against a hero who cannot be hurt) was never drawn: it
+    // bursts where it would have rolled out, as a shot does.
+    for (const slam of this.slams) {
+      for (const dir of [-1, 1] as const) {
+        const alive = this.world.shots.some(
+          (s) => s.kind === 'shock' && !s.dead && Math.sign(s.vx) === dir && Math.abs(s.x - slam.x) < SHOCK_BIRTH_PX
+        )
+        const hitWall = this.shockHits.some((h) => Math.abs(h.x - slam.x) < SHOCK_BIRTH_PX)
+        if (!alive && !hitWall) this.fx.spawn('spark', slam.x + dir * 12, slam.y - 12, { rate: 1.4 })
+      }
+    }
+    this.slams.length = 0
+    this.shockHits.length = 0
+    for (const shot of this.flying) {
+      if (!shot.dead || this.hitShots.has(shot)) continue
+      if (shot.life > 0) this.fx.spawn('spark', shot.x + shot.w / 2, shot.y + shot.h / 2, { rate: 1.4 })
+    }
+    this.flying.length = 0
+    this.hitShots.clear()
+    for (const shot of this.world.shots) if (shot.hostile && shot.kind !== 'shock' && !shot.dead) this.flying.push(shot)
+  }
+
+  /** The hostile shots alive after the last step, and those a `shot-hit` ended since (see `simStep`). */
+  private flying: Shot[] = []
+  /** The slams of this step (their shockwaves are born on it) and the shockwaves a wall stopped on it. */
+  private slams: { x: number; y: number }[] = []
+  private shockHits: { x: number }[] = []
+  private hitShots = new Set<Shot>()
 
   /**
    * The clip a shockwave is drawn with: `roll` while there is ground (a solid or a one-way platform) within
@@ -641,7 +701,8 @@ export class PropsView {
    * exactly one of the two passes of a frame.
    */
   drawProjectiles(ctx: CanvasRenderingContext2D, layer: 'behind' | 'front') {
-    const time = this.time
+    // (Held with the simulation once the stage is over or the hero is down.)
+    const time = this.shotTime
     const behind = layer === 'behind'
     for (const shot of this.world.shots) {
       if (shot.dead) continue
@@ -651,15 +712,19 @@ export class PropsView {
         this.draw(ctx, 'prop:shock', this.shockClip(shot), time, shot.x + shot.w / 2, shot.y + shot.h, brush(flip))
         continue
       }
-      this.draw(
-        ctx,
-        propSheet(shotSkin(shot)),
-        shotClip(shot),
-        time,
-        shot.x + shot.w / 2,
-        shot.y + shot.h / 2,
-        brush(flip)
-      )
+      const x = shot.x + shot.w / 2
+      const y = shot.y + shot.h / 2
+      // A stinger is a dart: drawn along its flight (falling, it points down), at a few fixed angles.
+      const angle = shot.skin === 'stinger' ? flightAngle(shot.vx, shot.vy) : 0
+      if (angle === 0) {
+        this.draw(ctx, propSheet(shotSkin(shot)), shotClip(shot), time, x, y, brush(flip))
+        continue
+      }
+      ctx.translate(x, y)
+      ctx.rotate(angle)
+      this.draw(ctx, propSheet(shotSkin(shot)), shotClip(shot), time, 0, 0, brush(flip))
+      ctx.rotate(-angle)
+      ctx.translate(-x, -y)
     }
     if (behind) return
     for (const bee of this.world.bees) this.draw(ctx, 'prop:bee', 'fly', time + bee.t, bee.x, bee.y, brush(bee.vx < 0))

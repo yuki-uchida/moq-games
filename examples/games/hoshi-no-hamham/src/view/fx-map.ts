@@ -30,6 +30,8 @@ export interface FxApi {
    * go (his pose throws them from there). Without it (or without a boss) the effects sit on `x`.
    */
   shotEdge?(x: number): number | undefined
+  /** The height the boss's shots leave his body at, for a `boss-shoot` at his centre `y` (optional: `y`). */
+  shotY?(y: number): number | undefined
   /** Whether the world point (x, y) is in water (optional: dry without it). */
   underWater?(x: number, y: number): boolean | undefined
   /** The actors view puffs a summoned minion in itself, once it shows (see `ActorsView`); the event does nothing. */
@@ -348,8 +350,9 @@ export const FX_MAP: FxMap = {
   },
   'boss-shoot': (e, v) => {
     const x = v.shotEdge?.(e.x) ?? e.x
-    v.spawn('smoke', x, e.y, { rate: 1.5 })
-    v.burst('sparkle', x, e.y, Math.min(6, e.count + 1), { speed: [60, 120], life: [0.2, 0.35] })
+    const y = v.shotY?.(e.y) ?? e.y
+    v.spawn('smoke', x, y, { rate: 1.5 })
+    v.burst('sparkle', x, y, Math.min(6, e.count + 1), { speed: [60, 120], life: [0.2, 0.35] })
   },
   'boss-slam': (e, v) => {
     v.spawn('ring', e.x, e.y - 8, { layer: 'front' })
@@ -385,13 +388,10 @@ export const FX_MAP: FxMap = {
     v.trauma(e.weak ? 0.35 : 0.2)
     if (e.weak) v.popup('ナイス！', e.x, e.y - 50, POPUP_COLORS.gold)
   },
+  // Only a sign that something is coming: the transformation's flash, explosion, rings and shake come with its
+  // staged moment (`Staging.bossPhase`), once he is between his actions.
   'boss-phase': (e, v) => {
-    v.flash('#ffffff', 0.7, 0.35)
-    v.spawn('ring', e.x, e.y, { layer: 'front' })
-    v.spawn('ring', e.x, e.y, { layer: 'front', delay: 0.15 })
-    v.spawn('boom', e.x, e.y, { layer: 'front' })
     v.spawn('anger', e.x + 26, e.y - 60, { vy: -14, life: 1, layer: 'front' })
-    v.trauma(0.6)
   },
   'boss-tired': (e, v) => {
     v.burst('sweat', e.x, e.y - 30, 3, { speed: [30, 60], angle: FAN(UP, 1.6), gravity: 120, life: [0.6, 0.9] })

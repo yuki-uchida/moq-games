@@ -1001,7 +1001,7 @@ const move = memo(() => {
   const trail = lag(bob, { stiffness: 0.35, damping: 0.5, loop: true })
   return Array.from({ length: N }, (_, i) =>
     P({
-      y: 1 + bob[i] * 1.5,
+      y: -12 + bob[i] * 1.5,
       lean: 16 + bob[i],
       nod: -16,
       eyes: i === 5 ? 'cruel' : 'disdain',
@@ -1072,7 +1072,7 @@ const attack = memo(() => {
     const w = Math.sin(phase(i, N))
     return P({
       x: -6,
-      y: 8 + w * 0.8,
+      y: -7 + w * 0.8,
       lean: -76,
       squash: -1.5,
       nod: 40,
@@ -1102,6 +1102,7 @@ const recover = memo(() =>
   [0, 1, 2, 3].map((i) => {
     const s = Math.sin(phase(i, 4))
     return P({
+      x: 2,
       y: 0.5 + s * 0.8,
       lean: 8,
       nod: 12,
@@ -1243,8 +1244,8 @@ const defeat = memo(() => {
 
 /**
  * shoot: the queen's command, for a volley of stingers and a summon of her swarm. She draws herself up and lifts the
- * sceptre (0), raises it over her head with half-shut eyes, the free hand on her hip (1), the jewel glinting at the
- * top (2), sweeps it down to point at the hero at full stretch, leaning in, mouth open, stinger forward (3, `hit`:
+ * sceptre (0), raises it over her head with half-shut eyes, the free hand on her hip (1), holds it at the top (2),
+ * sweeps it down to point at the hero at full stretch, leaning in, mouth open, stinger forward (3, `hit`:
  * the game spawns the stingers here), relaxes (4) and settles back toward the hover, haughty (5). The wings keep
  * beating as in `idle`; the antennae and the sash trail the body.
  */
@@ -1298,12 +1299,11 @@ const shoot = memo(() => {
       armF: [-7, 9],
       ant: [18, 15],
       sash: [84, 1.4, 2],
-      legs: [4, 12],
-      jewel: true
+      legs: [4, 12]
     }),
     P({
       x: 2,
-      y: -1,
+      y: 3,
       lean: 9,
       squash: -0.6,
       nod: 2,
@@ -1351,14 +1351,13 @@ const shoot = memo(() => {
       legs: [2, 7]
     })
   ].map((pose, i) => ({ ...pose, wings: BEAT[i % 3] }))
-  // the sweep leaves a sparkle just behind the jewel, on its arc down from the top
-  const a = jewelAt(poses[2])
-  const b = jewelAt(poses[3])
-  if (a && b) poses[3] = { ...poses[3], sparks: [[b[0] - 9, b[1] - 8]] }
   return poses
 })
 
 const draw = (poses: BeePose[]) => poses.map(drawBee)
+
+/** The poses of the shoot clip (for the tests). */
+export const beeShootPoses = () => shoot()
 
 export const sheets: SheetModule = {
   beeBoss: () => ({

@@ -21,6 +21,18 @@ function twinkle(r: Raster, x: number, y: number, core: number, arm: number) {
   r.set(x, y + 1, arm)
 }
 
+/**
+ * A thin pale rim outside a shot's own outline, laid on `out` under the shot `l`: the shot is born on its shooter's
+ * body (the bee's gold-and-black abdomen, the crow's navy belly), and this keeps it readable there and on every ground.
+ * It stays one pixel inside the cell's edge, and left of `maxX` (so a needle's point stays a single dark pixel).
+ */
+function paleRim(out: Raster, l: Raster, maxX = l.w - 2) {
+  for (let y = 1; y < l.h - 1; y++)
+    for (let x = 1; x <= maxX; x++)
+      if (!l.get(x, y) && (l.get(x - 1, y) || l.get(x + 1, y) || l.get(x, y - 1) || l.get(x, y + 1)))
+        out.set(x, y, R.cloud[1])
+}
+
 /** A pointed leaf from (x, y) toward (x + dx, y + dy), lit on one side. */
 function leaf(l: Raster, x: number, y: number, dx: number, dy: number, w = 2.4) {
   const n = Math.hypot(dx, dy) || 1
@@ -247,6 +259,7 @@ function drawFeather(f: number): Raster {
       l.set(x, y, col)
     }
   outline(l)
+  paleRim(out, l)
   return out.blit(l)
 }
 
@@ -277,6 +290,7 @@ function drawStinger(f: number): Raster {
   l.set(16, cy - 1, R.dark[1])
   l.set(17, cy - 1, R.dark[1])
   l.set(18, cy - 1, R.dark[2])
+  paleRim(out, l, 21)
   return out.blit(l)
 }
 
@@ -315,11 +329,12 @@ function drawOrb(f: number): Raster {
 // ------------------------------------------------------------------------------------------ gathering light
 
 /**
- * `gather`: the warning light that forms in front of a boss in the 0.45 s before his shot leaves (to the right). Six
- * frames, each louder than the one before: a bright core with a broken ring of the shot's own light round it from the
- * first frame; the ring closes in and thickens while the core takes the shot's own shape; the last frame (held until
- * the shot leaves) flashes: the shot as good as formed, at the size of its flying sprite, hugged by the ring as a
- * bright aura, a long four-point glint across it. The whole sign is about 24–26 px across from frame 3 on.
+ * `gather`: the warning light that forms on a boss's body in the 0.45 s before his shot leaves. It promises a shot,
+ * not a side: the view draws it unmirrored, so every frame is symmetric about the anchor's vertical line (`mirrored`)
+ * and nothing in it points. Six frames, each louder than the one before: a bright core with a broken ring of the
+ * shot's own light round it from the first frame; the ring closes in and thickens while the core grows into a shape
+ * of the shot's own (the ball of dark fire, a striped ball, two crossed feathers); the last frame (held until the
+ * shot leaves) flashes, the ring hugging it as a bright aura. The whole sign is about 24–26 px across from frame 3 on.
  */
 const GATHER = 32
 const GC = 16
@@ -332,28 +347,49 @@ const RING_FILL = [0.42, 0.47, 0.52, 0.58, 0.66, 0.76]
 /**
  * The closing ring: `n` arcs of `light`, each led by a hot head of `hot` (a mote riding in on it), turning a little
  * each frame, with the material's dark outline round them. On frame 5 the arcs burn hot along half their length.
+ * `rims` 2 doubles the dark outline (to hold against a striped body), the ring drawn a pixel smaller to keep its size.
  */
-function ring(out: Raster, f: number, n: number, light: number, hot: number) {
-  const r = RING_R[f]
+function ring(out: Raster, f: number, n: number, light: number, hot: number, rims = 1) {
+  const r = RING_R[f] - (rims - 1)
   const w = RING_W[f] / 2 + 0.25
   const fill = RING_FILL[f]
   const slot = (Math.PI * 2) / n
   const turn = 0.3 + f * 0.42
-  layer(out, (l) => {
-    for (let y = 0; y < GATHER; y++)
-      for (let x = 0; x < GATHER; x++) {
-        const dx = x + 0.5 - GC
-        const dy = y + 0.5 - GC
-        const off = Math.abs(Math.hypot(dx, dy) - r)
-        const a = Math.atan2(dy, dx) - turn
-        const pos = (((a % slot) + slot) % slot) / slot
-        if (pos > fill) continue
-        const head = pos > fill - 0.1
-        // the head is a fatter mote; the tail a line of light
-        if (off > (head && f < 5 ? w + 0.6 : w)) continue
-        l.set(x, y, head || (f === 5 && pos > fill * 0.4) ? hot : light)
-      }
-  })
+  const l = new Raster(GATHER, GATHER)
+  for (let y = 0; y < GATHER; y++)
+    for (let x = 0; x < GATHER; x++) {
+      const dx = x + 0.5 - GC
+      const dy = y + 0.5 - GC
+      const off = Math.abs(Math.hypot(dx, dy) - r)
+      const a = Math.atan2(dy, dx) - turn
+      const pos = (((a % slot) + slot) % slot) / slot
+      if (pos > fill) continue
+      const head = pos > fill - 0.1
+      // the head is a fatter mote; the tail a line of light
+      if (off > (head && f < 5 ? w + 0.6 : w)) continue
+      l.set(x, y, head || (f === 5 && pos > fill * 0.4) ? hot : light)
+    }
+  for (let k = 0; k < rims; k++) outline(l)
+  out.blit(l)
+}
+
+/**
+ * A ground for the forming shot, so it reads on the boss's own body behind it: the shot's silhouette widened by
+ * `width` px in `col`, with a dark outline of its own. Drawn under the shot.
+ */
+function ground(out: Raster, shot: Raster, col: number, width: number) {
+  const l = new Raster(GATHER, GATHER)
+  for (let y = 1; y < GATHER - 1; y++)
+    for (let x = 1; x < GATHER - 1; x++) {
+      if (shot.get(x, y)) continue
+      let near = false
+      for (let dy = -width; dy <= width && !near; dy++)
+        for (let dx = -width; dx <= width && !near; dx++)
+          if (dx * dx + dy * dy <= width * width + 0.5 && shot.get(x + dx, y + dy)) near = true
+      if (near) l.set(x, y, col)
+    }
+  outline(l)
+  out.blit(l)
 }
 
 /** The core of the first two frames: a white plus with arms of `light` (frame 0), a 3x3 white heart (frame 1). */
@@ -416,6 +452,28 @@ function flash(out: Raster, x: number, y: number, len: number, tip: number) {
     out.set(x + dx, y + dy, tip)
 }
 
+/**
+ * The "ready" burst drawn BEHIND a formed shot: a pale heart and eight rays of light (the four straight ones `long` px,
+ * the diagonals `short`), white with tips of `tip`, outlined so it reads on the boss behind it. The shot laid over it
+ * stays whole: only the rays that reach past its edge show.
+ */
+function burst(out: Raster, x: number, y: number, long: number, short: number, tip: number) {
+  layer(out, (l) => {
+    l.ellipse(x + 0.5, y + 0.5, 4.2, 4.2, C.white)
+    for (const [dx, dy, n] of [
+      [1, 0, long],
+      [-1, 0, long],
+      [0, 1, long],
+      [0, -1, long],
+      [1, 1, short],
+      [-1, 1, short],
+      [1, -1, short],
+      [-1, -1, short]
+    ])
+      for (let k = 1; k <= n; k++) l.set(x + dx * k, y + dy * k, k <= n - 2 ? C.white : tip)
+  })
+}
+
 /** The dark-fire ball of `drawOrb` at radius `r`, centred in the gather cell, its tongues `tongues` long (0..1). */
 function orbBall(out: Raster, r: number, tongues: number, turn: number) {
   const l = new Raster(GATHER, GATHER)
@@ -444,6 +502,17 @@ function orbBall(out: Raster, r: number, tongues: number, turn: number) {
   out.blit(l)
 }
 
+/**
+ * The light promises a shot, not a side: the view draws `gather` unmirrored, whichever way the shot then flies, so
+ * every frame is its own mirror image about the anchor's vertical line (x = 16, between pixel columns 15 and 16). The
+ * left half is drawn and copied over to the right, which also makes the light on rounded parts come from straight
+ * above.
+ */
+function mirrored(out: Raster): Raster {
+  for (let y = 0; y < out.h; y++) for (let x = 0; x < out.w / 2; x++) out.set(out.w - 1 - x, y, out.get(x, y))
+  return out
+}
+
 /** きつね旋風 / 黒ハム王: a violet ring closes on a white-hot core that swells into the ball of dark fire. */
 function drawOrbGather(f: number): Raster {
   const out = new Raster(GATHER, GATHER)
@@ -451,14 +520,14 @@ function drawOrbGather(f: number): Raster {
   if (f < 2) core(out, f, DARK[0])
   else orbBall(out, [0, 0, 3.4, 4.2, 4.8, 5.4][f], [0, 0, 0.2, 0.5, 0.8, 1][f], f * 0.28)
   if (f === 5) flash(out, GC, GC - 1, 7, DARK[0])
-  return out
+  return mirrored(out)
 }
 
 /**
  * The bee's barb of `drawStinger` in the gather cell, its body grown to `cols` columns from the back (1..8) and its
  * needle to `needle` pixels (0..8), at rest (no wobble, no motion streaks).
  */
-function stingerBarb(out: Raster, cols: number, needle: number) {
+function stingerBarb(cols: number, needle: number): Raster {
   const ox = 2
   const cy = 16
   const l = new Raster(GATHER, GATHER)
@@ -480,30 +549,55 @@ function stingerBarb(out: Raster, cols: number, needle: number) {
     if (needle > 2) l.set(17 + ox, cy - 1, R.dark[1])
     if (needle > 3) l.set(18 + ox, cy - 1, R.dark[2])
   }
-  out.blit(l)
+  return l
 }
 
 /** ハチ女王: a ring of gold dust closes on a glowing grain, then the banded barb forms and grows its needle. */
 function drawStingerGather(f: number): Raster {
   const out = new Raster(GATHER, GATHER)
-  ring(out, f, 6, R.honey[0], C.white)
+  ring(out, f, 6, R.honey[0], C.white, 2)
   if (f < 2) core(out, f, R.honey[0])
-  else if (f === 2)
-    layer(out, (l) => {
-      // a grain of gold the size of the barb's back end, hot in the middle
-      l.ellipse(GC, GC - 0.5, 3.2, 2.6, R.honey[1])
-      l.ellipse(GC - 0.5, GC - 1, 2, 1.5, R.honey[0])
-      l.rect(GC - 1, GC - 2, 2, 2, C.white)
-    })
-  else stingerBarb(out, [0, 0, 0, 7, 8, 8][f], [0, 0, 0, 0, 5, 8][f])
-  if (f === 3) out.set(GC - 3, GC - 2, C.white)
-  if (f === 5) flash(out, GC - 1, GC - 1, 7, R.honey[0])
-  return out
+  else {
+    // the "ready" burst goes behind the ball, so the ball itself stays whole in front of it
+    if (f === 5) burst(out, GC, GC - 1, 11, 7, R.honey[0])
+    // a pale ground round the ball, so it stands off her own gold and black stripes
+    const ball = stingerBall([0, 0, 3.4, 4.4, 5.2, 6][f])
+    ground(out, ball, R.cloud[1], 1)
+    out.blit(ball)
+  }
+  return mirrored(out)
 }
 
-/** The crow's feather of `drawFeather`, held upright-forward (its tip up and to the right), `k` times its length. */
-function featherAt(out: Raster, k: number) {
-  const theta = -1.05
+/**
+ * The volley's core: a round ball in the stinger's own colours (gold lit from above, the barb's dark bands across it,
+ * its ink outline), radius `r`, centred on the cell. It has no needle and no tail: the three stingers burst out of it.
+ */
+function stingerBall(r: number): Raster {
+  const l = new Raster(GATHER, GATHER)
+  for (let y = 0; y < GATHER; y++)
+    for (let x = 0; x < GATHER; x++) {
+      const dx = x + 0.5 - GC
+      const dy = y + 0.5 - (GC - 0.5)
+      const d = Math.hypot(dx, dy)
+      if (d > r) continue
+      // two dark bands each side of a gold middle, as on the barb
+      const a = Math.abs(dx) / r
+      const band = (a > 0.28 && a < 0.5) || (a > 0.72 && a < 0.9)
+      const lit = dy < -r * 0.45 ? 0 : dy > r * 0.4 ? 2 : 1
+      l.set(x, y, band ? (lit === 0 ? C.inkWarm : C.black) : R.honey[lit])
+    }
+  // the hot heart of the forming volley
+  l.rect(GC - 1, GC - 2, 2, 2, C.white)
+  outline(l)
+  return l
+}
+
+/**
+ * The crow's feather of `drawFeather`, held upright-forward (its tip up and to the right), `k` times its length;
+ * `back` leans it the other way (tip up and to the left), for the crossed pair; `wide` scales the vane.
+ */
+function featherAt(k: number, back = false, wide = 1): Raster {
+  const theta = back ? -Math.PI + 0.8 : -0.8
   const c = Math.cos(theta)
   const s = Math.sin(theta)
   const cr = R.crowBlue
@@ -517,7 +611,7 @@ function featherAt(out: Raster, k: number) {
       if (u < -10 || u > 10) continue
       const v = v0 - 0.02 * u * u
       const t = (u + 10) / 20
-      const half = u < -6.5 ? 0.9 : 4.2 * Math.pow(Math.sin(Math.PI * Math.min(1, (t - 0.17) / 0.83)), 0.65)
+      const half = u < -6.5 ? 0.9 : 4.2 * wide * Math.pow(Math.sin(Math.PI * Math.min(1, (t - 0.17) / 0.83)), 0.65)
       if (Math.abs(v) > Math.max(0.9, half)) continue
       let col: number = cr[1]
       const side = shadeIndex(-s * Math.sign(v), c * Math.sign(v), 0.3, false)
@@ -527,7 +621,7 @@ function featherAt(out: Raster, k: number) {
       l.set(x, y, col)
     }
   outline(l)
-  out.blit(l)
+  return l
 }
 
 /** カラス助: a ring of pale wind closes round a white core, and the dark feather forms upright inside it. */
@@ -535,9 +629,17 @@ function drawFeatherGather(f: number): Raster {
   const out = new Raster(GATHER, GATHER)
   ring(out, f, 4, R.cloud[2], C.white)
   if (f < 2) core(out, f, R.cloud[2])
-  else featherAt(out, [0, 0, 0.5, 0.7, 0.85, 1][f])
-  if (f === 5) flash(out, GC, GC - 1, 7, R.cloud[2])
-  return out
+  else {
+    // the "ready" burst goes behind the feather, so the feather itself stays whole in front of it
+    if (f === 5) burst(out, GC, GC - 1, 11, 7, R.cloud[2])
+    // his two feathers crossed like an X (the left half is the up-and-left one, the right half its mirror), on a
+    // pale ground of the wind's light so the navy reads on the crow's navy body
+    const k = [0, 0, 0.5, 0.7, 0.85, 1][f]
+    const feather = featherAt(k, false, 0.6).blit(featherAt(k, true, 0.6))
+    ground(out, feather, R.cloud[1], 1)
+    out.blit(feather)
+  }
+  return mirrored(out)
 }
 
 function drawShock(f: number): Raster {

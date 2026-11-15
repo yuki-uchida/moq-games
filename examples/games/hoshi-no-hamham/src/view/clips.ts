@@ -222,6 +222,8 @@ export interface EnemySnapshot {
   throwAgainAge?: number | null
   /** The acorn left the other way from its throw (the hero crossed on the very step): no follow-through shows. */
   throwCut?: boolean
+  /** Its throw is held back by the hold of a turn (it stands until it may face its aim). */
+  throwHeld?: boolean
 }
 
 /** A body off the ground with ground this close (px) under its feet is still drawn on it (a minion's first step). */
@@ -298,6 +300,7 @@ export function enemyClip(s: EnemySnapshot, specs: Record<string, AnimSpec> = EN
       // Begun again facing the other side, its lead-in is squeezed into the time left (`throwFrom`).
       const release = frameStart(spec, spec.hit ?? 0) - 1e-6
       const from = s.throwFrom ?? lead
+      if (s.throwHeld) return { name: 'idle', t: s.time }
       if (s.shootTimer > 0 && s.shootTimer <= lead) {
         const t = from < lead ? lead * (1 - s.shootTimer / from) : lead - s.shootTimer
         return { name: 'shoot', t: Math.min(Math.max(0, t), release) }
@@ -352,7 +355,7 @@ export interface BossSnapshot {
   shotTimer: number
   /**
    * The time into the `shoot` clip of the throw, cast or summon gesture the view started, fitted to its time
-   * (`castFit`, `summonFit`), or null when none is playing.
+   * (`castFit`), or null when none is playing.
    */
   castAge: number | null
   /** The king's transformation cut his volley: its follow-through does not come back. */
@@ -385,6 +388,18 @@ export interface BossSnapshot {
   stateReset?: boolean
   /** How far the king's gathering had come (0–1) where it took over at `clipFrom` (the phase change: it goes on). */
   gatherFrom?: number
+  /** View time since a heavy boss touched down from a real fall outside his slam (null: none). */
+  fallLandAge?: number | null
+  /**
+   * Off the ground, he comes down again within `AIR_SHORT_SECONDS` (a step or two over a seam): a landing goes on
+   * through it.
+   */
+  landHolds?: boolean
+  /**
+   * Off the ground for a step or two over a seam (he comes down again within `AIR_SHORT_SECONDS`: the shake at a
+   * ledge's lip): not a fall.
+   */
+  airShort?: boolean
   /** How many shots he fires at once (`def.projectiles`; 0: he throws nothing). */
   projectiles?: number
 }
@@ -442,6 +457,9 @@ export const SWARM_RECOVER_SECONDS = 0.7
 /** The king's, in phase 1 and phase 2. */
 export const FINAL_IDLE_SECONDS = [0.9, 0.6] as const
 export const FINAL_RECOVER_SECONDS = [0.8, 0.5] as const
+/** The wind-ups of the bear and the ape, and of the king (sim.ts): his attack begins when they end. */
+export const TANK_WINDUP_SECONDS = 0.5
+export const FINAL_WINDUP_SECONDS = 0.35
 export const FLYER_IDLE_SECONDS = 1.4
 export const FLYER_RECOVER_SECONDS = 0.9
 /** A boss flinches (`hurt`) only when he is nearly still (|vx| in px/s at or below this). */
@@ -465,6 +483,19 @@ export const stunShown = (state: BossState, stateTime: number) => state === 'stu
 
 const rest = (s: BossSnapshot, length: number) => Math.max(0, length - s.stateTime)
 const finalLength = (lengths: readonly [number, number], phase: number) => lengths[phase >= 2 ? 1 : 0]
+
+/**
+ * Seconds a heavy boss (the bear, the ape, the king) stays put before his walk carries him (0 in his walk; Infinity
+ * where no walk comes before an attack): a landing is fitted to it.
+ */
+export function stillRoom(s: BossSnapshot): number {
+  const final = s.kind === 'final'
+  if (s.kind !== 'tank' && !final) return Infinity
+  if (s.state === 'idle') return 0
+  if (s.state === 'recover')
+    return rest(s, final ? finalLength(FINAL_RECOVER_SECONDS, s.phase ?? 1) : TANK_RECOVER_SECONDS)
+  return Infinity
+}
 
 /**
  * Seconds until the boss next walks or winds up from where he is (0 in a state he walks or attacks in): a flinch
@@ -527,11 +558,9 @@ export function shotLead(s: BossSnapshot): number | null {
 
 /**
  * A thrown or cast shot of a crow, a fox or a bee is announced by a gathering light (`ActorsView.shotCue`) for this
- * long (s of simulation time) before it leaves; the light slides between the edges of his body as the hero passes
- * over him, reaching an edge once he is this far (px) to that side.
+ * long (s of simulation time) before it leaves, at the place the shot is born.
  */
 export const SHOT_CUE_SECONDS = 0.45
-export const SHOT_CUE_SLIDE = 16
 /** One simulation step (s): `shotDue` steps the boss's timers as sim.ts does. */
 const SIM_STEP = 1 / 60
 /** `shotDue` looks this many steps ahead at most (longer than any wait for a shot that is known to come). */
@@ -606,6 +635,50 @@ const landAge = (s: BossSnapshot) => (s.ownTime ?? s.stateTime) - (s.landedAt ??
 const followAge = (s: BossSnapshot) => s.ownTime ?? s.stateTime
 
 /**
+ * Seconds until a heavy boss's next attack begins (his wind-up ends), from the state he is in: a landing after a
+ * fall is fitted to it.
+ */
+export function attackRoom(s: BossSnapshot): number {
+  const final = s.kind === 'final'
+  const windup = final ? FINAL_WINDUP_SECONDS : TANK_WINDUP_SECONDS
+  const idle = final ? finalLength(FINAL_IDLE_SECONDS, s.phase) : TANK_IDLE_SECONDS
+  const recover = final ? finalLength(FINAL_RECOVER_SECONDS, s.phase) : TANK_RECOVER_SECONDS
+  switch (s.state) {
+    case 'windup':
+      return rest(s, windup)
+    case 'idle':
+      return rest(s, idle) + windup
+    case 'recover':
+      return rest(s, recover) + idle + windup
+    // (In an attack there is no time before it: his dash or his leap carries him on.)
+    case 'shoot':
+    case 'slam':
+    case 'charge':
+    case 'dive':
+      return 0
+    default:
+      return idle + windup
+  }
+}
+
+/**
+ * Whether a heavy boss's landing after a plain fall shows now: on the ground (or off it for no longer than his
+ * `air` would show, `landHolds`), until it has played.
+ */
+export function fallLandShows(s: BossSnapshot, spec: Record<string, AnimSpec>) {
+  if (s.fallLandAge == null || !spec.land || !(s.onGround || s.landHolds)) return false
+  return s.fallLandAge < specDuration(spec.land) - 1e-9
+}
+
+/**
+ * The clip time at which a plain fall's landing has shown its impact (its first frame is over): from here a staged
+ * moment may take him over (see `ActorsView.bossBetweenActions`).
+ */
+export function landImpactEnd(land: AnimSpec) {
+  return (land.hold?.[0] ?? 1) / land.fps
+}
+
+/**
  * The least time (s) an action is shown in: a flinch or a cast is fitted to the time there is (its frames played
  * faster, every one of them still shown), and with less than this it is not shown at all.
  */
@@ -615,8 +688,9 @@ export const FIT_MIN = 0.1
  * The seconds a hit's `hurt` flinch is played over, decided once when the hit lands; 0 when it is not shown. Not in
  * states that carry a warning or an attack (windup, charge, dive, slam, shoot: there the hit is the white flash and
  * the jolt), not on a moving body (a planted flinch would slide), not during a slam landing or a volley's
- * follow-through; and it ends before he next walks or winds up (`flinchRoom`): the whole clip when it has the time,
- * faster when it has less, not at all under `FIT_MIN`.
+ * follow-through; and it ends before he next walks or winds up (`flinchRoom`), and before the step his next shot
+ * leaves (`shotDue`: a flinch never covers a shot, nor its light's last moments): the whole clip when it has the
+ * time, faster when it has less, not at all under `FIT_MIN`.
  */
 export function flinchFit(s: BossSnapshot, spec: Record<string, AnimSpec>) {
   if (!spec.hurt || !s.active) return 0
@@ -627,7 +701,9 @@ export function flinchFit(s: BossSnapshot, spec: Record<string, AnimSpec>) {
     if (s.kind === 'final' && s.state === 'recover' && s.prevState === 'shoot' && !s.volleyCut)
       if (followAge(s) < specDuration(spec.shoot) - hitTime(spec.shoot)) return 0
   }
-  const room = flinchRoom(s)
+  let room = flinchRoom(s)
+  const due = shotDue(s)
+  if (due !== null) room = Math.min(room, due - SIM_STEP)
   return room + 1e-9 < FIT_MIN ? 0 : Math.min(specDuration(spec.hurt), room)
 }
 
@@ -661,16 +737,6 @@ export function castLeadTime(s: BossSnapshot, spec: Record<string, AnimSpec>, fr
   return Math.min(from > 0 ? lead * (1 - until / from) : lead, frameStart(spec.shoot, spec.shoot.hit ?? 0) - 1e-6)
 }
 
-/** The seconds a summon's gesture (the cast from its release) is played over, fitted as a cast's; 0: not shown. */
-export function summonFit(s: BossSnapshot, spec: Record<string, AnimSpec>) {
-  const shoot = spec.shoot
-  if (!shoot || s.kind !== 'swarm' || !s.active) return 0
-  if (s.state !== 'idle' && s.state !== 'recover') return 0
-  if (!canShow(s, spec, 'shoot')) return 0
-  const room = castRoom(s)
-  return room + 1e-9 < FIT_MIN ? 0 : Math.min(specDuration(shoot) - hitTime(shoot), room)
-}
-
 /** The clip of his dash a boss shows (the crow skims in `sweep` once level), or null when he has none. */
 function dashName(s: BossSnapshot, spec: Record<string, AnimSpec>) {
   if (s.kind === 'flyer' && spec.sweep) return 'sweep'
@@ -689,6 +755,33 @@ function dashClip(s: BossSnapshot, spec: Record<string, AnimSpec>, name: string)
  * from where it took over inside the state (`clipFrom`), so it begins on its first frame after another clip.
  */
 const clipTime = (s: BossSnapshot) => s.stateTime - (s.clipFrom ?? 0)
+
+/** How long (s) the simulation keeps each kind of boss in his wind-up (sim.ts: the dash begins once past it). */
+export const WINDUP_SECONDS: Record<string, number> = {
+  brute: 0.45,
+  flyer: 0.4,
+  tank: 0.5,
+  swarm: 0.35,
+  final: 0.35
+}
+/** sim.ts: a slam ends on the ground once its state is this old (the phase change can restart that clock). */
+export const SLAM_GROUND_SECONDS = 0.2
+
+/**
+ * The time into his wind-up clip. Begun with the state, on its own clock (its tail trembles until the dash). Taken
+ * over inside the state (after a landing or a fall) with less time left than the clip, it is fitted to that time:
+ * every frame, faster, so that it has reached its tail when the dash begins.
+ */
+function windupTime(s: BossSnapshot, spec: Record<string, AnimSpec>) {
+  const from = s.clipFrom ?? 0
+  const t = s.stateTime - from
+  const windup = spec.windup
+  const length = WINDUP_SECONDS[s.kind]
+  if (from <= 0 || !windup || length === undefined) return t
+  const whole = specDuration(windup)
+  if (length - from >= whole) return t
+  return Math.min(whole - 1e-6, (t * whole) / Math.max(1e-3, length - from))
+}
 
 /** The boss's clip; a state its kind never reaches falls back to a clip its sheet has. */
 export function bossClip(
@@ -723,6 +816,8 @@ function pickBossClip(s: BossSnapshot, spec: Record<string, AnimSpec>): ClipChoi
     return { name: 'rage', t: s.rageAge }
   if (s.hurtAge !== null && spec.hurt && s.hurtAge < specDuration(spec.hurt)) return { name: 'hurt', t: s.hurtAge }
   if (s.castAge !== null && spec.shoot && s.castAge < specDuration(spec.shoot)) return { name: 'shoot', t: s.castAge }
+  // A heavy boss come down from a real fall (out of his walk, his wind-up, a stun) shows his whole landing.
+  if (fallLandShows(s, spec)) return { name: 'land', t: s.fallLandAge! }
   const fast = Math.abs(s.vx) > DASH_REST_SPEED
   if (s.kind === 'chaser') {
     // She keeps running into a stop: her standing poses show once she has nearly stopped.
@@ -738,9 +833,11 @@ function pickBossClip(s: BossSnapshot, spec: Record<string, AnimSpec>): ClipChoi
   const leapsAndSlams = s.kind === 'tank' || s.kind === 'final'
   const dash = dashName(s, spec)
   // Falling (put down above the ground, or off a ledge), the bear, the ape and the king show their leap's fall
-  // whatever they were about to do: a crouch or a slump is not drawn in the air.
+  // whatever they were about to do: a crouch or a slump is not drawn in the air. So does the fox, who walks the
+  // ledges (his `air`; outside his whirl and his cast's leap), but not for the shake at a ledge's lip.
+  const walksOff = s.kind === 'swarm' && Boolean(spec.air) && !s.airShort
   const falling: ClipChoice | null =
-    leapsAndSlams && !s.onGround && spec.air && s.vy > 0
+    (leapsAndSlams || walksOff) && !s.onGround && spec.air && s.vy > 0
       ? { name: 'air', t: 0, frame: airFrame(s.vy, spec.air.frames, BOSS_APEX_SPEED) }
       : null
   // The first moments of a stun keep the clip of the state before it (a stun of a single step is never shown).
@@ -750,7 +847,7 @@ function pickBossClip(s: BossSnapshot, spec: Record<string, AnimSpec>): ClipChoi
   }
   switch (s.state) {
     case 'windup':
-      return falling ?? { name: 'windup', t: clipTime(s) }
+      return falling ?? { name: 'windup', t: windupTime(s, spec) }
     case 'charge':
       return spec.attack ? dashClip(s, spec, 'attack') : { name: 'idle', t: s.time }
     case 'dive':
@@ -763,22 +860,25 @@ function pickBossClip(s: BossSnapshot, spec: Record<string, AnimSpec>): ClipChoi
       if (fast && dash) return dashClip(s, spec, dash)
       return { name: s.kind === 'brute' ? 'stunned' : 'recover', t: clipTime(s) }
     case 'slam':
+      // (Rolling in a restarted slam, carried off a ledge, he rolls on in the air: a dash that carries him.)
+      if (leapsAndSlams && !s.onGround && s.stateReset && (s.landedAt ?? 0) > 0 && fast && dash)
+        return dashClip(s, spec, dash)
       if (leapsAndSlams && !s.onGround)
         return { name: 'air', t: 0, frame: airFrame(s.vy, spec.air.frames, BOSS_APEX_SPEED) }
-      // On the ground in his slam he has just touched down (the simulation ends the slam on its next step; a staged
-      // pose may hold him there): the first frame of his landing, so the landing begins on the frame he lands.
-      // (After a cut there is no touchdown to land on: he recovers.)
+      // The phase change restarted his slam's clock as he touched down: the simulation carries him along the ground
+      // at his leap's speed until it ends the slam. He hits the ground rolling (his dash's clip) until the impact's
+      // step (`boss-slam`, his recovery begins), whatever the state's clock says; the squash comes with it.
+      if (leapsAndSlams && s.stateReset && fast && dash) return dashClip(s, spec, dash)
+      // On the ground in his slam he has touched down and the impact is still to come (the simulation ends the slam
+      // on its next step, or 0.2 s on when the phase change restarted its clock; a staged pose may hold him there):
+      // he skids in the first frame of his landing, and the landing plays from the impact (`boss-slam`, the step
+      // his recovery begins). (After a cut there is no touchdown to land on: he recovers.)
       if (leapsAndSlams && s.landCut && spec.recover)
         return fast && dash ? dashClip(s, spec, dash) : { name: 'recover', t: clipTime(s) }
       if (!leapsAndSlams || !spec.land) return { name: 'idle', t: s.time }
-      // Held on the ground in his slam (the phase change restarted its clock) his landing plays on, on its own time.
-      if (s.stateReset && landAge(s) > 0) {
-        if (landAge(s) < specDuration(spec.land)) return { name: 'land', t: landAge(s) }
-        return spec.recover ? { name: 'recover', t: clipTime(s) } : { name: 'idle', t: s.time }
-      }
       return { name: 'land', t: 0, frame: 0 }
     case 'shoot': {
-      if (s.kind !== 'final') return walkClip(s, spec)
+      if (s.kind !== 'final') return falling ?? walkClip(s, spec)
       // In `shoot` he only gathers: the frames before the release share the time up to the volley evenly (from
       // where the gathering began: the state's start, or the end of a staged moment that held it). The release
       // frame begins in `recover`, on the step the orbs leave (the volley and the change of state are one step).
@@ -791,6 +891,10 @@ function pickBossClip(s: BossSnapshot, spec: Record<string, AnimSpec>): ClipChoi
       return { name: 'shoot', t: frameStart(shoot, frame), frame }
     }
     case 'recover': {
+      // A dash that still carries him is drawn as his dash, on the ground and in the air alike, until it has let him
+      // go (the fox's whirl, the king's roll off a ledge). (A slam's recovery slides in its landing.)
+      const dashed = s.prevState === 'charge' || s.prevState === 'dive' || s.prevState === 'stunned'
+      if (fast && dash && (!leapsAndSlams || dashed)) return dashClip(s, spec, dash)
       // Slid off a ledge after his slam he falls first (his landing is drawn with planted feet); touching down again
       // he lands again, from its first frame to its last, and then goes on with his recovery from its first frame.
       if (falling) return falling

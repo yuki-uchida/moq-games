@@ -51,6 +51,30 @@ const POSE_SPARE = 1
  * intro waits for the hero to stand on the ground too, in the same wait).
  */
 export const LAND_WAIT_SECONDS = 1.5
+/**
+ * The king's transformation waits for him to be between his actions (`ActorsView.bossBetweenActions`) for this
+ * long (s) at most, then begins whatever he does: a backstop well beyond the longest honest chain from the phase
+ * step (a wind-up from its first step, a phase-2 charge of 1 s and its slide: about 1.7 s; his walk between two
+ * attacks is between actions), never reached in play.
+ */
+export const BETWEEN_WAIT_SECONDS = 3
+/** The transformation's spotlight sits this far (px) above the king's feet: the middle of his pillar of flame. */
+export const RAGE_SPOT_RISE = 56
+/**
+ * ...is switched on this long (s) into the moment (its first frame still shows the step that began it: nothing is
+ * dimmed on a frame the simulation runs), and off this long (s) before the moment ends: the overlay fades it over
+ * 0.25 s, and the rest is room for the frames a slow display takes to hear of it (three at 30 Hz).
+ */
+export const RAGE_LIGHTS_DOWN = 0.04
+export const RAGE_LIGHTS_UP = 0.35
+/**
+ * The transformation needs that point this far (px) inside the view's sides, top and bottom (his pillar of flame is
+ * 128 px wide and tall); a king nearer an edge or beyond it is brought in over `RAGE_PAN_SECONDS` and stays framed
+ * to the moment's last frame (the burst that covers his change is seen); the follow camera eases back to the hero
+ * once the fight goes on.
+ */
+export const RAGE_FRAME = { side: 80, above: 76, below: 60 } as const
+export const RAGE_PAN_SECONDS = 0.2
 const PRINCESS = { who: 'ハム姫', face: 'face_princess' }
 
 export class Staging {
@@ -337,29 +361,76 @@ export class Staging {
    * Phase 2: the fight holds while he transforms (the flash and rings come with the event). The `rage` clip plays
    * whole: the hold lasts the clip and one pass of its burning tail (under reduced motion the clip itself), and the
    * pose ends with it. It is part of the fight, so it cannot be skipped: a player mashing bite would otherwise never
-   * see it. (The director begins it only once he stands on the ground: see `StageDirector`.)
+   * see it. (The director begins it only once he stands on the ground: see `StageDirector`.) The world stands still
+   * around him, and the picture says so: a spotlight on the king dims everything else (a hero caught in the air, a
+   * minion, a shot hang in the dark), and the light is back up when the fight goes on. A king who is not wholly in
+   * the view when it begins is brought into it.
    */
   bossPhase(): Sequence | null {
-    const { sound, view, world } = this.host
+    const { camera, overlay, sound, view, world } = this.host
     const boss = world.boss
     if (!boss || boss.dead) return null
     const rage = bossSheetSpec(boss.def.kind, boss.def.art).rage
     const clip = rage ? specDuration(rage) : 0
     const length = Math.max(0.3, this.reduced ? clip : rage ? clipLife(rage) : 0)
+    // (Whether the moment had to bring him into the view: see `at(0)`.)
+    let framed = false
+    // The light goes down from the moment's second frame (its first still shows the step that began it) and comes
+    // back up over its last moments: nothing is dimmed on a frame the simulation runs.
     const seq = new Sequence('boss-phase', length, {
       priority: PRIORITY.phase,
-      claims: { scale: 0, lock: true }
+      claims: (t) => ({
+        scale: 0,
+        lock: true,
+        spotlight: t >= RAGE_LIGHTS_DOWN && t < length - RAGE_LIGHTS_UP,
+        camera: framed
+      })
     })
+    const x = boss.x + boss.w / 2
+    const y = boss.y + boss.h / 2
+    // (The point the light is on: under his drawn body, which may stand a few px from his box.)
+    const lit = () => ({ x: view.actors.bossX?.(boss) ?? x, y: boss.y + boss.h - RAGE_SPOT_RISE })
+    // (Placed on every frame: the camera may still be easing after him when the moment begins.)
+    const spot = () => {
+      const s = this.toScreen(lit())
+      overlay.spotX = s.x
+      overlay.spotY = s.y
+    }
+    seq.during(0, length, spot)
     seq.at(0, () => {
+      // The transformation is seen: a king who is not wholly in the view with his pillar of flame (a charge carried
+      // him off after the hit) is brought into it at once, by the least the view has to move, and stays framed to
+      // the moment's last frame (the burst that covers his change included); the follow camera eases back to the
+      // hero once the fight goes on. One who is in the view stays where he is on the screen.
+      const at = lit()
+      const to = camera.clamp(
+        Math.max(at.x + RAGE_FRAME.side - VIEW_W, Math.min(at.x - RAGE_FRAME.side, camera.x)),
+        Math.max(at.y + RAGE_FRAME.below - VIEW_H, Math.min(at.y - RAGE_FRAME.above, camera.y))
+      )
+      if (Math.abs(to.x - camera.x) > 0.5 || Math.abs(to.y - camera.y) > 0.5) {
+        framed = true
+        camera.panTo(to.x + VIEW_W / 2, to.y + VIEW_H / 2, this.reduced ? 0 : RAGE_PAN_SECONDS)
+      }
+      spot()
       this.posed(seq, 'boss', 'rage', length + (this.reduced ? RAGE_POSE_MARGIN : POSE_SPARE))
       // The hero too (the director waits for him to land as well): he finishes a bite under way, then stands.
       this.standHero(seq, length + POSE_SPARE)
+      // The transformation's flash, explosion, rings, shake and sound come with it (not with the hit that began it).
+      sound.cue('boss-transform')
       sound.cue('boss-roar')
-      this.trauma(0.3)
-      const x = boss.x + boss.w / 2
-      const y = boss.y + boss.h / 2
+      this.host.overlay.flash('#ffffff', 0.7, 0.35)
+      this.fx.spawn('ring', x, y, { layer: 'front' })
+      this.fx.spawn('ring', x, y, { layer: 'front', delay: 0.15 })
+      this.fx.spawn('boom', x, y, { layer: 'front' })
+      this.trauma(0.6)
       this.fx.spawn('ring', x, y, { layer: 'front', delay: 0.3 })
       this.fx.burst('spark', x, y, 5, { speed: [80, 160], life: [0.25, 0.4], layer: 'front' })
+    })
+    // The pillar of flame ends and he stands in his raged form: a burst covers the change of his sheet.
+    seq.at(Math.max(0, length - 0.05), () => {
+      this.fx.spawn('boom', x, y, { layer: 'front' })
+      this.fx.spawn('ring', x, y, { layer: 'front' })
+      this.fx.burst('spark', x, y, 8, { speed: [100, 200], life: [0.25, 0.45], layer: 'front' })
     })
     return seq
   }

@@ -163,7 +163,8 @@ export class PlaySession {
     const scale = view.frozen ? 0 : Math.max(0, director.timeScale)
     pacer.begin(dt, scale)
     if (scale > 0) {
-      while (pacer.due() && !view.frozen) {
+      // (A moment that holds the simulation, begun on a step, runs no further step in this frame.)
+      while (pacer.due() && !view.frozen && director.timeScale > 0) {
         mover.remember(world)
         const locked = director.inputLocked
         if (this.demo || this.autopilot) world.step(STEP, locked ? emptyInput() : botInput(world, this.bot))
@@ -173,6 +174,9 @@ export class PlaySession {
         }
         pacer.stepped()
         this.drain()
+        // What the bodies do is decided on the step, from the simulation's own positions.
+        view.simStep()
+        director.simStep?.()
       }
       if (pacer.steps > 0) mover.settle()
     }

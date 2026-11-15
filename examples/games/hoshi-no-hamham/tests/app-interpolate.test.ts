@@ -200,3 +200,20 @@ describe('PlaySession drawing between steps', () => {
     }
   })
 })
+
+describe('round 6f: a move its own speed cannot explain is not smeared', () => {
+  it('a body pushed 43 px aside in one step (a falling tree) is drawn where it was put; one that walks there is smeared', () => {
+    const pushed = { x: 100, y: 0, vx: 0, vy: 0 }
+    const walker = { x: 100, y: 0, vx: 100, vy: 0 }
+    const world = { player: pushed, enemies: [walker], boss: null, shots: [], bees: [], props: [] }
+    const m = new Interpolator()
+    m.remember(world)
+    pushed.x += 43
+    walker.x += 100 / 60
+    m.settle()
+    m.apply(0.5)
+    expect(pushed.x).toBe(143)
+    expect(walker.x).toBeCloseTo(100 + 100 / 120)
+    m.restore()
+  })
+})

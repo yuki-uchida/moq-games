@@ -240,7 +240,7 @@ const BOSS_BY_KIND: Record<(typeof BOSS_KIND)[BossArt], Specs> = {
     move: big(8, 12, true),
     windup: big(4, 12, false, { sustain: 2 }),
     attack: big(6, 16, true),
-    shoot: big(6, 12, false, { hit: 3 }), // the cast: gathers, releases on `hit`, settles; from `hit` on for a summon
+    shoot: big(6, 12, false, { hit: 3 }), // the cast, the order to fire: leads in, releases on `hit`, settles
     recover: big(4, 8, true)
   },
   // walk → windup → charge | leap and slam | cast → recover; `rage` is the phase 2 transformation
@@ -305,6 +305,15 @@ const BOSS_TRAVEL: Partial<Record<BossArt, Record<string, NonNullable<AnimSpec['
   king: { attack: 'slide' }
 }
 
+/**
+ * Clips one boss has beyond those of his kind. The fox walks the ledges of his arena (the bee, of his kind, flies):
+ * off one he falls in `air` (0 rising, 1 the top, 2 falling, as the leapers'), whatever he was about to do — his
+ * crouch and his walk are not drawn in the air.
+ */
+const BOSS_EXTRA: Partial<Record<BossArt, Specs>> = {
+  foxBoss: { air: big(3, 8, false, { travel: 'air' }) }
+}
+
 const bossSpecs = new Map<BossArt, Specs>()
 
 /**
@@ -314,7 +323,7 @@ const bossSpecs = new Map<BossArt, Specs>()
 export function bossSpec(art: BossArt): Specs {
   let specs = bossSpecs.get(art)
   if (!specs) {
-    specs = { ...BOSS_COMMON, ...BOSS_BY_KIND[BOSS_KIND[art]] }
+    specs = { ...BOSS_COMMON, ...BOSS_BY_KIND[BOSS_KIND[art]], ...BOSS_EXTRA[art] }
     for (const [name, hold] of Object.entries(BOSS_HOLD[art] ?? {})) specs[name] = { ...specs[name], hold }
     for (const [name, stride] of Object.entries(BOSS_STRIDE[art] ?? {})) specs[name] = { ...specs[name], stride }
     for (const [name, travel] of Object.entries(BOSS_TRAVEL[art] ?? {})) specs[name] = { ...specs[name], travel }
@@ -404,8 +413,9 @@ const BASE_PROP_SPEC: Record<string, Specs> = {
   'prop:berry': { idle: small(32, 2, 3, true) },
   'prop:seed': { spin: small(16, 4, 14, true) }, // acorn spat by リス団員
   // A boss's shot and, before it, `gather`: the light that forms in front of him in the 0.45 s before the shot leaves
-  // (drawn for a shot leaving to the right). The view plays its six frames by progress over those 0.45 s, about 75 ms
-  // a frame, and holds the last one until the shot leaves; its 14 fps is nominal.
+  // (it promises a shot, not a side: every frame is its own mirror image, and the view never mirrors it). The view
+  // plays its six frames by progress over those 0.45 s, about 75 ms a frame, and holds the last one until the shot
+  // leaves; its 14 fps is nominal.
   'prop:feather': { spin: small(24, 4, 14, true), gather: small(32, 6, 14, false) }, // カラス助
   'prop:stinger': { fly: small(24, 2, 14, true), gather: small(32, 6, 14, false) }, // ハチ女王
   'prop:orb': { pulse: small(24, 4, 12, true), gather: small(32, 6, 14, false) }, // きつね旋風 and 黒ハム王

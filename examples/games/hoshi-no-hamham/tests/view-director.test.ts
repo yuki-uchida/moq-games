@@ -17,11 +17,15 @@ import {
   CLEAR_SECONDS,
   DEATH_SECONDS,
   LAND_WAIT_SECONDS,
+  BETWEEN_WAIT_SECONDS,
+  RAGE_FRAME,
+  RAGE_PAN_SECONDS,
   RAGE_POSE_MARGIN,
+  RAGE_SPOT_RISE,
   STAGE_START_SECONDS
 } from '../src/view/staging'
-import { HERO_SPEC, allSheetSpecs, bossSpec, type BossArt } from '../src/art/contract'
-import { groundBelow } from '../src/view/actors'
+import { HERO_SPEC, VIEW_W, allSheetSpecs, bossSpec, type BossArt } from '../src/art/contract'
+import { WINDUP_REST_SECONDS, groundBelow } from '../src/view/actors'
 import { frameOf } from './play-audit'
 import { frameAt, type Anim } from '../src/art/sheet'
 import { RUN_THRESHOLD, clipLife, frameStart, specDuration } from '../src/view/clips'
@@ -154,6 +158,19 @@ function expectReleased(rig: Rig) {
 function emit(rig: Rig, event: SimEvent) {
   rig.view.handle(event)
   rig.director.handle(event)
+}
+
+/**
+ * Plays on until the boss is between his actions (at rest on the ground, nothing of an attack showing): a phase
+ * change then begins its moment on the step it comes (the transformation waits for him otherwise).
+ */
+function atRest(rig: Rig) {
+  for (let n = 0; n < 60 * 10 && !rig.view.actors.bossBetweenActions(); n++) {
+    rig.world.player.hp = rig.world.player.maxHp
+    rig.world.player.invuln = 999
+    rig.frame()
+  }
+  expect(rig.view.actors.bossBetweenActions()).toBe(true)
 }
 
 /** Starts a stage and lets its opening finish. */
@@ -396,7 +413,7 @@ describe('bosses', () => {
   })
 
   for (const side of [1, -1] as const)
-    it(`a boss's throw smokes at the edge of his body on the hero's side (the hero to the ${side > 0 ? 'right' : 'left'})`, () => {
+    it(`a boss's throw smokes where its light was, where the shot is born (the hero to the ${side > 0 ? 'right' : 'left'})`, () => {
       const rig = started(8)
       wakeBoss(rig)
       rig.director.skip()
@@ -411,7 +428,12 @@ describe('bosses', () => {
       }
       const cx = boss.x + boss.w / 2
       emit(rig, { type: 'boss-shoot', x: cx, y: boss.y + boss.h / 2, count: 3 })
-      expect(seen.filter((f) => f.name === 'smoke').map((f) => f.x)).toEqual([cx + (side * boss.w) / 2])
+      // His drawn centre, 7 px on (the shot's box has its left edge on his centre), at the shot's height.
+      const at = { x: 0, y: 0 }
+      rig.view.actors.shotBirth(boss, at)
+      expect(at.x).toBeCloseTo(rig.view.actors.bossX(boss) + 7)
+      expect(at.y).toBeCloseTo(boss.y + boss.h * 0.4 + 7)
+      expect(seen.filter((f) => f.name === 'smoke')).toEqual([{ name: 'smoke', x: at.x, y: at.y }])
     })
 
   it('stage 4: landing on the floor of the pool stirs bubbles, landing on the bank raises dust', () => {
@@ -492,7 +514,9 @@ describe('bosses', () => {
         sustain: rage.sustain,
         hold: rage.hold && [...rage.hold]
       } as unknown as Anim
+      atRest(rig)
       emit(rig, { type: 'boss-phase', phase: 2, x: boss.x, y: boss.y })
+      rig.director.simStep()
       expect(rig.director.current).toBe('boss-phase')
       expect(rig.director.timeScale).toBe(0)
       expect(rig.view.actors.posing('boss')).toBe('rage')
@@ -527,12 +551,108 @@ describe('bosses', () => {
       expectReleased(rig)
     })
 
+  for (const reducedMotion of [false, true])
+    it(`phase 2 dims everything but the king while the fight is held${reducedMotion ? ' (reduced motion)' : ''}`, () => {
+      const rig = started(10, { reducedMotion })
+      wakeBoss(rig)
+      rig.director.skip()
+      const boss = rig.world.boss!
+      const p = rig.world.player
+      // The hero beside him (he has just bitten him), the camera settled on the two of them.
+      for (let n = 0; n < 90 || !rig.view.actors.bossBetweenActions(); n++) {
+        p.x = boss.x - 90
+        p.vx = 0
+        p.hp = p.maxHp
+        p.invuln = 999
+        rig.frame()
+        if (n > 900) break
+      }
+      expect(rig.view.overlay.spotlightAmount).toBe(0)
+      emit(rig, { type: 'boss-phase', phase: 2, x: boss.x, y: boss.y })
+      rig.director.simStep()
+      expect(rig.director.current).toBe('boss-phase')
+      let spot = 0
+      let last = 1
+      for (let n = 0; n < 400; n++) {
+        rig.frame()
+        if (rig.director.current !== 'boss-phase') break
+        // The light is on him (the middle of his pillar of flame), wherever the camera is: the world around him,
+        // a hero caught in the air too, hangs in the dark.
+        // (Under his drawn body, which may stand a few px from his box.)
+        const { camera, overlay } = rig.view
+        expect(overlay.spotX).toBe(Math.round(rig.view.actors.bossX(boss) - camera.x))
+        expect(overlay.spotY).toBe(Math.round(boss.y + boss.h - RAGE_SPOT_RISE - camera.y))
+        // (He is in the view already: the camera is left alone.)
+        expect(camera.panning).toBe(false)
+        // (The moment's first frame still shows the step that began it: nothing is dimmed on it.)
+        if (n === 0) expect(overlay.spotlightAmount).toBe(0)
+        spot = Math.max(spot, overlay.spotlightAmount)
+        last = overlay.spotlightAmount
+      }
+      expect(spot).toBe(1)
+      // The light is back up when the fight goes on: nothing is dimmed on a frame the simulation runs.
+      expect(last).toBeLessThan(0.1)
+      expectReleased(rig)
+    })
+
+  for (const reducedMotion of [false, true])
+    it(`phase 2 brings a king who is out of the view into it, and the camera is home when the fight goes on${reducedMotion ? ' (reduced motion)' : ''}`, () => {
+      const rig = started(10, { reducedMotion })
+      wakeBoss(rig)
+      rig.director.skip()
+      const { world, view, director } = rig
+      const boss = world.boss!
+      const p = world.player
+      atRest(rig)
+      // The hero is far off (a charge carried the king away from him), the camera with him.
+      const far = boss.x + boss.w / 2 - VIEW_W
+      for (let n = 0; n < 120; n++) {
+        p.x = far
+        p.vx = 0
+        p.hp = p.maxHp
+        p.invuln = 999
+        rig.frame()
+        if (!view.actors.bossBetweenActions()) continue
+        if (!view.camera.sees(boss.x + boss.w / 2, boss.y + boss.h / 2) && n > 30) break
+      }
+      expect(view.camera.sees(boss.x + boss.w / 2, boss.y + boss.h / 2)).toBe(false)
+      atRest(rig)
+      emit(rig, { type: 'boss-phase', phase: 2, x: boss.x, y: boss.y })
+      director.simStep()
+      expect(director.current).toBe('boss-phase')
+      const lit = { x: view.actors.bossX(boss), y: boss.y + boss.h - RAGE_SPOT_RISE }
+      let seen = 0
+      let frames = 0
+      for (let n = 0; n < 400; n++) {
+        rig.frame()
+        if (director.current !== 'boss-phase') break
+        frames++
+        // Once the pan is done his whole pillar of flame is in the view, to the moment's last frame (the burst that
+        // covers his change is seen).
+        const whole =
+          view.camera.sees(lit.x - RAGE_FRAME.side, lit.y - RAGE_FRAME.above) &&
+          view.camera.sees(lit.x + RAGE_FRAME.side, lit.y + RAGE_FRAME.below)
+        if (whole) seen++
+        else expect(frames * STEP).toBeLessThanOrEqual(RAGE_PAN_SECONDS + 2 * STEP)
+        // The spotlight is on him wherever the camera is.
+        expect(view.overlay.spotX).toBe(Math.round(lit.x - view.camera.x))
+      }
+      const length = frames * STEP
+      expect(seen * STEP).toBeGreaterThan(length - RAGE_PAN_SECONDS - 3 * STEP)
+      // The fight goes on and the follow camera eases back to the hero.
+      expectReleased(rig)
+      const home = view.camera.followCentre(p)
+      expect(Math.abs(view.camera.x + VIEW_W / 2 - home.x)).toBeLessThan(8)
+    })
+
   it('a press does not skip phase 2: the transformation is part of the fight', () => {
     const rig = started(10)
     wakeBoss(rig)
     rig.director.skip()
     const boss = rig.world.boss!
+    atRest(rig)
     emit(rig, { type: 'boss-phase', phase: 2, x: boss.x, y: boss.y })
+    rig.director.simStep()
     rig.run(0.3)
     rig.input.press()
     rig.frame()
@@ -907,7 +1027,26 @@ describe("the boss's entrance waits for the hero to stand, and poses him standin
     expect(rig.view.actors.posing('hero')).toBeNull()
   })
 
-  for (const what of ['bite', 'hurt'] as const)
+  it('the entrance waits for a hero being knocked back: his hurt shows whole, then he stands for it', () => {
+    const rig = started(5)
+    const { world, view, director } = rig
+    const p = world.player
+    crossLine(rig)
+    p.invuln = INVULN - 0.02
+    view.update(0)
+    expect(view.actors.selectHero()!.name).toBe('hurt')
+    let frames = 0
+    while (director.current !== 'boss-intro' && frames < 120) {
+      rig.frame()
+      frames++
+    }
+    expect(director.current).toBe('boss-intro')
+    // It began once his knock-back was over (the hurt shows for its first 0.3 s of invulnerability).
+    expect(INVULN - p.invuln).toBeGreaterThan(0.3 - 2 * STEP)
+    expect(view.actors.posing('hero')).toBe('idle')
+  })
+
+  for (const what of ['bite'] as const)
     it(`a ${what} the pose covers does not come back after the moment`, () => {
       const rig = started(5)
       const { world, view, director } = rig
@@ -941,10 +1080,18 @@ describe("the boss's entrance waits for the hero to stand, and poses him standin
   const phase = (rig: Rig) => {
     const boss = rig.world.boss!
     emit(rig, { type: 'boss-phase', phase: 2, x: boss.x, y: boss.y })
+    // (The step it came on is answered whole before a waiting moment is decided.)
+    rig.director.simStep()
+  }
+  /** As `kingAwake`, then on until he is between his actions. */
+  const kingAtRest = () => {
+    const rig = kingAwake()
+    atRest(rig)
+    return rig
   }
 
   it('phase 2 waits for a hero in the air too, and begins once both stand on the ground', () => {
-    const rig = kingAwake()
+    const rig = kingAtRest()
     const { world, view, director } = rig
     const boss = world.boss!
     const p = world.player
@@ -966,23 +1113,33 @@ describe("the boss's entrance waits for the hero to stand, and poses him standin
     expect(view.actors.posing('boss')).toBe('rage')
   })
 
-  it('phase 2 begins after LAND_WAIT_SECONDS when the hero never lands, and leaves him as he is', () => {
+  it('phase 2 waits for a hero in the air only while the king rests: it begins as he winds up for his next attack, and leaves the hero as he is', () => {
     const rig = kingAwake()
     const { world, view, director } = rig
+    const boss = world.boss!
     const p = world.player
     p.y -= 3 * TILE
     p.onGround = false
     const high = p.y
     const t0 = world.time
     phase(rig)
-    for (let n = 0; director.current !== 'boss-phase' && n < 200; n++) {
+    const waitedIn: string[] = []
+    for (let n = 0; director.current !== 'boss-phase' && n < 400; n++) {
       p.y = high
       p.vy = 0
       rig.frame()
+      if (director.current !== 'boss-phase') waitedIn.push(boss.state)
     }
     expect(director.current).toBe('boss-phase')
-    expect(world.time - t0).toBeGreaterThan(LAND_WAIT_SECONDS - 2 * STEP)
-    expect(world.time - t0).toBeLessThan(LAND_WAIT_SECONDS + 2 * STEP)
+    // The hero never came down. The king rested (the moment waited for the hero meanwhile), and it began in the
+    // first moments of his wind-up: he did not go through another attack first.
+    expect(waitedIn.length).toBeGreaterThan(5)
+    for (const state of waitedIn) expect(['idle', 'recover', 'windup']).toContain(state)
+    expect(boss.state).toBe('windup')
+    expect(boss.stateTime).toBeLessThan(WINDUP_REST_SECONDS + 2 * STEP)
+    expect(world.time - t0).toBeLessThan(LAND_WAIT_SECONDS)
+    // (Between his actions: it began on the step he was.)
+    expect(view.actors.bossBetweenActions()).toBe(true)
     expect(view.actors.posing('hero')).toBeNull()
   })
 
@@ -1018,7 +1175,7 @@ describe("the boss's entrance waits for the hero to stand, and poses him standin
   }
 
   it('phase 2 begun in the middle of a bite: the bite plays out on real time during the hold, then he stands', () => {
-    const rig = kingAwake()
+    const rig = kingAtRest()
     const { world, view } = rig
     const p = world.player
     // The bite that hit him, a few frames in (sim.ts: its timer runs down from BITE_TIME).
@@ -1060,6 +1217,36 @@ describe("the boss's entrance waits for the hero to stand, and poses him standin
       rig.frame()
       expect(view.actors.selectHero()!.name).not.toBe('bite')
     }
+  })
+
+  it('a hold taken on a step shows the bite where the step left it: a slow display passes over no frame of it', () => {
+    const rig = started(5)
+    const { world, view } = rig
+    const boss = world.boss!
+    const p = world.player
+    // A display that shows two steps a frame (a frame of the bite lasts 42 ms, a display frame 33 ms).
+    const SLOW = 1 / 30
+    p.x = boss.arenaX - p.w - 2
+    p.y = boss.y + boss.h - p.h
+    p.invuln = 999
+    for (let t = 0; t < 0.3; t += SLOW) rig.frame(SLOW)
+    // Crossing the line with a bite just begun: the entrance's hold is taken on one of this frame's two steps.
+    p.x = boss.arenaX + 4
+    p.biteTimer = BITE_TIME
+    rig.frame(SLOW)
+    expect(rig.director.current).toBe('boss-intro')
+    const frames: number[] = []
+    while (rig.director.current === 'boss-intro' && frames.length < 200) {
+      const choice = view.actors.selectHero()!
+      if (choice.name !== 'bite') break
+      frames.push(frameOf(HERO_SPEC.bite, choice))
+      rig.frame(SLOW)
+    }
+    // The frame that first shows the pose shows the bite as the step left it (its first frame: no more than two steps
+    // old), not a display frame further on; then every frame of it in turn, to its last.
+    expect(frames[0]).toBe(0)
+    for (let i = 1; i < frames.length; i++) expect(frames[i] - frames[i - 1]).toBeLessThanOrEqual(1)
+    expect(frames.at(-1)).toBe(HERO_SPEC.bite.frames - 1)
   })
 })
 
@@ -1411,4 +1598,117 @@ describe("the king's phase change cuts nothing, and his transformation waits for
         if (TIMED.includes(first.clip) || first.clip === 'shoot')
           expect(first.frame, `${first.clip} after the moment`).toBe(0)
       })
+})
+
+describe('round 6f: a waiting moment is decided on the step, once all of it has been answered', () => {
+  it('the phase event alone does not begin the transformation; the step it came on does, after its other events', () => {
+    const rig = started(10)
+    wakeBoss(rig)
+    rig.director.skip()
+    atRest(rig)
+    const boss = rig.world.boss!
+    emit(rig, { type: 'boss-phase', phase: 2, x: boss.x, y: boss.y })
+    // (In the middle of the step's events: a contact hurt of the hero's may still follow.)
+    expect(rig.director.current).toBeNull()
+    rig.director.simStep()
+    expect(rig.director.current).toBe('boss-phase')
+  })
+
+  it("the hero's cap runs from the phase step: after it the moment begins on the first step the king is ready, the hero hanging", () => {
+    const rig = started(10)
+    wakeBoss(rig)
+    rig.director.skip()
+    const { world, view, director } = rig
+    const boss = world.boss!
+    const p = world.player
+    const hang = (high: number) => {
+      p.y = high
+      p.vy = 0
+      p.hp = p.maxHp
+      p.invuln = 999
+    }
+    // The phase comes in the middle of a wind-up (past its first moments): he goes through that whole attack, which
+    // outlasts the hero's cap.
+    const ground = p.y
+    rig.run(15, () => {
+      hang(ground)
+      return boss.state === 'windup' && boss.stateTime > WINDUP_REST_SECONDS + 3 * STEP
+    })
+    expect(boss.state).toBe('windup')
+    p.y -= 3 * TILE
+    p.onGround = false
+    const high = p.y
+    emit(rig, { type: 'boss-phase', phase: 2, x: boss.x, y: boss.y })
+    let all = 0
+    const waitedIn = new Set<string>()
+    for (let n = 0; director.current !== 'boss-phase' && n < 400; n++) {
+      hang(high)
+      rig.frame()
+      if (director.current === 'boss-phase') break
+      waitedIn.add(boss.state)
+      all += STEP
+    }
+    expect(director.current).toBe('boss-phase')
+    // (He attacked: his side of the wait is not negotiable.)
+    expect([...waitedIn].some((state) => ['charge', 'slam', 'shoot'].includes(state))).toBe(true)
+    expect(all).toBeLessThanOrEqual(BETWEEN_WAIT_SECONDS + 3 * STEP)
+    // After the hero's cap the first step the king is between his actions is enough (before it, in the air, only a
+    // new wind-up of his is).
+    // (Here his attack ends before the cap does: he rests, the hero still in the air, and the cap ends the wait.)
+    expect(all).toBeGreaterThanOrEqual(LAND_WAIT_SECONDS - 3 * STEP)
+    expect(boss.state).toBe('recover')
+    expect(view.actors.bossBetweenActions()).toBe(true)
+    // (He hangs: no standing pose in the air.)
+    expect(view.actors.posing('hero')).toBeNull()
+  })
+})
+
+describe('round 6g: every moment that holds the simulation stands the hero on the ground', () => {
+  it('a hurt under way plays out on real time, then he stands, while a moment holds the simulation', () => {
+    const rig = started(5)
+    wakeBoss(rig)
+    rig.director.skip()
+    const { world, view, director } = rig
+    const p = world.player
+    p.invuln = INVULN - 0.02
+    rig.frame()
+    expect(view.actors.selectHero()!.name).toBe('hurt')
+    emit(rig, { type: 'goal-open', x: p.x + 200, y: p.y } as never)
+    rig.frame()
+    if (director.timeScale !== 0) return
+    const shown: string[] = []
+    for (let n = 0; n < 60 && director.timeScale === 0; n++) {
+      shown.push(view.actors.selectHero()!.name)
+      rig.frame()
+    }
+    // The hurt first, then he stands; the simulation's clock never moved.
+    expect(shown[0]).toBe('hurt')
+    expect(shown.at(-1)).toBe('idle')
+    expect(shown.indexOf('idle')).toBeGreaterThan(0)
+    expect(shown.slice(shown.indexOf('idle')).every((x) => x === 'idle')).toBe(true)
+  })
+})
+
+describe("round 6p: the hold's pose for the hero is taken once the step's events are all answered", () => {
+  it('a bite on the step a hold begins (its event after the one that begins the hold) plays out under it, facing the side it bit', () => {
+    const rig = started(5)
+    wakeBoss(rig)
+    rig.director.skip()
+    const { world, view, director } = rig
+    const p = world.player
+    p.invuln = 0
+    p.facing = 1
+    for (let i = 0; i < 30; i++) rig.frame()
+    expect(view.actors.heroFlip()).toBe(false)
+    // One step: the bite to the left opens the goal; \`doBite\` sends \`goal-open\` before its own \`bite\`.
+    p.facing = -1
+    p.biteTimer = BITE_TIME
+    emit(rig, { type: 'goal-open', x: p.x + 200, y: p.y } as never)
+    emit(rig, { type: 'bite', x: p.x, y: p.y, dir: -1, hit: true } as never)
+    view.simStep()
+    director.simStep()
+    expect(director.timeScale).toBe(0)
+    expect(view.actors.posing('hero')).toBe('bite')
+    expect(view.actors.heroFlip()).toBe(true)
+  })
 })

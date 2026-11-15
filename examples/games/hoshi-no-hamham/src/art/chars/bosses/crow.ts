@@ -933,7 +933,8 @@ const HOVER_FAR: Wing[] = [
 
 /**
  * shoot: the feather throw from the hover — the near wing coils back over the shoulder with the body twisting back,
- * snaps forward and down at full stretch on `hit` (3) with a caw, swings past, and recovers into the hover.
+ * snaps forward and down at full stretch on `hit` (3) with a caw, swings past, and recovers into the hover. A command,
+ * not a throw: nothing leaves the wing tip; the feathers gather in the light on his body (the view's `gather`).
  */
 const shoot = memo(() => {
   const poses = [
@@ -1018,15 +1019,6 @@ const shoot = memo(() => {
       scarf: [14, 32, 1.2, 5.5]
     })
   ].map((p, i) => ({ ...p, wingF: HOVER_FAR[i] }))
-  // the flick's release: two short dashes flung on from the wing tip, toward the hero
-  const { tip, centre } = crowBossNearTip(poses[3])
-  poses[3] = {
-    ...poses[3],
-    streaks: [
-      [tip[0] - centre[0] + 3, tip[1] - centre[1] - 1, 9, 18],
-      [tip[0] - centre[0] + 1, tip[1] - centre[1] + 4, 8, 50]
-    ]
-  }
   return poses
 })
 

@@ -10,7 +10,7 @@ vi.mock('../src/view/bake', () => ({
 }))
 
 import { T } from '../src/game/sim'
-import { PropsView, SHOCK_GROUND_PX } from '../src/view/props'
+import { FLIGHT_ANGLE_STEP, PropsView, SHOCK_GROUND_PX, flightAngle } from '../src/view/props'
 
 beforeEach(() => {
   blits.length = 0
@@ -86,7 +86,7 @@ function drawnAs(view: PropsView, flip: () => boolean) {
   }
 }
 
-describe('a shot comes out from behind the drawing of its shooter', () => {
+describe("a squirrel's acorn comes out from behind its drawing; a boss's shot is in front from its first frame", () => {
   it('past the edge of his box it stays behind while it overlaps the frame he shows, facing right', () => {
     const enemy = squirrel()
     const shot = shotFrom(enemy)
@@ -145,19 +145,15 @@ describe('a shot comes out from behind the drawing of its shooter', () => {
     expect(front.sort()).toEqual(orbs.map(centre).sort())
   })
 
-  it("without the actors' drawing (no stage view) a boss's shot is behind while it overlaps his box", () => {
+  it("a boss's thrown or cast shot is in front from its first frame (it is born from his light), drawn or not", () => {
     const boss = bossBody()
     const right = shotFrom(boss, 300)
     const left = shotFrom(boss, -300)
     left.y += 20
-    const { passes } = setup([right, left], [], boss)
-    expect(passes().behind.sort()).toEqual([centre(right), centre(left)].sort())
-    left.x = boss.x - left.w + 1
-    expect(passes().behind).toHaveLength(2)
-    left.x = boss.x - left.w
-    const now = passes()
-    expect(now.behind).toEqual([centre(right)])
-    expect(now.front).toEqual([centre(left)])
+    const { view, passes } = setup([right, left], [], boss)
+    expect(passes()).toEqual({ behind: [], front: [centre(right), centre(left)] })
+    drawnAs(view, () => false)
+    expect(passes().behind).toEqual([])
   })
 
   it("a squirrel minion's acorn thrown from inside the boss's drawing stays behind until it is clear of both", () => {
@@ -219,11 +215,105 @@ describe('a shot comes out from behind the drawing of its shooter', () => {
       }
       for (const shot of shots) shot.x += shot.vx / 60
     }
-    // Both acorns and the boss's shot started behind; the shockwave never was.
-    expect([...seenBehind].sort()).toEqual([0, 1, 2])
+    // Both acorns started behind; the boss's shot and the shockwave never were.
+    expect([...seenBehind].sort()).toEqual([0, 1])
   })
 })
 
+describe('a stinger is drawn along its flight', () => {
+  it('level when it flies level, turned down as it falls, at a few fixed angles, mirrored to the left', () => {
+    expect(flightAngle(240, 0)).toBe(0)
+    expect(flightAngle(240, 240)).toBeCloseTo(Math.PI / 4)
+    expect(flightAngle(-240, 240)).toBeCloseTo(-Math.PI / 4)
+    // Between two of its angles it takes the nearer.
+    expect(flightAngle(240, 30)).toBe(0)
+    expect(flightAngle(240, 70)).toBeCloseTo(FLIGHT_ANGLE_STEP)
+    for (const vy of [-300, -100, 0, 50, 120, 400]) {
+      const a = flightAngle(200, vy)
+      expect(Math.abs(a / FLIGHT_ANGLE_STEP - Math.round(a / FLIGHT_ANGLE_STEP))).toBeLessThan(1e-9)
+    }
+  })
+
+  it('is drawn turned about its centre (the canvas put back after), an orb is not', () => {
+    const boss = bossBody()
+    const dart = { ...shotFrom(boss, 200), vy: 200, skin: 'stinger' }
+    const orb = { ...shotFrom(boss, 200), vy: 200, skin: 'orb' }
+    orb.x += 30
+    const { view } = setup([dart, orb], [], boss)
+    const calls: string[] = []
+    const turning = {
+      translate: (x: number, y: number) => calls.push(`translate ${x} ${y}`),
+      rotate: (a: number) => calls.push(`rotate ${a.toFixed(3)}`)
+    } as unknown as CanvasRenderingContext2D
+    blits.length = 0
+    view.drawProjectiles(turning, 'front')
+    const a = flightAngle(200, 200).toFixed(3)
+    const cx = centre(dart)
+    const cy = dart.y + dart.h / 2
+    expect(calls).toEqual([
+      `translate ${cx} ${cy}`,
+      `rotate ${a}`,
+      `rotate ${(-Number(a)).toFixed(3)}`,
+      `translate ${-cx} ${-cy}`
+    ])
+    expect(blits.map((b) => [b.anim, b.x, b.y])).toEqual([
+      ['prop:stinger#fly', 0, 0],
+      ['prop:orb#pulse', centre(orb), orb.y + orb.h / 2]
+    ])
+  })
+})
+
+describe('a shot that ends on a body with nothing to show for it ends with a small burst', () => {
+  const run = (end: (shot: Shot, view: PropsView) => void) => {
+    const boss = bossBody()
+    const shot = shotFrom(boss)
+    const spawned: { name: string; x: number; y: number }[] = []
+    const world = {
+      props: [],
+      shots: [shot],
+      bees: [],
+      enemies: [],
+      boss,
+      theme: 'forest',
+      h: 20,
+      state: 'play',
+      tileAt: () => 0,
+      solidAt: () => false
+    }
+    const view = new PropsView(
+      world as never,
+      {
+        rand: () => 0.5,
+        spawn: (name: string, x: number, y: number) => spawned.push({ name, x, y })
+      } as never
+    )
+    view.simStep()
+    shot.x += 4
+    end(shot, view)
+    view.simStep()
+    return { spawned, shot }
+  }
+
+  it('gone on a hero who could not be hurt (no event): a spark where it was', () => {
+    const { spawned, shot } = run((shot) => {
+      shot.dead = true
+    })
+    expect(spawned).toEqual([{ name: 'spark', x: centre(shot), y: shot.y + shot.h / 2 }])
+  })
+
+  it('a shot that hit a wall (its own burst) or ran out of time ends without one', () => {
+    const hit = run((shot, view) => {
+      shot.dead = true
+      view.handle({ type: 'shot-hit', kind: 'seed', x: shot.x, y: shot.y } as never)
+    })
+    expect(hit.spawned).toEqual([])
+    const old = run((shot) => {
+      shot.dead = true
+      shot.life = 0
+    })
+    expect(old.spawned).toEqual([])
+  })
+})
 describe('a shockwave rolls on ground and flies where the ground has gone from under it', () => {
   /** A wave as sim.ts spawns it (30 × 22, its bottom on the ground row of `feet`) with its left at `x`. */
   const wave = (x: number, feet = 5 * 64, vx = 260) => ({
@@ -268,5 +358,61 @@ describe('a shockwave rolls on ground and flies where the ground has gone from u
     passes()
     drawn.push(...blits.map((b) => b.anim))
     expect(drawn).toEqual(['prop:shock#fly'])
+  })
+})
+
+describe('round 6f: a shockwave that dies on the step it is born bursts', () => {
+  const run = (shocks: number, wall = false) => {
+    const spawned: string[] = []
+    const shots: {
+      kind: string
+      x: number
+      y: number
+      w: number
+      h: number
+      vx: number
+      vy: number
+      dead: boolean
+      hostile: boolean
+      life: number
+    }[] = []
+    for (let i = 0; i < shocks; i++)
+      shots.push({
+        kind: 'shock',
+        x: 300 + (i ? 4 : -4),
+        y: 258,
+        w: 24,
+        h: 22,
+        vx: i ? 220 : -220,
+        vy: 0,
+        dead: false,
+        hostile: true,
+        life: 2
+      })
+    const world = {
+      props: [],
+      shots,
+      bees: [],
+      enemies: [],
+      boss: null,
+      theme: 'forest',
+      h: 20,
+      state: 'play',
+      tileAt: () => 0,
+      solidAt: () => false
+    }
+    const view = new PropsView(
+      world as never,
+      { rand: () => 0.5, spawn: (name: string) => spawned.push(name) } as never
+    )
+    view.handle({ type: 'boss-slam', x: 300, y: 280 } as never)
+    if (wall) view.handle({ type: 'shot-hit', kind: 'shock', x: 296, y: 258 } as never)
+    view.simStep()
+    return spawned
+  }
+  it('both rolled out: nothing; none (the hero could not be hurt): a burst for each; one stopped by a wall: its own burst', () => {
+    expect(run(2)).toEqual([])
+    expect(run(0)).toEqual(['spark', 'spark'])
+    expect(run(0, true)).toEqual([])
   })
 })
