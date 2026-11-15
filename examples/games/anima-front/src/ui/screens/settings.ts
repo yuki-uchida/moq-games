@@ -38,7 +38,6 @@ function control(ctx: AppContext, spec: SettingSpec): HTMLElement {
       class: 'text-input set-text',
       attrs: {
         type: 'text',
-        maxlength: String(spec.maxLength),
         placeholder: spec.placeholder,
         value: String(value()),
         'aria-label': spec.label,
@@ -47,7 +46,27 @@ function control(ctx: AppContext, spec: SettingSpec): HTMLElement {
         spellcheck: 'false'
       }
     })
-    input.addEventListener('input', () => ctx.updateSetting(spec.key, input.value))
+    // The limit counts characters (code points) like the stored name does, not UTF-16 units; while an IME
+    // composition is open it waits for compositionend.
+    let composing = false
+    const limit = () => {
+      const chars = [...input.value]
+      if (chars.length <= spec.maxLength) return
+      const caret = input.selectionStart ?? input.value.length
+      input.value = chars.slice(0, spec.maxLength).join('')
+      const at = Math.min(caret, input.value.length)
+      input.setSelectionRange(at, at)
+    }
+    input.addEventListener('compositionstart', () => (composing = true))
+    input.addEventListener('compositionend', () => {
+      composing = false
+      limit()
+      ctx.updateSetting(spec.key, input.value)
+    })
+    input.addEventListener('input', () => {
+      if (!composing) limit()
+      ctx.updateSetting(spec.key, input.value)
+    })
     // on leaving the field it shows what was stored (cleaned)
     input.addEventListener('change', () => {
       input.value = String(value())

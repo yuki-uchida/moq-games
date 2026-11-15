@@ -249,6 +249,53 @@ test.describe('アニマフロント front-end', () => {
     await expect(page.locator('.screen.lobby')).toContainText('テスト太郎テスト太郎')
   })
 
+  test('player name field: IME keys stay in the field, Esc leaves it before the screen, the limit counts characters', async ({
+    page
+  }) => {
+    await openTitle(page)
+    await page.click('[data-menu="settings"]')
+    const field = page.locator('[data-setting="playerName"]')
+    // the screen moves focus to its first tab when it opens: wait for that before focusing the field
+    await expect(page.locator('.settings-tabs [data-autofocus]')).toBeFocused()
+    await field.focus()
+    await expect(field).toBeFocused()
+    // keys of an open IME conversion (candidate arrows, cancel) are not menu keys
+    for (const key of ['ArrowDown', 'ArrowUp', 'Escape']) {
+      await field.evaluate((el, k) => {
+        el.dispatchEvent(new KeyboardEvent('keydown', { key: k, isComposing: true, bubbles: true, cancelable: true }))
+        el.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: 'Process',
+            keyCode: 229,
+            bubbles: true,
+            cancelable: true
+          } as KeyboardEventInit)
+        )
+      }, key)
+    }
+    await expect(field).toBeFocused()
+    await expect(page.locator('.screen.settings:not(.is-leaving)')).toBeVisible()
+    // a normal Esc leaves the field, the next one goes back to the title
+    await page.keyboard.press('Escape')
+    await expect(field).not.toBeFocused()
+    await expect(page.locator('.screen.settings:not(.is-leaving)')).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.screen.settings:not(.is-leaving)')).toHaveCount(0)
+    // eleven emoji: the field holds ten (code points, not UTF-16 units), saved and reloaded as ten
+    await page.click('[data-menu="settings"]')
+    await field.fill('😀'.repeat(11))
+    await expect(field).toHaveValue('😀'.repeat(10))
+    await page.reload()
+    await openTitle(page)
+    await page.click('[data-menu="settings"]')
+    await expect(field).toHaveValue('😀'.repeat(10))
+    expect(
+      JSON.parse((await page.evaluate(() => localStorage.getItem('anima-front-v1:settings'))) ?? '{}')
+    ).toMatchObject({
+      playerName: '😀'.repeat(10)
+    })
+  })
+
   test('HUD demo renders every block, pauses and reaches the results', async ({ page }) => {
     const errors = watchErrors(page)
     await page.goto('/?hud-demo=pve&end=8')

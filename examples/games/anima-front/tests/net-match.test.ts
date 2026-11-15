@@ -349,6 +349,37 @@ describe('drop-in and spectators (DESIGN §18)', () => {
     t.host.leave()
   }, 60_000)
 
+  it('display names are sticky: a spectator keeps its number when a player leaves and a newcomer arrives', async () => {
+    const t = await table(['ホスト', 'ホスト', 'ホスト'])
+    await run(1000, () => frame(t))
+    const world = (t.hostSession as HostMatch).world
+    const names = () => t.host.state().online!.members.map((m) => m.name)
+    expect(names()).toEqual(['ホスト', 'ホスト2', 'ホスト3', 'ホスト4'])
+    // every seat is held: this one watches, as ホスト5
+    const watcher = await lateJoin(t.hub, 'match-1234', choice('ホスト', 'owl'), () => frame(t))
+    expect(names()).toEqual(['ホスト', 'ホスト2', 'ホスト3', 'ホスト4', 'ホスト5'])
+    // one player leaves; a newcomer asks for the name the spectator holds
+    t.guestSessions.shift()
+    t.guests[0].leave()
+    await run(1500, () => frame(t))
+    const late = await lateJoin(t.hub, 'match-1234', choice('ホスト5', 'fox'), () => frame(t))
+    await run(600, () => frame(t))
+    const members = t.host.state().online!.members
+    const all = members.map((m) => m.name)
+    expect(new Set(all).size).toBe(all.length)
+    // the spectator still holds ホスト5; the newcomer (seated in the freed seat) has another name
+    expect(members.find((m) => m.seat === null)?.name).toBe('ホスト5')
+    const mine = members.find((m) => m.seat !== null && m.name.startsWith('ホスト5'))
+    expect(mine).toBeDefined()
+    const inMatch = simOf(world).players.map((p) => p.name)
+    expect(new Set(inMatch).size).toBe(inMatch.length)
+    expect(inMatch).toContain(mine!.name)
+    expect(inMatch).not.toContain('ホスト5')
+    void late
+    void watcher
+    t.host.leave()
+  }, 90_000)
+
   it('PvE: with every seat held by a player, a late guest watches', async () => {
     const t = await table(['B', 'C', 'D'])
     await run(1000, () => frame(t))
@@ -450,6 +481,7 @@ describe('a spectator takes a seat that frees up (DESIGN §18)', () => {
     // guest B leaves: a bot takes its seat, which is now free
     const leaverSeat = t.guestSessions[0].me
     t.guestSessions[0].dispose()
+    t.guestSessions.shift()
     t.guests[0].leave()
     t.guestSessions.shift()
     await run(500, () => frame(t))

@@ -199,7 +199,7 @@ function openRoomDialog(ctx: AppContext, screen: HTMLElement, kind: 'host' | 'jo
     on: {
       input: () => validate(false),
       keydown: (e) => {
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' && !e.isComposing) {
           e.preventDefault()
           void submit()
         }

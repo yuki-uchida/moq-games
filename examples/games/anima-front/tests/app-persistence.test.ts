@@ -25,6 +25,7 @@ import {
   storeCustom
 } from '../src/app/saves'
 import {
+  cleanPlayerName,
   defaultSettings,
   loadSettings,
   rendererOptionsFrom,
@@ -60,6 +61,12 @@ describe('storage', () => {
 })
 
 describe('settings', () => {
+  it('the name limit counts characters, not UTF-16 units: ten emoji stay, the eleventh goes', () => {
+    expect([...cleanPlayerName('😀'.repeat(10))]).toHaveLength(10)
+    expect(cleanPlayerName('😀'.repeat(11))).toBe('😀'.repeat(10))
+    expect(withSetting(defaultSettings(), 'playerName', '😀'.repeat(11)).playerName).toBe('😀'.repeat(10))
+  })
+
   it('the player name round-trips, is cleaned and cut to 10 characters; empty means the animal name', () => {
     const store = memoryStore()
     expect(defaultSettings().playerName).toBe('')
