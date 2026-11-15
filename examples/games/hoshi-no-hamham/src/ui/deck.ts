@@ -164,7 +164,13 @@ const reducedMotion = () => {
   return motionQuery.matches
 }
 
-const portrait = () => typeof matchMedia === 'function' && matchMedia('(orientation: portrait)').matches
+/** Whether the page is upright (the deck is on screen): asked in every frame, so the query is made once too. */
+let uprightQuery: MediaQueryList | null = null
+const portrait = () => {
+  if (typeof matchMedia !== 'function') return false
+  uprightQuery ??= matchMedia('(orientation: portrait)')
+  return uprightQuery.matches
+}
 
 /** A clock text with every digit the font's widest: at least as wide as any time of as many digits. */
 const clockShape = (text: string, digit = '0') => text.replace(/[0-9]/g, digit)
@@ -243,6 +249,8 @@ export class Deck {
   private aimSeen: AimSeen | null = null
   /** Frames until the deck shows the state it has seen (see `STATE_DELAY_FRAMES`); 0 when it shows it. */
   private stateWait = 0
+  /** The deck was off the screen at the last update (the page on its side): what it shows may be old (`update`). */
+  private away = false
 
   private stage: StageDef | null = null
   private aimKey = ''
@@ -560,10 +568,21 @@ export class Deck {
     }
   }
 
-  /** `tick`: this frame also writes the meters (the clock, the markers and the groove's fill). */
+  /**
+   * `tick`: this frame also writes the meters (the clock, the markers and the groove's fill).
+   *
+   * On its side the page shows nothing of the deck but the touch controls (deck.css): nothing is worked out and
+   * nothing is written then, and the frames of a boss's fall or of a pickup do not word an aim line nobody can see.
+   * When the page is upright again, the deck shows the stage as it is in that very frame (`comeBack`).
+   */
   update(world: World, dt: number, tick = true) {
     const stage = this.stage
     if (!stage) return
+    if (!portrait()) {
+      this.away = true
+      return
+    }
+    if (this.away) this.comeBack()
 
     const boss = world.boss
     const seen = this.aimSeen
@@ -598,15 +617,7 @@ export class Deck {
     if (this.hold) {
       const next = stepHold(this.hold, dt)
       if (next) this.hold = next
-      else {
-        const speech = this.hold.kind === 'speech'
-        this.setHold(null)
-        if (speech) {
-          this.hintTime = 0
-          this.hintShown = -1
-          this.showHint(0)
-        }
-      }
+      else this.endHold()
     } else {
       this.hintTime += dt
       this.showHint(this.hintTime)
@@ -654,6 +665,36 @@ export class Deck {
     if (!tick) return
     this.place()
     this.moveAmbient()
+  }
+
+  /** A toast or a speech line is over: the hints come back (from the first one after a speech line). */
+  private endHold() {
+    const speech = this.hold?.kind === 'speech'
+    this.setHold(null)
+    if (speech) {
+      this.hintTime = 0
+      this.hintShown = -1
+      this.showHint(0)
+    }
+  }
+
+  /**
+   * The deck is on screen again after frames in which nothing was written to it: it forgets what it has written of
+   * the stage's state, so that this update words the aim line and writes the clock, the count and the track's
+   * pictures from the world as it is now, at once (a change seen while the deck is on waits its few frames; this
+   * is no such change). A toast or a speech line that was on when the deck went away is over.
+   */
+  private comeBack() {
+    this.away = false
+    if (this.hold) this.endHold()
+    this.aimSeen = null
+    this.stateWait = 0
+    this.clockTenths = -1
+    this.killCount = -1
+    this.goalOpen = null
+    this.bossHidden = null
+    this.bossAsleep = null
+    this.bossArt = ''
   }
 
   /**
