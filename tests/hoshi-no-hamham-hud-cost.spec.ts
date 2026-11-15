@@ -36,6 +36,8 @@ interface Call {
    * star the clock sends across the deck's sky).
    */
   ticking: boolean
+  /** True for a call on a piece of the deck (its touch controls, which the page shows on its side too, are not). */
+  deck: boolean
 }
 
 interface CostProbe {
@@ -63,7 +65,8 @@ function installProbe() {
       cost.calls.push({
         name,
         on: node instanceof Element ? `${node.tagName}#${node.id}.${node.className}` : '',
-        ticking: ticking(target)
+        ticking: ticking(target),
+        deck: node instanceof Element && Boolean(node.closest('.hudd')) && !node.closest('.hudt')
       })
   }
   const method = (proto: object, name: string, label: string) => {
@@ -492,6 +495,102 @@ test.describe('the deck words a change of the stage a few frames after it', () =
     expect(seen.again).toEqual([line(1), line(1), line(1), line(3), line(3), line(3)])
     expect(seen.opened).toEqual([false, false, false, true, true, true])
     expect(seen.after).not.toBe(line(3))
+    expect(errors).toEqual([])
+    await context.close()
+  })
+})
+
+test.describe('the deck while the page is on its side', () => {
+  test.setTimeout(120_000)
+
+  /** What the deck shows of the stage: its aim line, the defeated count, and how far its clock is from the stage's. */
+  const deckShows = (page: Page) =>
+    page.evaluate(async () => {
+      const { formatClock } = (await import('/src/ui/rules.ts')) as { formatClock(seconds: number): string }
+      const h = hook() as unknown as CostHook & {
+        world: { time: number }
+        app: { hud: { deck: { clock: { shown: string } } } }
+      }
+      const shown = h.app.hud.deck.clock.shown
+      const tenths = Math.floor(h.world.time * 10)
+      // The clock is written a few times a second: it shows the stage's time or one just before it.
+      const near = [0, 1, 2, 3, 4].some((back) => formatClock((tenths - back) / 10) === shown)
+      return {
+        aim: document.querySelector('.hudd-aim')?.textContent ?? '',
+        kills: document.querySelector('.hudd-stat > b:not(.hudd-clock)')?.textContent ?? '',
+        clockNear: near,
+        clock: shown,
+        toast: Boolean(document.querySelector('.hudd-hint')?.classList.contains('is-toast'))
+      }
+    })
+  const still = (page: Page) =>
+    page.evaluate(() => {
+      const h = hook()
+      h.autopilot(false)
+      for (const enemy of h.world.enemies) enemy.dead = true
+      h.world.player.invuln = 1e9
+    })
+  const setState = (page: Page, collected: number, kills: number) =>
+    page.evaluate(
+      ([c, k]) => {
+        const w = hook().world as unknown as { collected: number; kills: number }
+        w.collected = c
+        w.kills = k
+      },
+      [collected, kills]
+    )
+
+  test('nothing is written to the deck on its side; upright again it shows the stage as it is', async ({ browser }) => {
+    // Stage 6 collects materials: the aim line counts them. The stage starts with the page on its side.
+    const { page, context, errors } = await open(browser, 844, 390, 6)
+    await still(page)
+    await expect(page.locator('.hudd-aim')).toBeHidden()
+    // What the deck would word: a material, defeated enemies, and the time that passes (its clock, its hints).
+    await setState(page, 2, 3)
+    const run = await recordFrames(page, 150)
+    expect(run.updates).toBeGreaterThanOrEqual(150)
+    expect(run.calls.filter((call) => call.deck).map((call) => `${call.name} ${call.on}`)).toEqual([])
+    // The stage's own counter, which is on screen, did follow.
+    await expect(page.locator('.hudx-collect b')).toHaveText('2/8')
+
+    // Upright: the deck is on screen and shows this state.
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(page.locator('.hudd-aim')).toBeVisible()
+    await expect(page.locator('.hudd-aim')).toHaveText(/2\/8/)
+    await expect.poll(async () => (await deckShows(page)).kills).toBe('3')
+    await expect.poll(async () => (await deckShows(page)).clockNear).toBe(true)
+
+    // A toast on the deck, then on its side again while the stage goes on, then upright: the newer state, and the
+    // toast that was on when the deck went away is over.
+    await page.evaluate(() =>
+      (hook().app.hud as unknown as { showToast(text: string): void }).showToast('かじってみよう')
+    )
+    expect((await deckShows(page)).toast).toBe(true)
+    await page.setViewportSize({ width: 844, height: 390 })
+    await expect(page.locator('.hudd-aim')).toBeHidden()
+    await setState(page, 5, 4)
+    const again = await recordFrames(page, 60)
+    expect(again.calls.filter((call) => call.deck).map((call) => `${call.name} ${call.on}`)).toEqual([])
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(page.locator('.hudd-aim')).toHaveText(/5\/8/)
+    await expect.poll(async () => (await deckShows(page)).kills).toBe('4')
+    await expect.poll(async () => (await deckShows(page)).clockNear).toBe(true)
+    expect((await deckShows(page)).toast).toBe(false)
+    expect(errors).toEqual([])
+    await context.close()
+  })
+
+  test('a deck that stays on screen is written as before: the aim, the count and the clock follow the stage', async ({
+    browser
+  }) => {
+    const { page, context, errors } = await open(browser, 390, 844, 6)
+    await still(page)
+    await setState(page, 1, 2)
+    await expect(page.locator('.hudd-aim')).toHaveText(/1\/8/)
+    await expect.poll(async () => (await deckShows(page)).kills).toBe('2')
+    const first = (await deckShows(page)).clock
+    await expect.poll(async () => (await deckShows(page)).clock).not.toBe(first)
+    await expect.poll(async () => (await deckShows(page)).clockNear).toBe(true)
     expect(errors).toEqual([])
     await context.close()
   })
