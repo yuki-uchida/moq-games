@@ -5,8 +5,9 @@
  *
  * Enemy E is visible to team T when
  *   (a) E is within NEAR of a living T member;
- *   (b) a living T member sees E's head or chest (map boxes, ヤドカリ walls and ink clouds block the line) from
- *       its eye, its aim pivot or its camera, within RANGE, unless E's camouflage (cloak ≥ 0.5) hides it beyond
+ *   (b) a living T member sees E's head or chest (map boxes, ヤドカリ walls, solid props and ink clouds block the
+ *       line) from its eye, either shoulder's aim pivot (pulled clear of cover as in src/sim/shoulder.ts) or the
+ *       camera behind it, within RANGE, unless E's camouflage (cloak ≥ 0.5) hides it beyond
  *       CAMO_NEAR — and for LINGER seconds after that sight is lost, so corners do not flicker;
  *   (c) sonar reveals E to T;
  *   (d) E fired or used an antique within HEARD_TIME seconds and is within HEARD_RANGE of a living T member;
@@ -20,10 +21,12 @@
  * blockers), or — for a prop — while its owner is known to that team. Decoys keep the LINGER hysteresis; static
  * deployables and shards stay known once seen until they are gone.
  */
-import { eyeHeight, shoulderOffset, SPECIES } from '../data/species'
+import { eyeHeight, SPECIES } from '../data/species'
 // The sim's static collision world (no sim state): the same boxes the host's world collides with.
 import { Physics } from '../sim/physics'
 import type { MapDef, PlayerView, PropView, SimEvent, TeamId, View } from '../sim/types'
+import { propSolids, type SolidCyl } from '../sim/prop-solids'
+import { pivotAt, shoulderFree } from '../sim/shoulder'
 import { hermitWallBox } from '../sim/wall-box'
 
 export const VIS = {
@@ -71,20 +74,26 @@ function propAim(r: PropView): V {
   return [r.p[0], r.p[1] + h, r.p[2]]
 }
 
-/** Where a player's screen can see from: eye, aim pivot and the camera behind it (pulled in by walls). */
+/**
+ * Where a player's screen can really see from: the eye, the aim pivot of each shoulder (switching is instant) as the
+ * sim and the camera resolve it — pulled in clear of cover (src/sim/shoulder.ts) — and the camera behind each pivot,
+ * its arm stopped short of map boxes, ヤドカリ walls and solid props a little earlier than the real camera's (never
+ * further out than it can be).
+ */
 function viewpoints(phys: Physics, p: PlayerView): V[] {
   const def = SPECIES[p.species]
-  const eh = eyeHeight(def)
-  const eye: V = [p.p[0], p.p[1] + eh, p.p[2]]
-  const side = shoulderOffset(def) * (p.shoulder === -1 ? -1 : 1)
-  const pivot: V = [p.p[0] - Math.cos(p.yaw) * side, p.p[1] + eh, p.p[2] + Math.sin(p.yaw) * side]
+  const eye: V = [p.p[0], p.p[1] + eyeHeight(def), p.p[2]]
+  const out: V[] = [eye]
   const cp = Math.cos(p.pitch)
   const back: V = [-Math.sin(p.yaw) * cp, -Math.sin(p.pitch), -Math.cos(p.yaw) * cp]
-  let arm = VIS.ARM * (def.height / SPECIES.shiba.height)
-  const hit = phys.raycast(pivot, back, arm, 0, -1)
-  if (hit) arm = Math.max(0.35, hit.t - 0.22)
-  const cam: V = [pivot[0] + back[0] * arm, pivot[1] + back[1] * arm, pivot[2] + back[2] * arm]
-  return [eye, pivot, cam]
+  for (const shoulder of [1, -1] as const) {
+    const pivot = pivotAt(p.p, p.yaw, def, shoulder, shoulderFree(phys, p.p, p.yaw, def, shoulder)) as V
+    let arm = VIS.ARM * (def.height / SPECIES.shiba.height)
+    const hit = phys.raycast(pivot, back, arm, 0.12, -1)
+    if (hit) arm = Math.max(0.35, hit.t - 0.22)
+    out.push(pivot, [pivot[0] + back[0] * arm, pivot[1] + back[1] * arm, pivot[2] + back[2] * arm])
+  }
+  return out
 }
 
 function targets(p: PlayerView): V[] {
@@ -162,6 +171,10 @@ export class TeamVisibility {
     this.phys.dyn = view.props
       .filter((r) => r.kind === 'hermit')
       .map((r) => ({ ...hermitWallBox(r), pass: -2, tag: r.id }))
+    // The solid 灯台 / 巣核 block sight too (none on the PvP maps today).
+    const solids: SolidCyl[] = []
+    for (const r of view.props) propSolids(r, solids)
+    this.phys.solids = solids
     const inks = view.props.filter((r) => r.kind === 'ink')
     const out: TeamSets = new Map()
     const all = RESULT.has(view.phase)

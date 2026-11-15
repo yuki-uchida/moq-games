@@ -4,7 +4,7 @@
  * stomp). bossHitModifier applies their weak points / armour to incoming hits.
  */
 import { GRAVITY } from '../../data/species'
-import { placeEffect } from '../actors'
+import { placeEffect, type AreaCyl } from '../actors'
 import { blast, damagePlayer, type DamageInfo } from '../combat'
 import {
   DT,
@@ -339,11 +339,13 @@ export function bossHitModifier(sim: Sim, f: Foe, d: DamageInfo): { mult: number
       return { mult: capTo(f, d, GOUTETSU_ARMOR, floor), weak: false }
     }
     if (!f.parts) return { mult: capTo(f, d, GOUTETSU_ARMOR, floor), weak: false }
-    if (y <= 6.5) {
+    // Area effects name the part they reached (bossAreaParts): a leg, or the hull (−1) — no guessing from the point.
+    if (d.part === -1) return { mult: capTo(f, d, GOUTETSU_ARMOR, floor), weak: false }
+    if (d.part !== undefined || y <= LEG_TOP) {
       const legs = goutetsuLegs(f)
-      let best = -1
+      let best = d.part !== undefined && d.part >= 0 && f.parts[d.part] > 0 ? d.part : -1
       let bd = 2.5
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 4 && d.part === undefined; i++) {
         if (f.parts[i] <= 0) continue
         const dd = Math.hypot(at[0] - legs[i][0], at[2] - legs[i][2])
         if (dd <= bd) {
@@ -365,14 +367,35 @@ export function bossHitModifier(sim: Sim, f: Foe, d: DamageInfo): { mult: number
             f.mem.kneelHp = f.hp
           }
         }
-        // A direct hit is the leg's alone; an area effect (blast, melee sweep) also reaches the armoured hull.
-        if (d.area) return { mult: capTo(f, d, GOUTETSU_ARMOR, floor), weak: false }
+        // The leg takes the hit alone (an area effect reaching the hull too hits it separately, as part −1).
         return { mult: 1, weak: false, absorbed: true }
       }
     }
     return { mult: capTo(f, d, GOUTETSU_ARMOR, floor), weak: false }
   }
   return { mult: 1, weak: false }
+}
+
+/** Top of ゴウテツ's legs above its feet and their radius as area-effect targets. */
+const LEG_TOP = 6.5
+const LEG_R = 1
+
+/**
+ * The parts of a boss an area effect (blast, melee sweep) can reach on their own, each tested for reach and sight
+ * separately: ゴウテツ's living legs (columns at goutetsuLegs, r 1 m, up to 6.5 m; none while it kneels) and
+ * クイツクシ's open maw (its upper 40 %). `part` is passed on in DamageInfo; `alone` parts replace the hull hit
+ * (the maw is the same health pool, only a weak spot), the others come on top of it.
+ */
+export function bossAreaParts(f: Foe): { part: number; cyl: AreaCyl; alone: boolean }[] {
+  if (f.kind === 'goutetsu') {
+    if (!f.parts || kneeling(f)) return []
+    return goutetsuLegs(f)
+      .map((l, i) => ({ part: i, cyl: { x: l[0], z: l[2], r: LEG_R, y0: f.p[1], y1: f.p[1] + LEG_TOP }, alone: false }))
+      .filter((x) => f.parts![x.part] > 0)
+  }
+  if (f.kind === 'kuitsukushi' && f.parts?.[0] === 1)
+    return [{ part: 0, cyl: { x: f.p[0], z: f.p[2], r: f.r, y0: f.p[1] + f.h * 0.6, y1: f.p[1] + f.h }, alone: true }]
+  return []
 }
 
 /** Multiplier that keeps the boss's health at or above `floor` after this hit. */

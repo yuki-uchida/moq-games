@@ -236,6 +236,8 @@ test.describe('アニマフロント online (BroadcastChannel stand-in)', () => 
     await g1.click('.lobby-go')
     await g2.click('.lobby-go')
     await expect(h.locator('.seat:not(.is-bot) .seat-ready')).toHaveCount(3)
+    // the ready state shows on the PvP seats for everyone (not only 準備中)
+    for (const p of [h, g1, g2]) await expect(p.locator('.seat:not(.is-bot) .seat-ready').first()).toBeVisible()
     await h.click('.lobby-go')
     for (const p of [h, g1, g2]) await expect(current(p, 'briefing')).toBeVisible({ timeout: 30_000 })
     for (const p of [g1, g2, h]) await p.click('.brief-go')

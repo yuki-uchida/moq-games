@@ -2104,9 +2104,6 @@ button.room-card:hover,
 .seats-pvp .seat-text b {
   font-size: 14px;
 }
-.seats-pvp .seat-ready {
-  display: none;
-}
 .seats-pvp .seat-paws {
   margin-top: 2px;
 }

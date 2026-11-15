@@ -14,7 +14,7 @@ import {
   type Target
 } from '../actors'
 import { canPay, drain } from '../anima'
-import { damageProp } from '../combat'
+import { areaHitFoe, damageProp } from '../combat'
 import { BLAST_KNOCK, DT, LOB_RADIUS, PUFFER_FALLOFF } from '../constants'
 import { aimOf, muzzleOf, pivotOf } from '../player'
 import { spawnShot } from '../projectiles'
@@ -77,7 +77,18 @@ function meleeSector(
   for (const t of targets) {
     const ref = refOf(t)
     if (extra.skip?.has(ref) || ref === selfRef(p)) continue
-    // The contact: the nearest point of the target in reach and in sight (a boss leg in reach takes the blow).
+    if (t.k === 'f') {
+      // A foe: its body and every boss part in reach and in sight take the blow (areaHitFoe).
+      const info = { kind: 'melee' as const, side: p.side, by: selfRef(p), item: def.id, from: p.p }
+      if (
+        !areaHitFoe(sim, t.f, c, c, reach, p.side, () => dmg, { ...info, knock: extra.knock, knockUp: extra.knockUp })
+      )
+        continue
+      extra.skip?.add(ref)
+      n++
+      continue
+    }
+    // The contact: the nearest point of the target in reach and in sight.
     const contact = areaContact(sim, c, c, t, reach, p.side)
     if (!contact) continue
     extra.skip?.add(ref)
