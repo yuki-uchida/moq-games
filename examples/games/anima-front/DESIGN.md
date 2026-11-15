@@ -272,6 +272,9 @@ are settings. Phones play in landscape; in portrait the game shows a rotate card
 
 - Static world = axis-aligned boxes (`MapDef.boxes`) on a uniform grid for queries. Characters are vertical
   capsules; they slide along walls and step up ledges ≤ 0.45 m. Map edges are walls.
+- The 灯台 (shaft r 1.5 m to 9 m, sandbag foot r 2.1 m to 0.8 m) and the 巣核 (r 1.6 m to 3.5 m) are solid upright
+  cylinders for players, bots and foes (`src/sim/prop-solids.ts`, also in the guest's prediction); a destroyed node
+  stops blocking, the escort cart stays walk-through.
 - Ground speed 6.8 m/s × species × modifiers; acceleration 60 m/s² on the ground, 16 m/s² in the air; gravity
   26 m/s²; jump velocity 11.5 × √jump → ≈ 2.5 m high (rabbit ≈ 3.4 m); coyote time and jump buffer 0.1 s.
 - Dash: 0.2 s at 21 m/s in the move direction (or forward), cooldown 0.9 s, cost 0.5, one air dash per jump.

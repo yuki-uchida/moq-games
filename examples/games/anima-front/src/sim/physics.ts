@@ -1,13 +1,18 @@
 /**
  * Static collision world (DESIGN §9): axis-aligned boxes in a uniform x/z grid, the y = 0 ground plane and the map
- * bounds as walls. Provides capsule movement with wall sliding and step-up, ground detection, ray casts (with an
- * optional inflation radius for swept spheres) and a dynamic spatial hash for actor queries.
+ * bounds as walls, plus one-sided dynamic boxes (ヤドカリ walls) and solid upright cylinders (the 灯台 and the 巣核:
+ * they block movement for every side; shots and sight lines test those props themselves). Provides capsule movement
+ * with wall sliding and step-up, ground detection, ray casts (with an optional inflation radius for swept spheres),
+ * steering around the cylinders and a dynamic spatial hash for actor queries.
  */
 import { STEP_UP } from './constants'
+import type { SolidCyl } from './prop-solids'
 import type { BoxKind, MapDef, Surface } from './types'
 import type { Vec } from './vec'
 
 const CELL = 4
+/** Clearance kept from a solid cylinder when steering round it (m). */
+const AROUND = 0.4
 
 const KIND_SURFACE: Record<BoxKind, Surface> = {
   ground: 'ground',
@@ -81,6 +86,8 @@ export class Physics {
   private stampId = 1
   readonly groundSurface: Surface
   dyn: DynBox[] = []
+  /** Solid mission props (upright cylinders, src/sim/prop-solids.ts) blocking movement for every side. */
+  solids: SolidCyl[] = []
 
   constructor(map: MapDef) {
     this.minX = map.bounds.min[0]
@@ -185,6 +192,11 @@ export class Physics {
       if (circleRect(x, z, r, d.min[0], d.min[2], d.max[0], d.max[2]) < 0) continue
       best = top
     }
+    for (const c of this.solids) {
+      if (c.y1 <= best || c.y1 > maxY) continue
+      if (Math.hypot(x - c.x, z - c.z) > c.r + r) continue
+      best = c.y1
+    }
     return best
   }
 
@@ -202,6 +214,10 @@ export class Physics {
     for (const d of this.dyn) {
       if (d.pass === side || d.max[1] <= p[1] + 0.01 || d.min[1] >= p[1] + h) continue
       if (circleRect(p[0], p[2], r, d.min[0], d.min[2], d.max[0], d.max[2]) > 1e-4) return true
+    }
+    for (const c of this.solids) {
+      if (c.y1 <= p[1] + 0.01 || c.y0 >= p[1] + h) continue
+      if (c.r + r - Math.hypot(p[0] - c.x, p[2] - c.z) > 1e-4) return true
     }
     return false
   }
@@ -325,6 +341,33 @@ export class Physics {
       for (const d of this.dyn) {
         if (d.pass !== side) resolve(d.min[0], d.min[1], d.min[2], d.max[0], d.max[1], d.max[2])
       }
+      for (const c of this.solids) {
+        // Upright cylinder: out along the radius (a body on the axis leaves against its velocity, else towards +x).
+        if (c.y1 <= p[1] + allow || c.y0 >= p[1] + m.h) continue
+        let nx = p[0] - c.x
+        let nz = p[2] - c.z
+        const d = Math.hypot(nx, nz)
+        const reach = c.r + r
+        if (d >= reach) continue
+        if (d < 1e-6) {
+          const sp = Math.hypot(v[0], v[2])
+          nx = sp > 1e-6 ? -v[0] / sp : 1
+          nz = sp > 1e-6 ? -v[2] / sp : 0
+        } else {
+          nx /= d
+          nz /= d
+        }
+        const push = reach - d + 1e-4
+        p[0] += nx * push
+        p[2] += nz * push
+        const vn = v[0] * nx + v[2] * nz
+        if (vn < 0) {
+          v[0] -= vn * nx
+          v[2] -= vn * nz
+        }
+        moved = true
+        touched = true
+      }
       if (!moved) break
     }
     return touched
@@ -347,7 +390,88 @@ export class Physics {
       if (circleRect(x, z, r, d.min[0], d.min[2], d.max[0], d.max[2]) < 0) continue
       best = bot
     }
+    for (const c of this.solids) {
+      if (c.y0 < y0 - 0.02 || c.y0 > y1 || c.y0 >= best) continue
+      if (Math.hypot(x - c.x, z - c.z) > c.r + r) continue
+      best = c.y0
+    }
     return best
+  }
+
+  /** Moves a body's feet point (radius r, height h) radially out of the solid cylinders it stands in (spawns). */
+  clearOfSolids(p: Vec, r: number, h: number): Vec {
+    for (const c of this.solids) {
+      if (c.y1 <= p[1] + STEP_UP || c.y0 >= p[1] + h) continue
+      const dx = p[0] - c.x
+      const dz = p[2] - c.z
+      const d = Math.hypot(dx, dz)
+      const reach = c.r + r + 0.05
+      if (d >= reach) continue
+      const nx = d > 1e-6 ? dx / d : 1
+      const nz = d > 1e-6 ? dz / d : 0
+      p[0] = c.x + nx * reach
+      p[2] = c.z + nz * reach
+    }
+    return p
+  }
+
+  /**
+   * Steering for a walker (feet at x/y/z, radius r) heading straight for the waypoint (wx, wz) past a solid
+   * cylinder: the unit direction round the first cylinder in the way (the tangent once alongside it), or null when
+   * the line is clear, when the waypoint lies against or inside the cylinder (the walker is going to it) or when
+   * the cylinder is only a step high or above the walker's head.
+   */
+  steerAround(x: number, y: number, z: number, r: number, wx: number, wz: number): [number, number] | null {
+    const len = Math.hypot(wx - x, wz - z)
+    if (len < 1e-6) return null
+    const ux = (wx - x) / len
+    const uz = (wz - z) / len
+    let hit: SolidCyl | null = null
+    let ht = Infinity
+    let he = 0
+    let hr = 0
+    for (const c of this.solids) {
+      if (c.y1 <= y + STEP_UP || c.y0 >= y + 1.5) continue
+      const reach = c.r + r + AROUND
+      if (Math.hypot(wx - c.x, wz - c.z) < reach + 0.3) continue
+      const ox = c.x - x
+      const oz = c.z - z
+      const t = ox * ux + oz * uz
+      // The axis's signed offset from the line (+ on the (−uz, ux) side).
+      const e = -ox * uz + oz * ux
+      // Nearest in the way; of a prop's stacked parts (same axis) the widest.
+      if (t < 0 || t > len || Math.abs(e) >= reach || t > ht || (t === ht && reach <= hr)) continue
+      hit = c
+      ht = t
+      he = e
+      hr = reach
+    }
+    if (!hit) return null
+    // Pass on the side the line already leans to (the side away from the axis; an exact hit goes right).
+    const sgn = he > 0 ? 1 : -1
+    const reach = hr
+    const px = hit.x + uz * sgn * reach - x
+    const pz = hit.z - ux * sgn * reach - z
+    const ox = x - hit.x
+    const oz = z - hit.z
+    const d = Math.hypot(ox, oz)
+    if (d < reach + 0.5 && d > 1e-6) {
+      // Alongside: follow the tangent that heads for the passing point, leaning out a little.
+      const nx = ox / d
+      const nz = oz / d
+      let tx = -nz
+      let tz = nx
+      if (tx * px + tz * pz < 0) {
+        tx = -tx
+        tz = -tz
+      }
+      const ax = tx + nx * 0.15
+      const az = tz + nz * 0.15
+      const al = Math.hypot(ax, az)
+      return [ax / al, az / al]
+    }
+    const pl = Math.hypot(px, pz)
+    return pl > 1e-6 ? [px / pl, pz / pl] : null
   }
 
   /**

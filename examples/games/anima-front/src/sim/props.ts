@@ -6,6 +6,7 @@ import { ITEMS } from '../data/items'
 import type { SpeciesId } from '../data/species'
 import { heal } from './anima'
 import { DT } from './constants'
+import { PROP_SOLIDS, propSolids } from './prop-solids'
 import { emit, type Prop, type Side, type Sim } from './state'
 import type { PropKind } from './types'
 import { r3v, vdist, type Vec } from './vec'
@@ -54,7 +55,15 @@ export function addProp(
     gone: false
   }
   sim.props.push(prop)
+  if (PROP_SOLIDS[kind]) syncSolids(sim)
   return prop
+}
+
+/** Keeps the physics' solid cylinders in sync with the live 灯台 and 巣核 (a destroyed node stops blocking). */
+export function syncSolids(sim: Sim) {
+  const out: Sim['phys']['solids'] = []
+  for (const r of sim.props) if (!r.gone) propSolids(r, out)
+  sim.phys.solids = out
 }
 
 /** Removes a prop silently (expiry) and its collision box. */
@@ -109,11 +118,16 @@ export function propsTick(sim: Sim) {
       sim.phys.move(body, DT, r.side as number)
     }
   }
+  let solidsChanged = false
   if (sim.props.some((r) => r.gone)) {
-    for (const r of sim.props) if (r.gone && r.kind === 'hermit') wallsChanged = true
+    for (const r of sim.props) {
+      if (r.gone && r.kind === 'hermit') wallsChanged = true
+      if (r.gone && PROP_SOLIDS[r.kind]) solidsChanged = true
+    }
     sim.props = sim.props.filter((r) => !r.gone)
   }
   if (wallsChanged) syncWalls(sim)
+  if (solidsChanged) syncSolids(sim)
 }
 
 /** Live props of a kind owned by a player, oldest first. */

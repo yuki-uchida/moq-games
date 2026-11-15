@@ -86,7 +86,9 @@ export class WaveDirector {
     const j = FOES[q.kind].boss ? 0 : 2
     let at: Vec = [s.p[0] + sim.rng.range(-j, j), s.p[1], s.p[2] + sim.rng.range(-j, j)]
     if (!sim.phys.inBounds(at[0], at[2], 1)) at = [s.p[0], s.p[1], s.p[2]]
-    if (!flying) at = settle(sim, at, FOES[q.kind].radius)
+    // Ground foes never appear inside a 巣核 (or the 灯台).
+    if (!flying)
+      at = settle(sim, sim.phys.clearOfSolids(at, FOES[q.kind].radius, FOES[q.kind].height), FOES[q.kind].radius)
     spawnFoe(sim, q.kind, at, { wave: q.wave })
   }
 
