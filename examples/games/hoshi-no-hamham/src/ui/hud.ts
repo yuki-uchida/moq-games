@@ -545,7 +545,9 @@ export class Hud implements HudApi, PrimeTarget {
 
   private updateHearts(hp: number, maxHp: number, dt: number) {
     if (maxHp !== this.maxHp) {
-      this.rebuildHearts(maxHp)
+      // A stage that starts has as many hearts as the one before, as a rule: their canvases stay, and each is
+      // painted again only where it has to show another picture (a new canvas on the page costs far more).
+      if (this.heartSlots.length !== maxHp) this.rebuildHearts(maxHp)
       this.maxHp = maxHp
       this.hp = -1
     }
@@ -575,6 +577,18 @@ export class Hud implements HudApi, PrimeTarget {
   update(world: World, dt: number) {
     this.primer.interrupt()
     this.step(world, dt)
+  }
+
+  /**
+   * Writes what the first frame of a stage would write, now, with no time passing: the hearts, the deck's
+   * pictures and lines, the meters. The tap that starts a stage calls it once the stage is set, so that the work
+   * of the HUD's first update is done before the stage is first shown and its first frames are as light as the
+   * ones after them. The first frame then finds everything written, and its meters are due at once, as before.
+   */
+  settle(world: World) {
+    this.primer.interrupt()
+    this.step(world, 0)
+    this.meterFresh = true
   }
 
   /** What `update` does; the priming calls it so that whatever wraps `update` from outside does not see the walk. */

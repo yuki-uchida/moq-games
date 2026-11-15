@@ -130,6 +130,7 @@ export class PlaySession {
     input.consumePresses()
     hud.show()
     hud.setStage(this.stage)
+    hud.settle(this.world)
     audio.unlock()
     this.sounds.start(this.world)
   }
