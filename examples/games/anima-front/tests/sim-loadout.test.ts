@@ -159,12 +159,12 @@ describe('sustainEstimate', () => {
     const cloak = sustainEstimate('shiba', makeLoadout(['bee'], ['leaf'], []))
     // コノハムシ drains 2.5/s while on and is assumed on for 40 % of a fight.
     expect(DRAIN_SHARE.cloak).toBe(0.4)
-    expect(cloak.drains).toEqual([{ item: 'leaf', perSecond: 2.5, share: 0.4, rate: 1 }])
+    expect(cloak.drains).toEqual([{ item: 'leaf', perSecond: 2.5, paws: 1, share: 0.4, rate: 1 }])
     expect(cloak.byCategory.gadget).toBeCloseTo(base.byCategory.gadget + 1, 5)
     expect(cloak.burn).toBeCloseTo(base.burn + 1, 2)
     expect(cloak.sustain).toBeCloseTo(100 / (base.burn + 1 - 1.5 * 0.33), 0)
     expect(cloak.sustain).toBeLessThan(base.sustain / 2)
-    // the shield (armour) and the glide (a passive) count too, once each whichever paws carry them
+    // the shield (armour) drains in each paw that raises it (both assumed raised together); the glide counts once
     const all = sustainEstimate('shiba', makeLoadout(['bee', 'armadillo'], ['leaf', 'armadillo'], ['momonga']))
     expect(all.drains.map((d) => [d.item, d.share])).toEqual([
       ['armadillo', 0.2],
@@ -172,7 +172,8 @@ describe('sustainEstimate', () => {
       ['momonga', 0.1]
     ])
     const shield = all.drains.find((d) => d.item === 'armadillo')!
-    expect(shield.rate).toBeCloseTo(0.4 * 0.2, 5)
+    expect(shield.paws).toBe(2)
+    expect(shield.rate).toBeCloseTo(0.4 * 2 * 0.2, 5)
     expect(all.drains.find((d) => d.item === 'momonga')!.rate).toBeCloseTo(1.2 * 0.1, 5)
     expect(all.sustain).toBeLessThan(cloak.sustain)
   })

@@ -90,31 +90,44 @@ describe('shots and beams from a high place', () => {
   })
 })
 
-describe('a shot fired from inside a hit volume', () => {
+describe('shots fired against a node (its hit volume is its solid pod, r 1.6)', () => {
   const setup = () => {
     const r = rig({ r: ['bee'] })
     r.step(2)
     r.player().p = [0, 0, 0]
     const node = addProp(r.sim, 'node', [0, 0, 0], 0, FOE_SIDE, { hp: 1000, r: 2.2, data: { h: 4 } })
+    // a body dropped on the node is pushed out to its surface (+x)
+    r.step(1)
     return { r, node }
   }
 
-  it('goes on to the far target it is aimed at; the node it stands in is not hit', () => {
+  it('pressed against the node and aimed away from it, shots reach the far target and never hurt the node', () => {
     const { r, node } = setup()
-    const far = target(r, [0, 0, 10])
-    aimAt(r, [0, 0.9, 10])
+    expect(r.player().p[0]).toBeGreaterThan(1.9)
+    const far = target(r, [12, 0, 0])
+    aimAt(r, [12, 0.9, 0])
     r.press('R', 30)
     expect(far.hp ?? 0).toBeLessThan(1000)
     expect(node.hp).toBe(1000)
   })
 
-  it('aimed at nothing from inside the node, the shots leave it without hurting it', () => {
+  it('pressed against the node and aimed at open sky away from it, no shot hits anything', () => {
     const { r, node } = setup()
-    aimAt(r, [0, 0.9, 40])
+    aimAt(r, [40, 6, 0])
     r.press('R', 30)
     expect(r.player().stats.shots).toBeGreaterThan(0)
     expect(r.player().stats.hits).toBe(0)
     expect(node.hp).toBe(1000)
+  })
+
+  it('a muzzle poking into the node hits the node, never something behind it', () => {
+    const { r, node } = setup()
+    const behind = target(r, [-6, 0, 0])
+    // aim through the node at the target on its far side: the muzzle (left of the pivot) is inside the pod
+    aimAt(r, [-6, 0.9, 0])
+    r.press('R', 30)
+    expect(node.hp ?? 0).toBeLessThan(1000)
+    expect(behind.hp).toBe(1000)
   })
 
   it('point-blank at the node (pivot just outside, muzzle inside it) and from further away still hit it', () => {

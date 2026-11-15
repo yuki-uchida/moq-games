@@ -242,7 +242,9 @@ While アルマジロ is raised the animal moves at 70% speed and cannot use tha
   cycle a paw; switching takes 0.25 s (the antique dissolves and re-forms in light).
 - **Sustain estimate** (editor): `fight = upkeep + Σ per paw (cost rate of its first weapon × 0.5 duty) + 9/s
 incoming × (1 − armour reduction)` minus regeneration (held / toggled drains count at an assumed share of the fight:
-  cloak 40 %, shield 20 %, glide 10 %, listed under the bar); shows **推定継戦時間** = anima / fight (∞ if ≤ 0) and a
+  cloak 40 %, shield 20 % per paw — both paws raised together —, glide 10 %, free for the owl; listed under the
+  bar; every number comes from the sim's own cost functions: `itemCost`, `drainOf`, `upkeepOf`, `glideDrain`,
+  `dashCost`); shows **推定継戦時間** = anima / fight (∞ if ≤ 0) and a
   bar of anima use by category. Also shown: max anima, upkeep/s, cheapest/most expensive actions.
 - Six presets (one default per species, all selectable): **アタッカー** (シャチマル + ミツバチ…), **ガンナー**
   (キツツキ, ダンゴムシ…), **スナイパー** (フクロウアイ, ヤモリフック, モモンガ…), **タンク** (アルマジロ, カメノコウラ,
@@ -294,6 +296,13 @@ are settings. Phones play in landscape; in portrait the game shows a rotate card
 - Damage pipeline: base × enhancements × species trait → target modifiers (guard/shield, jelly negate, armour %,
   front armour of brutes, weak points ×2) → apply. Every application produces a `hit` event (amount, head, kind).
 - Knockback: blasts 6 m/s, hammer knock-up, brute charge 9 m/s; bears take 40%.
+- One occlusion rule for every effect that crosses space: map boxes, ヤドカリ walls of other sides and the solid
+  灯台 / 巣核 (whose hit volume is their collider). Rays (shots, pellets, beams, the hook, pad placement, aim) start at
+  the shooter's body axis (`shotGuard`: a muzzle poking into a wall, a solid prop or a body hits it there) and use
+  `Physics.raycast`; area effects (melee sweeps, blasts on players, foes, bosses and props, beam chains, foe bites and
+  sweeps, the honey aura) need `targetVisible` (some part of the target in clear sight). The beam is drawn to the end
+  the sim resolved (`HandView.beamEnd`). Not occluded by design: sonar (壁越し), standing in a base / zone / acid
+  puddle, revives and the cart's escort radius.
 - Kill credit: the last damager within 10 s; assists: other damagers within 10 s.
 
 ## 11. Enemies (`src/data/enemies.ts`, `src/sim/enemies/`)

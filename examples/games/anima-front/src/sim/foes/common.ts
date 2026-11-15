@@ -5,7 +5,7 @@
  */
 import type { FoeAttack, FoeAttackDef } from '../../data/enemies'
 import { GRAVITY } from '../../data/species'
-import { canPerceive } from '../actors'
+import { canPerceive, targetVisible, type Target } from '../actors'
 import { damagePlayer, damageProp } from '../combat'
 import { DECOY_RADIUS, DT, FOE_AGGRO } from '../constants'
 import { emit, FOE_SIDE, type Foe, type Player, type Prop, type Sim, type TargetRef } from '../state'
@@ -346,6 +346,9 @@ export function strike(sim: Sim, f: Foe, t: TargetInfo | null, reach: number, dm
   if (!t) return
   if (edgeDist(f, t) > reach) return
   if (Math.abs(t.pos[1] - f.p[1]) > f.h + 2) return
+  // The shared occlusion rule: no bite through a wall, a ヤドカリ wall or the 灯台 / 巣核.
+  const target: Target | null = t.player ? { k: 'p', p: t.player } : t.prop ? { k: 'r', r: t.prop } : null
+  if (target && !targetVisible(sim, eye(f), target, FOE_SIDE)) return
   const amount = dmg * f.dmgMul
   if (t.player)
     damagePlayer(sim, t.player, {
@@ -377,6 +380,7 @@ export function hitPlayersNear(
     if (p.state !== 'alive' || hit.has(p.id) || p.side === FOE_SIDE) continue
     const y = Math.min(Math.max(c[1], p.p[1]), p.p[1] + p.h)
     if (Math.hypot(p.p[0] - c[0], y - c[1], p.p[2] - c[2]) - p.r > r) continue
+    if (!targetVisible(sim, [c[0], c[1] + 0.3, c[2]], { k: 'p', p }, FOE_SIDE)) continue
     hit.add(p.id)
     damagePlayer(sim, p, {
       amount: dmg * f.dmgMul,

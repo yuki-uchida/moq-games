@@ -135,9 +135,9 @@ export function createStatsPanel(): StatsPanel {
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 
-/** 「コノハムシ 使用中 2.5/秒 × 想定 40% = 1/秒」 */
+/** 「コノハムシ 使用中 2.5/秒 × 想定 40% = 1/秒」, 「アルマジロ 使用中 0.4/秒 × 両手 × 想定 20% = 0.16/秒」 */
 export const drainText = (d: SustainReport['drains'][number]) =>
-  `${ITEMS[d.item].name} 使用中 ${fmt(d.perSecond)}/秒 × 想定 ${Math.round(d.share * 100)}% = ${fmt(round2(d.rate))}/秒`
+  `${ITEMS[d.item].name} 使用中 ${fmt(d.perSecond)}/秒${d.paws > 1 ? ' × 両手' : ''} × 想定 ${Math.round(d.share * 100)}% = ${fmt(round2(d.rate))}/秒`
 
 const drainLine = (d: SustainReport['drains'][number]) => h('span', null, drainText(d))
 

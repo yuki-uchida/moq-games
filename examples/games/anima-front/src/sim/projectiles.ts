@@ -40,10 +40,14 @@ export interface ShotSpec {
   puddle?: boolean
   explodeOnActor?: boolean
   knock?: number
-  aimedProp?: number
 }
 
-export function spawnShot(sim: Sim, s: ShotSpec): Shot | null {
+/**
+ * Spawns a projectile at `s.p` (the muzzle). With a `guard` (the shooter's body axis at muzzle height, see
+ * shotGuard), the stretch from the guard to the muzzle is swept first, so a muzzle poking into a wall, a solid prop
+ * or a body hits it there instead of starting past it.
+ */
+export function spawnShot(sim: Sim, s: ShotSpec, guard?: readonly number[]): Shot | null {
   if (sim.shots.length >= MAX_SHOTS) return null
   const shot: Shot = {
     id: sim.nextShot++,
@@ -71,10 +75,19 @@ export function spawnShot(sim: Sim, s: ShotSpec): Shot | null {
     puddle: s.puddle ?? false,
     explodeOnActor: s.explodeOnActor ?? false,
     knock: s.knock ?? 0,
-    ...(s.aimedProp !== undefined ? { aimedProp: s.aimedProp } : {}),
     gone: false
   }
   sim.shots.push(shot)
+  if (guard) {
+    const seg: Vec = [s.p[0] - guard[0], s.p[1] - guard[1], s.p[2] - guard[2]]
+    if (Math.hypot(seg[0], seg[1], seg[2]) > 1e-6) {
+      shot.p = [guard[0], guard[1], guard[2]]
+      if (sweep(sim, shot, seg) === 'go') {
+        shot.p = [s.p[0], s.p[1], s.p[2]]
+        shot.travelled = 0
+      }
+    }
+  }
   return shot
 }
 
@@ -153,6 +166,73 @@ function directHit(sim: Sim, s: Shot, t: Target, at: Vec, head: boolean) {
   })
 }
 
+/**
+ * Moves a shot along `seg` (one tick, or its guard segment) against walls, the solid props and hostile actors.
+ * 'stop': it hit something and is done for this tick (gone, or bounced off an actor); 'go': it flew on (or bounced
+ * off a wall) and the caller runs its fuse and lifetime.
+ */
+function sweep(sim: Sim, s: Shot, seg: Vec): 'stop' | 'go' {
+  const wall = sim.phys.raycast(s.p, seg, 1, s.r, s.side)
+  const act = rayActors(sim, s.side, s.p, seg, wall ? wall.t : 1, s.r, s.owner, false)
+  if (act && (!wall || act.t <= wall.t)) {
+    const at: Vec = [s.p[0] + seg[0] * act.t, s.p[1] + seg[1] * act.t, s.p[2] + seg[2] * act.t]
+    s.travelled += Math.hypot(seg[0], seg[1], seg[2]) * act.t
+    if (s.bounce > 0 && !s.explodeOnActor && act.target.k !== 'f') {
+      // Grenades bounce off players/props they cannot blow up on.
+      s.v[0] *= -s.bounce
+      s.v[2] *= -s.bounce
+    } else directHit(sim, s, act.target, at, act.head)
+    return 'stop'
+  }
+  if (!wall) {
+    s.p[0] += seg[0]
+    s.p[1] += seg[1]
+    s.p[2] += seg[2]
+    s.travelled += Math.hypot(seg[0], seg[1], seg[2])
+    return 'go'
+  }
+  const at = wall.point
+  s.travelled += Math.hypot(seg[0], seg[1], seg[2]) * wall.t
+  if (s.bounce > 0 && s.fuse > 0) {
+    const n = wall.normal
+    const vn = s.v[0] * n[0] + s.v[1] * n[1] + s.v[2] * n[2]
+    s.v[0] = (s.v[0] - 2 * vn * n[0]) * s.bounce
+    s.v[1] = (s.v[1] - 2 * vn * n[1]) * s.bounce
+    s.v[2] = (s.v[2] - 2 * vn * n[2]) * s.bounce
+    s.p = [at[0] + n[0] * 0.02, at[1] + n[1] * 0.02, at[2] + n[2] * 0.02]
+    if (n[1] > 0.7 && Math.abs(s.v[1]) < 1.5) s.v[1] = 0
+    return 'go'
+  }
+  if (s.blast || s.kind === 'octopus') {
+    explode(sim, s, [at[0] + wall.normal[0] * 0.1, at[1] + wall.normal[1] * 0.1, at[2] + wall.normal[2] * 0.1])
+    return 'stop'
+  }
+  s.gone = true
+  emit(sim, {
+    type: 'impact',
+    at: r3v(at),
+    normal: wall.normal,
+    surface: wall.surface,
+    item: s.kind,
+    ...byPlayer(s.owner)
+  })
+  // A ヤドカリ wall, or a solid 灯台 / 巣核 the shot stopped on (damageProp ignores the shooter's own side's).
+  if ((wall.box === -3 || wall.box === -5) && wall.tag !== undefined) {
+    const r = findProp(sim, wall.tag)
+    if (r)
+      damageProp(sim, r, {
+        amount: s.dmg,
+        kind: 'ranged',
+        side: s.side,
+        by: s.owner,
+        item: s.foeAttack ?? s.kind,
+        at,
+        from: s.origin
+      })
+  }
+  return 'stop'
+}
+
 export function shotsTick(sim: Sim) {
   for (const s of sim.shots) {
     if (s.gone) continue
@@ -162,66 +242,7 @@ export function shotsTick(sim: Sim) {
       else s.homing = null
     }
     s.v[1] -= s.gravity * DT
-    const seg: Vec = [s.v[0] * DT, s.v[1] * DT, s.v[2] * DT]
-    const wall = sim.phys.raycast(s.p, seg, 1, s.r, s.side)
-    // A shot inside a prop's volume (fired from within a node, say) passes it unless it is aimed at that prop.
-    const act = rayActors(sim, s.side, s.p, seg, wall ? wall.t : 1, s.r, s.owner, false, (r) => r.id === s.aimedProp)
-    if (act && (!wall || act.t <= wall.t)) {
-      const at: Vec = [s.p[0] + seg[0] * act.t, s.p[1] + seg[1] * act.t, s.p[2] + seg[2] * act.t]
-      s.travelled += Math.hypot(seg[0], seg[1], seg[2]) * act.t
-      if (s.bounce > 0 && !s.explodeOnActor && act.target.k !== 'f') {
-        // Grenades bounce off players/props they cannot blow up on.
-        s.v[0] *= -s.bounce
-        s.v[2] *= -s.bounce
-      } else directHit(sim, s, act.target, at, act.head)
-      continue
-    }
-    if (wall) {
-      const at = wall.point
-      s.travelled += Math.hypot(seg[0], seg[1], seg[2]) * wall.t
-      if (s.bounce > 0 && s.fuse > 0) {
-        const n = wall.normal
-        const vn = s.v[0] * n[0] + s.v[1] * n[1] + s.v[2] * n[2]
-        s.v[0] = (s.v[0] - 2 * vn * n[0]) * s.bounce
-        s.v[1] = (s.v[1] - 2 * vn * n[1]) * s.bounce
-        s.v[2] = (s.v[2] - 2 * vn * n[2]) * s.bounce
-        s.p = [at[0] + n[0] * 0.02, at[1] + n[1] * 0.02, at[2] + n[2] * 0.02]
-        if (n[1] > 0.7 && Math.abs(s.v[1]) < 1.5) s.v[1] = 0
-      } else if (s.blast || s.kind === 'octopus') {
-        explode(sim, s, [at[0] + wall.normal[0] * 0.1, at[1] + wall.normal[1] * 0.1, at[2] + wall.normal[2] * 0.1])
-        continue
-      } else {
-        s.gone = true
-        emit(sim, {
-          type: 'impact',
-          at: r3v(at),
-          normal: wall.normal,
-          surface: wall.surface,
-          item: s.kind,
-          ...byPlayer(s.owner)
-        })
-        // A ヤドカリ wall, or a solid 灯台 / 巣核 the shot stopped on (damageProp ignores the shooter's own side's).
-        if ((wall.box === -3 || wall.box === -5) && wall.tag !== undefined) {
-          const r = findProp(sim, wall.tag)
-          if (r)
-            damageProp(sim, r, {
-              amount: s.dmg,
-              kind: 'ranged',
-              side: s.side,
-              by: s.owner,
-              item: s.foeAttack ?? s.kind,
-              at,
-              from: s.origin
-            })
-        }
-        continue
-      }
-    } else {
-      s.p[0] += seg[0]
-      s.p[1] += seg[1]
-      s.p[2] += seg[2]
-      s.travelled += Math.hypot(seg[0], seg[1], seg[2])
-    }
+    if (sweep(sim, s, [s.v[0] * DT, s.v[1] * DT, s.v[2] * DT]) === 'stop') continue
     s.life -= DT
     if (s.fuse > 0) {
       s.fuse -= DT

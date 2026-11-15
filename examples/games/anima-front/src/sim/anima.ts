@@ -17,7 +17,7 @@ import {
   SHARD_RANGE,
   SHARD_SPEED
 } from './constants'
-import { modsOf } from './loadout'
+import { modsOf, upkeepOf } from './loadout'
 import { emit, type Player, type Shard, type Sim } from './state'
 import { r3, vdist, type Vec } from './vec'
 
@@ -139,15 +139,12 @@ function passiveUpkeepShare(p: Player, id: ItemId): number {
   let rawTotal = 0
   let mine = 0
   for (const q of p.build.passives) {
-    const u = (itemUpkeep(q) ?? 0) * (isArmor(q) ? 1 + p.build.mods.armorUpkeep : 1)
+    const u = upkeepOf(p.build.mods, ITEMS[q])
     rawTotal += u
     if (q === id) mine = u
   }
   return rawTotal > 0 ? (mine / rawTotal) * scale : 0
 }
-
-const itemUpkeep = (id: ItemId) => ITEMS[id].upkeep
-const isArmor = (id: ItemId) => ITEMS[id].category === 'armor'
 
 /** Gains from a heal source, emitting one 'heal' event per second of accumulated healing. */
 export function heal(sim: Sim, p: Player, amount: number, source: 'honey' | 'base') {

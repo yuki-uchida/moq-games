@@ -20,6 +20,7 @@ function cancelMode(h: HandSt) {
   h.lockRef = null
   h.lockT = 0
   h.beam = []
+  h.beamEnd = null
   h.armed = false
   h.until = 0
 }

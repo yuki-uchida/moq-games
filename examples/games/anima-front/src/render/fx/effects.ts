@@ -13,6 +13,7 @@ import type { BoxGrid } from '../core/box-grid'
 import type { Emitter } from '../env/ctx'
 import type { ThemeDef } from '../env/themes'
 import type { Markers } from '../markers'
+import { beamEndPoint } from './beam-end'
 import { LineFx } from './lines'
 import { Particle, ParticleSystem, SHAPE } from './particles'
 import { FIRE_LOOK, HIT_LOOK, IMPACT_LOOK, TELEGRAPH, shotColor } from './tables'
@@ -1019,11 +1020,12 @@ export class Effects {
   private beam(pv: PlayerView, h: 0 | 1, ctx: FxContext) {
     if (!ctx.muzzle(pv.id, h, this.v)) return
     aimDirection(pv.yaw, pv.pitch, this.w)
-    const range = 35
-    const hit = ctx.grid ? ctx.grid.raycast(this.v.x, this.v.y, this.v.z, this.w.x, this.w.y, this.w.z, range) : range
-    const ex = this.v.x + this.w.x * hit
-    const ey = this.v.y + this.w.y * hit
-    const ez = this.v.z + this.w.z * hit
+    const [ex, ey, ez] = beamEndPoint(
+      pv.hands[h],
+      [this.v.x, this.v.y, this.v.z],
+      [this.w.x, this.w.y, this.w.z],
+      ctx.grid ?? undefined
+    )
     const color = ITEMS.eel.color
     this.lines.bolt(this.v.x, this.v.y, this.v.z, ex, ey, ez, 14, 0.5, 0.06, 0xe8ffff, 5, 1)
     this.lines.bolt(this.v.x, this.v.y, this.v.z, ex, ey, ez, 10, 1.1, 0.03, color, 4, 0.8)
