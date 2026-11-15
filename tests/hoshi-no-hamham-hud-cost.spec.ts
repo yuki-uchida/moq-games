@@ -443,6 +443,60 @@ test.describe('HUD animations restart without forcing style', () => {
   })
 })
 
+test.describe('the deck words a change of the stage a few frames after it', () => {
+  test.setTimeout(120_000)
+
+  test('the aim line and the goal on the track follow three frames after the state they show', async ({ browser }) => {
+    // Stage 6 collects materials: the aim line counts them, and the goal opens when they are all there.
+    const { page, context, errors } = await open(browser, 390, 844, 6)
+    const seen = await page.evaluate(async () => {
+      const h = hook()
+      h.autopilot(false)
+      for (const enemy of h.world.enemies) enemy.dead = true
+      h.world.player.invuln = 1e9
+      // A frame is over, for this page, when this callback runs: it was asked for after the game's own.
+      const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      const aim = () => document.querySelector('.hudd-aim')?.textContent ?? ''
+      const open = () => Boolean(document.querySelector('.hudd-goal')?.classList.contains('is-open'))
+      for (let i = 0; i < 12; i++) await frame()
+      const before = { aim: aim(), open: open() }
+      h.world.collected = 1
+      const counted: string[] = []
+      for (let i = 0; i < 6; i++) {
+        await frame()
+        counted.push(aim())
+      }
+      // A second change during the wait starts the wait again: the line shows the newest state, once.
+      h.world.collected = 2
+      await frame()
+      await frame()
+      h.world.collected = 3
+      const again: string[] = []
+      for (let i = 0; i < 6; i++) {
+        await frame()
+        again.push(aim())
+      }
+      h.world.goalOpen = true
+      const opened: boolean[] = []
+      for (let i = 0; i < 6; i++) {
+        await frame()
+        opened.push(open())
+      }
+      return { before, counted, again, opened, after: aim() }
+    })
+    const line = (n: number) => seen.before.aim.replace(/\d+(?=\/)/, String(n))
+    expect(seen.before.aim).toMatch(/0\/\d+/)
+    expect(seen.before.open).toBe(false)
+    // The frame that sees the change and the two after it show the line as it was; the fourth shows the new one.
+    expect(seen.counted).toEqual([line(0), line(0), line(0), line(1), line(1), line(1)])
+    expect(seen.again).toEqual([line(1), line(1), line(1), line(3), line(3), line(3)])
+    expect(seen.opened).toEqual([false, false, false, true, true, true])
+    expect(seen.after).not.toBe(line(3))
+    expect(errors).toEqual([])
+    await context.close()
+  })
+})
+
 test.describe('the texts laid out ahead at the start of a stage', () => {
   test.setTimeout(120_000)
 
