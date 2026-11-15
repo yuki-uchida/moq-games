@@ -692,15 +692,19 @@ test.describe('camera next to the lighthouse', () => {
         view(): unknown
         aimAt(p: number[]): void
         cameraPos(): number[] | null
+        cameraYaw(): number | null
+        propHidden(id: number): boolean
       }
-      view(): { players: { id: string; p: number[] }[]; props: { kind: string; p: number[] }[] }
+      view(): { players: { id: string; p: number[] }[]; props: { id: number; kind: string; p: number[] }[] }
     }
-    const lh = await page.evaluate(() => {
+    const lighthouse = await page.evaluate(() => {
       const a = (window as unknown as { __anima: Hook }).__anima
-      return a.view().props.find((p) => p.kind === 'lighthouse')!.p
+      const l = a.view().props.find((p) => p.kind === 'lighthouse')!
+      return { id: l.id, p: l.p }
     })
-    // walk to the reviewer's spot: 2.3 m east of the lighthouse
-    const spot = [lh[0] + 2.3, lh[1], lh[2] + 0.5]
+    const lh = lighthouse.p
+    // walk to a spot close to the lighthouse (about 1.8 m east of its axis)
+    const spot = [lh[0] + 1.8, lh[1], lh[2] + 0.3]
     await page.keyboard.down('KeyW')
     await expect
       .poll(
@@ -719,7 +723,8 @@ test.describe('camera next to the lighthouse', () => {
       const a = (window as unknown as { __anima: Hook }).__anima
       return a.view().players.find((p) => p.id === a.match.me)!.p
     })
-    expect(Math.hypot(here[0] - lh[0], here[2] - lh[2])).toBeLessThan(4)
+    const close = Math.hypot(here[0] - lh[0], here[2] - lh[2])
+    expect(close, 'the player stands close to the lighthouse').toBeLessThan(3)
     // the four directions and the eight between them
     const yaws: [string, number][] = [
       ['east', Math.PI / 2],
@@ -736,11 +741,30 @@ test.describe('camera next to the lighthouse', () => {
         a.match.aimAt([me.p[0] + Math.sin(y) * 20, me.p[1] + 1.2, me.p[2] + Math.cos(y) * 20])
       }, yaw)
       await page.waitForTimeout(700)
-      const cam = await page.evaluate(() => (window as unknown as { __anima: Hook }).__anima.match.cameraPos()!)
+      const { cam, camYaw, hidden } = await page.evaluate((id) => {
+        const m = (window as unknown as { __anima: Hook }).__anima.match
+        return { cam: m.cameraPos()!, camYaw: m.cameraYaw()!, hidden: m.propHidden(id) }
+      }, lighthouse.id)
       await page.screenshot({ path: test.info().outputPath(`lighthouse-${name}.png`) })
-      // outside the lighthouse's shaft (radius ≈ 1.4 with its gallery) or above its top
+      // outside the lighthouse's shaft (radius ≈ 1.4 with its gallery), above its top, or the tower is hidden (the player stands inside it)
       const d = Math.hypot(cam[0] - lh[0], cam[2] - lh[2])
-      expect(d > 1.4 || cam[1] > lh[1] + 9, `camera ${name}: ${d.toFixed(2)} m from the lighthouse axis`).toBe(true)
+      expect(
+        hidden || d > 1.4 || cam[1] > lh[1] + 9,
+        `camera ${name}: ${d.toFixed(2)} m from the lighthouse axis`
+      ).toBe(true)
+      // the crosshair ray (camera → forward) must not run into the tower within the first metres, unless it is hidden
+      const dx = Math.sin(camYaw)
+      const dz = Math.cos(camYaw)
+      const fx = cam[0] - lh[0]
+      const fz = cam[2] - lh[2]
+      const B = 2 * (fx * dx + fz * dz)
+      const C = fx * fx + fz * fz - 1.4 * 1.4
+      const disc = B * B - 4 * C
+      const entry = disc >= 0 ? (-B - Math.sqrt(disc)) / 2 : Infinity
+      expect(
+        hidden || entry < 0 || entry >= 2.5,
+        `crosshair ray ${name}: tower ${entry.toFixed(2)} m ahead and not hidden`
+      ).toBe(true)
     }
   })
 })

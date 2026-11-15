@@ -15,7 +15,8 @@ import { emit, FOE_SIDE, sideTeam, type Foe, type Player, type Prop, type Side, 
 import type { ActorRef, HitSurface, ShotKind } from './types'
 import { angleFromYaw, deg, r3, r3v, vdist, type Vec } from './vec'
 
-export type DmgKind = 'melee' | 'ranged' | 'blast' | 'contact' | 'hazard' | 'beam'
+/** `reflect` is the ハリネズミ's damage coming back: it is never reflected itself. */
+export type DmgKind = 'melee' | 'ranged' | 'blast' | 'contact' | 'hazard' | 'beam' | 'reflect'
 
 export interface DamageInfo {
   amount: number
@@ -162,18 +163,33 @@ export function damagePlayer(sim: Sim, t: Player, d: DamageInfo): number {
     ...(blocked ? { blocked: true } : {})
   })
   // ハリネズミ: melee attackers take a share back.
-  if ((d.kind === 'melee' || d.kind === 'contact') && t.online && t.build.reflect > 0 && typeof d.by === 'number') {
-    const f = sim.foes.find((x) => x.id === d.by)
-    if (f && !f.dead)
-      damageFoe(sim, f, {
-        amount: d.amount * t.build.reflect,
-        kind: 'contact',
-        side: t.side,
-        by: t.id,
-        item: 'hedgehog',
-        at: [f.p[0], f.p[1] + f.h * 0.5, f.p[2]],
-        from: t.p
-      })
+  if ((d.kind === 'melee' || d.kind === 'contact') && t.online && t.build.reflect > 0) {
+    if (typeof d.by === 'number') {
+      const f = sim.foes.find((x) => x.id === d.by)
+      if (f && !f.dead)
+        damageFoe(sim, f, {
+          amount: d.amount * t.build.reflect,
+          kind: 'contact',
+          side: t.side,
+          by: t.id,
+          item: 'hedgehog',
+          at: [f.p[0], f.p[1] + f.h * 0.5, f.p[2]],
+          from: t.p
+        })
+    } else {
+      // A player attacker takes it through the normal damage path (invulnerability, sides, KO credit to the wearer).
+      const a = attackerPlayer(sim, d.by)
+      if (a && a !== t)
+        damagePlayer(sim, a, {
+          amount: d.amount * t.build.reflect,
+          kind: 'reflect',
+          side: t.side,
+          by: t.id,
+          item: 'hedgehog',
+          at: [a.p[0], a.p[1] + a.h * 0.5, a.p[2]],
+          from: t.p
+        })
+    }
   }
   if (d.knock || d.knockUp) {
     const k = t.species.trait === 'strong' ? BEAR_KNOCK : 1

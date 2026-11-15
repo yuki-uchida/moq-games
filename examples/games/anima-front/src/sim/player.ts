@@ -536,8 +536,10 @@ export function respawn(sim: Sim, p: Player, at: { p: Vec; yaw: number }, protec
   p.p = [at.p[0], at.p[1], at.p[2]]
   p.v = [0, 0, 0]
   p.yaw = at.yaw
-  p.anima = p.maxAnima
+  // Passives come back first so the max includes the enhancements (ラクダ), then the refill reaches that max.
   p.online = true
+  syncMaxAnima(p)
+  p.anima = p.maxAnima
   p.timer = 0
   p.grounded = true
   p.invulnUntil = sim.time + protect

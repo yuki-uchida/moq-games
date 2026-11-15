@@ -14,7 +14,7 @@ import { Foes } from './actors/foes'
 import { Props } from './actors/props'
 import { Shots } from './actors/shots'
 import type { CreateGameRenderer, FrameInput, GameRenderer, RendererOptions, RendererStats, ScreenPoint } from './api'
-import { CameraRig, pointInSolid, type CameraSolid, type CinematicSubject } from './camera'
+import { CameraRig, pointInSolid, rayHitsSolid, type CameraSolid, type CinematicSubject } from './camera'
 import { BoxGrid } from './core/box-grid'
 import { PostChain } from './core/post'
 import { AutoQuality, FrameMeter, QUALITY_PRESETS, type QualityPreset } from './core/quality'
@@ -33,6 +33,10 @@ const BIG_PROPS: Partial<Record<PropView['kind'], [number, number]>> = {
   cart: [2, 2.5],
   target: [0.8, 2]
 }
+
+/** A solid prop within this many metres of the camera is hidden, and so is one the view's centre ray enters within CENTRE_HIDE. */
+const NEAR_HIDE = 1
+const CENTRE_HIDE = 2.5
 
 /** Footprints of the solid props a shoulder camera must stay out of (the models' real size, not the cinematic margin). */
 function solidsOf(pr: PropView): CameraSolid[] {
@@ -90,6 +94,7 @@ class Renderer implements GameRenderer {
   private hurtGlow = 0
   private readonly focus = new THREE.Vector3()
   private readonly v = new THREE.Vector3()
+  private readonly w = new THREE.Vector3()
   private readonly players = new Map<string, V3>()
   private readonly foePos = new Map<number, V3>()
   private readonly propPos = new Map<number, V3>()
@@ -429,16 +434,29 @@ class Renderer implements GameRenderer {
   private readonly solids: CameraSolid[] = []
   private readonly hiddenProps = new Set<number>()
 
-  /** A solid prop that still contains the camera (or the pivot) is hidden so it never fills the screen. */
+  /**
+   * A solid prop is hidden while it would cover the view of the aim: when the camera, the aim pivot or the line
+   * between them is inside it, when the camera is within a metre of its surface, or when the view's centre ray
+   * enters it within a few metres of the camera. Near props never fill the screen over the crosshair.
+   */
   private fadeSolids(view: View) {
     this.hiddenProps.clear()
     const cam = this.rig.camera.position
-    for (const s of this.solids) {
-      if (
-        pointInSolid(cam.x, cam.y, cam.z, s, 0.4) ||
-        pointInSolid(this.focus.x, this.focus.y + 1, this.focus.z, s, 0.1)
-      )
-        this.hiddenProps.add(s.id)
+    const pivot = this.rig.aimPoint
+    const dir = this.rig.camera.getWorldDirection(this.v)
+    const toPivot = this.w.subVectors(pivot, cam)
+    const span = toPivot.length()
+    if (this.rig.currentMode === 'shoulder') {
+      for (const s of this.solids) {
+        const near =
+          pointInSolid(cam.x, cam.y, cam.z, s, NEAR_HIDE) ||
+          pointInSolid(pivot.x, pivot.y, pivot.z, s, 0.1) ||
+          (span > 1e-3 &&
+            rayHitsSolid(cam.x, cam.y, cam.z, toPivot.x / span, toPivot.y / span, toPivot.z / span, span, s, 0.1) <
+              Infinity) ||
+          rayHitsSolid(cam.x, cam.y, cam.z, dir.x, dir.y, dir.z, CENTRE_HIDE, s, 0) < Infinity
+        if (near) this.hiddenProps.add(s.id)
+      }
     }
     this.props.setHidden(this.hiddenProps)
     void view
@@ -527,6 +545,10 @@ class Renderer implements GameRenderer {
   cameraYaw(): number {
     this.rig.camera.getWorldDirection(this.v)
     return Math.atan2(this.v.x, this.v.z)
+  }
+
+  isPropHidden(id: number): boolean {
+    return this.hiddenProps.has(id)
   }
 
   cameraPosition(): V3 {

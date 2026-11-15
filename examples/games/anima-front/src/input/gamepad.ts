@@ -149,7 +149,11 @@ export class GamePad {
     const pad = firstPad()
     const ui: UiAction[] = []
     if (!pad) {
-      if (this.connected) state.releaseSource('pad')
+      if (this.connected) {
+        state.releaseSource('pad')
+        // the pad vanished while the scoreboard button was held: nothing will release it
+        if (this.prev[PAD.VIEW]) ui.push('scoreboardOff')
+      }
       this.connected = false
       this.prev = []
       return ui
