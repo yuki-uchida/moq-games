@@ -162,6 +162,33 @@ const targetText = dev
  * value as text and whether it is within the limit (null when the budget does not apply to this run). Stated for
  * --throttle 4.
  */
+/** G1: major garbage collections per 1000 frames of the game, at most. */
+const G1_LIMIT = 2
+/** The fewest frames a rate of collections is judged on. */
+const G1_MIN_FRAMES = 1000
+
+/**
+ * A rate can only be judged on enough frames: at the budget's own limit a collection comes every 500 frames, so a
+ * recording of 300 frames with a single one in it reads 3.3 per 1000 whatever the rate is. The recordings of one
+ * session (a boss's fight and his fall are one stretch of play) are judged together when one of them is shorter
+ * than `G1_MIN_FRAMES`: every recording gets the session's count, and the last one carries the verdict.
+ */
+function joinForRate(runs) {
+  const traced = runs.filter((m) => m.trace)
+  if (traced.length < 2 || !traced.some((m) => m.trace.frames < G1_MIN_FRAMES)) return
+  const major = traced.reduce((n, m) => n + m.trace.gc.major, 0)
+  const frames = traced.reduce((n, m) => n + m.trace.frames, 0)
+  const names = traced.map((m) => m.name)
+  for (const m of traced)
+    m.trace.gcSession = {
+      major,
+      frames,
+      per1000: frames ? (major / frames) * 1000 : 0,
+      names,
+      last: m === traced.at(-1)
+    }
+}
+
 const BUDGETS = [
   {
     id: 'P1',
@@ -238,13 +265,19 @@ const BUDGETS = [
     sections: ['play', 'boss'],
     what: 'major garbage collections per 1000 frames of the game',
     limit: 'at most 2',
-    judge: (m) =>
-      m.trace
-        ? {
-            value: `${f1(m.trace.gc.majorPer1000)} (${m.trace.gc.major} in ${m.trace.frames} frames of the game)`,
-            ok: m.trace.gc.majorPer1000 <= 2
-          }
-        : { value: 'no trace', ok: null }
+    judge: (m) => {
+      if (!m.trace) return { value: 'no trace', ok: null }
+      const own = `${f1(m.trace.gc.majorPer1000)} (${m.trace.gc.major} in ${m.trace.frames} frames of the game)`
+      const session = m.trace.gcSession
+      if (!session) return { value: own, ok: m.trace.gc.majorPer1000 <= G1_LIMIT }
+      // Too few frames to judge a rate by (see `joinForRate`): the session's recordings are judged together, in
+      // the row of its last one; the others say what they counted.
+      if (!session.last) return { value: `${own}; judged with "${session.names.at(-1)}"`, ok: null }
+      return {
+        value: `${f1(session.per1000)} over the session (${session.major} in ${session.frames} frames: ${session.names.join(' + ')}); in this recording ${own}`,
+        ok: session.per1000 <= G1_LIMIT
+      }
+    }
   },
   {
     id: 'L1',
@@ -1895,6 +1928,7 @@ async function sectionBoss() {
     }
   })
   if (incomplete) problems.push(`boss: ${incomplete} (in ${BOSS_SESSIONS} sessions)`)
+  joinForRate(runs)
   for (const m of runs) {
     const notes = [
       `stage 2, ${profile.width}x${profile.height} at ratio ${profile.dpr}, ${throttleText}, ${dev ? 'dev server' : 'production build'}`
