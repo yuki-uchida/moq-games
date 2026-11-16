@@ -235,3 +235,110 @@ describe('a stage played without its hit-stops', () => {
     expect(got.map((entry) => entry.split(':')[1])).toEqual(['boss-hit', 'boss-down', 'gate-down', 'goal-open'])
   })
 })
+
+describe('the HUD is told to rest through the frame of a fall', () => {
+  /** A session with a HUD and a director that write down what reaches them, in order. */
+  function watched(no = 2) {
+    const calls: string[] = []
+    const director: Director = {
+      start() {},
+      handle: (event) => void calls.push(`director:${event.type}`),
+      update: () => void calls.push('director:update'),
+      timeScale: 1,
+      inputLocked: true,
+      outcome: null
+    }
+    const hud = { update: () => void calls.push('hud:update'), rest: () => void calls.push('hud:rest') }
+    const session = new PlaySession(
+      STAGES[no - 1],
+      {
+        renderer: { k: 1 } as unknown as Renderer,
+        hud: hud as unknown as Hud,
+        audio: SILENT_AUDIO,
+        input: {} as unknown as Input,
+        reducedMotion: false
+      },
+      { makeDirector: () => director }
+    )
+    // (The input is locked by the director: the bot stands still, and nothing but the test makes events.)
+    session.autopilot = true
+    session.view.draw = () => {}
+    const { world } = session
+    /** Runs `act` inside the next step and returns what reached the HUD and the director in that frame. */
+    const frameWith = (act: () => void) => {
+      const step = world.step.bind(world)
+      world.step = (dt, input) => {
+        world.step = step
+        act()
+        step(dt, input)
+      }
+      calls.length = 0
+      session.frame(STEP)
+      return calls.filter((call) => call !== 'director:hop' && call !== 'director:land')
+    }
+    return { session, world, calls, frameWith }
+  }
+
+  it('rests before the director stages a boss fall, once, and writes again from the frame after', () => {
+    const s = watched()
+    const boss = s.world.boss!
+    s.world.player.x = boss.x - 220
+    s.world.player.y = boss.y + boss.h - s.world.player.h
+    for (let i = 0; i < 600 && !(boss.active && s.world.bossGate); i++) {
+      s.world.player.hp = s.world.player.maxHp
+      s.session.frame(STEP)
+    }
+    expect(boss.active).toBe(true)
+    s.session.view.freezeTime = 0
+    s.world.player.x = Math.min(boss.x - 60, s.world.goalX - 200)
+    const fall = s.frameWith(() => {
+      boss.invuln = 0
+      s.world.damageBoss(999)
+    })
+    // The hit is answered as ever; the HUD is told to rest right before the director hears of the fall.
+    const at = fall.indexOf('director:boss-down')
+    expect(at).toBeGreaterThan(0)
+    expect(fall[at - 1]).toBe('hud:rest')
+    expect(fall.filter((call) => call === 'hud:rest')).toHaveLength(1)
+    expect(fall.indexOf('director:boss-hit')).toBeLessThan(at - 1)
+    // The frame goes on as ever: the HUD and the director are both asked for their update (the HUD lets its own pass).
+    expect(fall.slice(-2)).toEqual(['hud:update', 'director:update'])
+    // The gate and the goal, answered in the frames after, do not ask for another rest.
+    s.calls.length = 0
+    for (let i = 0; i < 4; i++) s.session.frame(STEP)
+    expect(s.calls).not.toContain('hud:rest')
+    expect(s.calls).toContain('director:goal-open')
+  })
+
+  it('rests for the hit that fells the hero, and for no other hit', () => {
+    const s = watched(1)
+    for (let i = 0; i < 5; i++) s.session.frame(STEP)
+    const hurt = s.frameWith(() => {
+      s.world.player.invuln = 0
+      s.world.player.hp = s.world.player.maxHp
+      s.world.hurtPlayer(1, s.world.player.x + 100)
+    })
+    expect(hurt).toContain('director:hurt')
+    expect(hurt).not.toContain('hud:rest')
+    s.session.view.freezeTime = 0
+    const fatal = s.frameWith(() => {
+      s.world.player.invuln = 0
+      s.world.player.hp = 1
+      s.world.hurtPlayer(1, s.world.player.x + 100)
+    })
+    const at = fatal.indexOf('director:dead')
+    expect(at).toBeGreaterThan(0)
+    expect(fatal[at - 1]).toBe('hud:rest')
+    expect(fatal.indexOf('director:hurt')).toBeLessThan(at - 1)
+    expect(fatal.filter((call) => call === 'hud:rest')).toHaveLength(1)
+  })
+
+  it('leaves the HUD of a demo alone', () => {
+    // (A demo has no HUD: its session is given none, and a fall in it must not ask for one.)
+    const s = bossSession()
+    s.wake()
+    s.world.player.x = Math.min(s.world.boss!.x - 60, s.world.goalX - 200)
+    s.fell()
+    expect(() => s.frame()).not.toThrow()
+  })
+})

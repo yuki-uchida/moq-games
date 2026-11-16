@@ -596,6 +596,169 @@ test.describe('the deck while the page is on its side', () => {
   })
 })
 
+test.describe('the HUD in the frame of a fall', () => {
+  test.setTimeout(120_000)
+
+  interface Seen {
+    /** The moment was made in a step of this frame. */
+    moment: boolean
+    cinematic: boolean
+    breaking: boolean
+    hearts: string
+    /** DOM calls made inside the update of the HUD in this frame. */
+    calls: number
+    atRest: boolean
+  }
+
+  /**
+   * Makes a moment inside a step of the simulation (the boss falls, or the hero takes a hit) and says what the HUD
+   * showed after each of the frames around it.
+   */
+  const around = (page: Page, moment: 'boss' | 'hero') =>
+    page.evaluate(async (which) => {
+      interface FallWorld {
+        state: string
+        player: { hp: number; invuln: number; x: number; w: number }
+        boss: { x: number; dead: boolean; invuln: number } | null
+        goalX: number
+        step(dt: number, input: unknown): unknown
+        damageBoss(amount: number): void
+        hurtPlayer(amount: number, sourceX: number): void
+      }
+      const h = hook() as unknown as { world: FallWorld; app: { hud: { atRest: boolean } } }
+      const w = h.world
+      const cost = (window as unknown as { __cost: CostProbe }).__cost
+      const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      const root = document.querySelector('#hud')!
+      const bar = document.querySelector('.hudx-boss')!
+      const hearts = () =>
+        Array.from(document.querySelectorAll<HTMLCanvasElement>('#hearts canvas'))
+          .map((canvas) => canvas.dataset.sprite)
+          .join(',')
+      let made = false
+      const step = w.step
+      const arm = () => {
+        w.step = function (this: FallWorld, dt: number, input: unknown) {
+          w.step = step
+          if (which === 'boss' && this.boss && !this.boss.dead) {
+            // Beside him and away from the goal, as after a bite: on the goal the same step would clear the stage.
+            this.player.x = Math.min(this.boss.x - this.player.w - 12, this.goalX - 200)
+            this.boss.invuln = 0
+            this.damageBoss(999)
+            made = true
+          } else if (which === 'hero') {
+            this.player.invuln = 0
+            this.hurtPlayer(1, this.player.x + 100)
+            made = true
+          }
+          return step.call(this, dt, input)
+        }
+      }
+      const seen: Seen[] = []
+      for (let i = 0; i < 12; i++) {
+        // Three frames as they were, then the moment in the next step.
+        if (i === 3) arm()
+        const before = cost.calls.length
+        const was = made
+        await frame()
+        seen.push({
+          moment: made && !was,
+          cinematic: root.classList.contains('is-cinematic'),
+          breaking: bar.classList.contains('is-breaking'),
+          hearts: hearts(),
+          calls: cost.calls.length - before,
+          atRest: h.app.hud.atRest
+        })
+      }
+      return seen
+    }, moment)
+
+  test('a boss falls: his bar breaks away and the pieces step aside in the frame after the fall, not in it', async ({
+    browser
+  }) => {
+    const { page, context, errors } = await open(browser, 844, 390, 2)
+    // To the boss: the hero stands before him, kept from harm, until the bar of the fight is up.
+    await page.evaluate(() => {
+      const w = hook().world as unknown as {
+        player: { x: number; y: number; h: number; vx: number; vy: number; invuln: number }
+        boss: { x: number; y: number; h: number }
+      }
+      hook().autopilot(false)
+      w.player.x = w.boss.x - 220
+      w.player.y = w.boss.y + w.boss.h - w.player.h
+      w.player.vx = 0
+      w.player.vy = 0
+      w.player.invuln = 1e9
+    })
+    await page.waitForFunction(() => hook().world.boss?.active === true, null, { timeout: 30_000 })
+    await expect(page.locator('.hudx-boss')).toBeVisible({ timeout: 30_000 })
+    await page.waitForFunction(() => hook().app.session?.director.current === null, null, { timeout: 30_000 })
+    const seen = await around(page, 'boss')
+    const at = seen.findIndex((s) => s.moment)
+    expect(at).toBeGreaterThanOrEqual(0)
+    // The frame of the fall: the HUD rests. Nothing of it is written, and nothing the staging asked for shows yet.
+    expect(seen[at]).toMatchObject({ atRest: true, calls: 0, breaking: false, cinematic: false })
+    // The frame after it: the bar breaks away and the HUD is in its cut-scene mode.
+    expect(seen[at + 1]).toMatchObject({ atRest: false, breaking: true, cinematic: true })
+    expect(seen.slice(at + 1).every((s) => !s.atRest)).toBe(true)
+    expect(errors).toEqual([])
+    await context.close()
+  })
+
+  test('the hero falls: the last heart goes and the pieces step aside in the frame after the hit, not in it', async ({
+    browser
+  }) => {
+    const { page, context, errors } = await open(browser, 390, 844, 1)
+    // Down to the last heart, standing still; nothing else can hurt him.
+    await page.evaluate(() => {
+      const h = hook()
+      h.autopilot(false)
+      const w = h.world
+      for (const enemy of w.enemies) enemy.dead = true
+      if (w.boss) w.boss.active = false
+      w.player.hp = 1
+      w.player.invuln = 1e9
+    })
+    await page.waitForTimeout(1500)
+    const seen = await around(page, 'hero')
+    const at = seen.findIndex((s) => s.moment)
+    expect(at).toBeGreaterThanOrEqual(1)
+    expect(seen[at - 1].hearts).toContain('heartFull')
+    // The frame of the hit: the HUD rests, the last heart is still whole and nothing has stepped aside.
+    expect(seen[at]).toMatchObject({ atRest: true, calls: 0, cinematic: false, hearts: seen[at - 1].hearts })
+    // The frame after it: the heart is going, and the HUD is in its cut-scene mode.
+    expect(seen[at + 1].atRest).toBe(false)
+    expect(seen[at + 1].calls).toBeGreaterThan(0)
+    expect(seen[at + 1].hearts).not.toContain('heartFull')
+    expect(seen[at + 1].cinematic).toBe(true)
+    expect(errors).toEqual([])
+    await context.close()
+  })
+
+  test('an ordinary hurt is written in its own frame, as ever', async ({ browser }) => {
+    const { page, context, errors } = await open(browser, 390, 844, 1)
+    await page.evaluate(() => {
+      const h = hook()
+      h.autopilot(false)
+      const w = h.world
+      for (const enemy of w.enemies) enemy.dead = true
+      if (w.boss) w.boss.active = false
+      w.player.hp = w.player.maxHp
+      w.player.invuln = 1e9
+    })
+    await page.waitForTimeout(1500)
+    const seen = await around(page, 'hero')
+    const at = seen.findIndex((s) => s.moment)
+    expect(at).toBeGreaterThanOrEqual(1)
+    // The heart that was lost changes in the frame of the hit, and the HUD never rests.
+    expect(seen.every((s) => !s.atRest)).toBe(true)
+    expect(seen[at].calls).toBeGreaterThan(0)
+    expect(seen[at].hearts).not.toBe(seen[at - 1].hearts)
+    expect(errors).toEqual([])
+    await context.close()
+  })
+})
+
 test.describe('the texts laid out ahead at the start of a stage', () => {
   test.setTimeout(120_000)
 
