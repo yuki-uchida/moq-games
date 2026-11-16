@@ -188,6 +188,14 @@ export class Hud implements HudApi, PrimeTarget {
   /** True while the HUD stands by for a stage (see `standby`), and the stage it was set for ahead. */
   private standing = false
   private setAhead: StageDef | null = null
+  /**
+   * The HUD lets a frame pass (`rest`): until its next update but one it writes nothing, and what the staging asks
+   * of it meanwhile is kept, in order, with the time of the update it left out.
+   */
+  private resting = false
+  private rested = false
+  private owed: (() => void)[] = []
+  private owedTime = 0
   private observer: ResizeObserver | null = null
   private right: HTMLElement
   private buttons: HTMLButtonElement[]
@@ -517,6 +525,7 @@ export class Hud implements HudApi, PrimeTarget {
   }
 
   private clearTransient() {
+    this.endRest()
     this.timers = []
     this.bossShown = false
     this.bossBar.hidden = true
@@ -531,6 +540,8 @@ export class Hud implements HudApi, PrimeTarget {
 
   setStage(stage: StageDef) {
     this.primer.interrupt()
+    // (A rest of the stage before is over with it.)
+    this.endRest()
     // The stage that starts is the one the HUD stood by for: everything is written, and writing a text again
     // would have the browser lay it out again.
     const written = this.setAhead === stage
@@ -627,7 +638,61 @@ export class Hud implements HudApi, PrimeTarget {
 
   update(world: World, dt: number) {
     this.primer.interrupt()
-    this.step(world, dt)
+    if (this.resting) {
+      if (!this.rested) {
+        // The frame that rests: nothing is written, and its time is made up in the next update.
+        this.rested = true
+        this.owedTime += dt
+        return
+      }
+      this.wake()
+    }
+    const owedTime = this.owedTime
+    this.owedTime = 0
+    this.step(world, dt + owedTime)
+  }
+
+  /**
+   * Lets the frame that is being made pass without a write. The frame in which a boss falls, or the hero, is the
+   * fullest of a stage (the blow's particles and sounds, the knocked body, code that runs for the first time), and
+   * the picture stands still from it on (its hit-stop): the last heart, the bar breaking away and the pieces
+   * stepping aside for the moment are written a frame later instead, where they change nothing anyone can see.
+   * Called before the moment is staged. This frame's update writes nothing; what the staging asks of the HUD until
+   * the update after it is done there, in the order it was asked, before that update's own writes.
+   */
+  rest() {
+    if (this.primer.busy || this.root.hidden || this.standing) return
+    this.resting = true
+    this.rested = false
+  }
+
+  /** True while the HUD lets a frame pass (for tests). */
+  get atRest() {
+    return this.resting
+  }
+
+  /** The rest is over: what was asked meanwhile is done now. */
+  private wake() {
+    this.resting = false
+    this.rested = false
+    const owed = this.owed
+    this.owed = []
+    for (const call of owed) call()
+  }
+
+  /** Forgets a rest and what was asked during it (the stage is over, or another begins). */
+  private endRest() {
+    this.resting = false
+    this.rested = false
+    this.owed = []
+    this.owedTime = 0
+  }
+
+  /** True when a call of the staging is kept for after the rest (`call` does it then). */
+  private kept(call: () => void): boolean {
+    if (!this.resting) return false
+    this.owed.push(call)
+    return true
   }
 
   /**
@@ -782,6 +847,7 @@ export class Hud implements HudApi, PrimeTarget {
 
   showBoss(name: string, title: string) {
     this.primer.interrupt()
+    if (this.kept(() => this.showBoss(name, title))) return
     this.bossName.textContent = name
     this.bossTitle.textContent = title
     this.bossBarState = null
@@ -805,6 +871,7 @@ export class Hud implements HudApi, PrimeTarget {
 
   hideBoss() {
     if (this.primer.busy) return
+    if (this.kept(() => this.hideBoss())) return
     this.bossShown = false
     if (this.bossBar.hidden) return
     if (this.root.hidden) {
@@ -819,6 +886,7 @@ export class Hud implements HudApi, PrimeTarget {
 
   showBanner(title: string, sub = '', seconds = 1.1) {
     this.primer.interrupt()
+    if (this.kept(() => this.showBanner(title, sub, seconds))) return
     this.bannerTitle.textContent = title
     this.bannerSub.textContent = sub
     this.bannerSub.hidden = !sub
@@ -830,6 +898,7 @@ export class Hud implements HudApi, PrimeTarget {
 
   showToast(text: string) {
     this.primer.interrupt()
+    if (this.kept(() => this.showToast(text))) return
     // In portrait the stage is small: the toast goes to the deck's hint line instead.
     if (this.deck.active) {
       removeClass(this.toast, 'is-show')
@@ -843,6 +912,7 @@ export class Hud implements HudApi, PrimeTarget {
 
   showCall(text: string, tone: 'gold' | 'pink' | 'red' = 'gold') {
     this.primer.interrupt()
+    if (this.kept(() => this.showCall(text, tone))) return
     this.call.textContent = text
     this.call.dataset.tone = tone
     removeClass(this.banner, 'is-show')
@@ -851,6 +921,7 @@ export class Hud implements HudApi, PrimeTarget {
 
   showNameplate(name: string, title: string, face = '', seconds = 3) {
     this.primer.interrupt()
+    if (this.kept(() => this.showNameplate(name, title, face, seconds))) return
     this.plateName.textContent = name
     this.plateTitle.textContent = title
     const art = face ? sheet('ui')[face] : undefined
@@ -862,12 +933,15 @@ export class Hud implements HudApi, PrimeTarget {
 
   cinematic(on: boolean) {
     this.primer.interrupt()
+    if (this.kept(() => this.cinematic(on))) return
     this.root.classList.toggle('is-cinematic', on)
   }
 
   speak(text: string, who: string, face: string, seconds: number, tone: 'say' | 'yell' = 'say'): boolean {
     this.primer.interrupt()
     if (!this.deck.active || this.root.hidden) return false
+    // (Kept for after a rest, the line is the HUD's all the same: the stage draws its wordless balloon.)
+    if (this.kept(() => void this.speak(text, who, face, seconds, tone))) return true
     removeClass(this.toast, 'is-show')
     this.deck.speak(text, who, face, seconds, tone)
     return true
@@ -875,6 +949,7 @@ export class Hud implements HudApi, PrimeTarget {
 
   lights(on: boolean) {
     this.primer.interrupt()
+    if (this.kept(() => this.lights(on))) return
     this.root.classList.toggle('is-dark', !on)
   }
 }

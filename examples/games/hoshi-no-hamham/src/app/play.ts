@@ -41,6 +41,16 @@ export const DEMO_SECONDS = 40
 export const AFTER_A_FALL: ReadonlySet<SimEventType> = new Set<SimEventType>(['gate-down', 'goal-open'])
 
 /**
+ * The events in whose frame the HUD writes nothing (`Hud.rest`): a boss's fall and the hero's. What the HUD shows of
+ * them (the last heart, the boss's bar breaking away, its pieces stepping aside for the staged moment) is written
+ * in the frame after, when the picture already stands still.
+ */
+export const RESTS_THE_HUD: ReadonlySet<SimEventType> = new Set<SimEventType>(['boss-down', 'dead'])
+
+/** Asks a HUD to let the frame pass; one that cannot (a stand-in without `rest`) writes in the frame, as before. */
+const rest = (hud: { rest?: () => void }) => hud.rest?.()
+
+/**
  * The events that are always a judgement of damage: the hero is hurt or falls, an enemy or a boss is hit or falls,
  * a boss crashes into a wall, a rock breaks. (A bite is one when it landed on something: see `judges`.)
  */
@@ -244,6 +254,8 @@ export class PlaySession {
     if (judges(event)) this.judged += 1
     this.view.handle(event)
     this.sounds.event(event)
+    // (Before the director stages the moment: what it asks of the HUD is kept for the next frame too.)
+    if (!this.demo && RESTS_THE_HUD.has(event.type)) rest(this.deps.hud)
     this.director.handle(event)
   }
 
