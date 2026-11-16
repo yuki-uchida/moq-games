@@ -27,6 +27,10 @@
  *   --awake     keep one processor of the machine at work while a run is recorded. At --throttle 1, frames arrive
  *               late with every thread of the page and of its drawing idle, and the idler the machine the more of
  *               them; with one processor kept at work there are few (what was seen is under `keepAwake`)
+ *   --linger    in the play and boss sections the bot stays on the title until the HUD has been walked through
+ *               its states there (a few seconds, as a person's first look at the title is): without it the bot
+ *               leaves the title at once, the walk is cut short, and what it would have had the browser prepare
+ *               (shader programs of the HUD's pieces, laid-out text) is prepared in play instead
  *   --dist      measure the production build in this folder instead of building this checkout: the build of
  *               another commit, made there with `vite build`, so that two commits are measured by one kit
  *   --out       output folder (default .build/hoshi-no-hamham-perf/, ignored by Git)
@@ -95,6 +99,7 @@ const trace = flag('--trace')
 const tries = Number(valueOf('--tries') ?? 1)
 if (!Number.isInteger(tries) || tries < 1) usage('--tries must be a whole number, 1 or more')
 const awake = flag('--awake')
+const linger = flag('--linger')
 const every = Number(valueOf('--every') ?? 1)
 if (!Number.isInteger(every) || every < 1) usage('--every must be a whole number, 1 or more')
 /**
@@ -1302,6 +1307,34 @@ async function toTitle(page) {
   )
 }
 
+/** The longest the bot stays on the title for the HUD's walk (ms), and how long it stays when a build cannot say. */
+const LINGER_LIMIT = 20_000
+const LINGER_BLIND = 8000
+
+/**
+ * With --linger: stays on the title until the HUD's walk through its states is over there (`Hud.primed`), as a
+ * person's first seconds on the title let it be. Returns what was done, for the run's notes (null without the flag).
+ */
+async function lingerOnTitle(page) {
+  if (!linger) return null
+  const started = Date.now()
+  const says = await page.evaluate(() => typeof window.__hamham.app.hud?.primed === 'boolean')
+  if (!says) {
+    await sleep(LINGER_BLIND)
+    return `--linger: ${f1(LINGER_BLIND / 1000)} s on the title (this build does not say when the HUD's walk is over)`
+  }
+  const over = await page
+    .waitForFunction(() => window.__hamham.app.hud.primed === true, null, { timeout: LINGER_LIMIT })
+    .then(
+      () => true,
+      () => false
+    )
+  const waited = f1((Date.now() - started) / 1000)
+  return over
+    ? `--linger: ${waited} s on the title, until the HUD's walk was over`
+    : `--linger: the HUD's walk was not over after ${waited} s on the title`
+}
+
 async function rendererName(page) {
   return page.evaluate(() => {
     const gl = document.createElement('canvas').getContext('webgl')
@@ -1823,11 +1856,13 @@ async function sectionPlay() {
       const name = `stage ${stageNo} ${profileName}`
       console.log(`[play] ${name}`)
       const profile = PROFILES[profileName]
+      let lingered = null
       const { made: m, note } = await undisturbed(`play ${name}`, async () => {
         const run = await newRun(name, profile)
         try {
           await toTitle(run.page)
           environment.renderer ||= await rendererName(run.page)
+          lingered = await lingerOnTitle(run.page)
           await enterStage(run.page, stageNo)
           await run.page.evaluate(() => window.__hamham.autopilot(true))
           await waitCalm(run.page)
@@ -1843,6 +1878,7 @@ async function sectionPlay() {
         `${profile.width}x${profile.height} at ratio ${profile.dpr}, ${throttleText}, ${dev ? 'dev server' : 'production build'}`
       ]
       if (note) notes.push(note)
+      if (lingered) notes.push(lingered)
       if (m.ended !== 'play') notes.push(`the stage ended on \`${m.ended}\` after ${f1(m.seconds)} s`)
       parts.push(runMarkdown(name, m, notes))
       for (const b of BUDGETS.filter((x) => x.sections.includes('play')))
@@ -1891,6 +1927,7 @@ async function sectionBoss() {
   // the stage is over before the defeat can be recorded (the bot beat the boss by itself, or the hero fell, while
   // the fight was being worked out): what is left out then is said in the report, never passed over.
   let incomplete = null
+  let lingered = null
   const { made: runs, note } = await undisturbed('boss', async () => {
     for (let attempt = 1; ; attempt++) {
       const run = await newRun('boss', profile)
@@ -1899,6 +1936,7 @@ async function sectionBoss() {
       try {
         await toTitle(run.page)
         environment.renderer ||= await rendererName(run.page)
+        lingered = await lingerOnTitle(run.page)
         await enterStage(run.page, 2)
         await run.page.evaluate(() => window.__hamham.autopilot(true))
         await waitCalm(run.page)
@@ -1934,6 +1972,7 @@ async function sectionBoss() {
       `stage 2, ${profile.width}x${profile.height} at ratio ${profile.dpr}, ${throttleText}, ${dev ? 'dev server' : 'production build'}`
     ]
     if (note) notes.push(note)
+    if (lingered) notes.push(lingered)
     if (m.ended !== 'play') notes.push(`the stage ended on \`${m.ended}\` after ${f1(m.seconds)} s`)
     parts.push(runMarkdown(m.name, m, notes))
     for (const b of BUDGETS.filter((x) => x.sections.includes('boss')))

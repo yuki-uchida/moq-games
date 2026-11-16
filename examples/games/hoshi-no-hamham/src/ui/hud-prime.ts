@@ -113,6 +113,11 @@ export class HudPrimer {
     this.restore()
   }
 
+  /** True once the layout that is on has been walked to the end. */
+  get walked() {
+    return this.done.has(layout())
+  }
+
   /** True while a walk is in progress and the caller is not the walk itself. */
   get busy() {
     return this.running && !this.acting
