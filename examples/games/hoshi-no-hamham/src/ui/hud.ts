@@ -455,6 +455,11 @@ export class Hud implements HudApi, PrimeTarget {
     this.primer.whenIdle()
   }
 
+  /** True once the HUD has been walked through its states in the layout that is on (tools wait for it). */
+  get primed() {
+    return this.primer.walked
+  }
+
   show() {
     this.primer.interrupt()
     this.endStandby()

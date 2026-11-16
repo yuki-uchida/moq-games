@@ -8,7 +8,7 @@ import { openGame } from './hoshi-no-hamham-helpers'
  */
 
 interface PrimeHook {
-  app: { hud: { show(): void; hide(): void; primer: { running: boolean; done: Set<string> } } }
+  app: { hud: { show(): void; hide(): void; primed: boolean; primer: { running: boolean; done: Set<string> } } }
 }
 
 const WALK_TIMEOUT = 20_000
@@ -55,9 +55,12 @@ for (const layout of LAYOUTS) {
         heartsWidth: box.width,
         // A tap where the hearts are reaches what is under the HUD.
         tapReachesHud: under ? hud.contains(under) : false,
-        title: Boolean(document.querySelector('#title-screen:not([hidden])'))
+        title: Boolean(document.querySelector('#title-screen:not([hidden])')),
+        // What a tool waits for: the walk of this layout is not over yet.
+        primed: (window as unknown as { __hamham: PrimeHook }).__hamham.app.hud.primed
       }
     })
+    expect(during.primed).toBe(false)
     expect(during.hidden).toBe(false)
     expect(during.visibility).toBe('hidden')
     expect(during.opacity).toBeLessThan(0.01)
@@ -83,7 +86,8 @@ for (const layout of LAYOUTS) {
         bossBarHidden: document.querySelector<HTMLElement>('#boss-bar')!.hidden,
         showing: [...hud.querySelectorAll('.is-show')].length,
         done: hook.app.hud.primer.done.has(name),
-        running: hook.app.hud.primer.running
+        running: hook.app.hud.primer.running,
+        primed: hook.app.hud.primed
       }
     }, layout.name)
     expect(after).toEqual({
@@ -94,7 +98,8 @@ for (const layout of LAYOUTS) {
       bossBarHidden: true,
       showing: 0,
       done: true,
-      running: false
+      running: false,
+      primed: true
     })
     expect(errors).toEqual([])
     await context.close()
@@ -120,21 +125,26 @@ test('a walk that a stage cut short is made again back in the menus', async ({ b
     const whileShown = {
       priming: document.querySelector('#hud')!.classList.contains('is-priming'),
       hidden: document.querySelector<HTMLElement>('#hud')!.hidden,
-      done: hud.primer.done.size
+      done: hud.primer.done.size,
+      primed: hud.primed
     }
     hud.hide()
     return whileShown
   })
-  expect(cut).toEqual({ priming: false, hidden: false, done: 0 })
+  expect(cut).toEqual({ priming: false, hidden: false, done: 0, primed: false })
   await expect(page.locator('#hud')).toBeHidden()
   // The walk starts over by itself and this time runs to its end.
   await expect.poll(() => priming(page), { timeout: WALK_TIMEOUT, intervals: [50] }).toBe(true)
   await expect.poll(() => priming(page), { timeout: WALK_TIMEOUT, intervals: [100] }).toBe(false)
   const after = await page.evaluate(() => {
     const hud = (window as unknown as { __hamham: PrimeHook }).__hamham.app.hud
-    return { done: hud.primer.done.has('landscape'), hidden: document.querySelector<HTMLElement>('#hud')!.hidden }
+    return {
+      done: hud.primer.done.has('landscape'),
+      primed: hud.primed,
+      hidden: document.querySelector<HTMLElement>('#hud')!.hidden
+    }
   })
-  expect(after).toEqual({ done: true, hidden: true })
+  expect(after).toEqual({ done: true, primed: true, hidden: true })
   expect(errors).toEqual([])
   await context.close()
 })
