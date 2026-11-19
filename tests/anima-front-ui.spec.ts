@@ -1065,20 +1065,35 @@ test.describe('touch controls', () => {
         await page.setViewportSize({ width, height })
         const collisions = await rows.nth(1).evaluate(
           (secondRow) => {
-            const rows = [...secondRow.parentElement!.children].map((row) => row.getBoundingClientRect())
+            const visibleRows = [...secondRow.parentElement!.children]
+              .filter((row) => getComputedStyle(row).display !== 'none')
+              .map((row) => row.getBoundingClientRect())
             const targets = document.querySelectorAll(
               '.top-pvp > *, .top-pve, .top-boss, .hud-radar, .hud-squad, .touch-controls button'
             )
-            return [...targets]
+            const hits = [...targets]
               .filter((target) => {
                 const t = target.getBoundingClientRect()
-                return rows.some(
+                return visibleRows.some(
                   (r) =>
                     Math.max(r.left, t.left) < Math.min(r.right, t.right) &&
                     Math.max(r.top, t.top) < Math.min(r.bottom, t.bottom)
                 )
               })
               .map((target) => target.className)
+            const cx = window.innerWidth / 2
+            const cy = window.innerHeight / 2
+            const reticle = { left: cx - 32, right: cx + 32, top: cy - 32, bottom: cy + 32 }
+            if (
+              visibleRows.some(
+                (r) =>
+                  Math.max(r.left, reticle.left) < Math.min(r.right, reticle.right) &&
+                  Math.max(r.top, reticle.top) < Math.min(r.bottom, reticle.bottom)
+              )
+            ) {
+              hits.push('reticle')
+            }
+            return hits
           },
           undefined,
           { timeout: 60_000 }
