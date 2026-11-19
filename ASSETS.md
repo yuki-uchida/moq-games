@@ -42,7 +42,7 @@ The Brute runtime derivative uses a warmer rock albedo closer to its 2D portrait
 
 ## Approved compact meadow map
 
-`public/tower-defense-map/approved-meadow.png` is the original, unchanged OpenAI-generated landscape that the owner selected on 2026-10-12 for the tower-defense map replacement. It is 1478×1064 pixels, 3,053,262 bytes, SHA-256 `a6277807b1dc416815ba588766acda5f55b120c0e566e1a68114838e3abeabe7`. The source is scaled to the 1280×920 battlefield. `ApprovedMazeLayout.ts` traces its single continuous road with rounded corners; a regression samples every two source pixels along the exposed-road centerline and checks alignment against the unchanged PNG. Its purple cave, castle, and decorative pads are background art; units remain runtime GLB meshes and pads do not constrain placement. The same approved grass map is used for each existing field choice. No generated model, private reference asset, or debug sprite is added by this replacement.
+`public/tower-defense-map/approved-meadow.png` is the original, unchanged OpenAI-generated landscape that the owner selected on 2026-10-12. It is 1478×1064 pixels, 3,053,262 bytes, SHA-256 `a6277807b1dc416815ba588766acda5f55b120c0e566e1a68114838e3abeabe7`. `ApprovedMazeLayout.ts` traces its single road into the 1280×920 game field. A regression checks the exposed road centerline against the source PNG every two source pixels. At runtime the renderer fits the grass, cave, castle and decorative pads to the viewport. The forest uses cooler foliage, patches of sunlight and a sandstone road textured from the source. The other biomes use their own color grades. The pads are landmarks and defenders can deploy freely within the existing placement rules.
 
 ## Three new original enemies
 

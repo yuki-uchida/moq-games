@@ -198,7 +198,8 @@ export class CoachMarks {
     this.ring.hidden = step === 'drag'
     this.pointer.hidden = step === 'drag'
     set(this.pointer, `left:${px(cx)};top:${px(below ? rect.bottom + 6 : rect.top - 38)};rotate:${below ? '-20deg' : '160deg'}`)
-    const bubbleTop = step === 'drag' ? rect.top - 54 : below ? rect.bottom + 44 : rect.top - 84
+    const trayTop = step === 'drag' ? document.getElementById('unit-tray')?.getBoundingClientRect().top : undefined
+    const bubbleTop = trayTop !== undefined ? trayTop - 52 : below ? rect.bottom + 44 : rect.top - 84
     set(this.bubble, `left:clamp(110px, ${px(cx)}, calc(100vw - 110px));top:${px(bubbleTop)}`)
     this.ghost.hidden = step !== 'drag'
     if (step !== 'drag') {

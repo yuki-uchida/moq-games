@@ -19,21 +19,21 @@ await page.goto(
 await page.evaluate(async () => {
   const root = '/moq-games/examples/games/tower_diffence_with_jev/src/',
     T = await import('/moq-games/node_modules/.vite/deps/three.js'),
+    { createBoardCamera } = await import(root + 'rendering/BoardCamera.ts'),
+    { orientBoardCanvas } = await import(root + 'rendering/BoardCanvas.ts'),
+    { createBattlefieldModelLighting } = await import(root + 'rendering/ModelEnvironmentLighting.ts'),
     { ModelAssetCache } = await import(root + 'rendering/ModelAssetCache.ts'),
     { ModelUnitVisual } = await import(root + 'rendering/ModelUnitVisual.ts'),
     { UNIT_MODEL_CATALOG } = await import(root + 'rendering/models/catalog.ts')
   document.body.innerHTML = ''
   const scene = new T.Scene(),
-    camera = new T.OrthographicCamera(0, 1000, 0, 1050, 0.1, 2000)
+    camera = createBoardCamera({ width: 1000, height: 1050 })
   scene.background = new T.Color('#60785e')
-  camera.position.z = 1000
   const renderer = new T.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
   renderer.setSize(1000, 1050)
+  orientBoardCanvas(renderer.domElement)
   document.body.append(renderer.domElement)
-  scene.add(new T.HemisphereLight(0xf4ffe3, 0x244352, 2.5))
-  const light = new T.DirectionalLight(0xffe0ad, 3)
-  light.position.set(-120, -240, 100)
-  scene.add(light)
+  createBattlefieldModelLighting(scene, renderer).ensure(renderer)
   const cache = new ModelAssetCache(),
     actors = []
   for (const [r, role] of ['mage', 'frost', 'healer'].entries()) {

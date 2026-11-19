@@ -6,7 +6,7 @@ import {
   type AttractBattle
 } from '../game/AttractBattle'
 import { fieldFor } from '../game/model'
-import { GAME_MODEL_PRESENTATION_SCALE } from '../rendering/BattlefieldPresentation'
+import { modelPresentationScale } from '../rendering/BattlefieldPresentation'
 import { GameRenderer, type AuthoredAtlasOptions } from '../rendering/GameRenderer'
 
 /** Wait this long on the title before fetching anything, so quick starts download nothing extra. */
@@ -168,7 +168,8 @@ export class TitleAttract {
       scaleX = window.innerWidth / field.width,
       scaleY = window.innerHeight / field.height,
       element = host.firstElementChild as HTMLElement
-    renderer.setPresentation(GAME_MODEL_PRESENTATION_SCALE, scaleX / scaleY)
+    const aspectExpansion = scaleX / scaleY
+    renderer.setPresentation(modelPresentationScale(aspectExpansion), aspectExpansion)
     element.style.width = `${field.width}px`
     element.style.height = `${field.height}px`
     element.style.transform = `scale(${scaleX}, ${scaleY})`

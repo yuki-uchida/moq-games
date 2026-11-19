@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import {
   battlefieldPresentation,
-  BATTLEFIELD_INSETS,
-  GAME_MODEL_PRESENTATION_SCALE
+  GAME_MODEL_PRESENTATION_SCALE,
+  modelPresentationScale
 } from '../src/rendering/BattlefieldPresentation'
 import { ModelUnitVisual } from '../src/rendering/ModelUnitVisual'
 import { ModelAssetCache } from '../src/rendering/ModelAssetCache'
@@ -14,32 +14,21 @@ import type { GLTF } from 'three/addons/loaders/GLTFLoader.js'
 describe('responsive presentation without changing world geometry', () => {
   const field = { width: 1280, height: 920, layoutRevision: 4 }
   for (const viewport of [
-    { width: 2048, height: 1173 },
-    { width: 1440, height: 900 },
-    { width: 1280, height: 720 },
-    { width: 390, height: 844 },
-    { width: 844, height: 390 },
-    { width: 320, height: 568 }
+    { width: 2024, height: 1085, modelScale: 1.5 },
+    { width: 1416, height: 812, modelScale: 1.5 },
+    { width: 1256, height: 632, modelScale: 1.5 },
+    { width: 366, height: 715, modelScale: 1.184 },
+    { width: 820, height: 302, modelScale: 1.5 },
+    { width: 296, height: 439, modelScale: 1.242 }
   ]) {
     it(`fits and uses the available field at ${viewport.width}×${viewport.height}`, () => {
       const fit = battlefieldPresentation(viewport, field)
-      expect(fit.scaleX * field.width).toBeLessThanOrEqual(viewport.width - 24 + 1e-9)
-      expect(fit.scaleY * field.height).toBeLessThanOrEqual(viewport.height - 88 + 1e-9)
-      expect(fit.scaleX * field.width).toBeCloseTo(viewport.width - 24)
-      expect(fit.scaleY * field.height).toBeCloseTo(viewport.height - 88)
+      expect(fit.scaleX * field.width).toBeCloseTo(viewport.width)
+      expect(fit.scaleY * field.height).toBeCloseTo(viewport.height)
       expect(fit.aspectExpansion).toBeCloseTo(fit.scaleX / fit.scaleY)
-      expect(fit.modelScale).toBe(GAME_MODEL_PRESENTATION_SCALE)
-      const previous = Math.min((viewport.width - 24) / field.width, (viewport.height - 140) / field.height)
-      expect(fit.scaleX).toBeGreaterThanOrEqual(previous)
-      expect(fit.scaleY).toBeGreaterThanOrEqual(previous)
+      expect(fit.modelScale).toBeCloseTo(viewport.modelScale, 3)
     })
   }
-  it('fills the available battlefield while retaining HUD and stage space', () => {
-    const fit = battlefieldPresentation({ width: 2048, height: 1173 }, field)
-    expect(fit.scaleX * field.width).toBeCloseTo(2024)
-    expect(fit.scaleY * field.height).toBeCloseTo(1085)
-    expect(BATTLEFIELD_INSETS).toEqual({ top: 72, bottom: 16, sides: 12 })
-  })
   it('retains scrollable legacy presentation exactly', () => {
     expect(battlefieldPresentation({ width: 390, height: 844 }, { ...field, layoutRevision: 2 })).toEqual({
       scaleX: 0.55,
@@ -53,13 +42,14 @@ describe('responsive presentation without changing world geometry', () => {
     const actor = new ModelUnitVisual(UNIT_MODEL_CATALOG.soldier!, cache)
     actor.setPosition(317, 436)
     const native = actor.root.matrix.clone()
-    for (const aspect of [1.4, 1, 1.27]) {
-      actor.setPresentation(GAME_MODEL_PRESENTATION_SCALE, aspect)
+    for (const aspect of [1.4, 1, 0.37]) {
+      const scale = modelPresentationScale(aspect)
+      actor.setPresentation(scale, aspect)
       const display = new THREE.Matrix4().makeScale(aspect, 1, 1).multiply(actor.root.matrix)
       for (const axis of [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)]) {
         const old = axis.clone().applyMatrix3(new THREE.Matrix3().setFromMatrix4(native))
         const shown = axis.clone().applyMatrix3(new THREE.Matrix3().setFromMatrix4(display))
-        expect(shown.distanceTo(old.multiplyScalar(GAME_MODEL_PRESENTATION_SCALE))).toBeLessThan(1e-10)
+        expect(shown.distanceTo(old.multiplyScalar(scale))).toBeLessThan(1e-10)
       }
       expect(new THREE.Vector3().setFromMatrixPosition(actor.root.matrix).toArray()).toEqual([317, 436, 47.6])
     }

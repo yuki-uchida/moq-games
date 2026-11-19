@@ -234,16 +234,16 @@ $('app').innerHTML = `${titleScreenMarkup(artBase)}
 <header class="topbar"><a class="games-home-link" href="../../../index.html" aria-label="MoQ Games ホームへ戻る"><span aria-hidden="true">←</span> MoQ Games</a><div class="tools"><button id="game-title-return" class="unused-navigation" tabindex="-1" aria-label="保存してタイトルに戻る">Title</button><span class="gold-purse"><span aria-hidden="true">◈</span><b id="gold">${STARTING_GOLD} G</b></span><button id="settings-toggle" aria-controls="settings" aria-expanded="false"><span id="connection-state" class="status-dot jev-ui" aria-hidden="true"></span><span id="settings-label">設定</span></button></div></header>
 <main class="game-layout" inert>
 <section class="battle-panel" aria-label="戦場">
-<div class="stage-label">Stage <span id="stage">01</span><span id="stage-goal" class="stage-goal" hidden></span></div><span id="phase" class="sr-only" role="status"></span>
-<div class="map-heading"><span><b id="field-name"></b><small id="time">00:00</small></span><span class="sr-only">地図をドラッグ・スクロールして移動</span></div>
+<span id="phase" class="sr-only" role="status"></span>
+<div class="map-heading"><span><b id="field-name"></b><small id="time">00:00</small></span><div class="stage-label">Stage <span id="stage">01</span><span id="stage-goal" class="stage-goal" hidden></span></div><span class="sr-only">地図をドラッグ・スクロールして移動</span></div>
 <div class="map-shell"><div id="map-scroll" tabindex="0" aria-label="戦場を移動。矢印キーで移動、Homeで入口、Endで拠点。Shiftと矢印キーで配置位置を選び、Enterで配置・移動"><div id="map-world"><div id="field"><div id="base-health" class="base-health"><progress id="player-bar" max="${CONFIG.baseHp}" value="${CONFIG.baseHp}" aria-label="拠点の残り体力" aria-describedby="player-hp"></progress><span id="player-hp" class="sr-only">100 / 100</span></div></div></div></div></div>
 <p id="feedback" class="sr-only" role="status" aria-live="polite">ステージを選ぼう。</p>
 </section>
-<nav class="field-controls" aria-label="戦場の操作">
+<div class="battle-footer"><nav class="field-controls" aria-label="戦場の操作">
 <button id="deck-toggle" class="field-icon reserve-dropzone" aria-expanded="false" aria-controls="unit-tray" aria-label="仲間・控え" title="仲間・控え">${fortificationIcon('company')}<span id="reserve-count" class="icon-count" aria-hidden="true">0</span></button>
 <button id="items-toggle" class="field-icon" aria-expanded="false" aria-controls="item-tray" aria-label="道の備え" title="道の備え">${fortificationIcon('sandbag')}</button>
 <button id="assault" class="field-icon primary" aria-label="襲撃開始" title="襲撃開始" disabled>▶</button>
-</nav><p id="control-tooltip" role="tooltip" hidden></p>
+</nav></div><p id="control-tooltip" role="tooltip" hidden></p>
 <section id="unit-tray" class="floating-tray panel" aria-label="仲間・控え" hidden><div class="tray-heading"><span id="count" class="sr-only"></span><span id="ai-mode" class="sr-only"></span><button id="scout" class="scout-button" hidden aria-label="仲間をスカウト · 80 G" title="仲間をスカウト · 80 G">${fortificationIcon('scout')}<span>◈ ${SCOUT_COST}</span></button><button id="upgrade" aria-controls="upgrade-panel" aria-expanded="false" aria-label="旧遠征の強化" title="旧遠征の強化" hidden>↑</button><button id="unit-prev" class="tray-page" aria-label="前の仲間" hidden>‹</button><span id="unit-page" class="tray-page-count" aria-live="polite" hidden></span><button id="unit-next" class="tray-page" aria-label="次の仲間" hidden>›</button><button id="unit-tray-close" class="icon-close" aria-label="仲間を閉じる">×</button></div><div class="cards" aria-label="配置できる仲間">${ALLY_TYPES.map((type, i) => `<button class="unit" id="unit-${type}" aria-label="${DEFINITIONS[type].name} をドラッグして配置" title="${DEFINITIONS[type].name} · 40 G" hidden><kbd aria-hidden="true">${(i + 1) % 10}</kbd><img src="${displayPortrait(type) ?? ''}" alt="" draggable="false"><small id="level-${type}"></small><span class="unit-check" aria-hidden="true">✓</span></button>`).join('')}</div></section>
 <section id="item-tray" class="floating-tray panel" aria-label="道の備え" hidden><div class="tray-heading"><span id="sandbag-stock" class="sr-only"></span><button id="item-tray-close" class="icon-close" aria-label="道の備えを閉じる">×</button></div><div class="road-actions item-tools"><button id="sandbag-place" class="item-tool" aria-pressed="false" aria-label="土のうを配置" title="土のうを配置">${fortificationIcon('sandbag')}<small id="sandbag-place-label"></small></button>${roadItemControls}</div><p id="paid-item-status" class="sr-only" role="status" hidden></p></section>
 <section id="selection-context" class="selection-context floating-tray panel" aria-labelledby="unit-action-name" hidden><div class="context-heading"><b id="unit-action-name"></b><button id="selection-close" aria-label="選択メニューを閉じる">×</button></div><p id="unit-action-status"></p><div id="defender-actions" class="context-actions"><button id="unit-special" aria-label="必殺技" title="必殺技" hidden>✦</button><button id="unit-upgrade" aria-label="強化" title="強化">↑</button><button id="unit-move" aria-label="キーボードで移動" title="キーボードで移動">✥</button><button id="unit-recall" aria-label="控えに戻す · 40 G返金" title="控えに戻す · 40 G返金">↩ <small>+40</small></button></div><div id="sandbag-actions" class="context-actions" hidden><button id="sandbag-move" aria-label="土のうを移動" title="土のうを移動" disabled>✥</button><button id="sandbag-remove" aria-label="土のうを撤去" title="土のうを撤去" disabled>×</button></div><div id="road-item-actions" class="context-actions" hidden><button id="road-item-move" aria-label="アイテムを移動" title="アイテムを移動">✥</button><button id="road-item-remove" aria-label="アイテムを撤去・返金なし" title="アイテムを撤去・返金なし">×</button></div>${equipmentControls}<p id="unit-action-hint" class="sr-only" role="status"></p></section>
@@ -783,12 +783,16 @@ function updateField() {
 function resizeBattlefield() {
   const field = fieldFor(engine.state)
   const compact = field.layoutRevision >= 3
-  const presentation = battlefieldPresentation({ width: viewport.clientWidth, height: viewport.clientHeight }, field)
+  viewport.dataset.fit = compact ? 'true' : 'false'
+  const padding = getComputedStyle(viewport)
+  const presentation = battlefieldPresentation({
+    width: viewport.clientWidth - (compact ? parseFloat(padding.paddingLeft) + parseFloat(padding.paddingRight) : 0),
+    height: viewport.clientHeight - (compact ? parseFloat(padding.paddingTop) + parseFloat(padding.paddingBottom) : 0)
+  }, field)
   mapScale = presentation.scaleY
   mapScaleX = presentation.scaleX
   renderer.setPresentation(presentation.modelScale, presentation.aspectExpansion)
   $('field').style.setProperty('--field-aspect-inverse', String(1 / presentation.aspectExpansion))
-  viewport.dataset.fit = compact ? 'true' : 'false'
   viewport.setAttribute(
     'aria-label',
     compact
@@ -1001,8 +1005,13 @@ function stopSandbagPlacement() {
   $('sandbag-move').setAttribute('aria-pressed', 'false')
   viewport.classList.remove('placing-sandbag')
 }
+function setSpecialAim(id: number | null) {
+  if (specialAimId === id) return
+  specialAimId = id
+  $('selection-context').toggleAttribute('data-aiming', id !== null)
+}
 function cancelPlacementGestures() {
-  specialAimId = null
+  setSpecialAim(null)
   specialTargetClick = false
   renderer.setSpecialPreview(null)
   defenderMoveInput.cancel()
@@ -1014,7 +1023,6 @@ function cancelPlacementGestures() {
   keyboardUnitPicked = false
 }
 function clearPlacementModes() {
-  specialAimId = null
   renderer.setSpecialPreview(null)
   cancelPlacementGestures()
   stopSandbagPlacement()
@@ -1107,7 +1115,7 @@ function beginSpecial(id: number) {
   }
   const assetStatus = renderer.specialAbilityStatus(unit.type as AllyType)
   if (assetStatus !== 'ready') { announce(assetStatus === 'error' ? '必殺技素材を読み込めません。再読み込みしてください。' : '必殺技の3D素材を読込中'); return }
-  specialAimId = id
+  setSpecialAim(id)
   specialAimPoint = { x: unit.x, y: unit.y }
   viewport.focus({ preventScroll: true })
   renderer.setSpecialPreview({ id, point: { x: unit.x, y: unit.y } })
@@ -1151,7 +1159,7 @@ const specialInput = new GroundTapInput(viewport, {
   }
 })
 $('unit-special').onclick = () => {
-  if (specialAimId !== null) { specialAimId = null; specialInput.cancel(); updateSelectionContext() }
+  if (specialAimId !== null) { setSpecialAim(null); specialInput.cancel(); updateSelectionContext() }
   else if (selectedDefenderId !== null) beginSpecial(selectedDefenderId)
 }
 const skillCutIn = new SkillCutIn($('app'), $('field'), () => {
@@ -1160,7 +1168,7 @@ const skillCutIn = new SkillCutIn($('app'), $('field'), () => {
   soundPlayer.playFeel('cutin')
   battleMusic.duck()
 })
-const skillBar = new SkillBar(document.querySelector<HTMLElement>('.game-layout')!, {
+const skillBar = new SkillBar(document.querySelector<HTMLElement>('.battle-footer')!, {
   portrait: displayPortrait,
   onActivate: activateSkill
 })
@@ -2977,7 +2985,7 @@ function frame(now: number) {
     stopRoadItemPlacement()
     movingDefenderId = null
   }
-  if (specialAimId !== null && !specialReady(state, specialAimId)) { specialAimId = null; renderer.setSpecialPreview(null) }
+  if (specialAimId !== null && !specialReady(state, specialAimId)) { setSpecialAim(null); renderer.setSpecialPreview(null) }
   skillBar.update(state, !document.querySelector('dialog[open]'))
   battleSpecials.count(state)
   autoSkills(now)

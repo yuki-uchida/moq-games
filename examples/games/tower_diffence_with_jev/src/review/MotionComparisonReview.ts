@@ -6,6 +6,7 @@ import { authoredEffectClips } from '../rendering/AuthoredEffects'
 import { authoredDeathClips } from '../rendering/DeathArt'
 import { unitTrialsFromURL } from '../rendering/UnitArtTrial'
 import { createMotionComparisonScene, type MotionReviewOptions } from './MotionComparisonScene'
+import { drawBoardCanvas } from '../rendering/BoardCanvas'
 
 const base = new URL('../../../tower-defense-art/', document.baseURI)
 const field = document.getElementById('field')!
@@ -75,6 +76,7 @@ const wallNow = performance.now.bind(performance)
 Object.defineProperty(performance, 'now', { configurable: true, value: () => visualMs })
 function draw() {
   renderer.render(scene.engine.state, null, false)
+  renderer.drawBoard()
   const elapsedMs = scene.elapsedMs
   const last = (renderer as any).units.get(scene.actor.id)?.lastFrame
   const index = last?.atlas.sample(last.elapsedMs).frame.index
@@ -85,7 +87,14 @@ function draw() {
     const source = field.querySelector('canvas')!
     context.fillStyle = '#083e30'
     context.fillRect(0, 0, 1280, 52)
-    context.drawImage(source, viewport.scrollLeft, viewport.scrollTop, 1280, 780, 0, 52, 1280, 780)
+    const scaleX = source.width / source.clientWidth
+    const scaleY = source.height / source.clientHeight
+    drawBoardCanvas(
+      context,
+      source,
+      { x: viewport.scrollLeft * scaleX, y: viewport.scrollTop * scaleY, width: 1280 * scaleX, height: 780 * scaleY },
+      { y: 52, width: 1280, height: 780 }
+    )
     context.fillStyle = 'white'
     context.font = '18px monospace'
     context.fillText(

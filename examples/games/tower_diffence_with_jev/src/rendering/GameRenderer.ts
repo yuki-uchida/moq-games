@@ -1,12 +1,12 @@
-import { BattlefieldBackdrop } from './BattlefieldBackdrop'
 import { preparationPause, preparationWait, preparationGpu } from './CampaignPreparation'
 import type { ModelMotion } from './ModelUnitVisual'
 import { prepareFadePrograms } from './FadePrograms'
 import { SpecialAbilityVisual } from './SpecialAbilityVisual'
 import { ImpactVfx, impactFrame, impactStyle, impactDuration } from './ImpactVfx'
 import { SPECIALS } from '../game/SpecialAbilities'
-import { ModelEnvironmentLighting } from './ModelEnvironmentLighting'
-import { createBoardCamera, configureBoardCamera } from './BoardCamera'
+import { createBattlefieldModelLighting, type ModelEnvironmentLighting } from './ModelEnvironmentLighting'
+import { orientBoardCanvas } from './BoardCanvas'
+import { COMPACT_BOARD_TOP_BLEED, createBoardCamera, configureBoardCamera } from './BoardCamera'
 import { ModelUnitLayer, type ModelRoster } from './ModelUnitLayer'
 import { expressiveMotion } from './ExpressiveMotion'
 import { canInitiateDamage, healingAction, HEALING_ACTIONS, temporaryPaladinHeal } from '../game/HealingActions'
@@ -467,7 +467,6 @@ export class GameRenderer {
   private compilingDefenders = new Set<AllyType>()
   private defenderRetryAt = 0
   private motionPreparation?: Promise<void>
-  private backdrop?: BattlefieldBackdrop
   private modelPresentationScale = 1
   private modelPresentationAspect = 1
   private modelSelected: AllyType = 'soldier'
@@ -707,17 +706,7 @@ export class GameRenderer {
     private host: HTMLElement,
     authored: AuthoredAtlasOptions = {}
   ) {
-    const viewport = host.closest<HTMLElement>('#map-scroll')
-    if (viewport) this.backdrop = new BattlefieldBackdrop(viewport)
-    if (authored.models) {
-      this.models = new ModelUnitLayer(this.scene, authored.models)
-      // The board has one key light; stronger IBL keeps shaded cloth and metal readable.
-      this.modelEnvironment = new ModelEnvironmentLighting(this.scene, 0.5)
-      this.scene.add(new THREE.HemisphereLight(0xf4ffe3, 0x244352, 2.5))
-      const light = new THREE.DirectionalLight(0xffe0ad, 3)
-      light.position.set(-120, -240, 100)
-      this.scene.add(light)
-    }
+    if (authored.models) this.models = new ModelUnitLayer(this.scene, authored.models)
     this.environmentEnabled = authored.environmentTrial ?? false
     this.environmentBase = authored.environmentBase
     this.standardClips = authored.clips ?? {}
@@ -741,8 +730,10 @@ export class GameRenderer {
       new RuntimeAtlasCache((url, signal) =>
         effectUrls.has(url) ? loadEffectWholeFrameAtlas(url, signal) : loadRuntimeWholeFrameAtlas(url, signal)
       )
-    this.renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false })
+    const devicePixelRatio = window.devicePixelRatio || 1
+    this.renderer = new THREE.WebGLRenderer({ antialias: Boolean(this.models) && devicePixelRatio < 2, alpha: true })
     if (this.models) {
+      this.modelEnvironment = createBattlefieldModelLighting(this.scene, this.renderer)
       this.renderer.debug.onShaderError = (gl, program) => {
         this.assetErrors['model:shader'] =
           `3D shader compilation failed: ${gl.getProgramInfoLog(program) ?? 'unknown driver error'}`
@@ -750,7 +741,8 @@ export class GameRenderer {
       }
     }
     this.renderer.setSize(this.field.width, this.field.height, false)
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, authored.pixelRatio ?? 2))
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, authored.pixelRatio ?? 2))
+    orientBoardCanvas(this.renderer.domElement)
     this.renderer.domElement.setAttribute(
       'aria-label',
       '曲がりくねった一本道の戦場。道の外の地面を選んで仲間を自由に配置できます。'
@@ -938,7 +930,6 @@ export class GameRenderer {
     }
     this.sandbagVisuals.clear()
     this.sandbagPreviewLabel.remove()
-    this.backdrop?.dispose()
     this.renderer.domElement.remove()
     this.modelEnvironment?.dispose()
     if (this.motionPreparation) void this.motionPreparation.finally(() => this.renderer.dispose())
@@ -1175,7 +1166,6 @@ export class GameRenderer {
     const fieldArt = projected
       ? createProjectedFieldArt(id, this.modelPresentationAspect, mazeArt)
       : createFieldArt(id, false, version, mazeArt ?? this.environmentArt?.field, layoutRevision)
-    this.backdrop?.setSource(layoutRevision === 4 && mazeArt ? fieldArt : undefined)
     const texture = this.texture(fieldArt)
     texture.name = mazeArt
       ? `approved-map:field:${id}:${version}:${layoutRevision}${projected ? ":projected" : ""}`
@@ -1184,7 +1174,7 @@ export class GameRenderer {
         : `field:${id}:${version}:${layoutRevision}`
     this.background = new THREE.Mesh(
       new THREE.PlaneGeometry(width, height),
-      new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide })
+      new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, toneMapped: false })
     )
     this.background.scale.y = -1
     this.background.position.set(width / 2, height / 2, -20)
@@ -2047,8 +2037,13 @@ export class GameRenderer {
     this.fieldId = id
     this.field = field
     const { width, height } = this.field
-    this.renderer.setSize(width, height, false)
-    configureBoardCamera(this.camera, this.field)
+    const topBleed = layoutRevision >= 3 ? COMPACT_BOARD_TOP_BLEED : 0
+    this.renderer.setSize(width, height + topBleed, false)
+    const canvasStyle = this.renderer.domElement.style
+    canvasStyle.height = topBleed ? `${(100 * (height + topBleed)) / height}%` : ''
+    canvasStyle.position = topBleed ? 'absolute' : ''
+    canvasStyle.bottom = topBleed ? '0' : ''
+    configureBoardCamera(this.camera, this.field, topBleed)
     this.renderer.domElement.setAttribute(
       'aria-label',
       layoutRevision >= 3
@@ -2472,7 +2467,8 @@ export class GameRenderer {
       previewVisible ? selected : undefined,
       preview ?? undefined,
       preview ? entranceFacing(s.fieldId, preview, s.battlefieldVersion, s.layoutRevision) : undefined,
-      placement?.valid ?? true
+      placement?.valid ?? true,
+      s.phase === 'preparation'
     )
     if (
       !this.models &&
@@ -2955,17 +2951,19 @@ export class GameRenderer {
     this.atlasCache.endFrame()
     // Title/launch dialogs cover the battlefield. Do not upload textures or compile
     // its shaders before the player starts; this also keeps cold startup responsive.
-    if (interactive) {
-      const drawStarted = performance.now()
-      this.modelEnvironment?.ensure(this.renderer)
-      this.renderer.render(this.scene, this.camera)
-      const elapsed = performance.now() - drawStarted
-      if (!this.drawTiming.frames) this.drawTiming.firstMs = elapsed
-      this.drawTiming.frames++
-      this.drawTiming.lastMs = elapsed
-      this.drawTiming.maxMs = Math.max(this.drawTiming.maxMs, elapsed)
-    }
+    if (interactive) this.drawBoard()
     if (interactive) this.prepareActorMotion()
     this.lastRenderedSimulationTime = s.time
+  }
+
+  drawBoard(): void {
+    const drawStarted = performance.now()
+    this.modelEnvironment?.ensure(this.renderer)
+    this.renderer.render(this.scene, this.camera)
+    const elapsed = performance.now() - drawStarted
+    if (!this.drawTiming.frames) this.drawTiming.firstMs = elapsed
+    this.drawTiming.frames++
+    this.drawTiming.lastMs = elapsed
+    this.drawTiming.maxMs = Math.max(this.drawTiming.maxMs, elapsed)
   }
 }

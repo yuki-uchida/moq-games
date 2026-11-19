@@ -60,10 +60,16 @@ const fixture = await page.evaluate(async () => {
 await page.reload()
 await page.locator('#title-continue').click()
 await page.locator('#campaign-loading').waitFor({ state: 'hidden', timeout: 180000 })
-await page.waitForFunction(() => window.towerDefenseDiagnostics().assetStatus === 'ready', { timeout: 90000 })
+await page.waitForFunction(() => window.towerDefenseDiagnostics().assetStatus === 'ready', undefined, { timeout: 90000 })
 const record = await page.evaluate(async () => {
-  const canvas = document.querySelector('#field canvas'),
-    stream = canvas.captureStream(30),
+  const path = '/moq-games/examples/games/tower_diffence_with_jev/src/rendering/BoardCanvas.ts'
+  const { drawBoardCanvas } = await import(path)
+  const source = document.querySelector('#field canvas'),
+    canvas = document.createElement('canvas'),
+    context = canvas.getContext('2d')
+  canvas.width = source.width
+  canvas.height = source.height
+  const stream = canvas.captureStream(30),
     rec = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8', videoBitsPerSecond: 9000000 }),
     chunks = [],
     samples = []
@@ -71,9 +77,14 @@ const record = await page.evaluate(async () => {
   const done = new Promise((r) => (rec.onstop = r))
   rec.start()
   const start = performance.now()
+  let lastFrame = window.towerDefenseDiagnostics().gpu.frames
   await new Promise((resolve) => {
     function tick() {
       const d = window.towerDefenseDiagnostics()
+      if (d.gpu.frames !== lastFrame) {
+        lastFrame = d.gpu.frames
+        drawBoardCanvas(context, source)
+      }
       samples.push({
         wallMs: performance.now() - start,
         time: d.simulationTime,
@@ -87,7 +98,7 @@ const record = await page.evaluate(async () => {
       if (performance.now() - start >= 16000) resolve()
       else requestAnimationFrame(tick)
     }
-    tick()
+    requestAnimationFrame(tick)
   })
   rec.stop()
   await done

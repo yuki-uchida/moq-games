@@ -6,6 +6,48 @@ import { freshSave } from '../examples/games/tower_diffence_with_jev/src/progres
 import { getField, stageRules } from '../examples/games/tower_diffence_with_jev/src/game/model'
 import { saveCampaignCheckpoint } from '../examples/games/tower_diffence_with_jev/src/progression/CampaignStorage'
 import { validateCampaignCheckpoint } from '../examples/games/tower_diffence_with_jev/src/game/CampaignCheckpoint'
+import { drawBoardCanvas } from '../examples/games/tower_diffence_with_jev/src/rendering/BoardCanvas'
+
+declare global {
+  interface Window {
+    __drawBoardCanvas: typeof drawBoardCanvas
+  }
+}
+
+// The same capture helper also runs against the built Pages bundle, which has no TS source URLs.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript({ content: `window.__drawBoardCanvas = (${drawBoardCanvas.toString()})` })
+})
+
+test('board capture flips raw pixels and preserves the scrolled crop and header', async ({ page }) => {
+  await page.goto(towerPath)
+  const rows = await page.evaluate(() => {
+    const { __drawBoardCanvas: draw } = window
+    const source = document.createElement('canvas')
+    source.width = 1
+    source.height = 4
+    const raw = source.getContext('2d')!
+    for (const [row, red] of [30, 60, 90, 120].entries()) {
+      raw.fillStyle = `rgb(${red}, 0, 0)`
+      raw.fillRect(0, row, 1, 1)
+    }
+    const output = document.createElement('canvas')
+    output.width = 1
+    output.height = 7
+    const context = output.getContext('2d')!
+    draw(context, source)
+    draw(context, source, { x: 0, y: 1, width: 1, height: 2 }, { y: 5, width: 1, height: 2 })
+    context.fillStyle = 'rgb(150, 0, 0)'
+    context.fillRect(0, 4, 1, 1)
+    const first = Array.from({ length: 7 }, (_, row) => context.getImageData(0, row, 1, 1).data[0])
+    raw.clearRect(0, 2, 1, 1)
+    draw(context, source, { x: 0, y: 1, width: 1, height: 2 }, { y: 5, width: 1, height: 2 })
+    return { first, header: context.getImageData(0, 4, 1, 1).data[0], cleared: context.getImageData(0, 5, 1, 1).data[3] }
+  })
+  expect(rows.first).toEqual([120, 90, 60, 30, 150, 90, 60])
+  expect(rows.header).toBe(150)
+  expect(rows.cleared).toBe(0)
+})
 
 for (const role of ['wolf', 'brute', 'ogre'] as const) {
   test(`${role}: repaired model plays in a restored real game encounter`, async ({ page }, info) => {
@@ -42,6 +84,8 @@ for (const role of ['wolf', 'brute', 'ogre'] as const) {
     // Observe completed render frames in the page, independently of slow driver
     // screenshots. Capture the canvas synchronously in that same attack frame.
     await page.evaluate((role) => {
+      const capture = document.createElement('canvas')
+      const context = capture.getContext('2d')!
       const w = window as any
       const review = (w.__proximalFrameReview = {
         motions: [] as string[],
@@ -65,7 +109,12 @@ for (const role of ['wolf', 'brute', 'ogre'] as const) {
             const capturePhase = u.motion === 'walk' || (u.motion === 'attack' && u.seconds >= 0.2 && u.seconds <= 0.9)
             if (capturePhase && !review.captures[u.motion]) {
               const canvas = document.querySelector<HTMLCanvasElement>('#field canvas')
-              if (canvas) review.captures[u.motion] = { ...sample, png: canvas.toDataURL('image/png') }
+              if (canvas) {
+                capture.width = canvas.width
+                capture.height = canvas.height
+                window.__drawBoardCanvas(context, canvas)
+                review.captures[u.motion] = { ...sample, png: capture.toDataURL('image/png') }
+              }
             }
           }
         }

@@ -1,19 +1,21 @@
 import * as THREE from 'three'
+import { createBoardCamera } from '../rendering/BoardCamera'
+import { orientBoardCanvas } from '../rendering/BoardCanvas'
+import { createBattlefieldModelLighting } from '../rendering/ModelEnvironmentLighting'
 import { ModelAssetCache } from '../rendering/ModelAssetCache'
 import { ModelUnitVisual, type ModelMotion } from '../rendering/ModelUnitVisual'
 
 const scene = new THREE.Scene()
 scene.background = new THREE.Color('#60785e')
-const camera = new THREE.OrthographicCamera(0, 800, 0, 450, -200, 200)
+const camera = createBoardCamera({ width: 800, height: 450 })
 const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setSize(800, 450)
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
 renderer.outputColorSpace = THREE.SRGBColorSpace
+orientBoardCanvas(renderer.domElement)
 document.querySelector('#stage')!.append(renderer.domElement)
-scene.add(new THREE.HemisphereLight(0xf4ffe3, 0x244352, 2.5))
-const light = new THREE.DirectionalLight(0xffe0ad, 3)
-light.position.set(-120, -240, 100)
-scene.add(light)
+const environment = createBattlefieldModelLighting(scene, renderer)
+environment.ensure(renderer)
 const cache = new ModelAssetCache()
 const url = new URL('../../../tower-defense-art/models/slime/animated.glb', document.baseURI).href
 const visual = new ModelUnitVisual(
@@ -78,6 +80,7 @@ window.addEventListener(
     cache.dispose()
     floor.geometry.dispose()
     floor.material.dispose()
+    environment.dispose()
     renderer.dispose()
   },
   { once: true }
