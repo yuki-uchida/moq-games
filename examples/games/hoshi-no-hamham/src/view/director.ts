@@ -17,6 +17,7 @@ import type { CueSink } from './cues'
 import { edgePointer, type Overlay } from './overlay'
 import { mergeClaims, type Claims, type Sequence } from './sequence'
 import { BETWEEN_WAIT_SECONDS, LAND_WAIT_SECONDS, PRIORITY, Staging } from './staging'
+import { SHOT_CUE_SECONDS } from './clips'
 import type { StageView } from './stage-view'
 import type { PoseToken } from './actors'
 
@@ -118,6 +119,8 @@ export class StageDirector implements Director {
   private answering = false
   /** `simStep` drives the waits (see `simStep`). */
   private stepDriven = false
+  /** A boss's shot left on the step being answered (see `backstop`). */
+  private shotThisStep = false
   private staging: Staging
 
   constructor(
@@ -161,11 +164,15 @@ export class StageDirector implements Director {
     const { hud, world } = this.host
     const toast = TOASTS[event.type]
     if (toast) hud.showToast(toast)
+    if (event.type === 'boss-shoot') this.shotThisStep = true
     switch (event.type) {
       case 'boss-awake':
-        // The entrance waits for the hero too: he is posed standing through it, not frozen in a run or a jump.
+        // The entrance waits for the hero too: he is posed standing through it, not frozen in a run or a jump. It
+        // begins before the boss has begun anything: as the transformation, it waits for the hero only while the
+        // boss is between his actions, and begins at the latest in the first moments of his first wind-up or on the
+        // step before his first light or cast (the hero hangs where he is); never inside an action.
         if (world.boss && world.boss.def.kind !== 'chaser')
-          this.whenLanded(PRIORITY.intro, () => this.staging.bossIntro(() => this.showBossBar()), true)
+          this.whenLanded(PRIORITY.intro, () => this.staging.bossIntro(() => this.showBossBar()), true, true)
         break
       case 'boss-phase':
         // (The view leaves his transformation to the moment: it is not played on the simulation's time.) Like the
@@ -254,6 +261,7 @@ export class StageDirector implements Director {
     this.stepDriven = true
     this.answering = false
     this.advanceLandings(STEP)
+    this.shotThisStep = false
     this.refresh()
   }
 
@@ -321,7 +329,9 @@ export class StageDirector implements Director {
   private landed(hero: boolean, between = false, heroWaited = 0) {
     if (!this.bossReady(between)) return false
     if (!hero || this.heroReady() || heroWaited >= LAND_WAIT_SECONDS - 1e-9) return true
-    return between && this.host.world.boss?.state === 'windup'
+    // (Between his actions, he is waited for only while the boss stands or walks: in the first moments of a wind-up,
+    // or on the step before his light or his cast, the moment begins and the hero hangs where he is.)
+    return between && (this.host.world.boss?.state === 'windup' || this.host.view.actors.bossShotNext?.() === true)
   }
 
   /**
@@ -342,6 +352,17 @@ export class StageDirector implements Director {
     return player.dead || (player.onGround && !this.host.view.actors.heroKnocked?.())
   }
 
+  /**
+   * The backstop of a waiting moment: `BETWEEN_WAIT_SECONDS`, but never under a light part gathered or on the step
+   * its shot leaves: a showing light's shot is waited for (`SHOT_CUE_SECONDS` at most), then the moment begins.
+   */
+  private backstop(waited: number) {
+    if (waited < BETWEEN_WAIT_SECONDS - 1e-9) return false
+    if (waited >= BETWEEN_WAIT_SECONDS + SHOT_CUE_SECONDS - 1e-9) return true
+    const actors = this.host.view.actors
+    return !(actors.bossLightShows?.() ?? false) && !this.shotThisStep
+  }
+
   private advanceLandings(dt: number) {
     if (!this.landings.length) return
     for (let i = 0; i < this.landings.length; ) {
@@ -351,7 +372,7 @@ export class StageDirector implements Director {
       l.heroWaited += dt
       if (this.ended) this.landings.splice(i, 1)
       // (A moment waits for the hero up to `LAND_WAIT_SECONDS` of the boss being ready, for the boss to its backstop.)
-      else if (this.landed(l.hero, l.between, l.heroWaited) || l.waited >= BETWEEN_WAIT_SECONDS - 1e-9) {
+      else if (this.landed(l.hero, l.between, l.heroWaited) || this.backstop(l.waited)) {
         this.landings.splice(i, 1)
         this.request(l.priority, l.make)
       } else i++

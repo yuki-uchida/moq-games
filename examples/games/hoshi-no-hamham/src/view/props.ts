@@ -114,6 +114,12 @@ export const shotSkin = (shot: Shot) => shot.skin ?? 'seed'
 export const shotClip = (shot: Shot) => (shot.skin === 'stinger' ? 'fly' : shot.skin === 'orb' ? 'pulse' : 'spin')
 /** A shockwave is looked for within this many px of the slam that bore it, on its first step. */
 const SHOCK_BIRTH_PX = 64
+/** A boss's shot, first drawn at his light, has joined its own path this long (s) after the frame that showed it. */
+export const SHOT_JOIN_SECONDS = 0.1
+/** A boss's shot is first drawn at most this far (px) from its own place (see `shotFromLight`). */
+export const SHOT_LIGHT_PX = 12
+/** A squirrel's acorn is within this many px of where it spat it on the step it spat (its first step's flight). */
+const SPIT_BIRTH_PX = 24
 /** The steps a dart is drawn at (rad). */
 export const FLIGHT_ANGLE_STEP = Math.PI / 8
 /**
@@ -160,6 +166,17 @@ export class PropsView {
   drawnFrame: ((body: Shooter, out: Placed) => boolean) | null = null
   /** The stretch of the stage the frame draws (the stage view's); without one every prop is drawn. */
   sight: Sight | null = null
+  /**
+   * The boss's shots of this step leave from his light (the stage view hands in, on his `boss-shoot`, how far his
+   * light on his drawn body was from where the simulation lets them go: his picture may be held off his body, or
+   * jolted by a hit).
+   */
+  private shotLight: { dx: number; dy: number } | null = null
+  /** The boss's shots drawn from his light while they join their own paths (see `shotJoin`). */
+  private joining: { shot: Shot; dx: number; dy: number; age: number | null }[] = []
+  private joinScratch = { x: 0, y: 0 }
+  /** The squirrels that spat on this step (see `simStep`). */
+  private spits: { id: number; x: number; y: number }[] = []
   /** Real seconds (they run while the simulation is held or slowed). */
   private realTime = 0
   /** Each freed ハム姫's cheer: the real time it began, null while it waits for her moment, -Infinity: given up. */
@@ -198,6 +215,10 @@ export class PropsView {
 
   handle(event: SimEvent) {
     switch (event.type) {
+      case 'spit':
+        // (Its acorn is the squirrel's whatever box it is born in: see `simStep`.)
+        this.spits.push({ id: event.id, x: event.x, y: event.y })
+        break
       case 'chop':
         this.mark(this.find([event.kind], event.x, event.y), 'shake')
         break
@@ -246,6 +267,14 @@ export class PropsView {
   update(dt: number) {
     this.time += dt
     if (this.world.state === 'play') this.shotTime += dt
+    // (A boss's shot joins its path on the time it is shown: from the frame that first shows it, age 0.)
+    let kept = 0
+    for (const j of this.joining) {
+      if (j.age === null) j.age = 0
+      else j.age += dt
+      if (!j.shot.dead && j.age < SHOT_JOIN_SECONDS) this.joining[kept++] = j
+    }
+    this.joining.length = kept
     // The ground each awake うりぼう covers (a jump of more than a few tiles is not running), and whether it has
     // been stopped: then it sits dazed from the moment it stopped (after its leap) while it stays there. In the air
     // (off a ledge) it neither runs nor sits: it kicks as it sinks, and what it does there counts for neither.
@@ -576,16 +605,7 @@ export class PropsView {
     }
   }
 
-  /**
-   * Whether a shot is drawn behind the actors now. A hostile shot (not a shockwave) is born at the centre of its
-   * shooter (sim.ts), but his pose throws it from a hand, a wing or a mouth at the edge of his silhouette: it is
-   * drawn behind him while it overlaps the drawing he shows now (the opaque bounds of his frame, placed and flipped
-   * as it is drawn: `drawnFrame`) or the live boss's (a squirrel minion may stand in front of him), and in front
-   * from the first frame it is clear of both, never behind again. So a
-   * shot is only ever seen coming out from behind his silhouette. It is behind when it was born in a body: the live
-   * boss or a live squirrel whose box holds its centre when the view first sees it. A shot born in nobody's box is in
-   * front from the start, and so is the king's volley (it bursts out of his chest, in front of him).
-   */
+  /** A squirrel's acorn emerges from behind its shooter and any overlapping boss. Boss shots start in front. */
   shotBehind(shot: Shot): boolean {
     let record = this.shooters.get(shot)
     if (record === undefined) {
@@ -629,9 +649,63 @@ export class PropsView {
       if (!shot.dead || this.hitShots.has(shot)) continue
       if (shot.life > 0) this.fx.spawn('spark', shot.x + shot.w / 2, shot.y + shot.h / 2, { rate: 1.4 })
     }
+    // A squirrel's acorn comes out from behind the squirrel that spat it (the step's `spit`), whatever box it is born
+    // in (a charging boar's around it, say).
+    for (const spit of this.spits) {
+      let best: Shot | null = null
+      let near = SPIT_BIRTH_PX
+      for (const shot of this.world.shots) {
+        if (shot.dead || !shot.hostile || shot.kind === 'shock' || shotSkin(shot) !== 'seed') continue
+        if (this.flying.includes(shot) || this.shooters.has(shot)) continue
+        const d = Math.hypot(shot.x - spit.x, shot.y - spit.y)
+        if (d < near) {
+          near = d
+          best = shot
+        }
+      }
+      const spitter = this.world.enemies.find((e) => e.id === spit.id && !e.dead) ?? null
+      if (best && spitter) this.shooters.set(best, { shooter: spitter, behind: true })
+    }
+    this.spits.length = 0
+    // The boss's shots born on this step are first drawn at his light (plus their own flight since), then join their
+    // own paths (`SHOT_JOIN_SECONDS`).
+    const light = this.shotLight
+    this.shotLight = null
+    const boss = this.world.boss
+    if (light && boss)
+      for (const shot of this.world.shots)
+        if (!shot.dead && !this.flying.includes(shot) && !this.shooters.has(shot) && this.bornIn(shot) === boss)
+          this.joining.push({ shot, ...light, age: null })
     this.flying.length = 0
     this.hitShots.clear()
     for (const shot of this.world.shots) if (shot.hostile && shot.kind !== 'shock' && !shot.dead) this.flying.push(shot)
+  }
+
+  /**
+   * The boss's `boss-shoot` of this step: his new shots are drawn `dx`, `dy` off their own place (what his picture
+   * was off his body where and when he fired), easing out over `SHOT_JOIN_SECONDS`.
+   */
+  shotFromLight(dx: number, dy: number) {
+    const scale = SHOT_LIGHT_PX / Math.max(SHOT_LIGHT_PX, Math.hypot(dx, dy))
+    this.shotLight = { dx: dx * scale, dy: dy * scale }
+  }
+
+  /**
+   * How far from its own position a shot is drawn now (into `out`): a boss's shot leaves from his light, where it
+   * was drawn on his body, and joins its own path within `SHOT_JOIN_SECONDS` of the frame that first shows it,
+   * smoothly (no jump); every other shot, 0.
+   */
+  shotJoin(shot: Shot, out: { x: number; y: number }) {
+    out.x = 0
+    out.y = 0
+    for (const j of this.joining) {
+      if (j.shot !== shot) continue
+      const u = Math.min(1, (j.age ?? 0) / SHOT_JOIN_SECONDS)
+      const k = 1 - u * u * (3 - 2 * u)
+      out.x = j.dx * k
+      out.y = j.dy * k
+    }
+    return out
   }
 
   /** The hostile shots alive after the last step, and those a `shot-hit` ended since (see `simStep`). */
@@ -720,8 +794,9 @@ export class PropsView {
         this.draw(ctx, 'prop:shock', this.shockClip(shot), time, shot.x + shot.w / 2, shot.y + shot.h, brush(flip))
         continue
       }
-      const x = shot.x + shot.w / 2
-      const y = shot.y + shot.h / 2
+      const join = this.shotJoin(shot, this.joinScratch)
+      const x = shot.x + shot.w / 2 + join.x
+      const y = shot.y + shot.h / 2 + join.y
       // A stinger is a dart: drawn along its flight (falling, it points down), at a few fixed angles.
       const angle = shot.skin === 'stinger' ? flightAngle(shot.vx, shot.vy) : 0
       if (angle === 0) {

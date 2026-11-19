@@ -30,6 +30,8 @@ import { STAGES } from '../src/game/stages'
 import { LAND_WAIT_SECONDS } from '../src/view/staging'
 import {
   CROSSING_SHOOTERS,
+  FRAME_PATTERNS,
+  type FramePattern,
   HOLD_CASES,
   KING_MOMENTS,
   audit,
@@ -44,7 +46,11 @@ import {
   RAGE_WAIT_SECONDS,
   treeFalls,
   STEP,
+  onStepsDifferences,
+  sessionOnSteps,
   sessionPlay,
+  stalledPlay,
+  unevenPlay,
   shotsInEveryState,
   summarise,
   type Recorder,
@@ -228,25 +234,8 @@ describe('the picture and the motion agree in the real session, with its directo
     })
   })
 
-  // The director's moments and slow motion on other displays: two frames a step (120 Hz), 2.4 (144 Hz), 0.8 (48 Hz),
-  // and rates that do not divide the step (50, 72, 90, 165 Hz), on two seeds (three on the fox's stage, where the
-  // bot beats her with one of them only). At 48 Hz the bot never beats the fox; at 48, 50, 72 and 165 Hz the hero
-  // touches the goal on the frame the crow falls, and the clear cuts his fall.
-  it.each([2, 7, 9, 10].flatMap((no) => [120, 144, 48, 50, 72, 90, 165].map((hz) => ({ no, hz }))))(
-    'stage $no on a $hz Hz display',
-    { timeout: 120_000 },
-    ({ no, hz }) => {
-      const runs = [sessionPlay(no, { seed: 3, skip: ALL_BUT_THE_FALL, hz, seconds: 200 })]
-      if (hz === 50 || hz === 72 || hz === 90 || hz === 165) {
-        runs.push(sessionPlay(no, { seed: 11, skip: true, hz, seconds: 200 }))
-        if (no === 7) runs.push(sessionPlay(no, { seed: 5, skip: ALL_BUT_THE_FALL, hz, seconds: 200 }))
-      }
-      expectClean(runs)
-      const fall = !(no === 2 && [48, 50, 72, 165].includes(hz)) && !(no === 7 && hz === 48)
-      expectAPlaythrough(runs, fall)
-    }
-  )
-
+  // (Round 8d: stages 2, 7, 9 and 10 on 48 to 165 Hz displays, and stages 7, 9 and 10 at 144 and 240 Hz on three more
+  // seeds, are in `view-session-rates.test.ts`, to keep this file under its 150 s.)
   it.each([1, 3, 4, 5, 6, 8].flatMap((no) => [50, 72].map((hz) => ({ no, hz }))))(
     'stage $no on a $hz Hz display',
     { timeout: 120_000 },
@@ -370,19 +359,6 @@ describe('the picture and the motion agree in the real session, with its directo
     }
   )
 
-  // Odd rates on seeds that really differ: each run waits a different number of steps before the bot sets off, so
-  // that no two meet their enemies and their boss at the same moments.
-  it.each([144, 240].flatMap((hz) => [7, 9, 10].map((no) => ({ hz, no }))))(
-    'stage $no at $hz Hz on three more seeds',
-    { timeout: 150_000 },
-    ({ hz, no }) => {
-      const runs = [19, 2, 37].map((seed) =>
-        sessionPlay(no, { seed, wait: (seed * 7) % 61, skip: seed % 2 === 1, hz, seconds: 200 })
-      )
-      expectClean(runs)
-    }
-  )
-
   it.each(CROSSING_SHOOTERS.map((shooter) => ({ shooter })))(
     'shots of the $shooter against a hero who crosses 0 to 21 steps before them, or stands on the aim line',
     { timeout: 120_000 },
@@ -461,6 +437,51 @@ describe('the picture and the motion agree in the real session, with its directo
     expectAPlaythrough([r], false)
     expect(r.director.log).toContain('boss-defeat')
     expect(r.frames.some((f) => f.scale > 0 && f.scale < 1)).toBe(false)
+  })
+
+  // Display frames of uneven length (round 7, the outside reviewer's fourth verdict): its own case (60 Hz with a 50 ms
+  // frame every 53), every frame between 8 and 28 ms, 16.7 and 33.3 ms in turn, 120 Hz with a 58 ms frame every 97,
+  // 30 Hz ± 12 ms; on stage 1, the three throwers' stages (2, 7, 9: the bee's squirrels too) and the king's.
+  it.each((Object.keys(FRAME_PATTERNS) as FramePattern[]).map((pattern) => ({ pattern })))(
+    'uneven display frames: $pattern',
+    { timeout: 150_000 },
+    ({ pattern }) => {
+      expectClean([1, 2, 7, 9, 10].map((no) => unevenPlay(no, pattern, { seed: 1, skip: true, seconds: 200 })))
+    }
+  )
+
+  // What is decided on steps is the same at every display schedule (round 7b), the boss's too: on every step two runs
+  // both show (up to where their simulations part or the boss falls), each body's clip and facing at 60 Hz against
+  // 48 and 144 Hz, three uneven patterns, and stalls where they matter; the patterns from the end of the stage's
+  // first moment on (its steps run with the input locked on real time).
+  it.each([
+    [2, [48, 144, 'drop53', 'burst', 'alt']],
+    [7, [48, 144, 'drop53', 'burst', 'alt', 'light']],
+    [9, [48, 144, 'drop53', 'burst', 'alt', 'light']],
+    [10, [48, 144, 'drop53', 'burst', 'alt', 'windup', 'landing', 'bite', 'phase']]
+  ] as const)('stage %i: the same on every step at every display schedule', { timeout: 150_000 }, (no, schedules) => {
+    const even = sessionOnSteps(no, 60)
+    for (const frames of schedules)
+      expect(onStepsDifferences(even, sessionOnSteps(no, frames)), String(frames)).toEqual([])
+  })
+
+  // One display frame of 250 ms (the pacer runs at most four steps in it and drops the rest; the clips advance by the
+  // whole of it): in the middle of a fight, of a light, of the transformation.
+  it.each([
+    [2, 'fight'],
+    [7, 'light'],
+    [9, 'light'],
+    [10, 'phase'],
+    [10, 'windup'],
+    [10, 'landing'],
+    [10, 'bite']
+  ] as const)('a stalled display frame on stage %i, in the middle of a %s', { timeout: 120_000 }, (no, at) => {
+    const r = stalledPlay(no, at, { seed: 3, skip: ['stage-start', 'boss-intro'], seconds: 200 })
+    expect(
+      r.tracks.get('hero')!.rows.some((row) => row.dt > 0.2),
+      r.label
+    ).toBe(true)
+    expectClean([r])
   })
 
   // A hold begun as the hero runs, brakes, pivots or bites (a far goal opened on that step: the director's

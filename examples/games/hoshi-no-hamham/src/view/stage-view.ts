@@ -7,7 +7,7 @@ import { sharedArtSource, type ArtSource } from '../art/remote'
 import type { SimEvent } from '../game/events'
 import type { World } from '../game/sim'
 import { TILE } from '../game/types'
-import { ActorsView } from './actors'
+import { ActorsView, SHOT_BIRTH_DX } from './actors'
 import { BackdropView } from './backdrop'
 import { Camera } from './camera'
 import { FxPool } from './fx'
@@ -72,6 +72,8 @@ export class StageView {
   lastView = { x: 0, y: 0 }
   private api: FxApi
   private birth = { x: 0, y: 0 }
+  /** The boss's picture as the last frame drew it: its place (jolt included), his body's, and whether it was held. */
+  private picture = { x: 0, body: 0, held: false }
 
   constructor(
     readonly world: World,
@@ -134,20 +136,46 @@ export class StageView {
 
   /** Answers one simulation event: state for terrain, props and actors, then the visual flourish. */
   handle(event: SimEvent) {
+    // (What the event spawns is born on its step: first drawn as born, see `FxPool.stepBorn`.)
+    this.fx.stepBorn = true
+    try {
+      this.answer(event)
+    } finally {
+      this.fx.stepBorn = false
+    }
+  }
+
+  private answer(event: SimEvent) {
     this.handled += 1
     if (event.type === 'dig') this.terrain.invalidate(event.tx, event.ty)
+    // His shots leave from where his light was drawn on his body (his picture may be held off it, or jolted).
+    const boss = this.world.boss
+    if (event.type === 'boss-shoot' && boss && !boss.dead && boss.def.kind !== 'final') {
+      // From where he fired (the event's place, his body before that step's move), off it by what his picture was
+      // off his body there and then: a held picture by its own place (the light sat there); a picture that follows its
+      // body by its offset and the jolt, nothing of the body's travel since.
+      const off = this.picture.held ? this.picture.x - event.x : this.picture.x - this.picture.body
+      this.props.shotFromLight(off, 0)
+    }
     this.props.handle(event)
     this.actors.handle(event)
     playFx(event, this.api)
   }
 
-  /**
-   * One simulation step has run and its events have been answered (the world holds the simulation's own positions):
-   * the actors decide what their bodies do on it (`ActorsView.simStep`). Called once per step by `PlaySession`.
-   */
+  /** A display frame begins (before its steps and its events). */
+  beginFrame() {
+    this.actors.beginFrame()
+  }
+
+  /** Updates actors and props from the simulation positions after each step's events have been handled. */
   simStep() {
-    this.actors.simStep()
-    this.props.simStep()
+    this.fx.stepBorn = true
+    try {
+      this.actors.simStep()
+      this.props.simStep()
+    } finally {
+      this.fx.stepBorn = false
+    }
   }
 
   /**
@@ -169,6 +197,13 @@ export class StageView {
     this.props.tickReal(dt)
     this.actors.update(animDt)
     this.actors.tickReal(dt)
+    // (Where this frame draws the boss's picture (with the jolt) against his body, for the shots of the next steps.)
+    const boss = this.world.boss
+    if (boss && !boss.dead && boss.def.kind !== 'final') {
+      this.picture.x = this.actors.shotBirth(boss, this.birth).x - SHOT_BIRTH_DX
+      this.picture.body = boss.x + boss.w / 2
+      this.picture.held = this.actors.bossPictureHeld(boss)
+    }
     this.fx.update(dt)
     this.overlay.lowHealth = !p.dead && p.hp <= 2
     this.overlay.update(dt)
@@ -193,7 +228,7 @@ export class StageView {
     this.terrain.drawDecor(ctx, v.x, v.y)
     this.props.drawProps(ctx)
     this.props.drawPickups(ctx)
-    // (Every shot is drawn in front of the actors from its first frame: see `PropsView.shotBehind`.)
+    // Squirrel acorns emerge from behind the actors; a boss's shot starts in front at its light.
     this.props.drawProjectiles(ctx, 'behind')
     this.actors.drawEnemies(ctx)
     this.actors.drawBoss(ctx)

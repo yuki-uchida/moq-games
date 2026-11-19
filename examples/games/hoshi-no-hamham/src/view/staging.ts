@@ -407,10 +407,10 @@ export class Staging {
         Math.max(at.x + RAGE_FRAME.side - VIEW_W, Math.min(at.x - RAGE_FRAME.side, camera.x)),
         Math.max(at.y + RAGE_FRAME.below - VIEW_H, Math.min(at.y - RAGE_FRAME.above, camera.y))
       )
-      if (Math.abs(to.x - camera.x) > 0.5 || Math.abs(to.y - camera.y) > 0.5) {
-        framed = true
-        camera.panTo(to.x + VIEW_W / 2, to.y + VIEW_H / 2, this.reduced ? 0 : RAGE_PAN_SECONDS)
-      }
+      // (Held to the moment's end either way: a follow camera still easing after the hero would carry him out of it.)
+      framed = true
+      const moves = Math.abs(to.x - camera.x) > 0.5 || Math.abs(to.y - camera.y) > 0.5
+      camera.panTo(to.x + VIEW_W / 2, to.y + VIEW_H / 2, this.reduced || !moves ? 0 : RAGE_PAN_SECONDS)
       spot()
       this.posed(seq, 'boss', 'rage', length + (this.reduced ? RAGE_POSE_MARGIN : POSE_SPARE))
       // The hero too (the director waits for him to land as well): he finishes a bite under way, then stands.
@@ -681,14 +681,19 @@ export class Staging {
     seq.at(
       irisAt,
       () => {
-        const rest = view.actors.deathRest()
-        const s = rest ? onScreen(rest) : body()
-        overlay.irisTo(0, 0.7, s.x, s.y)
+        overlay.irisTo(0, 0.7)
         sound.cue('iris-out')
         hud.lights(false)
       },
       true
     )
+    // The camera can still be moving. A skipped tumble may also be airborne throughout the wipe.
+    seq.during(irisAt, length, () => {
+      const rest = seq.skipped ? null : view.actors.deathRest()
+      const s = rest ? onScreen(rest) : body()
+      overlay.irisX = s.x
+      overlay.irisY = s.y
+    })
     seq.at(length, () => this.end('dead'), true)
     return seq
   }

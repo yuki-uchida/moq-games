@@ -315,9 +315,11 @@ flash, explosion, rings, shake and sound come with the moment's first frame, and
 burst and a ring cover the change to his raged sheet. His entrance and his transformation also wait for the hero
 to stand on the ground and not be knocked back by a hit, up to 1.5 s from the moment's cause; after that the moment
 begins on the first step the boss is ready, and a hero in the air hangs there (the simulation holds him, as it
-holds the minions, the shots and the shockwaves). The transformation waits for the hero only while the king rests:
-once he winds up for his next attack it begins, in the first moments of that wind-up, wherever the hero is, so a
-hero who keeps hopping never makes him go through another whole attack before he transforms (in sixty real fights
+holds the minions, the shots and the shockwaves). Both wait for the hero only while the boss rests (stands or
+walks, no light of his gathering): once he winds up for his next attack it begins, in the first moments of that
+wind-up, or on the step before his light or his cast shows, wherever the hero is, so a hero who keeps hopping never
+makes him go through another whole attack first, and neither moment ever stops him inside an action (his entrance
+begins before he has begun anything; after it his first action plays from its first frame) (in sixty real fights
 the roar follows the hit by 0.3 s on average and by 1.1 s at most, with the hero in the air in ten; the king's
 own attack, when the hit lands in the middle of one, is the only thing that makes it longer). The transformation says in the picture that the world stands
 still: from its second frame (the first still shows the step that began it) a spotlight on the king (the death's,
@@ -325,7 +327,8 @@ under his drawn body, centred on his pillar of flame) dims everything else, so w
 the dark; the light is switched off 0.35 s before the moment ends, so nothing is dimmed on a frame the simulation
 runs. A king who is not wholly in the view with his pillar of flame when the moment begins (a charge carried him
 off after the hit) is brought into it by the least the view has to move and stays framed to the moment's last
-frame, the burst that covers his change included; the follow camera eases back to the hero once the fight goes on. While the moment holds the simulation, the hero finishes
+frame, the burst that covers his change included (one already in it: the view stays where it is to that frame, a
+follow camera still easing after the hero does not carry him out of it); the follow camera eases back to the hero once the fight goes on. While the moment holds the simulation, the hero finishes
 what he is doing (a bite under way plays its remaining frames on real time, at its own speed, from where the step
 that began the hold left it: the frame that first shows the pose shows it there, so a slow display passes over no
 frame of it) and stands (`idle`, breathing) for the rest of it, instead of hanging in the frame he was in. The pose is taken once the step's events are all answered (a bite that
@@ -390,7 +393,37 @@ frame while he is on top of a boss; a dash faces the way it goes. Every turn is 
 hold a walk drawn with a stride on the ground still turns once its body has gone 8 px the new way since its last turn
 (it is never carried further against its facing); every other turn (in the air, at the start of a throw, falling
 in a wind-up, a hover) has the hold alone. Every turn is drawn on the frame that shows the step it was decided on.
-A boss falling out of his walk or his wind-up (not leaping, not dashing) faces as a rat in the air does: the way his
+Nothing drawn depends on how long a display frame is (frames of uneven length: a long one now and then): the
+gathering light grows with the simulation's time alone and never goes back; a cast's follow-through has its length
+decided once, at the release; a landing's clock, like a cast's release and a throw begun again, starts on the frame
+that first shows it, so its first frame is never passed over; and a staged pose taken on a step starts its clock at
+the tick of the frame that first draws it. A long frame may pass over what it does not draw; it never makes a
+picture step back or start again. The boss is decided on the steps like everybody else (his state history, his
+dash, his setting off, every new state's facing), so what is drawn for him on a step is the same at every display
+schedule, and a state that fell inside one long frame is simply not drawn. The bodies' clocks run on the simulation
+time a frame put on the screen (its steps and the change of the interpolation between them), not on the frame's real
+length; an effect born on a step is first drawn as it was born (a staged beat's effects age from their own frame,
+which draws them young); a boss's thrown or cast shot is first drawn at its own place plus what his picture was off his body
+where and when he fired (a held picture: its place less his body's before that step's move; a picture that follows
+its body: the easing's remainder and the jolt, nothing of the body's travel since), and joins its own path over 0.1 s; a follow-through is fitted to the time before his
+next attack less a step (none under 0.1 s); the hero's blink has its own random numbers. A boss's flinch and a
+cast's follow-through are counted on the steps (when they end, what he does next and his facing never wait for a
+frame): their first frame shows on the frame that first draws them, and from there they run on the steps from the
+one that began them. A fitted clip (a follow-through, a flinch, a fitted landing) with the time for it plays at its
+own pace; squeezed, its last frame keeps one 30 Hz frame (1/30 s) before its time is up, but never more than is left
+once every frame before it has had one 60 Hz frame, and the frames before share the rest (each a 30 Hz frame when it
+allows, else equal shares): a display with as many frames as the clip passes over none of them, one with fewer shows
+the first and the last (a display frame longer than what the last frame keeps may pass over it). Its time is where
+its steps really end it. On the screen a boss's fitted clip (a flinch, a cast, a landing, a wind-up taken over late)
+then goes forward by display frames from its first frame: when the display is no faster than the clip's own pace
+(on the run's second display frame its time is already past its first frame) one frame on every display frame up to
+its last; otherwise no more than one frame past the one the last display frame showed, whatever its time says, but
+into its last frame once its time is well into it. A short landing whose first display interval leaves just enough
+frames for its remaining poses reserves one pose per advancing frame, even across a hit-stop. A cast's lead-in is given
+up only for a hero clearly on the other side: inside the aim zone the shot's own step decides.
+The bee sits in her recovery only on the ground: slid off a ledge she is in her hover, and sits again, from its
+first frame, when she is down. Once a fall's landing has begun in his recovery the dash that carried him into it is over: sliding off the next
+stair he falls (`air`) and lands again, and on the ground he recovers. A boss falling out of his walk or his wind-up (not leaping, not dashing) faces as a rat in the air does: the way his
 body has really gone, once 4 px back from the furthest point it reached, once in a fall at most, never straight
 after a turn. An action keeps the facing it began with, from its
 first frame to its last, without exception: a flinch, a landing, a throw or a cast (a throw or a cast begins facing
@@ -403,7 +436,32 @@ instead), and a skid a bite or a hurt covers is over for good; a landing, a skid
 facing he is drawn with. His drawn facing obeys the walkers' rule: a turn at once, a second within 0.16 s only once
 his body has gone 8 px the new way on the ground (then he runs into it, with no pivot). His pivot (`turn`) is the
 picture of a drawn turn on the ground at a walking pace: it begins on the step his drawn facing turns, and an input
-that goes back before the hold lets him turn gives no pivot at all. What he does is
+that goes back before the hold lets him turn gives no pivot at all. His turns on the ground follow one model (round 8d): a turn toward the way his body has gone for two steps running
+is never held (on the ground or in the air); a skid is a brake at speed that has taken hold, drawn from the third step
+of the simulation's braking, turned to the key's side, two steps at least, with its short tail (a tap of one or two
+steps changes nothing); at a walk a turn is a pivot from its first frame, never cut by a skid, giving way to his run
+after 6 px; carried with no turn asked he skids faster than 50 px/s, else stands; nothing of his walk shows for a
+single step; after a hold a hero who only coasts to a stop stands. Round 8e: a pivot never slides (carried 4 px back
+the old way, further than a walk's brake slides him, it is over too); out of a run a stand of one step waits one step more before rule 1 turns him, so the
+stand shows two; turned to the key in the air, he lands into his brake skidding from its first step; in water a
+stroke faster than 12 px/s counts as his drive (the water slows him to 18.6 px/s on his first stroke); the skid's
+squeal begins on the display frame that first draws a brake's skid; out of a stand he runs once his body goes faster
+than 40 px/s (a body jittering on the spot as the keys dither stands); out of a pose that faced him back, carried on
+by his run, his skid shows two steps before rule 1 turns him; a blow after a hurt that a hold played out flinches.
+Round 8f: a body a knock still carries is not driven: nothing but a bite turns him while it does, and after it he
+keeps facing the blow until the player turns him or runs him (the simulation's facing is still the one from before
+the blow). His knocked-out body never tumbles or lies inside a wall (`deathRestPlace`, `DIE_HALF_W` 30 px either
+side): off a ledge's lip he tumbles outward over 0.25 s, before his hop comes back down, and lies clear of the wall
+with ground under his middle; against a wall, at a step's foot or in a gap he moves clear of it on the same ground;
+a hole narrower than his lying body he lies across (not with 64 px tiles); over a pit he keeps tumbling; the
+blow's frame is drawn clear of a wall beside him; under a ceiling his hop is lowered so no frame reaches into it; the
+death's iris closes on where he lies. Round 8g: a body the simulation leaves in or against a solid on the step he is
+knocked out (a felled log landing on him) is drawn from the nearest place clear of it (`deathClearPlace`: beside it or
+on its top, up to three tiles away), and tumbles and lies from there by the same rules. On the ground he is never drawn running against
+his travel: carried against the facing he is drawn with (the hold keeps it, or his momentum or a knock-back carries
+him back, a skid a bite covered included), faster than 50 px/s he skids from its first frame facing as he is drawn
+(until he may face the way he goes; a braking skid goes on so down to that speed), a turn just made shows its pivot,
+and otherwise he stands (what he slides then stays within a planted pose's few px). What he does is
 decided on the simulation's steps too (his landings, his skid and its tail, his pivot, what of his actions is over
 for good), so the same play shows the same clips at every display rate. One action shows at a time: it starts
 from its first frame, and once another clip has taken its place it does not come back (a bite cut by a hurt, a
@@ -581,13 +639,61 @@ are a list scrolled by hand with a button that closes it.
   asks for the same clip and facing on every step both rates show. The last test lists the clips of the sheets in
   play that the suite never shows, against a list of the ones that cannot be reached there and why (`jumper.idle`:
   the frog hops again on the step it lands).
+- `tests/view-session-rates.test.ts` (round 8d): the session file's runs on other displays (stages 2, 7, 9 and 10 on
+  48 to 165 Hz, stages 7, 9 and 10 at 144 and 240 Hz on three more seeds), moved out to keep each file under 150 s.
+- `tests/view-hero-walk-audit.test.ts` (round 8d): the hero's own walk, scripted as the auditor who found the gate
+  silent played it (taps of every length against a run and from a stand, a tap back, reversals at every point of his
+  speeding up and after a stop, a reversal on landing, a late tap in the air, stop and go) at 30, 60 and 144 Hz and
+  two uneven patterns, and the hero hit as the boss wakes on every boss stage; zero findings.
+- `tests/view-wild-audit.test.ts` (with `tests/play-audit.ts`, round 8): the same rules in the real session played
+  by a player who is not the bot (`wildPlan`): in the fight he stands in the boss, keeps to his x and jumps, runs the
+  arena end to end, stands still, turns every few steps mashing the bite, or fights as the bot does but never on the
+  ground (every style on every boss stage); elsewhere the bot's plan is mixed with random stretches of held keys (a
+  quarter, half or four fifths of the time) on all ten stages at 30, 60 and 144 Hz and with uneven frames; mortal
+  runs on all ten stages; and the stage's end (`heroEnds`: knocked out on the ground, at the top of a jump, falling
+  into a pit dug for it; the goal reached on the ground and in the air) at 30, 60 and 144 Hz and four uneven
+  patterns. Zero findings, as for the bot.
 - The clocks: the time a body stays in a pose its own motion decides (in the air, on the ground) is counted in view
   time, the time the clips advance by (none in a hold, a fraction in slow motion); a flicker, a blink, a pose's
   facing and a held lead in real time; a walk carried backwards in distance on the simulation's steps; a light, a
-  wind-up's age and a landing's room in simulation steps.
+  wind-up's age and a landing's room in simulation steps. Every display frame carries its own length, and every rule
+  reads that length, never the rate's: the session is also played with display frames of uneven length (round 7,
+  the outside reviewer's fourth verdict): 60 Hz with a 50 ms frame every 53, every frame between 8 and 28 ms
+  (seeded), 16.7 and 33.3 ms in turn, 120 Hz with a 58 ms frame every 97, 30 Hz ± 12 ms (seeded), on stage 1, the
+  three throwers' stages and the king's; and one stalled frame of 250 ms (the pacer runs at most four steps in it and
+  drops the rest; the clips advance by the whole of it) in the middle of a fight, of a light and of the
+  transformation.
+- What is decided on steps is the same at every display schedule (round 7b): on every simulation step two runs both
+  show, each body's clip and facing (the boss's too) are the same, up to where their simulations part or the boss
+  falls; 60 Hz against 48 and 144 Hz, against three uneven patterns and against stalls where they matter (in a light,
+  a wind-up, a landing, on a bite that hits, in the transformation), the schedules parting after the stage's first
+  moment (its steps run with the input locked on real time). Excepted: a staged pose (it plays on real time), a
+  hit-stop's frames, and the clips whose clock starts on the frame that first shows them (a cast's lead-in and
+  follow-through, a flinch, a landing: the step they are first drawn on may differ by the steps of that frame, up to
+  4; their facing may not; the dash's frames are not compared). The effects a hit spawns are not in the rows (the effect pool's state is not recorded): that a
+  hit's effect is drawn on the frame of its step is not checked by the gate.
+- The hold on a turn is simulation time (what is decided on steps is the same at every schedule): two drawn turns
+  may be closer on the screen than 0.15 s only by what a long frame did not draw between them (the steps of the first
+  turn's frame before its last).
+- What a long display frame may do: pass over what it did not draw (a clip's frame whose whole time fell inside it, a
+  blink's phase), and nothing else. No frame goes back; no action begins anywhere but on its first frame unless that
+  first frame's whole time (and that of every frame before the one shown) fell inside the display frame it is first
+  shown on; no action is cut short unless its remaining frames' whole time fell inside the frame that follows; the
+  lead a hold plays out advances a frame a display frame unless the frames between had their whole time inside it;
+  the light passes over no more of its frames than the simulation time the frame showed holds whole; the fitted
+  landing's (frames + 1) display frames, the blink's bound, the warning's frames and the spotlight's frame of slack
+  are counted in the frames' own lengths; and no picture contradicts the body.
 - The rules of motion: a walk, a run or a gallop is never carried more than 8 px against the way it is drawn facing
   in one go (measured on the body's places on the simulation's steps, which the view decides on, from the step it
-  first moves the wrong way to the step it has come back 2 px); a dash has two frames; two turns of an enemy, a boss
+  first moves the wrong way to the step it has come back 2 px), and the hero's run on the ground not at all (round 8:
+  on a frame whose last step, the one it draws, carries him against his drawn facing he skids, pivots or stands; the
+  earlier steps of a frame that shows several are passed over; 0.01 px of float noise, below the 0.13 px a step of
+  the slowest real motion the simulation gives him); a dash has two frames; the hero's walk follows the round-8d model: a skid is a brake that has taken hold (never on more
+  than two steps on which his body speeds up against the facing he is drawn with), nothing of his walk shows for a
+  single simulation step between two other pictures (a skid, a pivot, an idle between two runs), a pivot gives way to
+  his run before his body has gone 8 px, his drawn facing is not held against a body the simulation faces and moves
+  the other way for more than two steps off his actions, he does not run again after a hold while he only coasts,
+  and his flinch is drawn within 0.1 s of screen time and a frame of the step the blow landed on; two turns of an enemy, a boss
   or the hero within 0.15 s are a flicker unless the second is a walk's and the body came back 8 px the new way
   first, on the steps (at 30 Hz a frame shows every second one); the turn on the first frame of a `hurt` is the
   hit's and the hero's on the first frame of a bite the bite's, never the second turn of a flicker (the turn back
@@ -617,16 +723,41 @@ are a list scrolled by hand with a button that closes it.
   a frame (two above 60 Hz), and is given up only when its target has gone to the other side; every shot of the
   crow, the fox and the bee is announced by its gathering light over the shot's last 0.45 s of simulation time: it
   is drawn at the place the shot is born on his drawn body (to a pixel, and the hit's jolt), within 3 px of a pixel
-  of his painted body, its progress is what the steps left say (to two steps), it is full on the frame before and
+  of his painted body, it grows frame by frame (by the frame of its `gather` drawn, never going back, passing over no more of its frames than
+  a display frame's simulation time holds whole), it shows its last frame on the frame before and
   gone on the shot's frame, when every new shot of his is drawn in front, on his body (measured where it was born:
   its first step taken back, that place on his body as it was then put on the body he is drawn with), where the
-  light was; the light has no side (it promises a shot, not a side: the simulation's aim is known on the shot's step
+  light was (round 8, the coordinator's (e′): judged where he fired: its drawn birth, its first drawn place less the
+  flight it really made since it was born, against the light's last drawn place carried by his picture's own travel
+  up to the step he fired on (a picture held still carries it nowhere, one that follows his body goes with his
+  body's steps up to the one before the shot's), to 2 px and the jolt, on the paint of his pose placed where his
+  picture was on that step; its picture may start off its own place by what his picture was off his body, 8 px, the
+  jolt and 2 px at most, and joins its path within 0.1 s of view time, never drifting further off nor closing faster
+  than an ease from there would); the light has no side (it promises a shot, not a side: the simulation's aim is known on the shot's step
   only); a light always ends in its shot (unless he goes down), never on a boss asleep or one that never throws; no
   flinch shows on the frame of a shot, nor begins in the last 0.1 s before it; the king gathers his volley from its
   first frame up to his release, again from the first frame after a staged moment, and fires from his release; a
   squirrel's acorn comes out from behind it and leaves from its release facing its way, or, when the hero crosses on
   the very step, without the pose and with no follow-through after it; a summon has no gesture of the boss's: every `shoot`
   run of a boss is a cast with its shot.
+- Nothing goes back: within a run of a clip that does not loop the frame shown never goes back from one display
+  frame to the next (a clip begun again by a cause of its own shows its first frame again: a new run; a wind-up's
+  trembling tail, an `air` chosen by the vertical speed and the squirrel's pulsing lead-in are not runs of time), and
+  the gathering light's frame never goes back from one lit frame to the next. A fitted clip (a boss's flinch, cast,
+  landing, wind-up taken over) passes over no frame it had display frames for: a run shown on as many display
+  frames that advance the clips as it has frames shows every one of them, subject to the uneven-frame allowance below (a cast
+  counted as its lead-in and its release with the follow-through; the view steps a fitted clip by display frames and
+  reads no frame's length for it), and with fewer it begins on its first frame and goes forward a frame a display
+  frame, passing over frames only into its last, and may end short of its last, having gone as far as its display
+  frames took it (the coordinator's decision (d)).
+- The ending plays out (round 8): once the stage is over or the hero is down the simulation no longer steps, and on
+  the screen's time (each frame's own length, the hit-stop's frames not counted) no frame of the hero's `die`,
+  `fall` or `cheer` is drawn for longer than 0.2 s and the longest frame that showed it; his knocked-out body, or his
+  fall after a clear touched in the air, does not stand still in the air as long; his knocked-out body does not
+  tumble on the ground for longer than 0.1 s and a frame (it bounces where it comes down); after a clear, on the
+  ground, he cheers within 0.1 s and a frame. His knocked-out body's drawn frame is never more than 2 px inside a
+  solid tile, tumbling or lying, and it lies with ground under its middle, or across a hole narrower than he is with
+  ground under both its ends (round 8f; scenarios: at a hole's lip, against a wall, over a one-tile gap, on a stair). The hero's rows there carry his drawn body (`deathPoint`, `heroPoint`).
 - The rules about moments: an action never turns, on its release neither (only a throw still on its first frame
   turns with its target); a boss's landing begins on the frame he comes down, and a slam's on the frame of its
   shockwaves (none while he sleeps); the bear, the ape and the king come down from a real fall (8 steps in the air
@@ -654,12 +785,14 @@ are a list scrolled by hand with a button that closes it.
   wind-up; and the moment is seen: the spotlight is on him (within 3 px on the screen of the point 56 px above his
   feet under his drawn body), fully up within 0.35 s, down (below 0.1) on every frame the simulation runs (the moment's first frame, which still
   shows the step that began it, included), and from 0.2 s into the moment to its last frame his whole drawn frame
-  is in the view. A staged pose keeps the
+  is in the view. The entrance (`boss-intro`, round 8) begins between a boss's actions as the transformation does:
+  no charge, leap, gather, landing, flinch or follow-through on its way, a wind-up only in its first 0.1 s and a step,
+  no part of his light gathered (wherever he is: a flier wakes in the air). A staged pose keeps the
   hero: a moment does not turn him (his first posed frame faces as the frame before it, unless the moment poses him
   facing a named way: ハム姫's rescue, the clear), no posed frame turns, the first frame after it faces as the pose
   showed him, and what the pose covered is over for good (a bite, a hurt, a landing or a pivot shown before it does not show again
   within 0.3 s after it unless its event begins it anew; a skid is what his body does, and may begin after it when
-  he brakes); no run is drawn frozen on one frame for 2 frames while he slides against its facing after a pose. Through a moment that holds the
+  he brakes). Through a moment that holds the
   simulation the hero on the ground plays out on real time what he showed, from the frame it had, every frame of
   it, and then stands (one frame of an action of his shown for 0.2 s is the finding, the hold's own lead included),
   or hangs in the air where he was (a hit-stop holds everything and slow motion plays the clips slowly: neither is
@@ -696,7 +829,8 @@ are a list scrolled by hand with a button that closes it.
     places), and it may be drawn inside a solid there until the simulation's next step pushes it out; a lying body
     moves no more than 0.01 px; a falling rat or mole turns at most once, towards where it has gone (1 px back).
   - Shots: the light may begin a step late; its place to a pixel (3 px more while a hit jolts him), on his paint
-    within 3 px, its growth within 2 steps; a new shot within 2 px of where the light was, besides what both travel
+    within 3 px, its growth by the frame drawn (a display frame may pass over the light's frames its own simulation time held
+    whole); a new shot within 2 px of where the light was, besides what both travel
     in the frame and the jolt; a shot born on the hero is not drawn (the simulation drops it before any frame, on a
     hero who cannot be hurt then: the hero's half box and 16 px are where it is born on him); a new shot is
     measured where it was born (the simulation moves it on its birth step, before any frame shows it); a flinch may
@@ -742,6 +876,51 @@ are a list scrolled by hand with a button that closes it.
     `hurt` and the dash goes on).
   - Pushes: 4 px past what his speeds carry (the view's 2 px, and 2 px for a frame that shows two steps, whose
     speeds are those after them), drawn to a pixel. The blink: 1/20 s and a display frame.
+  - Round 7 (display frames of uneven length): the blink hides him on the screen (from the frame that first draws
+    him hidden to the one that draws him again) no longer than its half period and the longest frame in it, and a
+    phase more for every frame longer than a phase (it may pass over a whole shown phase); a throw's lead-in is given
+    up, and a cast held to its aim, by the side the simulation aims from on the step (`aimDx`), not the interpolated
+    frame; the hero's skid counts as his run for the 8 px a turn needs (a turn his run made, first drawn as the skid
+    that begins with his drawn facing); an enemy's events of a frame it is not drawn on go to its next row; a
+    knocked-out body is judged against the hero's true place, not an interpolated one; a shot's birth is allowed the
+    move his drawing made from the light's frame to the shot's (a crash on that step leaves him a speed of 0).
+  - Round 8 (a player who is not the bot; each decided by the coordinator, the reason as given): a flinch may show on
+    the frame of a shot when a hit on that very frame begins it (a falling tree hits the crow as he fires: his cast
+    and his light were shown whole), never one begun before; a knocked-out enemy's tumble (`defeat` before its lying
+    frame) and the knocked-out hero's (`die` from `DIE_TUMBLE_FIRST` to `DIE_BOUNCE`) may cycle back to their first
+    tumbling frame while the drawn body has no ground under it (a body that falls far tumbles on: the view's design);
+    an enemy knocked up again in the air counts its time in the air from the step after the last knock, in
+    simulation steps (a squirrel in its throw stung twice by a hive's bees keeps its throw, the hit being the white
+    flash; the knock's flight is the simulation's, the same at 60 and 144 Hz); a shot is a boss's only
+    if he fired it (the recorder books a new shot on whoever the step's `spit` or `boss-shoot` event nearest its birth
+    place names, and holds it to that shooter's drawing only); a shot gone on the step it is born, the hero's `hurt`
+    on its frame, or ended in a solid on that step (`shot-hit` on its frame: a tree felled on that very step), is not
+    drawn (as one born on him: its light was shown whole and its end is shown); a boss's landing may be cut by his body leaving the ground (a
+    dash sliding him off the next stair: `dash taken up again` still holds the dash); a cast begun on one of the
+    steps a frame shows is judged by the aim on every one of them (`aims`), not the last only; and a fitted clip's
+    count of display frames is of those that advance the clips; advancing display frames whose lengths differ by more
+    than one fifth may leave a fitted run one frame short or pass over
+    one frame; even frames get no such allowance. A long display frame after a fitted run may cover the remaining
+    frames' full time. A stand that coasts after a hold may travel up to 10 px, the distance of a full-speed stop;
+    the other planted poses keep their limits. A pivot starts at its first simulation step and a discontinuous step resets its measurement.
+    Round 8d: the hero's turn toward the way his
+    body goes and a brake's turn are causes in `facing flickers`; the light on a flinch's frames is held to 5 px of
+    his paint (as the art's own test holds the bee's `hurt`); a new shot's paint is judged against his pose as it
+    stood when he fired (the frame before, carried as his picture was), the jolt and pose of the shot's own frame
+    aside A turn toward his travel is no cause while a knock-back still carries him (0.38 s after a
+    `hurt`: the knock moves him whatever the keys say, round 8f); a skid or pivot cut after one step by his own bite or
+    jump, a hurt or a staged moment is the action's, and a single-step picture whose next frame shows several steps is
+    none (its second step may be there); a pivot is measured from where the simulation put him on its first step; a
+    drive is faster than 20 px/s (12 in water); a hold is a moment that posed him; the steps a long frame hides are
+    not held against his drive; a bite of his own begun on or after a blow wins over its flinch (DESIGN §4). Traced with the view on its rows: a rat or a mole turning in the air is
+    measured on every step its frames showed, the first air frame's all (a long frame shows the end of its hurt and
+    its first steps in the air at once, and the view turns it from where the hurt ended); a turn of the hero counts as
+    his run's when a step of its frame before the last had him on the ground and his body had gone 8 px (the frame
+    draws the jump that came after); an enemy's flinch faces the frame's last blow (two on one step, a bite and a
+    sting, knock it back with the last one's `dir`: the flinch shows that knock-back); (round 8d: the knocked-out hero
+    lies on the ground under his middle, never over a hole: 8b's reading by his box is withdrawn); a hit that ends a
+    staged pose
+    (ハム姫's cheer runs the simulation) turns him to face the blow on its hurt's first frame, the blow's own turn.
   - The suite's own: the frog's `idle` is never shown (the simulation hops it again on the step it lands); the
     backstop scenario's two findings (the king held in his slam by hand: expected there, and reported by name).
 - `tests/play-audit-rules.test.ts`: the gate tests itself. Every rule of the audit is fed rows built by hand that

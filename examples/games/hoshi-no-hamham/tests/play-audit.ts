@@ -22,11 +22,13 @@ import type { SimEvent } from '../src/game/events'
 import { TILE, World, emptyInput, type Boss, type Enemy, type InputState, type Prop, type Shot } from '../src/game/sim'
 import { clip } from '../src/view/bake'
 import { newBox, newPlaced, opaqueBounds, paintedAt, placeBox, type Box } from '../src/view/bounds'
+type Placed = ReturnType<typeof newPlaced>
 import { STAGES } from '../src/game/stages'
 import { AIR_SHORT_SECONDS, ActorsView, aloft, groundBelow } from '../src/view/actors'
 import * as viewActorsModule from '../src/view/actors'
 import * as viewClips from '../src/view/clips'
 import {
+  specDuration,
   BOSS_DEFEAT_GROUND_FRAME,
   ENEMY_DEFEAT_GROUND_FRAME,
   LUNGE_FRAMES,
@@ -57,6 +59,9 @@ export interface CueRow {
   sheet: string
   /** 0 when it begins, 1 when it is full. */
   progress: number
+  /** The frame of its `gather` clip drawn (as `drawShotCue` picks it from the progress), and how many it has. */
+  frame: number
+  frames: number
   /** Where it is drawn (world px), and how far (px) that is from his shot's birth place on his drawn body. */
   x: number
   y: number
@@ -76,10 +81,20 @@ export interface BirthRow {
   vy: number
   /** Its centre lies on (or within `ON_BODY_PX` of) a painted pixel of his drawn frame. */
   onBody: boolean
+  /**
+   * Round 8 (e′): its drawn birth (its first drawn place less the flight it really made since its birth), and how far
+   * his picture carried the light from its last drawn place up to the step he fired on (0 for a picture held still).
+   */
+  bornX?: number
+  bornY?: number
+  liftX?: number
+  liftY?: number
 }
 
 /** How near (px) to a painted pixel of the boss's drawn frame his light and his new shot must be. */
 export const ON_BODY_PX = 3
+/** On a flinch's frames (`hurt`), as the art's own test holds the bee's (round 8d). */
+export const ON_HURT_PX = 5
 
 /** A hit jolts the boss's drawing this far (px) for this long (s): the view's constants, read defensively. */
 const actorConstants = viewActorsModule as unknown as Record<string, unknown>
@@ -91,6 +106,8 @@ const JOLT_SECONDS = (actorConstants.BOSS_JOLT_SECONDS as number | undefined) ??
  */
 export const RAGE_WAIT_SECONDS =
   ((viewStaging as unknown as Record<string, unknown>).BETWEEN_WAIT_SECONDS as number | undefined) ?? 3
+/** How far (px) his shot's birth lies past his drawn centre (the view's constant, read for its own placing only). */
+const SHOT_BIRTH_DX_VIEW = (actorConstants.SHOT_BIRTH_DX as number | undefined) ?? 7
 /** A clip squeezed below this (s) is not played (the view's constant). */
 const FIT_MIN = ((viewClips as unknown as Record<string, unknown>).FIT_MIN as number | undefined) ?? 0.1
 
@@ -110,6 +127,28 @@ export function frameOf(spec: AnimSpec, choice: ClipChoice) {
   if (!anim) standIns.set(spec, (anim = standIn(spec)))
   return frameAt(anim, choice.t)
 }
+
+/** When (s into the clip) its frame `k` begins (the clip's length for `k` past its last frame). */
+export function frameStart(spec: AnimSpec, k: number) {
+  if (k <= 0) return 0
+  const length = specDuration(spec)
+  if (k >= spec.frames) return length
+  let lo = 0
+  let hi = length
+  for (let n = 0; n < 40; n++) {
+    const mid = (lo + hi) / 2
+    if (frameOf(spec, { name: '', t: mid }) >= k) hi = mid
+    else lo = mid
+  }
+  return hi
+}
+/**
+ * Round 7: a display frame that is long may pass over what it did not draw. Whether the frames of `spec` from `from`
+ * up to (not including) `to` have their whole time inside `seconds` of the clip's clock (the display frame's own
+ * time for it): such frames may be passed over; any other may not.
+ */
+export const passesOver = (spec: AnimSpec, from: number, to: number, seconds: number) =>
+  to <= from || frameStart(spec, to) - frameStart(spec, from) <= seconds + 1e-6
 
 export type ActorKind = 'hero' | 'enemy' | 'boss' | 'ghost' | 'prop'
 
@@ -158,6 +197,11 @@ export interface Row {
   path: number[]
   /** Enemies and bosses: `player.x - actor.x` on the last simulation step the frame showed (no interpolation). */
   aimDx: number
+  /**
+   * Enemies and bosses: `player.x - actor.x` on each simulation step the frame showed (round 8: an action begun on
+   * one of them is judged by every one; `aimDx` is the last). Empty when the frame showed no step.
+   */
+  aims: number[]
   sheet: string
   clip: string
   frame: number
@@ -195,6 +239,10 @@ export interface Row {
   facing: 1 | -1
   /** The hero: his facing after each simulation step this frame showed (a pivot is decided on one of them). */
   faces: number[]
+  /** The hero: whether he stood on the ground after each simulation step this frame showed (round 8). */
+  grounds: boolean[]
+  /** The hero: whether a knock-back still carried him on each step this frame showed (`knockX`, round 8f). */
+  knocks: boolean[]
   bit: 1 | -1 | 0
   /** Enemies: the `dir` of an `enemy-hit` on this frame (the way the blow pushes it), else 0. */
   hitDir: 1 | -1 | 0
@@ -275,7 +323,9 @@ const BOSS_EVENTS = new Set([
   'boss-crash',
   'boss-slam',
   'boss-attack',
-  'minion'
+  'minion',
+  // (Round 8: a shot ended in a solid; with the boss's own shot on its frame, the shot that never was drawn.)
+  'shot-hit'
 ])
 
 /** The side of the boss a summoned minion of this frame appears on (as the view tells it), or 0. */
@@ -283,6 +333,8 @@ function minionSideOf(events: SimEvent[], boss: Boss): 1 | -1 | 0 {
   const event = events.find((e) => e.type === 'minion') as Extract<SimEvent, { type: 'minion' }> | undefined
   return event ? (event.x > boss.x + boss.w / 2 ? 1 : -1) : 0
 }
+
+type Point = { x: number; y: number }
 
 /** The piglet's clip as the props view would draw it (null while it sleeps or is gone). */
 type AnimalChoice = (prop: Prop) => ClipChoice | null
@@ -304,8 +356,11 @@ export class Recorder {
   steps = 0
   time = 0
   viewTime = 0
-  /** Seconds per display frame. */
-  readonly frameDt: number
+  /**
+   * Seconds of the display frame being shown (the rate's even length, or a session's schedule of uneven ones: each
+   * row carries its own frame's length as `dt`, and the rules read that, never this).
+   */
+  frameDt: number
   private memory: BotMemory
   /** Clips the view asked for that their sheet does not have (the game would draw nothing): "sheet.clip at step n". */
   readonly missing: string[] = []
@@ -314,6 +369,25 @@ export class Recorder {
    * any of its pixels lies on its shooter's drawing (see `shotsComeOutFromBehind`).
    */
   readonly shotRows: ShotRow[] = []
+  /**
+   * Round 8: a boss's shot drawn from his light (`PropsView.shotJoin`), on every frame from its first while its picture
+   * is off its place: how far (px), and the frame's view time.
+   */
+  readonly shotJoins: { id: number; step: number; vt: number; viewDt: number; off: number }[] = []
+  private joinIds = new WeakMap<object, number>()
+  private joinCount = 0
+  private joinDone = new Set<number>()
+  /** Where the view draws a shot off its place (`PropsView.shotJoin`; a view without it: nowhere). */
+  private joinOf(shot: Shot) {
+    const props = this.props as unknown as { shotJoin?: (shot: Shot, out: Point) => Point }
+    return props.shotJoin?.(shot, { x: 0, y: 0 }) ?? { x: 0, y: 0 }
+  }
+  /** The boss's drawn place on the last frame recorded (his centre, his top), or null. */
+  private bossDrawnWas: Point | null = null
+  /** His body's place (its centre, its top) on the last frame recorded, or null. */
+  private bossBodyWas: Point | null = null
+  /** His drawing as the last frame recorded placed it (round 8d), or null. */
+  private bossPlacedWas: Placed | null = null
   /** Every hostile shot on the first frame it is seen: in whose box it was born (a boss's art, an enemy kind, or
    * 'none') and whether it is drawn behind the actors then. */
   readonly shotBirths: { who: string; behind: boolean }[] = []
@@ -348,6 +422,15 @@ export class Recorder {
     if (!views) this.props.drawnFrame = (body, out) => this.view.drawnFrame(body, out)
     this.frameDt = 1 / hz
     this.memory = { x: world.player.x, stuck: 0, reverse: 0 }
+    // (Round 8d: the step a blow lands on the hero, as the simulation has it; its `hurt` event may be answered
+    // frames later, after a moment that began on that step.)
+    const hurtPlayer = world.hurtPlayer.bind(world)
+    world.hurtPlayer = (...args: Parameters<World['hurtPlayer']>) => {
+      const p = world.player
+      const before = { invuln: p.invuln, hp: p.hp }
+      hurtPlayer(...args)
+      if (p.invuln !== before.invuln || p.hp !== before.hp) this.heroBlown = true
+    }
     // The effects of an event: only the hit-stop matters here.
     this.fx = new Proxy({} as Record<string, unknown>, {
       get: (_, key) =>
@@ -380,12 +463,32 @@ export class Recorder {
   private unshown = 0
   private simSeen = 0
 
+  /** The boss's picture as the last frame drew it (its place, jolt included), his body's, and whether it was held. */
+  private picture = { x: 0, body: 0, held: false }
+  /** As `StageView` tells the props view where a boss's new shot leaves from (a view without it: nothing). */
+  private shotFromLight(eventX: number) {
+    const boss = this.world.boss
+    const props = this.props as unknown as { shotFromLight?: (dx: number, dy: number) => void }
+    if (!boss || boss.dead || boss.def.kind === 'final' || !props.shotFromLight) return
+    props.shotFromLight(this.picture.held ? this.picture.x - eventX : this.picture.x - this.picture.body, 0)
+  }
+
   /** One display frame: the view moves on (`anim` seconds for its clips, 0 in a hit-stop) and its rows are written. */
   private show(anim: number) {
     this.view.update(anim)
     this.view.tickReal(this.frameDt)
     this.props.update(anim)
     this.props.tickReal(this.frameDt)
+    const boss = this.world.boss
+    const actors = this.view as unknown as {
+      shotBirth?: (boss: Boss, out: Point) => Point
+      bossPictureHeld?: (boss: Boss) => boolean
+    }
+    if (boss && !boss.dead && actors.shotBirth) {
+      this.picture.x = actors.shotBirth(boss, { x: 0, y: 0 }).x - SHOT_BIRTH_DX_VIEW
+      this.picture.body = boss.x + boss.w / 2
+      this.picture.held = actors.bossPictureHeld?.(boss) ?? false
+    }
     this.time += this.frameDt
     this.record(this.pending, anim <= 0, { steps: this.unshown, viewDt: anim, moment: null })
     this.unshown = 0
@@ -413,6 +516,9 @@ export class Recorder {
     if (events.some((event) => event.type === 'boss-shoot')) this.shotSide = world.player.x > bossBefore ? 1 : -1
     for (const event of events) {
       this.noteHit(event)
+      // (Round 8, as `StageView` does: a boss's new shots leave from where his light was drawn, his picture as the
+      // last frame drew it against his body where and when he fired.)
+      if (event.type === 'boss-shoot') this.shotFromLight(event.x)
       view.handle(event)
       this.props.handle(event)
       playFx(event, this.fx)
@@ -464,6 +570,29 @@ export class Recorder {
     this.movedNow.clear()
   }
 
+  /**
+   * Round 8f: whether the knocked-out hero's drawn `die` frame (its painted box, as the view places it: his drawn
+   * place and feet, his knock-out's facing) lies more than 2 px inside a solid tile.
+   */
+  private dieInSolid(choice: ClipChoice, x: number, feet: number) {
+    const anim = clip('hero', 'die')
+    if (!anim) return false
+    const raster = anim.frames[frameOf(SPECS.hero.die, choice)]
+    const b = raster ? opaqueBounds(raster) : null
+    if (!b) return false
+    const flip = Boolean((this.view as unknown as { death?: { flip?: boolean } }).death?.flip)
+    const box = placeBox(b, anchorOf(anim), x, feet, flip, newBox())
+    // (Below the world's last row is the pit's void, which `solidAt` calls solid: not a wall.)
+    const world = this.world
+    for (let ty = Math.floor((box.y + 3) / TILE); ty <= Math.floor((box.y + box.h - 4) / TILE) && ty < world.h; ty++)
+      for (let tx = Math.floor((box.x + 3) / TILE); tx <= Math.floor((box.x + box.w - 4) / TILE); tx++)
+        if (tx >= 0 && tx < world.w && ty >= 0 && world.solidAt(tx, ty)) return true
+    return false
+  }
+
+  /** A blow landed on the hero on a step no row has shown yet (round 8d). */
+  protected heroBlown = false
+
   /** Simulation time (s) the staged transformation has waited for the king to be between his actions, or null. */
   private rageWait: number | null = null
 
@@ -512,6 +641,8 @@ export class Recorder {
       path: [] as number[],
       facing: 1 as 1 | -1,
       faces: [] as number[],
+      grounds: [] as boolean[],
+      knocks: [] as boolean[],
       bit: 0 as 1 | -1 | 0,
       hitDir: 0 as 1 | -1 | 0,
       clipT: NaN,
@@ -527,6 +658,7 @@ export class Recorder {
       box: null as Box | null,
       minionSide: 0 as 1 | -1 | 0,
       aimDx: NaN,
+      aims: [] as number[],
       state: null,
       heroSide: 1 as 1 | -1,
       heroDx: 0,
@@ -538,15 +670,21 @@ export class Recorder {
 
     const hero = view.selectHero()
     if (hero && !SPECS.hero[hero.name]) this.missing.push(`hero.${hero.name} at step ${this.step}`)
+    const blown = this.heroBlown && frame.steps > 0
     if (hero && SPECS.hero[hero.name]) {
-      // Where he is drawn: a clear touched in the air brings him down to the ground (the view's own point).
-      const point = (view as unknown as { heroPoint?: () => { x: number; y: number } | null }).heroPoint?.()
+      // Where he is drawn: a clear touched in the air brings him down to the ground (the view's own point), and his
+      // knocked-out body flies and comes to lie where the view puts it (round 8: `deathPoint`).
+      type Points = { heroPoint?: () => Point | null; deathPoint?: () => Point | null }
+      const point = (view as unknown as Points).heroPoint?.() ?? (view as unknown as Points).deathPoint?.() ?? null
       const ending = world.state !== 'play' && point
       const feet = ending ? point.y + p.h / 2 : p.y + p.h
       let onGround = p.onGround
-      if (ending && !p.onGround) {
+      const knocked = Boolean(p.dead && point && hero.name === 'die')
+      if (ending && (!p.onGround || p.dead)) {
         const ground = groundBelow(world, point.x, feet, 2)
         onGround = ground !== null && Math.abs(ground - feet) <= 1
+        // (Round 8d, decided: knocked out at a ledge's lip he lies on the ground under his middle, never over the
+        // hole: round 8b's reading by the ground his box stood on is withdrawn.)
       }
       this.track('hero', 'hero', 'hero').rows.push({
         ...base,
@@ -565,16 +703,26 @@ export class Recorder {
         flip: (view as unknown as { heroFlip?: () => boolean }).heroFlip?.() ?? p.facing < 0,
         facing: p.facing,
         faces: this.heroFaces.splice(0),
+        grounds: this.heroGrounds.splice(0),
+        knocks: this.heroKnocks.splice(0),
         bit:
           (events.find((event) => event.type === 'bite') as Extract<SimEvent, { type: 'bite' }> | undefined)?.dir ?? 0,
         posed: posing('hero'),
         drawn: (view as unknown as { heroDrawn?: () => boolean }).heroDrawn?.() ?? true,
-        supported: standsOn(world, p.x + p.w / 2, feet),
-        events: types((event) => HERO_EVENTS.has(event.type)),
+        // (Round 8f: his knocked-out body, as drawn: ground under its middle, or a hole narrower than he is bridged by
+        // ground under both its ends; and its drawn frame in a solid by more than 2 px, tumbling or lying.)
+        supported: knocked
+          ? standsOn(world, point!.x, feet) ||
+            (standsOn(world, point!.x - p.w / 2 + 2, feet) && standsOn(world, point!.x + p.w / 2 - 2, feet))
+          : standsOn(world, p.x + p.w / 2, feet),
+        inSolid: knocked && this.dieInSolid(hero, point!.x, feet),
+        // (Round 8d: `blow`, the frame that showed the step a blow landed on him.)
+        events: [...types((event) => HERO_EVENTS.has(event.type)), ...(blown ? ['blow'] : [])],
         // After his knock-out the view moves the body itself.
         moved: this.movedNow.has('hero') || p.dead || world.state !== 'play'
       })
     }
+    if (blown) this.heroBlown = false
 
     // (Also once the stage is over or the hero is down: what the simulation holds there is checked too.)
     // Whether a shot is drawn behind the actors, asked of the props view once a frame (it keeps a record of it).
@@ -596,9 +744,11 @@ export class Recorder {
         const spit = events.find((event) => event.type === 'spit' && event.id === enemy.id) as
           | Extract<SimEvent, { type: 'spit' }>
           | undefined
-        const hit = events.find((event) => event.type === 'enemy-hit' && event.id === enemy.id) as
-          | Extract<SimEvent, { type: 'enemy-hit' }>
-          | undefined
+        // (Round 8: the frame's last blow. Two on one step, a bite and a sting, knock the body back with the last one's
+        // `dir` (sim.ts `damageEnemy`): the flinch that begins there shows that knock-back and faces that blow.)
+        const hit = [...(this.enemyHits.get(enemy.id) ?? []), ...events].findLast(
+          (event) => event.type === 'enemy-hit' && event.id === enemy.id
+        ) as Extract<SimEvent, { type: 'enemy-hit' }> | undefined
         this.track(`enemy#${enemy.id}`, 'enemy', enemy.kind).rows.push({
           ...base,
           sheet: enemy.kind,
@@ -608,6 +758,7 @@ export class Recorder {
           body: enemy.x + enemy.w / 2,
           path: this.pathOf(`enemy#${enemy.id}`),
           aimDx: this.aimOf(`enemy#${enemy.id}`, frame.steps),
+          aims: this.aimsOf(`enemy#${enemy.id}`),
           feet: enemy.y + enemy.h,
           vx: enemy.vx,
           vy: enemy.vy,
@@ -620,7 +771,7 @@ export class Recorder {
           shot: spit ? spit.dir : 0,
           hitDir: hit ? hit.dir : 0,
           hitShows: hit ? (this.hitShowsOf.get(enemy.id) ?? true) : true,
-          events: types((event) => ofEnemy(event, enemy.id)),
+          events: [...(this.enemyHeld.get(enemy.id) ?? []), ...types((event) => ofEnemy(event, enemy.id))],
           moved: false
         })
       }
@@ -643,18 +794,56 @@ export class Recorder {
           // box the shot is in when it is first asked, and he may have moved off it by then.)
           const by = this.props.shooterOf(shot)
           if (by !== boss && (by !== null || !shoots)) continue
-          const x = shot.x + shot.w / 2
-          const y = shot.y + shot.h / 2
-          // (On his body where it was born: its own flight since then taken back, and that place on his body then put on
-          // the body he is drawn with now, as the light is: his own move since, and the drawing's offset from it.)
-          const born = birthPlace(x, y, shot.vx, shot.vy, this.flown.get(shot) ?? 0)
-          const from = this.bornFrom.get(shot) ?? { x: boss.x, y: boss.y, bornX: born.x, bornY: born.y }
-          const onBody = this.onBody(
-            boss,
-            from.bornX - (from.x + boss.w / 2) + view.bossX(boss),
-            from.bornY + (boss.y - from.y)
-          )
-          births.push({ x, y, behind, vx: shot.vx, vy: shot.vy, onBody })
+          // (Round 8: a shot is his only if he fired it, as the step's events tell: a squirrel's acorn born in his box
+          // is not.)
+          const fired = this.firedBy.get(shot)
+          if (fired && fired !== boss) continue
+          // (Round 8: where it is drawn on its first frame, the view's join to his light added (`shotJoin`): a new
+          // shot is measured where it is first drawn.)
+          const join = this.joinOf(shot)
+          const cx = shot.x + shot.w / 2
+          const cy = shot.y + shot.h / 2
+          const x = cx + join.x
+          const y = cy + join.y
+          // (Round 8, the coordinator's (e′): judged where his body was when he fired. The simulation lets a shot go
+          // from his place before that step's move and flies it a whole step on that step: its drawn birth is its first
+          // drawn place less the flight it really made since its birth (from the birth place noted on the step). The
+          // light's last drawn place is carried on by his picture's own travel up to the step he fired on: a picture
+          // held still (not moved since the light's frame) carries it nowhere; a picture that follows his body, by his
+          // body's steps from the light's frame to the one before the shot's. Its paint: his pose placed where his
+          // picture was on that step, not where a frame of several steps shows him afterwards.)
+          const flown = this.flown.get(shot) ?? 0
+          const sim = birthPlace(cx, cy, shot.vx, shot.vy, flown)
+          const from = this.bornFrom.get(shot) ?? { x: boss.x, y: boss.y, bornX: sim.x, bornY: sim.y }
+          const bornX = x - (cx - from.bornX)
+          const bornY = y - (cy - from.bornY)
+          const now = { x: view.bossX(boss), y: boss.y }
+          const was = this.bossDrawnWas ?? now
+          const body = this.bossBodyWas ?? { x: boss.x + boss.w / 2, y: boss.y }
+          // (Held: his picture stood off his body on the light's frame, held still while the body shook or walked under
+          // it; what it does on the shot's own frame (a wind-up begun on that step lets it go) came after he fired. A
+          // picture on its body follows it, carried by the body's steps, also when the body shook back within the
+          // frame.)
+          const held = Math.hypot(was.x - body.x, was.y - body.y) > 0.01
+          const atFire = held ? was : { x: from.x + boss.w / 2 + (was.x - body.x), y: from.y + (was.y - body.y) }
+          // (Round 8d, decided: against his pose as it stood when he fired, the light's frame's drawing, carried as his
+          // picture was to the step he fired on; the jolt and the pose of the shot's own frame aside.)
+          const was0 = this.bossPlacedWas
+          const onBody = was0
+            ? this.onBody(boss, bornX - (atFire.x - was.x), bornY - (atFire.y - was.y), ON_BODY_PX, was0)
+            : this.onBody(boss, bornX + now.x - atFire.x, bornY + now.y - atFire.y)
+          births.push({
+            x,
+            y,
+            behind,
+            vx: shot.vx,
+            vy: shot.vy,
+            onBody,
+            bornX,
+            bornY,
+            liftX: atFire.x - was.x,
+            liftY: atFire.y - was.y
+          })
         }
         if (!spec) this.missing.push(`${sheet}.${choice.name} at step ${this.step}`)
         if (spec)
@@ -667,6 +856,7 @@ export class Recorder {
             body: boss.x + boss.w / 2,
             path: this.pathOf('boss'),
             aimDx: this.aimOf('boss', frame.steps),
+            aims: this.aimsOf('boss'),
             feet: boss.y + boss.h,
             vx: boss.vx,
             vy: boss.vy,
@@ -689,6 +879,29 @@ export class Recorder {
             minionSide: minionSideOf(events, boss)
           })
         if (shoots) this.shotSide = 0
+        this.bossDrawnWas = { x: view.bossX(boss), y: boss.y }
+        this.bossBodyWas = { x: boss.x + boss.w / 2, y: boss.y }
+        // (His drawing on this frame, kept for the shots of the next: a copy of where and how it is placed.)
+        const placed = newPlaced()
+        this.bossPlacedWas = view.drawnFrame(boss, placed) ? placed : null
+      } else {
+        this.bossDrawnWas = null
+        this.bossBodyWas = null
+        this.bossPlacedWas = null
+      }
+      // (Round 8: a boss's shot drawn from his light joins its own path: how far its picture is from its place, frame by
+      // frame, from its first frame for as long as the view holds it off.)
+      for (const shot of world.shots) {
+        if (shot.dead || !shot.hostile || shot.kind === 'shock') continue
+        const join = this.joinOf(shot)
+        const off = Math.hypot(join.x, join.y)
+        let id = this.joinIds.get(shot)
+        if (id === undefined) {
+          if (this.shotSeen.has(shot) || off === 0) continue
+          this.joinIds.set(shot, (id = ++this.joinCount))
+        } else if (this.joinDone.has(id)) continue
+        this.shotJoins.push({ id, step: this.step, vt: this.viewTime, viewDt: frame.viewDt, off })
+        if (off === 0) this.joinDone.add(id)
       }
       for (const shot of world.shots) if (!shot.dead) this.shotSeen.add(shot)
       // The piglet, awake: the props view draws it where its body is.
@@ -725,7 +938,13 @@ export class Recorder {
         if (shot.dead) continue
         const born = !this.shotFront.has(shot)
         const behind = behindOf(shot)
-        const shooter = this.props.shooterOf(shot)
+        // (Round 8, decided: a shot is a boss's only if he fired it. The props view takes for its shooter the box it is
+        // born in, the boss's first: a squirrel's acorn born inside a charging boar is booked on the squirrel that spat
+        // it, and held to that squirrel's drawing only, the boss's being no shooter's here.)
+        const viewShooter = this.props.shooterOf(shot)
+        const fired = this.firedBy.get(shot)
+        const rebooked = Boolean(viewShooter && fired && viewShooter !== fired && 'def' in viewShooter)
+        const shooter = rebooked ? fired! : viewShooter
         if (born && shot.hostile && shot.kind !== 'shock') {
           const cx = shot.x + shot.w / 2
           const cy = shot.y + shot.h / 2
@@ -749,7 +968,7 @@ export class Recorder {
         const first = this.shotFront.get(shot) !== true
         this.shotFront.set(shot, true)
         // On its shooter, or on the live boss (a squirrel minion may throw from in front of him).
-        const onBoss = boss && boss !== shooter && !boss.dead ? this.shotOverlap(shot, boss) : 0
+        const onBoss = boss && boss !== shooter && !boss.dead && !rebooked ? this.shotOverlap(shot, boss) : 0
         const overlap = this.shotOverlap(shot, shooter) + onBoss
         if (first || overlap > 0)
           this.shotRows.push({
@@ -758,6 +977,21 @@ export class Recorder {
             overlap,
             first
           })
+      }
+    }
+    {
+      const drawn = new Set<number>()
+      for (const enemy of world.enemies) if (!enemy.dead && view.enemyShown(enemy)) drawn.add(enemy.id)
+      for (const id of drawn) {
+        this.enemyHeld.delete(id)
+        this.enemyHits.delete(id)
+      }
+      for (const event of events) {
+        const id = (event as { id?: number }).id
+        if (id === undefined || drawn.has(id) || !ENEMY_EVENTS.has(event.type)) continue
+        if (!world.enemies.some((e) => e.id === id && !e.dead)) continue
+        this.enemyHeld.set(id, [...(this.enemyHeld.get(id) ?? []), event.type])
+        if (event.type === 'enemy-hit') this.enemyHits.set(id, [...(this.enemyHits.get(id) ?? []), event])
       }
     }
     // Enemies that went down on this step: their events land on the ghost that replaces them.
@@ -782,13 +1016,24 @@ export class Recorder {
         vy: 0,
         onGround: false,
         flip: ghost.flip,
-        heroDx: p.x + p.w / 2 - ghost.x,
+        // (The hero where the simulation has him, not where an interpolated frame draws him.)
+        heroDx: (this.heroAt ?? p.x + p.w / 2) - ghost.x,
         events: down ? types((event) => ofEnemy(event, down.id)) : [],
         moved: false,
         supported: ground !== null && Math.abs(ground - ghost.feet) <= 1
       })
     }
   }
+
+  /**
+   * An enemy's events of a frame it was not drawn on (not yet shown, or in a frame its row was not written): they go to
+   * its next row (by enemy id), its `enemy-hit`s with them.
+   */
+  private enemyHeld = new Map<number, string[]>()
+  private enemyHits = new Map<number, SimEvent[]>()
+
+  /** The hero's true place (his centre) after the last step noted. */
+  private heroAt: number | null = null
 
   /** The bodies' places after each simulation step not yet written in a row, by track. */
   private paths = new Map<string, number[]>()
@@ -802,15 +1047,20 @@ export class Recorder {
       list.push(x)
     }
     add('hero', world.player.x + world.player.w / 2)
+    this.heroAt = world.player.x + world.player.w / 2
     this.heroFaces.push(world.player.facing)
+    this.heroGrounds.push(world.player.onGround)
+    this.heroKnocks.push(world.player.knockX !== 0)
     for (const enemy of world.enemies)
       if (!enemy.dead) {
         add(`enemy#${enemy.id}`, enemy.x + enemy.w / 2)
         this.aims.set(`enemy#${enemy.id}`, world.player.x - enemy.x)
+        this.addAim(`enemy#${enemy.id}`, world.player.x - enemy.x)
       }
     if (world.boss && !world.boss.dead) {
       add('boss', world.boss.x + world.boss.w / 2)
       this.aims.set('boss', world.player.x - world.boss.x)
+      this.addAim('boss', world.player.x - world.boss.x)
     }
     // (The simulation moves a shot on the step it is born: after its first step it has flown one. It aims from his
     // body as it was before that step, and moves him after.)
@@ -821,12 +1071,48 @@ export class Recorder {
           // Where it was born: its place after its first step, that step taken back (at the speed it flew it with).
           const at = birthPlace(shot.x + shot.w / 2, shot.y + shot.h / 2, shot.vx, shot.vy, 1)
           if (this.bossWas) this.bornFrom.set(shot, { ...this.bossWas, bornX: at.x, bornY: at.y })
+          const by = this.firerOf(at)
+          if (by) this.firedBy.set(shot, by)
         }
         this.flown.set(shot, n + 1)
       }
     const boss = world.boss
     this.bossWas = boss && !boss.dead ? { x: boss.x, y: boss.y } : null
   }
+
+  /**
+   * Who fired a shot born on the step just run (round 8: a shot is a boss's only if he fired it): of the squirrels
+   * that spat on that step (`spit`) and the boss if he shot on it (`boss-shoot`), the one whose shot's place (the
+   * event's) is nearest to where it was born; null when the step's events name nobody (a scratch driver's step).
+   */
+  private firerOf(at: { x: number; y: number }): Shooter | null {
+    const { world } = this
+    let best: Shooter | null = null
+    let near = Infinity
+    for (const event of world.events) {
+      let who: Shooter | null = null
+      let x = 0
+      let y = 0
+      if (event.type === 'spit') {
+        who = world.enemies.find((e) => e.id === event.id) ?? null
+        x = event.x
+        y = event.y
+      } else if (event.type === 'boss-shoot' && world.boss) {
+        who = world.boss
+        x = event.x
+        y = event.y
+      }
+      if (!who) continue
+      const d = Math.hypot(x - at.x, y - at.y)
+      if (d < near) {
+        near = d
+        best = who
+      }
+    }
+    return best
+  }
+  /** Who fired each shot, as far as the steps' events tell (`firerOf`). */
+  protected firedBy = new WeakMap<object, Shooter>()
 
   /** The steps each shot has flown since it was born (its birth step counted). */
   protected flown = new WeakMap<object, number>()
@@ -836,10 +1122,24 @@ export class Recorder {
 
   /** The hero's facing after each step not yet written in a row. */
   private heroFaces: number[] = []
+  private heroGrounds: boolean[] = []
+  private heroKnocks: boolean[] = []
   /** The simulation's aim (`player.x - actor.x`) on the last step noted, by track. */
   private aims = new Map<string, number>()
   private aimOf(who: string, steps: number) {
     return steps > 0 ? (this.aims.get(who) ?? NaN) : NaN
+  }
+  /** The simulation's aim on each step not yet written in a row, by track (and forgets them). */
+  private aimSteps = new Map<string, number[]>()
+  private addAim(who: string, dx: number) {
+    let list = this.aimSteps.get(who)
+    if (!list) this.aimSteps.set(who, (list = []))
+    list.push(dx)
+  }
+  private aimsOf(who: string) {
+    const list = this.aimSteps.get(who) ?? []
+    this.aimSteps.delete(who)
+    return list
   }
 
   /** The places noted for a track since its last row (and forgets them). */
@@ -869,10 +1169,16 @@ export class Recorder {
     const bx = this.view.bossX(boss) + 7
     const by = boss.y + boss.h * (boss.def.kind === 'flyer' ? 0.5 : 0.4) + 7
     const jolt = this.viewTime - this.joltAt < JOLT_SECONDS + EPS
-    const onBody = this.onBody(boss, x, y)
+    // (Round 8d, decided: on a flinch's frames within 5 px, as the art's own test holds her `hurt`.)
+    const flinch = this.view.selectBoss(boss).name === 'hurt'
+    const onBody = this.onBody(boss, x, y, flinch ? ON_HURT_PX : ON_BODY_PX)
+    // (The frame drawn, as the view's `drawShotCue` picks it: its progress over the clip's frames.)
+    const frames = SPECS[cue.sheet]?.gather?.frames ?? 6
     return {
       sheet: cue.sheet,
       progress: cue.progress,
+      frame: Math.min(frames - 1, Math.floor(cue.progress * frames)),
+      frames,
       x,
       y,
       off: Math.hypot(x - bx, y - by),
@@ -911,12 +1217,12 @@ export class Recorder {
   protected hitShowsOf = new Map<number, boolean>()
 
   /** Whether (x, y) lies on, or within `ON_BODY_PX` of, a painted pixel of the frame the boss is drawn with now. */
-  private onBody(boss: Boss, x: number, y: number) {
-    const placed = this.bodyPlaced
-    if (Number.isNaN(x) || !this.view.drawnFrame(boss, placed)) return false
+  private onBody(boss: Boss, x: number, y: number, reach = ON_BODY_PX, frame?: Placed) {
+    const placed = frame ?? this.bodyPlaced
+    if (Number.isNaN(x) || (!frame && !this.view.drawnFrame(boss, placed))) return false
     const cx = Math.round(x)
     const cy = Math.round(y)
-    for (let r = 0; r <= ON_BODY_PX; r++)
+    for (let r = 0; r <= reach; r++)
       for (let j = -r; j <= r; j++)
         for (let i = -r; i <= r; i++)
           if (Math.max(Math.abs(i), Math.abs(j)) === r && paintedAt(placed, cx + i, cy + j)) return true
@@ -996,6 +1302,11 @@ export interface SessionOptions {
   wait?: number
   /** Runs once before the session starts. */
   setup?: (ctx: SessionContext) => void
+  /**
+   * Display frames of uneven length: the length (s) of frame `n` (the frames recorded before it), asked before each
+   * frame; `hz` is then only the rate the run is labelled with and its frames are counted by. See `FRAME_PATTERNS`.
+   */
+  frames?: (n: number, rec: SessionRecorder) => number
   label?: string
 }
 
@@ -1151,6 +1462,7 @@ export class SessionRecorder extends Recorder implements SessionContext {
     const frozen = session.view.frozen
     const locked = director.inputLocked
     this.stepsNow = 0
+    if (this.options.frames) this.frameDt = this.options.frames(this.step, this)
     session.frame(this.frameDt)
     this.time += this.frameDt
     const events = this.events
@@ -1188,12 +1500,132 @@ export class SessionRecorder extends Recorder implements SessionContext {
 
   /** Display frames for at most `seconds` of real time, until `until` holds (default: the session's outcome). */
   play(seconds: number, until: () => boolean = () => this.session.outcome !== null) {
+    // (Uneven frames: for `seconds` of display time.)
+    if (this.options.frames) {
+      for (const end = this.time + seconds; this.time < end - 1e-9; ) {
+        this.frame()
+        if (until()) return true
+      }
+      return false
+    }
     for (let n = Math.round(seconds * this.hz); n > 0; n--) {
       this.frame()
       if (until()) return true
     }
     return false
   }
+}
+
+/** A seeded random number in [0, 1) (mulberry32). */
+function seeded(seed: number) {
+  let a = seed | 0
+  return () => {
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+export type FramePattern = 'drop53' | 'rand' | 'alt' | 'burst' | 'slowrand'
+/**
+ * Display frames of uneven length (round 7, the outside reviewer's fourth verdict): its own case, 60 Hz with a 50 ms
+ * frame every 53 (`drop53`); every frame between 8 and 28 ms (`rand`, seeded); 16.7 and 33.3 ms in turn (`alt`);
+ * 120 Hz with a 58 ms frame every 97 (`burst`); 30 Hz ± 12 ms (`slowrand`, seeded). Each with the rate its run is
+ * labelled with.
+ */
+export const FRAME_PATTERNS: Record<FramePattern, { hz: number; make: (seed: number) => (n: number) => number }> = {
+  drop53: { hz: 60, make: () => (n) => (n % 53 === 5 ? 3 / 60 : 1 / 60) },
+  rand: {
+    hz: 60,
+    make: (seed) => {
+      const rand = seeded(seed * 7919 + 1)
+      return () => 0.008 + rand() * 0.02
+    }
+  },
+  alt: { hz: 45, make: () => (n) => (n % 2 ? 1 / 30 : 1 / 60) },
+  burst: { hz: 120, make: () => (n) => (n % 97 === 11 ? 7 / 120 : 1 / 120) },
+  slowrand: {
+    hz: 30,
+    make: (seed) => {
+      const rand = seeded(seed * 7919 + 3)
+      return () => 1 / 30 + (rand() - 0.5) * 0.024
+    }
+  }
+}
+
+/** Stage `no` played by the real session with display frames of the pattern's uneven lengths (`FRAME_PATTERNS`). */
+export function unevenPlay(no: number, pattern: FramePattern, options: SessionOptions & { seconds?: number } = {}) {
+  const { hz, make } = FRAME_PATTERNS[pattern]
+  const seed = options.seed ?? 1
+  return sessionPlay(no, {
+    hz,
+    ...options,
+    frames: make(seed * 31 + no),
+    label:
+      options.label ??
+      `stage ${no}, seed ${seed}: the session plays${options.skip === true ? ', skipping' : ''} with frames "${pattern}"`
+  })
+}
+
+/** The length (s) of the one stalled display frame of `stalledPlay`. */
+export const STALL_SECONDS = 0.25
+export type StallAt = 'fight' | 'light' | 'phase' | 'windup' | 'landing' | 'bite'
+/** Where a stall is put (round 7b: where it matters). */
+const STALL_WHERE: Record<StallAt, string> = {
+  fight: 'a fight',
+  light: 'a light',
+  phase: 'the transformation',
+  windup: 'a wind-up',
+  landing: "a boss's landing",
+  bite: 'a bite that hits'
+}
+/**
+ * One display frame of `STALL_SECONDS` among frames of 60 Hz (the session's pacer runs at most `MAX_STEPS` steps in it
+ * and drops the rest of its time; the view's clips have advanced by the whole of it): in the middle of a fight (1.5 s
+ * after the boss woke), of a light (its progress past 0.5), of the transformation (0.3 s into `boss-phase`), of a
+ * wind-up (0.1 s into his `windup`), of a boss's landing (on its second frame), or of a bite that hits (the frame
+ * after an `enemy-hit` or a `boss-hit`, its effects still on the screen).
+ */
+export function stallSchedule(at: StallAt) {
+  let stalled = false
+  let woke = -1
+  let phase = -1
+  return (_n: number, rec: SessionRecorder) => {
+    if (stalled) return 1 / 60
+    const boss = rec.world.boss
+    if (boss?.active && woke < 0) woke = rec.time
+    if (rec.director.current === 'boss-phase' && phase < 0) phase = rec.time
+    const last = rec.tracks.get('boss')?.rows.at(-1)
+    const hit = [...rec.tracks.values()].some(
+      (t) =>
+        t.rows.at(-1)?.step === rec.step && t.rows.at(-1)!.events.some((e) => e === 'enemy-hit' || e === 'boss-hit')
+    )
+    const due =
+      at === 'fight'
+        ? woke >= 0 && rec.time - woke >= 1.5
+        : at === 'light'
+          ? (last?.cue?.progress ?? 0) > 0.5
+          : at === 'phase'
+            ? phase >= 0 && rec.time - phase >= 0.3
+            : at === 'windup'
+              ? boss?.state === 'windup' && boss.stateTime > 0.1 && !rec.director.current
+              : at === 'landing'
+                ? last?.clip === 'land' && last.frame >= 1 && !rec.director.current
+                : hit && !rec.director.current
+    if (!due) return 1 / 60
+    stalled = true
+    return STALL_SECONDS
+  }
+}
+
+/** Stage `no` at 60 Hz with one stalled display frame where `at` says (`stallSchedule`). */
+export function stalledPlay(no: number, at: StallAt, options: SessionOptions & { seconds?: number } = {}) {
+  return sessionPlay(no, {
+    ...options,
+    label: `stage ${no}, seed ${options.seed ?? 'of the stage'}: one display frame of ${STALL_SECONDS * 1000} ms in the middle of ${STALL_WHERE[at]}`,
+    frames: stallSchedule(at)
+  })
 }
 
 /** Stage `no` played by the real session with its director, to its outcome (or `seconds` of real time). */
@@ -1686,6 +2118,106 @@ export function heroDies(no: number, by: DeathBy, options: { hz?: number; seed?:
   return { r, died: r.world.player.dead, outcome: r.session.outcome }
 }
 
+/** How the stage ends in `heroEnds` (round 8: the ending plays out). */
+export type HeroEnding = 'ground' | 'air' | 'pit' | 'clear-ground' | 'clear-air'
+export const HERO_ENDINGS: readonly HeroEnding[] = ['ground', 'air', 'pit', 'clear-ground', 'clear-air']
+
+/**
+ * The stage ends and the rows run to its outcome (round 8, the jitter auditor's second look: once the stage was over
+ * the bodies' clocks stood still). On stage `no` (default 1), the hero kept alive until the moment, then: `ground`,
+ * knocked out with his last heart where he stands, 1 s after he last landed; `air`, thrown up (as a jump) and knocked
+ * out at the top of it; `pit`, the ground ahead of him dug away down to the bottom of the world (no stage has a pit
+ * of its own) and his last heart lost there as he falls out; `clear-ground`, put 3 tiles before the goal (by hand)
+ * and walked in; `clear-air`, the same, thrown up 20 px before it so that he touches it in the air. `frames` is a
+ * `FRAME_PATTERNS` name or a rate.
+ */
+export function heroEnds(
+  how: HeroEnding,
+  options: { no?: number; seed?: number; frames?: number | FramePattern } = {}
+) {
+  const no = options.no ?? 1
+  const seed = options.seed ?? 5
+  const rate = options.frames ?? 60
+  const pattern = typeof rate === 'string' ? FRAME_PATTERNS[rate] : null
+  let stage: 'walk' | 'thrown' | 'done' = 'walk'
+  let landed = 0
+  let aloftAtKnockOut = false
+  const clear = how === 'clear-ground' || how === 'clear-air'
+  const r = new SessionRecorder(no, {
+    seed,
+    hz: pattern ? pattern.hz : (rate as number),
+    frames: pattern ? pattern.make(seed * 31 + no) : undefined,
+    // (The ending's own moment is not skipped: it is what is watched.)
+    skip: ['stage-start', 'boss-intro', 'chase-start', 'goal-reveal'],
+    keepAlive: false,
+    label: `stage ${no}, seed ${seed}: the stage ends (${how})${typeof rate === 'string' ? ` with frames "${rate}"` : atRate(rate)}`,
+    setup: ({ world, rec }) => {
+      const p = world.player
+      p.maxHp = 999
+      p.hp = 999
+      const goal = world.props.find((prop) => prop.kind === 'goal' || prop.kind === 'nest')
+      if (clear && goal) {
+        rec.moved('hero')
+        p.x = goal.x - 3 * TILE
+        p.y = goal.y + goal.h * TILE - p.h
+      }
+      if (how === 'pit') {
+        // Three columns dug away 4 tiles ahead of him, down to the bottom of the world.
+        const tiles = (world as unknown as { tiles: Uint8Array | number[] }).tiles
+        const from = Math.floor((p.x + p.w) / TILE) + 4
+        for (let tx = from; tx < from + 3; tx++) for (let ty = 0; ty < world.h; ty++) tiles[ty * world.w + tx] = 0
+      }
+    },
+    plan: ({ world, rec }) => {
+      const input = rec.stagePlan()
+      // (Walked in on the ground: the bot's plan may hop there.)
+      if (clear) return { ...emptyInput(), right: true }
+      if (how === 'pit') return { ...input, jump: false, jumpPressed: false, right: true, left: false }
+      return world.player.dead ? emptyInput() : input
+    },
+    beforeStep: ({ world }) => {
+      const p = world.player
+      if (p.dead || stage === 'done') return
+      p.hp = p.maxHp
+      landed = p.onGround ? landed + STEP : 0
+      const goal = world.props.find((prop) => prop.kind === 'goal' || prop.kind === 'nest')
+      const kill = () => {
+        stage = 'done'
+        aloftAtKnockOut = !p.onGround
+        p.invuln = 0
+        p.hp = 1
+        world.hurtPlayer(1, p.x + 40)
+      }
+      if (how === 'ground' && world.time > 2 && landed >= 1) kill()
+      else if (how === 'air' && world.time > 2) {
+        if (stage === 'walk' && p.onGround) {
+          stage = 'thrown'
+          p.vy = -520
+          p.onGround = false
+        } else if (stage === 'thrown' && !p.onGround && p.vy >= 0) kill()
+      } else if (how === 'pit' && p.y > (world.h - 3) * TILE) {
+        stage = 'done'
+        aloftAtKnockOut = !p.onGround
+        p.invuln = 0
+        p.hp = 1
+      } else if (how === 'clear-air' && goal && stage === 'walk' && p.onGround && goal.x - (p.x + p.w) < 20) {
+        stage = 'thrown'
+        p.vy = -520
+        p.onGround = false
+      }
+    }
+  })
+  r.play(clear ? 30 : 40)
+  // (Whether he was off the ground: at the knock-out, his body as the simulation had it; at the clear, as drawn.)
+  return { r, outcome: r.session.outcome, airborne: clear ? airborneAt(r, 'clear') : aloftAtKnockOut }
+}
+
+/** Whether the hero's drawn body was off the ground on the frame of his `event` (`clear`, `dead`). */
+function airborneAt(r: Recorder, event: string) {
+  const row = r.tracks.get('hero')?.rows.find((x) => x.events.includes(event))
+  return row ? !row.onGround : false
+}
+
 /**
  * A brute's charge ends in a wall and stuns him (stages 3, 4, 5): the hero stands out of harm just inside the arena,
  * by its gate, so that the charge at him runs into it.
@@ -1901,6 +2433,372 @@ export function heroHolds(name: string, options: { hz?: number; no?: number; see
   return r
 }
 
+// ------------------------------------------------------------------------------------------- the hero's own walk
+
+/**
+ * The input scripts of the round-8d auditor (`.build/audit16s/scripts.mjs`): tokens `<keys><steps>` separated by spaces;
+ * keys R right, L left, J jump held (pressed on the token's first step), B bite (pressed on its first step), `.`
+ * nothing. `.30 R60 L3 R40 .40`: thirty steps of nothing, sixty of right, three of left, forty of right, forty of
+ * nothing.
+ */
+export function heroScriptInput(script: string): Partial<InputState>[] {
+  const flat: Partial<InputState>[] = []
+  for (const token of script.trim().split(/\s+/)) {
+    const m = /^([RLJB.]+)(\d+)$/.exec(token)
+    if (!m) throw new Error(`bad token ${token}`)
+    for (let i = 0; i < Number(m[2]); i++) {
+      const keys = m[1]
+      flat.push({
+        right: keys.includes('R'),
+        left: keys.includes('L'),
+        jump: keys.includes('J'),
+        jumpPressed: keys.includes('J') && i === 0,
+        bitePressed: keys.includes('B') && i === 0
+      })
+    }
+  }
+  return flat
+}
+
+const range = (a: number, b: number, by = 1) =>
+  Array.from({ length: Math.floor((b - a) / by) + 1 }, (_, i) => a + i * by)
+
+/**
+ * The scripts (round 8d, the coordinator's table and the auditor's groups): taps of every length against a run and
+ * from a stand, a tap back, reversals at every point of his speeding up and after a stop, a reversal on landing and a
+ * late tap in the air, stop and go. Played on stage 2 from tile 4, its enemies gone (`heroScripted`).
+ */
+export const HERO_SCRIPTS: readonly string[] = [
+  ...range(1, 9).map((m) => `.30 R60 L${m} R40 .40`),
+  ...range(1, 8).map((m) => `.30 R${m} L${m} R${m} L${m} R${m} L${m} .40`),
+  ...range(1, 6).map((m) => `.30 R60 L${m} R${m} L${m} R30 .40`),
+  ...range(1, 4).map((m) => `.30 L${m} .40 R${m} .40`),
+  ...range(2, 16, 2).map((n) => `.30 R${n} L40 .30`),
+  '.30 R60 L40 .30',
+  ...range(1, 12, 3).map((m) => `.30 R60 .${m} L40 .30`),
+  ...range(38, 46, 2).map((a) => `.30 R40 RJ${a} L3 R40 .30`),
+  ...range(0, 36, 12).map((a) => `.30 R30 RJ20 R${a + 1} L40 .30`),
+  ...range(1, 7, 3).map((m) => `.30 RJ30 L${m} R20 .30`),
+  '.30 R60 .20 R40 .20 L30 .30'
+]
+
+/**
+ * The hero played by a script (`heroScriptInput`) on stage `no` (default 2), from tile `at` (4), its enemies gone, every
+ * moment skipped, at `frames` (a rate or a `FRAME_PATTERNS` name), to the script's end and `tail` steps more.
+ */
+export function heroScripted(
+  script: string,
+  options: { no?: number; at?: number; frames?: number | FramePattern; seed?: number; tail?: number } = {}
+) {
+  const no = options.no ?? 2
+  const seed = options.seed ?? 5
+  const rate = options.frames ?? 60
+  const pattern = typeof rate === 'string' ? FRAME_PATTERNS[rate] : null
+  const flat = heroScriptInput(script)
+  let k = -1
+  let seen = -1
+  const r = new SessionRecorder(no, {
+    seed,
+    hz: pattern ? pattern.hz : (rate as number),
+    frames: pattern ? pattern.make(seed * 31 + no) : undefined,
+    skip: ['stage-start', 'chase-start', 'boss-intro', 'goal-reveal'],
+    label: `stage ${no}: the hero plays "${script}"${typeof rate === 'string' ? ` with frames "${rate}"` : atRate(rate)}`,
+    setup: ({ world, rec }) => {
+      for (const enemy of world.enemies) enemy.dead = true
+      const p = world.player
+      rec.moved('hero')
+      p.x = (options.at ?? 4) * TILE + (TILE - p.w) / 2
+    },
+    plan: ({ rec }) => {
+      if (rec.steps !== seen) {
+        seen = rec.steps
+        k++
+      }
+      return { ...emptyInput(), ...(flat[k] ?? {}) }
+    }
+  })
+  const total = flat.length + (options.tail ?? 60)
+  r.play(60, () => r.session.outcome !== null || k >= total)
+  return r
+}
+
+/**
+ * The hero hit on the step a moment begins (round 8d, the auditor's finding 2): on stage `no` the bot walks to the
+ * arena; 4 px before its line a blow from behind throws him over it on that step (the boss wakes, his entrance begins). His
+ * flinch must show then, under the hold, not when the moment ends (`heroFlinchesOnTheBlow`).
+ */
+export function heroHitAsAMomentBegins(no: number, options: { frames?: number | FramePattern; seed?: number } = {}) {
+  const seed = options.seed ?? 5
+  const rate = options.frames ?? 60
+  const pattern = typeof rate === 'string' ? FRAME_PATTERNS[rate] : null
+  let done = false
+  const r = new SessionRecorder(no, {
+    seed,
+    hz: pattern ? pattern.hz : (rate as number),
+    frames: pattern ? pattern.make(seed * 31 + no) : undefined,
+    skip: ['stage-start'],
+    label: `stage ${no}: the hero hit on the step the boss wakes${typeof rate === 'string' ? ` with frames "${rate}"` : atRate(rate)}`,
+    setup: ({ world }) => {
+      for (const enemy of world.enemies) enemy.dead = true
+    },
+    beforeStep: ({ world }) => {
+      const boss = world.boss
+      const p = world.player
+      if (done || !boss || boss.active) return
+      // (A blow from behind on the step before the line throws him over it: sim.ts wakes the boss on that step.)
+      if (p.x + p.w + 4 < boss.arenaX) return
+      done = true
+      p.invuln = 0
+      world.hurtPlayer(1, p.x - 20)
+    }
+  })
+  r.play(40, () => done && r.director.log.includes('boss-intro') && !r.director.current)
+  r.play(2, () => false)
+  return r
+}
+
+/** Where `heroKnockedOutAt` knocks the hero out (round 8f). */
+export type KnockOutPlace = 'lip-0' | 'lip-6' | 'lip-12' | 'lip-18' | 'wall' | 'gap' | 'stairs'
+export const KNOCK_OUT_PLACES: readonly KnockOutPlace[] = [
+  'lip-0',
+  'lip-6',
+  'lip-12',
+  'lip-18',
+  'wall',
+  'gap',
+  'stairs'
+]
+
+/**
+ * The hero knocked out where his body may come to lie against the ground's shape (round 8f, the auditor's second
+ * look): at the lip of the hole on stage 2 (tile 28: his box on the floor, his middle 0 to 18 px past its edge);
+ * knocked back into a wall (a column of solid tiles put 6 px behind him on stage 2); over a gap of one tile dug under
+ * his middle (narrower than he is: he lies across it); on a stair's lip on stage 10 (the first rise of the floor
+ * from his start, his middle 6 px past it). The rows run to the death moment's end.
+ */
+export function heroKnockedOutAt(
+  place: KnockOutPlace,
+  options: { frames?: number | FramePattern; seed?: number } = {}
+) {
+  const seed = options.seed ?? 5
+  const rate = options.frames ?? 60
+  const pattern = typeof rate === 'string' ? FRAME_PATTERNS[rate] : null
+  const no = place === 'stairs' ? 10 : 2
+  let done = false
+  const r = new SessionRecorder(no, {
+    seed,
+    hz: pattern ? pattern.hz : (rate as number),
+    frames: pattern ? pattern.make(seed * 31 + no) : undefined,
+    skip: ['stage-start', 'chase-start', 'boss-intro', 'goal-reveal'],
+    keepAlive: false,
+    label: `stage ${no}: the hero knocked out (${place})${typeof rate === 'string' ? ` with frames "${rate}"` : atRate(rate)}`,
+    setup: ({ world, rec }) => {
+      for (const enemy of world.enemies) enemy.dead = true
+      const p = world.player
+      p.maxHp = 999
+      p.hp = 999
+      const tiles = (world as unknown as { tiles: Uint8Array | number[] }).tiles
+      const floor = Math.floor((p.y + p.h) / TILE)
+      rec.moved('hero')
+      if (place.startsWith('lip-')) {
+        p.x = 28 * TILE + Number(place.slice(4)) - p.w / 2
+        p.y = 15 * TILE - p.h
+      } else if (place === 'wall') {
+        const tx = Math.floor(p.x / TILE) + 3
+        p.x = tx * TILE + 6
+        for (let ty = 0; ty < floor; ty++) tiles[ty * world.w + tx - 1] = 1
+      } else if (place === 'gap') {
+        const tx = Math.floor(p.x / TILE) + 3
+        p.x = tx * TILE + TILE / 2 - p.w / 2
+        for (let ty = floor; ty < world.h; ty++) tiles[ty * world.w + tx] = 0
+      } else {
+        // (The first rise of the floor ahead: his middle 6 px past the lip of the step below it, on the lower side.)
+        const start = Math.floor((p.x + p.w / 2) / TILE)
+        const top = (tx: number) => {
+          for (let ty = 0; ty < world.h; ty++) if (world.solidAt(tx, ty) || world.tileAt(tx, ty) === 2) return ty
+          return world.h
+        }
+        for (let tx = start; tx < world.w - 1; tx++)
+          if (top(tx + 1) < top(tx)) {
+            p.x = (tx + 1) * TILE - 6 - p.w / 2
+            p.y = top(tx + 1) * TILE - p.h
+            break
+          }
+      }
+    },
+    plan: () => emptyInput(),
+    beforeStep: ({ world }) => {
+      const p = world.player
+      if (done || p.dead || world.time < 0.5) return
+      done = true
+      p.invuln = 0
+      p.hp = 1
+      // (Knocked back: into the wall from in front of it, else from ahead.)
+      world.hurtPlayer(1, place === 'wall' ? p.x + p.w + 40 : p.x + p.w / 2 + 40)
+    }
+  })
+  r.play(20)
+  return r
+}
+
+// ------------------------------------------------------------------------------------- a player who is not the bot
+
+/** A seeded random number in [0, 1) (mulberry32, as `seeded`, on its own state). */
+function mulberry(seed: number) {
+  let a = seed
+  return () => {
+    a |= 0
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/**
+ * How a player who is not the bot plays (round 8). `mix`: the bot's plan, with random stretches (a share of them,
+ * `share`) of a random combination of left / right / jump / bite / up / down held, with taps. In the fight (the bot's
+ * plan elsewhere): `hug` walks into the boss's middle and stays there, biting now and then; `above` keeps to his x and
+ * jumps whenever he stands; `flee` runs the arena from end to end, jumping when the boss is near; `still` stands,
+ * biting now and then; `turner` stays near him and turns every few steps, mashing the bite; `hop` is the bot's fight
+ * but never on the ground (he jumps whenever he stands).
+ */
+export type WildStyle = 'mix' | 'hug' | 'above' | 'flee' | 'still' | 'turner' | 'hop'
+export const WILD_STYLES: readonly WildStyle[] = ['mix', 'hug', 'above', 'flee', 'still', 'turner', 'hop']
+/** The styles that play the fight only (the bot's plan elsewhere). */
+export const FIGHT_STYLES: readonly WildStyle[] = ['hug', 'above', 'flee', 'still', 'turner', 'hop']
+
+/**
+ * The input of a wild player (`WildStyle`), seeded by `seed` and the stage `no`: a session's `plan`. (The scratch
+ * `.build/r6/wild-plan.mjs` the coordinator traced the round's rows with, taken into the gate.)
+ */
+export function wildPlan(seed: number, no: number, share: number, style: WildStyle = 'mix') {
+  const rand = mulberry(seed * 104729 + no * 31)
+  let left = 0
+  let wild = false
+  let held = { left: false, right: false, up: false, down: false, jump: false, bite: false }
+  let before = { jump: false, bite: false }
+  let dir = 1
+  let turnIn = 0
+  const edge = (input: InputState) => {
+    input.jumpPressed = input.jump && !before.jump
+    input.bitePressed = input.bite && !before.bite
+    before = { jump: input.jump, bite: input.bite }
+    return input
+  }
+  return ({ world, rec }: SessionContext): InputState => {
+    const bot = rec.stagePlan()
+    const boss = world.boss
+    const p = world.player
+    if (style !== 'mix') {
+      if (rec.phase !== 'fight' || !boss || boss.dead) {
+        before = { jump: bot.jump, bite: bot.bite }
+        return bot
+      }
+      const dx = boss.x + boss.w / 2 - (p.x + p.w / 2)
+      const input = emptyInput()
+      if (style === 'hug') {
+        if (Math.abs(dx) > 3) input[dx > 0 ? 'right' : 'left'] = true
+        input.bite = rand() < 0.2
+        input.jump = rand() < 0.02
+      } else if (style === 'above') {
+        if (Math.abs(dx) > 4) input[dx > 0 ? 'right' : 'left'] = true
+        input.jump = p.onGround || rand() < 0.5
+        input.bite = rand() < 0.15
+      } else if (style === 'flee') {
+        const lo = boss.arenaX + 24
+        const hi = boss.arenaX + 20 * 32 - 24 - p.w
+        if (p.x <= lo) dir = 1
+        else if (p.x >= hi) dir = -1
+        input[dir > 0 ? 'right' : 'left'] = true
+        input.jump = p.onGround && Math.abs(dx) < 90
+      } else if (style === 'still') {
+        input.bite = rand() < 0.05
+      } else if (style === 'turner') {
+        if (turnIn-- <= 0) {
+          dir = -dir
+          turnIn = 2 + Math.floor(rand() * 7)
+        }
+        if (Math.abs(dx) > 60) input[dx > 0 ? 'right' : 'left'] = true
+        else input[dir > 0 ? 'right' : 'left'] = true
+        input.bite = rand() < 0.5
+        input.jump = rand() < 0.03
+      } else if (style === 'hop') {
+        Object.assign(input, bot)
+        input.jump = bot.jump || p.onGround
+      }
+      return edge(input)
+    }
+    if (left <= 0) {
+      wild = rand() < share
+      left = wild ? 2 + Math.floor(rand() * 40) : 10 + Math.floor(rand() * 90)
+      const way = rand()
+      held = {
+        left: way < 0.4,
+        right: way >= 0.4 && way < 0.8,
+        up: rand() < 0.1,
+        down: rand() < 0.1,
+        jump: rand() < 0.35,
+        bite: rand() < 0.35
+      }
+    }
+    left--
+    if (!wild) {
+      before = { jump: bot.jump, bite: bot.bite }
+      return bot
+    }
+    // A tap now and then inside a held stretch (the press edges the simulation reads).
+    const jump = held.jump && rand() > 0.15
+    const bite = held.bite && rand() > 0.3
+    const input = {
+      left: held.left,
+      right: held.right,
+      up: held.up,
+      down: held.down,
+      jump,
+      jumpPressed: jump && !before.jump,
+      bite,
+      bitePressed: bite && !before.bite
+    }
+    before = { jump, bite }
+    return input
+  }
+}
+
+/**
+ * Stage `no` played by the real session with a wild player (`wildPlan`): at `rate` (a rate, or a `FRAME_PATTERNS`
+ * name), the moments skipped on odd seeds, `share` of wild stretches for `mix`, for `seconds` of display time; the hero
+ * kept alive unless `mortal` (then the run ends with his death or the clear).
+ */
+export function wildPlay(
+  no: number,
+  options: {
+    seed?: number
+    rate?: number | FramePattern
+    share?: number
+    style?: WildStyle
+    seconds?: number
+    mortal?: boolean
+  } = {}
+) {
+  const seed = options.seed ?? 1
+  const rate = options.rate ?? 60
+  const share = options.share ?? 0.5
+  const style = options.style ?? 'mix'
+  const pattern = typeof rate === 'string' ? FRAME_PATTERNS[rate] : null
+  const skip = seed % 2 === 1
+  return sessionPlay(no, {
+    seed,
+    hz: pattern ? pattern.hz : (rate as number),
+    frames: pattern ? pattern.make(seed * 31 + no) : undefined,
+    skip,
+    plan: wildPlan(seed, no, share, style),
+    seconds: options.seconds ?? 240,
+    keepAlive: !options.mortal,
+    label: `stage ${no}, seed ${seed}: a wild player (${style === 'mix' ? share : style})${options.mortal ? ', mortal' : ''}${skip ? ', skipping' : ''} at ${rate}`
+  })
+}
+
 /**
  * The same play at another display rate: the hand-made recorder (no director: the simulation runs exactly the same
  * steps at every rate) on stage `no` with the bot's input for `seconds`, and for every simulation step the clip and
@@ -1910,24 +2808,126 @@ export function drawnBySimStep(no: number, hz: number, seconds = 20, seed = 5) {
   const world = openWorld(no, seed)
   const r = new Recorder(world, `stage ${no}, seed ${seed}: the bot plays${atRate(hz)}`, hz)
   r.run(seconds, () => true)
+  return drawnOnSteps(r)
+}
+
+/**
+ * For every body (the hero, the enemies, the boss), the clip and facing it was drawn with on the last display frame
+ * that showed each simulation step (a frame that showed a step, outside a hit-stop; not under a staged pose, which
+ * plays on real time), by track; up to `until` (a step).
+ */
+function drawnOnSteps(r: Recorder, until = Infinity) {
   const drawn = new Map<string, Map<number, string>>()
   for (const [who, track] of r.tracks) {
-    if (track.kind !== 'hero' && track.kind !== 'enemy') continue
+    if (track.kind !== 'hero' && track.kind !== 'enemy' && track.kind !== 'boss') continue
     const steps = new Map<number, string>()
-    for (const row of track.rows) if (row.steps > 0) steps.set(row.sim, `${row.clip}${row.flip ? '<' : '>'}`)
+    for (const row of track.rows)
+      if (row.steps > 0 && !row.frozen && row.posed === null && row.sim < until)
+        steps.set(row.sim, `${row.clip}${row.flip ? '<' : '>'}`)
     drawn.set(who, steps)
   }
   return drawn
 }
 
+/**
+ * Round 7b: what is decided on steps is the same at every display schedule. Stage `no` played by the real session
+ * (skipping its moments) at even 60 Hz until its first moment (the stage's start, whose steps run with the input
+ * locked) is over, then with display frames of `frames` (a pattern of `FRAME_PATTERNS`, an even rate, or a function);
+ * the bodies' places on every step (to tell where two runs' simulations part), and `drawnOnSteps` up to the
+ * boss's fall.
+ */
+export function sessionOnSteps(
+  no: number,
+  frames: FramePattern | number | StallAt | `stall@${number}` | ((n: number, rec: SessionRecorder) => number),
+  options: { seed?: number; seconds?: number } = {}
+) {
+  const seed = options.seed ?? 17
+  const schedule: (n: number, rec: SessionRecorder) => number =
+    typeof frames === 'function'
+      ? frames
+      : typeof frames === 'number'
+        ? () => 1 / frames
+        : frames.startsWith('stall@')
+          ? (_n: number, rec: SessionRecorder) => (rec.step === Number(frames.slice(6)) ? STALL_SECONDS : 1 / 60)
+          : frames in FRAME_PATTERNS
+            ? FRAME_PATTERNS[frames as FramePattern].make(seed * 31 + no)
+            : stallSchedule(frames as StallAt)
+  const places = new Map<number, string>()
+  let from = -1
+  let n = 0
+  const r = new SessionRecorder(no, {
+    seed,
+    skip: true,
+    label: `stage ${no}, seed ${seed}: the session at 60 Hz, then ${typeof frames === 'function' ? 'its own frames' : typeof frames === 'number' ? `${frames} Hz` : frames.startsWith('stall@') ? `a stall at display frame ${frames.slice(6)}` : frames in FRAME_PATTERNS ? `frames "${frames}"` : `a stall in ${STALL_WHERE[frames as StallAt]}`}`,
+    beforeStep: ({ world, rec }) => {
+      places.set(
+        rec.steps,
+        `${world.player.x.toFixed(3)},${world.player.y.toFixed(3)},${world.boss ? `${world.boss.x.toFixed(3)},${world.boss.state}` : ''}`
+      )
+    },
+    frames: (_n, rec) => {
+      if (from < 0 && rec.director.log.length > 0 && !rec.director.current) from = rec.steps
+      return from < 0 ? 1 / 60 : schedule(n++, rec)
+    }
+  })
+  r.play(options.seconds ?? 120)
+  let down = Infinity
+  for (const row of r.tracks.get('boss')?.rows ?? [])
+    if (row.events.includes('boss-down')) down = Math.min(down, row.sim)
+  return { r, places, from, down }
+}
+
+/**
+ * Where two `sessionOnSteps` runs differ, on the steps both show, up to where their simulations part (the bodies'
+ * places differ) or the boss falls: "who: step s: a / b", each body's first difference.
+ */
+/**
+ * The clips the view fits to the display frames that show them (a cast's lead-in and follow-through, a flinch, a
+ * landing; the dash's clock too, whose frames are not compared): each begins on the frame that first shows it, so the
+ * step it is first drawn on may differ by the steps of a frame between two schedules (round 7b, the view's report).
+ */
+export const FITTED_CLIPS: readonly string[] = ['shoot', 'hurt', 'land']
+/** The steps a fitted clip's first drawn step may differ by between two schedules. */
+export const FITTED_STEPS = 4
+
+export function onStepsDifferences(a: ReturnType<typeof sessionOnSteps>, b: ReturnType<typeof sessionOnSteps>) {
+  let part = Infinity
+  for (const [step, place] of a.places) {
+    const other = b.places.get(step)
+    if (other !== undefined && other !== place) {
+      part = step
+      break
+    }
+  }
+  const until = Math.min(part, a.down, b.down)
+  return drawnDifferences(drawnOnSteps(a.r, until), drawnOnSteps(b.r, until), true)
+}
+
 /** Where two `drawnBySimStep` runs differ: "who: step s: a / b", one line for each body's first difference. */
-export function drawnDifferences(a: Map<string, Map<number, string>>, b: Map<string, Map<number, string>>) {
+export function drawnDifferences(
+  a: Map<string, Map<number, string>>,
+  b: Map<string, Map<number, string>>,
+  fitted = false
+) {
   const out: string[] = []
+  // (A fitted clip may begin on a step a frame apart: the same clip and facing on the other run within
+  // `FITTED_STEPS` of it.)
+  const near = (steps: Map<number, string>, sim: number, what: string) => {
+    for (let d = -FITTED_STEPS; d <= FITTED_STEPS; d++) if (steps.get(sim + d) === what) return true
+    return false
+  }
+  const fit = (what: string) => FITTED_CLIPS.includes(what.slice(0, -1))
   for (const [who, steps] of a) {
     const other = b.get(who)
     if (!other) continue
     for (const [sim, what] of steps) {
       const there = other.get(sim)
+      if (
+        fitted &&
+        there !== undefined &&
+        ((fit(what) && near(other, sim, what)) || (fit(there) && near(steps, sim, there)))
+      )
+        continue
       if (there !== undefined && there !== what) {
         out.push(`${who}: step ${sim}: ${what} / ${there}`)
         break
@@ -2518,8 +3518,20 @@ export function plantedPosesStay(r: Recorder): Finding[] {
   const out: Finding[] = []
   for (const track of r.tracks.values()) {
     if (track.kind === 'ghost') continue
-    const limit = track.kind === 'boss' ? PLANTED_LIMIT.boss : PLANTED_LIMIT.small
     for (const stretch of stretches(track.rows)) {
+      let limit = track.kind === 'boss' ? PLANTED_LIMIT.boss : PLANTED_LIMIT.small
+      let coastSpeed: number | null = null
+      if (track.kind === 'hero' && stretch[0].clip === 'idle') {
+        const firstMoving = stretch.findIndex((row) => row.steps > 0)
+        let i = track.rows.indexOf(stretch[0]) + (firstMoving < 0 ? 0 : firstMoving) - 1
+        while (i >= 0 && track.rows[i].steps === 0 && track.rows[i].posed === null) i--
+        const hold =
+          i >= 0 && track.rows[i].steps === 0 && track.rows[i].posed !== null && track.rows[i].moment !== null
+        if (hold) {
+          limit = 10
+          coastSpeed = Math.abs(track.rows[i].vx)
+        }
+      }
       let travel = 0
       let top = 0
       let first: Row | null = null
@@ -2541,6 +3553,13 @@ export function plantedPosesStay(r: Recorder): Finding[] {
       for (let i = 1; i < stretch.length; i++) {
         const a = stretch[i - 1]
         const b = stretch[i]
+        if (coastSpeed !== null && b.steps > 0) {
+          if (Math.abs(b.vx) > coastSpeed + EPS) {
+            flush()
+            limit = PLANTED_LIMIT.small
+            coastSpeed = null
+          } else coastSpeed = Math.abs(b.vx)
+        }
         if (!planted(b) || !planted(a) || !a.onGround || !b.onGround || !continuous(a, b)) {
           flush()
           continue
@@ -2727,6 +3746,8 @@ export function travelFacesItsWay(r: Recorder): Finding[] {
         continue
       }
       if (!spec.stride) continue
+      // (Round 8: the hero's run has no distance against its travel: `heroRunsWithHisTravel`.)
+      if (track.kind === 'hero') continue
       // Measured on the simulation's steps (the places the view decides on), not on the frames that show them.
       let prev: number | null = null
       let origin: number | null = null
@@ -2971,8 +3992,9 @@ export const CUE_SLACK_STEPS = 1
 /**
  * I7d: every shot of the crow, the fox and the bee is announced. For the `SHOT_CUE_SECONDS` of simulation time
  * before the frame a shot leaves on (counted in simulation steps, not in frames: a hit-stop or a staged moment holds
- * it, slow motion stretches it), every frame of the boss shows the gathering light, its progress never goes down,
- * it is full on the last frame before the shot, and on the frame of the shot itself it is gone (where it is and how it
+ * it, slow motion stretches it), every frame of the boss shows the gathering light, it shows its last `gather` frame
+ * on the last frame before the shot (by the frame drawn, whatever the display frames' lengths; that it never goes
+ * back is `framesNeverGoBack`'s), and on the frame of the shot itself it is gone (where it is and how it
  * grows: `shotsAreBornFromTheirLight`). (A light that begins with his fight, less than that before his first
  * shot, is held to the frames since he woke.)
  */
@@ -3017,26 +4039,16 @@ export function shotsAreAnnounced(r: Recorder): Finding[] {
         )
         continue
       }
-      const fades = window.findIndex((a, k) => k > 0 && a.cue!.progress < window[k - 1].cue!.progress - EPS)
-      if (fades > 0)
-        out.push(
-          finding(
-            'light fades before its shot',
-            r,
-            track,
-            window[fades],
-            `progress ${window[fades - 1].cue!.progress.toFixed(2)} then ${window[fades].cue!.progress.toFixed(2)}, ${row.sim - window[fades].sim} steps before the shot`
-          )
-        )
+      // (That it never goes back is `framesNeverGoBack`'s: by the frame shown.)
       const last = window[window.length - 1]
-      if (last.cue!.progress < 1 - EPS)
+      if (last.cue!.frame < last.cue!.frames - 1)
         out.push(
           finding(
             'light is not full before its shot',
             r,
             track,
             last,
-            `progress ${last.cue!.progress.toFixed(2)} on the frame before the shot`
+            `gather frame ${last.cue!.frame} of ${last.cue!.frames - 1} on the frame before the shot (progress ${last.cue!.progress.toFixed(2)})`
           )
         )
     }
@@ -3055,8 +4067,6 @@ export const birthPlace = (x: number, y: number, vx: number, vy: number, steps: 
 
 /** How far (px) the light may be from his shot's birth place: a pixel, and the hit's jolt while it is on him. */
 export const CUE_PLACE_PX = 1
-/** The steps of tolerance on the light's progress against the steps left to its shot. */
-export const CUE_PROGRESS_STEPS = 2
 /** How far (px) a new shot may be drawn from where its light was, besides what both travel in the frame. */
 export const BIRTH_PX = 2
 /** Half the hero's box (sim.ts), and how far a shot's box reaches past its centre in its first step (px). */
@@ -3067,8 +4077,9 @@ const BIRTH_REACH = 16
  * I7g: a shot is born from its light. The crow's, the fox's and the bee's light is drawn at the place his shot will
  * be born on his drawn body (the centre of its box on its first step; within `CUE_PLACE_PX`, and the hit's jolt
  * while one is on him), on his painted body (within `ON_BODY_PX` of a pixel of the frame he is drawn with), and it
- * grows steadily: on every lit frame its progress is what the steps left to the shot say (`(SHOT_CUE_SECONDS -
- * left) / (SHOT_CUE_SECONDS - a frame)`, as the view counts it, to within `CUE_PROGRESS_STEPS` steps). It has no side
+ * grows frame by frame: from one display frame to the next its `gather` frame passes over no more of its frames
+ * than the simulation time that display frame showed holds whole (each of its frames lasting `SHOT_CUE_SECONDS`
+ * divided among them: a long display frame may pass over what it did not draw, round 7). It has no side
  * (round 6l: it promises a shot, not a side; the simulation's aim is known on the shot's step only). On the frame the shot leaves, every new shot of his is
  * drawn in front of the actors, on his painted body, where the light was on the frame before (give or take what it
  * and he travel in the frame, `BIRTH_PX`, and the jolt the light carried).
@@ -3076,10 +4087,6 @@ const BIRTH_REACH = 16
 export function shotsAreBornFromTheirLight(r: Recorder): Finding[] {
   const out: Finding[] = []
   const hero = new Map((r.tracks.get('hero')?.rows ?? []).map((row) => [row.step, row]))
-  const lastStep = Math.ceil(r.frameDt / STEP - 1e-6) * STEP
-  const tolerance = (CUE_PROGRESS_STEPS * STEP) / (SHOT_CUE_SECONDS - lastStep)
-  const expected = (left: number) =>
-    Math.max(0, Math.min(1, (SHOT_CUE_SECONDS - left * STEP) / (SHOT_CUE_SECONDS - lastStep)))
   for (const track of r.tracks.values()) {
     if (track.kind !== 'boss' || !THROWN_ART.includes(track.art)) continue
     const rows = track.rows
@@ -3122,23 +4129,25 @@ export function shotsAreBornFromTheirLight(r: Recorder): Finding[] {
         )
       }
       if (!shotRow) continue
-      // Its progress against the steps left (the shot's step is one of those its frame showed).
-      const firstStep = shotRow.sim - Math.max(1, shotRow.steps) + 1
-      const off = lit.find((row) => {
-        const low = expected(shotRow.sim - row.sim)
-        const high = expected(firstStep - row.sim)
-        return row.cue!.progress < low - tolerance - EPS || row.cue!.progress > high + tolerance + EPS
+      // It grows frame by frame: from one display frame to the next it passes over no more of its frames than the
+      // simulation time the frame showed holds whole (each of its frames lasts `SHOT_CUE_SECONDS` / frames of it).
+      const skip = lit.find((row, k) => {
+        if (k === 0) return false
+        const per = SHOT_CUE_SECONDS / row.cue!.frames
+        return row.cue!.frame - lit[k - 1].cue!.frame > Math.floor((row.steps * STEP + EPS) / per) + 1
       })
-      if (off)
+      if (skip) {
+        const k = lit.indexOf(skip)
         out.push(
           finding(
             'light does not grow with its shot',
             r,
             track,
-            off,
-            `progress ${off.cue!.progress.toFixed(2)} ${shotRow.sim - off.sim} steps before the shot (${expected(shotRow.sim - off.sim).toFixed(2)} expected)`
+            skip,
+            `gather frame ${lit[k - 1].cue!.frame} then ${skip.cue!.frame} on a display frame of ${(skip.dt * 1000).toFixed(1)} ms showing ${skip.steps} steps, ${shotRow.sim - skip.sim} steps before the shot`
           )
         )
+      }
       const last = lit[lit.length - 1]
       // The shot itself, on its frame.
       // (A shot born on the hero ends on its first step, before any frame: the simulation drops it on a hero who
@@ -3149,19 +4158,37 @@ export function shotsAreBornFromTheirLight(r: Recorder): Finding[] {
         Math.abs(on.body - last.cue!.x) <= PLAYER_HALF.w + BIRTH_REACH &&
         last.cue!.y >= on.feet - 2 * PLAYER_HALF.h - BIRTH_REACH &&
         last.cue!.y <= on.feet + BIRTH_REACH
-      if (!shotRow.births.length && struck) continue
+      // (Round 8, decided: one that hits on the step it is born, as when the hero stands in the fox, is gone before
+      // any frame too: the hero's `hurt` on the shot's frame.)
+      // (Round 8, the coordinator's (b): or one that ends in a solid on that step, `shot-hit` on its frame, as the fox's
+      // shot into a tree felled on that very step.)
+      if (!shotRow.births.length && (struck || on?.events.includes('hurt') || shotRow.events.includes('shot-hit')))
+        continue
       if (!shotRow.births.length) {
         out.push(finding('shot is not born from its light', r, track, shotRow, 'no shot of his is drawn on its frame'))
         continue
       }
       const travel = span(shotRow)
+      // (His own travel in the frame is the move his drawing made from the light's frame to the shot's: a crash into a
+      // wall on the very step of the shot leaves him a speed of 0 after a step that moved him.)
+      const own = Math.max(Math.abs(shotRow.vx) * travel, Math.abs(shotRow.x - last.x))
       for (const birth of shotRow.births) {
-        const reach =
-          (Math.abs(birth.vx) + Math.abs(shotRow.vx)) * travel +
-          (Math.abs(birth.vy) + Math.abs(shotRow.vy)) * travel +
-          BIRTH_PX +
-          (last.cue!.jolt ? JOLT_PX : 0)
-        const far = Math.hypot(birth.x - last.cue!.x, birth.y - last.cue!.y)
+        // (Round 8, (e′): its drawn birth against the light's last drawn place carried on to where he fired, to
+        // `BIRTH_PX` and the jolt. A recorder that does not say: its place now, besides what both travel.)
+        const judged = birth.bornX !== undefined && birth.bornY !== undefined
+        const reach = judged
+          ? BIRTH_PX + (last.cue!.jolt ? JOLT_PX : 0)
+          : Math.abs(birth.vx) * travel +
+            own +
+            (Math.abs(birth.vy) + Math.abs(shotRow.vy)) * travel +
+            BIRTH_PX +
+            (last.cue!.jolt ? JOLT_PX : 0)
+        const far = judged
+          ? Math.hypot(
+              birth.bornX! - (last.cue!.x + (birth.liftX ?? 0)),
+              birth.bornY! - (last.cue!.y + (birth.liftY ?? 0))
+            )
+          : Math.hypot(birth.x - last.cue!.x, birth.y - last.cue!.y)
         if (birth.behind || !(far <= reach + EPS)) {
           out.push(
             finding(
@@ -3187,6 +4214,62 @@ export function shotsAreBornFromTheirLight(r: Recorder): Finding[] {
           )
         }
       }
+    }
+  }
+  return out
+}
+
+/** A boss's shot drawn from his light joins its own path within this (s of view time: the view's 0.1 s, agreed). */
+export const SHOT_JOIN_SECONDS = 0.1
+/** How far (px) a shot's first frame may be drawn off its own place: as far as his picture may be off his body. */
+const JOIN_OFF_PX = DRAWN_OFFSET + JOLT_PX + BIRTH_PX
+
+/**
+ * I7i (round 8, a player who is not the bot): a shot drawn from its light joins its path. A boss's shot is first drawn
+ * at his light (`shot is not born from its light` measures it there), which may be off the place the simulation
+ * let it go by what his picture was off his body (he is held still while his body shakes, or jolted): no more than
+ * `DRAWN_OFFSET`, the jolt and `BIRTH_PX`. From there its picture eases on to its own path: the distance never grows
+ * from one frame to the next, never closes faster than the smoothest ease would (1.5 times the first distance per
+ * `SHOT_JOIN_SECONDS` of the frame's view time, and 0.01 px), and is gone once `SHOT_JOIN_SECONDS` of view time and
+ * the frame's own have passed since its first frame. (View time: a hit-stop holds it where it is.)
+ */
+export function shotsJoinTheirPath(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  const rows = (r as { shotJoins?: Recorder['shotJoins'] }).shotJoins ?? []
+  const byShot = new Map<number, Recorder['shotJoins'][number][]>()
+  for (const row of rows) byShot.set(row.id, [...(byShot.get(row.id) ?? []), row])
+  const said = new Set<string>()
+  const say = (rule: string, step: number, detail: string) => {
+    if (said.has(rule)) return
+    said.add(rule)
+    out.push({ rule, run: r.label, who: 'shot', sheet: 'shot', clip: 'join', step, detail })
+  }
+  for (const list of byShot.values()) {
+    const first = list[0]
+    if (first.off > JOIN_OFF_PX + EPS)
+      say(
+        'shot drawn far from its path',
+        first.step,
+        `its first frame ${first.off.toFixed(1)} px from its place (${JOIN_OFF_PX} allowed)`
+      )
+    for (let k = 1; k < list.length; k++) {
+      const a = list[k - 1]
+      const b = list[k]
+      if (b.step !== a.step + 1) break
+      if (b.off > a.off + EPS)
+        say('shot jumps as it joins its path', b.step, `${a.off.toFixed(2)} px off its place, then ${b.off.toFixed(2)}`)
+      else if (a.off - b.off > (1.5 * first.off * b.viewDt) / SHOT_JOIN_SECONDS + 0.01 + EPS)
+        say(
+          'shot jumps as it joins its path',
+          b.step,
+          `${a.off.toFixed(2)} px off its place, then ${b.off.toFixed(2)} on a frame of ${(b.viewDt * 1000).toFixed(1)} ms`
+        )
+      if (b.vt - first.vt > SHOT_JOIN_SECONDS + b.viewDt + EPS && b.off > 0.01)
+        say(
+          'shot does not join its path',
+          b.step,
+          `${b.off.toFixed(2)} px off its place ${(b.vt - first.vt).toFixed(2)} s after its first frame`
+        )
     }
   }
   return out
@@ -3424,7 +4507,6 @@ export function stagedPosesStandOnTheGround(r: Recorder): Finding[] {
  */
 export function leadInsFollowTheirAim(r: Recorder): Finding[] {
   const out: Finding[] = []
-  const allowed = r.hz > 60 ? 2 : 1
   for (const track of r.tracks.values()) {
     if ((track.kind !== 'boss' && track.kind !== 'enemy') || track.bossKind === 'final') continue
     for (const { rows } of actionRuns(track)) {
@@ -3435,7 +4517,8 @@ export function leadInsFollowTheirAim(r: Recorder): Finding[] {
       for (const row of rows) {
         if (row.frame >= hit) break
         away = !row.aimZone && row.flip !== row.heroDx < 0 ? away + 1 : 0
-        if (away > allowed) {
+        // (A display frame shorter than a step may still show the step before: two such frames are one.)
+        if (away > (row.dt < STEP - EPS ? 2 : 1)) {
           out.push(
             finding(
               'lead-in faces away from its aim',
@@ -3622,6 +4705,60 @@ export function transformationBeginsBetweenActions(r: Recorder): Finding[] {
 }
 
 /**
+ * I4f2 (round 8, a player who is not the bot): the entrance begins between the boss's actions, as the transformation
+ * does. On the first frame of the staged `boss-intro` his state is none of an attack's (charge, leap, gather; a
+ * wind-up only if it has been shown for no longer than `WINDUP_REST_SECONDS` and a step of simulation time, counted
+ * from the row it began on), the frame before shows none of his actions unless it had reached its last frame (a
+ * dash, a leap, a landing, a gather or follow-through, a flinch; a wind-up only in those first moments), and no part
+ * of his light is gathered on either. As for the transformation, a plain fall (his `air` out of no slam) is no action
+ * and a plain fall's landing is rest from its second frame on. (Not his place: a flier wakes in the air, the bear
+ * drops in, and the entrance may begin where he is. What comes after the moment begins at its start: `staged moment
+ * hands over in the middle`.)
+ */
+export function entranceBeginsBetweenActions(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  const track = r.tracks.get('boss')
+  if (!track) return out
+  const rows = track.rows
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i]
+    const a = rows[i - 1]
+    if (row.moment !== 'boss-intro' || a.moment === 'boss-intro' || a.step !== row.step - 1) continue
+    const spec = specOf(a)
+    let w = i - 1
+    while (w > 0 && rows[w].clip === 'windup' && rows[w - 1].clip === 'windup' && rows[w - 1].step === rows[w].step - 1)
+      w--
+    const shown = a.clip === 'windup' ? (row.sim - rows[w].sim) * STEP : 0
+    const early = shown <= WINDUP_REST_SECONDS + STEP + EPS
+    // (A plain fall is no action, nor a plain fall's landing once its impact has shown: as for the transformation.)
+    const plainFall = a.clip === 'air' && a.state !== 'slam' && row.state !== 'slam'
+    let s0 = i - 1
+    while (s0 > 0 && rows[s0 - 1].clip === 'land' && rows[s0 - 1].step === rows[s0].step - 1) s0--
+    const slammed = rows[s0].events.includes('boss-slam') || (s0 > 0 && rows[s0 - 1].state === 'slam')
+    const settling = a.clip === 'land' && a.onGround && row.onGround && !slammed && s0 < i - 1
+    const busy =
+      BUSY_CLIPS.includes(a.clip) &&
+      spec !== undefined &&
+      (a.frame < spec.frames - 1 || a.clip === 'windup') &&
+      !(a.clip === 'windup' && early) &&
+      !plainFall &&
+      !settling
+    const lit = [a, row].find((b) => b.cue !== null && b.cue.progress > EPS)
+    const why = [
+      row.state !== null &&
+        BUSY_STATES.includes(row.state) &&
+        !(row.state === 'windup' && early) &&
+        `in his ${row.state}${row.state === 'windup' ? ` shown ${shown.toFixed(2)} s` : ''}`,
+      busy && `after ${a.clip} frame ${a.frame} of ${(spec?.frames ?? 1) - 1}`,
+      lit && `with his light gathered (${lit.cue!.progress.toFixed(2)})`
+    ].filter(Boolean)
+    if (why.length)
+      out.push(finding('entrance begins in an action', r, track, row, `the entrance begins ${why.join(', ')}`))
+  }
+  return out
+}
+
+/**
  * I4g: a slam lands on its impact. The frame its shockwaves leave on (`boss-slam`) shows the first frame of his
  * landing with him on the ground (where a frame shows two steps, as at 30 Hz, the first frame of the landing may be
  * the frame after; a slam that slid him off a ledge falls from its impact).
@@ -3708,6 +4845,200 @@ const firstOver = (rows: Row[], i: number) => {
   return rows[j].t
 }
 
+/** The hero's clips of the ending: his knock-out, his fall to the ground after a clear touched in the air, his cheer. */
+const ENDING_CLIPS: readonly string[] = ['die', 'fall', 'cheer']
+/** The knock-out's tumble frames (`die` from `DIE_TUMBLE_FIRST` up to `DIE_BOUNCE`), read defensively from the view. */
+const DIE_TUMBLE_FROM = ((viewClips as unknown as Record<string, unknown>).DIE_TUMBLE_FIRST as number | undefined) ?? 1
+const DIE_LIES_FROM = ((viewClips as unknown as Record<string, unknown>).DIE_BOUNCE as number | undefined) ?? 4
+
+/**
+ * I15b (round 8, the jitter auditor's second look): the ending plays out. Once the stage is over or the hero is down
+ * the simulation no longer steps, and the view's clocks must not stop with it: the knocked-out hero tumbles through
+ * his `die` and comes to lie, a hero who clears in the air comes down and cheers. On the screen's time, from each
+ * frame's own length (the view's own clock is what is in question here: `viewDt` is not read), the hit-stop's frames
+ * not counted (they hold everything):
+ * - `the ending stands still`: a frame of `die`, `fall` or `cheer` (every one of them moves on within a tenth of a
+ *   second) is not drawn for longer than `STUCK_SECONDS` and the longest display frame that showed it;
+ * - `hangs in the air`: his knocked-out body or his `fall` off the ground does not stand still in the air (its drawn
+ *   feet within 0.01 px) for as long;
+ * - `tumbles on the ground`: his knocked-out body does not show its tumble (the `die` frames before its bounce) on the
+ *   ground for longer than `GROUNDED_SECONDS` and a frame (it bounces on the frame it comes down);
+ * - `no cheer after the clear`: once a clear has him on the ground, he cheers within `GROUNDED_SECONDS` and a frame.
+ * - `knocked-out body in a wall` (round 8f): his knocked-out body, tumbling or lying, more than 2 px inside a solid;
+ * - `body lies over a hole` (round 8f): lying with no ground under his middle, unless a hole narrower than he is lies
+ *   under him, ground under both his ends (he lies across its top: the decided picture).
+ * What the simulation stopped stays stopped: `held body changes` (`heldWorldsHoldStill`).
+ */
+export function endingsPlayOut(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  const track = r.tracks.get('hero')
+  if (!track) return out
+  const said = new Set<string>()
+  const say = (rule: string, row: Row, detail: string) => {
+    if (said.has(rule)) return
+    said.add(rule)
+    out.push(finding(rule, r, track, row, detail))
+  }
+  const rows = track.rows
+  type Count = { time: number; longest: number; from: Row | null }
+  const zero = (): Count => ({ time: 0, longest: 0, from: null })
+  let still = zero()
+  let hang = zero()
+  let tumble = zero()
+  let cheer = zero()
+  let cleared = false
+  const add = (c: Count, row: Row) => {
+    c.from ??= row
+    if (row.frozen) return c.time
+    c.time += row.dt
+    c.longest = Math.max(c.longest, row.dt)
+    return c.time
+  }
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]
+    const prev = i > 0 && rows[i - 1].step === row.step - 1 && rows[i - 1].over ? rows[i - 1] : null
+    if (row.events.includes('clear')) cleared = true
+    if (!row.over || !ENDING_CLIPS.includes(row.clip)) {
+      still = zero()
+      hang = zero()
+      tumble = zero()
+    } else {
+      if (!prev || prev.clip !== row.clip || prev.frame !== row.frame) still = zero()
+      if (add(still, row) > STUCK_SECONDS + still.longest + EPS)
+        say(
+          'the ending stands still',
+          still.from!,
+          `${row.clip} frame ${row.frame} drawn for ${still.time.toFixed(2)} s once the stage is over`
+        )
+      const air = row.clip !== 'cheer' && !row.onGround
+      if (!air || !prev || prev.clip !== row.clip || Math.abs(prev.feet - row.feet) > 0.01) hang = zero()
+      if (air && add(hang, row) > STUCK_SECONDS + hang.longest + EPS)
+        say(
+          'hangs in the air',
+          hang.from!,
+          `${row.clip} frame ${row.frame} standing still in the air for ${hang.time.toFixed(2)} s`
+        )
+      const tumbling = row.clip === 'die' && row.onGround && row.frame >= DIE_TUMBLE_FROM && row.frame < DIE_LIES_FROM
+      // (Round 8f: his knocked-out body never in a wall, and never lying over a hole wider than he is.)
+      if (row.clip === 'die' && row.inSolid)
+        say('knocked-out body in a wall', row, `die frame ${row.frame} more than 2 px inside a solid tile`)
+      if (row.clip === 'die' && row.frame >= DIE_LIES_FROM && !row.supported)
+        say(
+          'body lies over a hole',
+          row,
+          `die frame ${row.frame} with no ground under his middle nor under both his ends`
+        )
+      if (!tumbling) tumble = zero()
+      else if (add(tumble, row) > GROUNDED_SECONDS + tumble.longest + EPS)
+        say(
+          'tumbles on the ground',
+          tumble.from!,
+          `die frame ${row.frame} on the ground for ${tumble.time.toFixed(2)} s`
+        )
+    }
+    const waits = cleared && row.over && row.onGround && row.clip !== 'cheer'
+    if (!waits) cheer = zero()
+    else if (add(cheer, row) > GROUNDED_SECONDS + cheer.longest + EPS)
+      say(
+        'no cheer after the clear',
+        cheer.from!,
+        `${row.clip} frame ${row.frame} on the ground for ${cheer.time.toFixed(2)} s after the clear`
+      )
+  }
+  return out
+}
+
+/**
+ * A boss's clips the view fits to the time there is (`flinchFit`, `castFit`, a landing fitted to the time before his
+ * next attack, a wind-up taken over inside its state): their frames are played faster, every one of them shown.
+ */
+export const FITTED_BOSS_CLIPS: readonly string[] = ['hurt', 'shoot', 'land', 'windup']
+
+const unevenAdvancingFrames = (rows: Row[]) => {
+  const times = rows.filter((row) => row.viewDt > EPS).map((row) => row.dt)
+  return times.length > 1 && Math.max(...times) > Math.min(...times) * 1.2 + EPS
+}
+
+/**
+ * I4d (round 8, the jitter auditor's second look; the coordinator's decision (d)): a fitted clip passes over no frame
+ * it had display frames for. A run of a boss's fitted clip (from its first frame shown to its last, a frame shown
+ * again after a later one beginning a new run) shown on as many display frames that advance the clips as it has
+ * frames from the first it shows to the last it reaches, or more, shows every one of them, at any rate and under
+ * uneven frames (the view steps a fitted clip by display frames: no frame's length is read for it); with fewer it
+ * goes forward a frame a display frame, and may pass over frames only into its last (its first and its last are the
+ * business of `action starts in its middle` and `action is cut short`). A cast is two fitted parts: its lead-in (the
+ * frames before the release, fitted to the time before the shot) and its release and follow-through (fitted to the
+ * room after it); each is counted on its own rows, and a lead-in with fewer may pass into the release. The present
+ * tree's reserve for the last frame made `land` 0, 1, 3, 3 at even 30 and 60 Hz (round 7; the tree before showed
+ * 0, 1, 2, 3).
+ */
+export function fittedClipsShowEveryFrame(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  const track = r.tracks.get('boss')
+  if (!track) return out
+  const rows = track.rows
+  for (let i = 0; i < rows.length; ) {
+    let j = i + 1
+    while (
+      j < rows.length &&
+      rows[j].step === rows[j - 1].step + 1 &&
+      rows[j].sheet === rows[i].sheet &&
+      rows[j].clip === rows[i].clip &&
+      rows[j].frame >= rows[j - 1].frame
+    )
+      j++
+    const run = rows.slice(i, j)
+    i = j
+    const spec = specOf(run[0])
+    if (!spec || spec.loop || !FITTED_BOSS_CLIPS.includes(run[0].clip)) continue
+    const hit = run[0].clip === 'shoot' && spec.hit !== undefined ? spec.hit : 0
+    const parts: [number, number][] =
+      hit > 0
+        ? [
+            [0, hit - 1],
+            [hit, spec.frames - 1]
+          ]
+        : [[0, spec.frames - 1]]
+    for (const [lo, hi] of parts) {
+      const mine = run.filter((row) => row.frame >= lo && row.frame <= hi && row.viewDt > EPS)
+      if (!mine.length) continue
+      const first = Math.min(...mine.map((row) => row.frame))
+      const last = run.some((row) => row.frame > hi) ? hi : Math.max(...mine.map((row) => row.frame))
+      const fewer = mine.length < last - first + 1
+      // (Round 8d, decided, uneven frames: a display frame longer than the run's even share of time for one frame
+      // (its time over its frames) may cost it a frame for each such share it holds beyond the first; at even rates
+      // with a display frame for every frame that is none.)
+      const share = mine.reduce((t, row) => t + row.viewDt, 0) / (last - first + 1)
+      let unevenSkip = unevenAdvancingFrames(mine) ? 1 : 0
+      for (let k = 1; k < run.length; k++) {
+        const a = run[k - 1]
+        const b = run[k]
+        let passed = 0
+        for (let f = a.frame + 1; f < b.frame; f++) if (f >= Math.max(lo, first) && f <= hi) passed++
+        if (passed === 0) continue
+        // (With fewer display frames than frames, only into its last frame, or out of a lead-in into its release.)
+        if (fewer && b.frame >= hi) continue
+        if (passed <= Math.max(0, Math.floor(b.viewDt / share + 1e-6) - 1)) continue
+        if (passed === 1 && unevenSkip) {
+          unevenSkip--
+          continue
+        }
+        out.push(
+          finding(
+            'fitted clip passes over a frame',
+            r,
+            track,
+            b,
+            `frame ${a.frame} then ${b.frame}, with ${mine.length} display frames for its ${last - first + 1} frames ${lo}–${last}`
+          )
+        )
+        break
+      }
+    }
+  }
+  return out
+}
+
 /** The hero's actions whose facing is theirs to keep, and the clips he is never held in through a staged moment. */
 const HERO_FACED: readonly string[] = ['bite', 'land', 'skid', 'turn', 'wait']
 
@@ -3788,7 +5119,9 @@ export function bodiesKeepTheirFacing(r: Recorder): Finding[] {
     const isBoss = boss !== undefined && (first.sheet === boss.art || first.sheet === 'king:raged')
     if (isBoss) {
       const last = [...boss.rows].reverse().find((row) => row.step < first.step)
-      if (last && last.flip !== first.flip)
+      // (A turn of his on a step the knock-out's frame showed before the last, which no frame drew, is what that frame
+      // passed over: a long frame may.)
+      if (last && last.flip !== first.flip && first.steps < 2)
         out.push(
           finding(
             'knocked-out body turns',
@@ -3897,7 +5230,8 @@ export function heroStandsThroughMoments(r: Recorder): Finding[] {
   }
   // The lead: a bite or a hurt he showed on the ground when a hold began (on the frame before its moment, or a bite
   // of the moment's own first step) plays on from the frame it had, every frame of it (one frame a display frame at
-  // most, never back), to its last, and then he stands (`idle`).
+  // most, never back; a long display frame may pass over the frames whose whole time fell inside it, on real time),
+  // to its last, and then he stands (`idle`).
   const holds = (b: Row) =>
     b.moment !== null && b.viewDt === 0 && b.steps === 0 && !b.frozen && !b.over && b.onGround && !b.moved
   for (let i = 1; i < rows.length; i++) {
@@ -3925,7 +5259,10 @@ export function heroStandsThroughMoments(r: Recorder): Finding[] {
       if (!done) {
         if (c.clip !== a.clip)
           why = `${c.clip} frame ${c.frame} after ${a.clip} frame ${prev.frame} of ${spec.frames - 1}`
-        else if (c.frame < prev.frame || c.frame > prev.frame + 1)
+        else if (
+          c.frame < prev.frame ||
+          (c.frame > prev.frame + 1 && !passesOver(spec, Math.max(0, prev.frame + 1), c.frame, c.dt))
+        )
           why = `${a.clip} frame ${c.frame} after frame ${prev.frame}`
         else done = c.frame >= spec.frames - 1
       } else if (c.clip === 'idle') stood = true
@@ -4014,7 +5351,8 @@ export function heavyFallsLand(r: Recorder): Finding[] {
       while (j < rows.length && rows[j].state === 'windup' && (j === i || rows[j].step === rows[j - 1].step + 1)) j++
       const dash = rows[j]
       // (A landing too short to show each of its frames on a display frame of its own is not shown either.)
-      const least = Math.max(FIT_MIN, ((specOf({ ...b, clip: 'land' })?.frames ?? 1) + 1) * r.frameDt)
+      const longest = Math.max(...rows.slice(i, Math.max(i + 1, j)).map((row) => row.dt))
+      const least = Math.max(FIT_MIN, ((specOf({ ...b, clip: 'land' })?.frames ?? 1) + 1) * longest)
       // (The wind-up's end is the attack's beginning, whatever its first frame shows: at 30 Hz one may show a charge
       // and its crash.)
       if (dash && (dash.sim - b.sim) * STEP < least + WARNING_LEFT_SECONDS - EPS) attack = dash
@@ -4053,6 +5391,10 @@ export function flinchesDoNotCoverShots(r: Recorder): Finding[] {
       const row = rows[i]
       if (!row.events.includes('boss-shoot')) continue
       if (row.clip === 'hurt') {
+        // (Round 8, decided: a hit on the shot's own frame, as a falling tree's on the crow as he fires, begins its flinch
+        // there; his cast and his light were shown whole before it. A flinch begun on an earlier frame is the finding.)
+        const fresh = row.events.includes('boss-hit') && row.frame === 0 && (i === 0 || rows[i - 1].clip !== 'hurt')
+        if (fresh) continue
         out.push(finding('flinch covers a shot', r, track, row, `hurt frame ${row.frame} on the frame the shot leaves`))
         continue
       }
@@ -4129,7 +5471,9 @@ function* actionRuns(track: Track) {
 
 /**
  * I4: an action starts on its first frame. A later frame without the frames before it is an action that was cut
- * and has come back (a bite after the hurt that interrupted it), or one that could not start when its cause came.
+ * and has come back (a bite after the hurt that interrupted it), or one that could not start when its cause came;
+ * unless every frame before it had its whole time inside the display frame it is first shown on (a long display
+ * frame passes over what it did not draw: `passesOver`, on the frame's own view time).
  */
 export function actionsStartAtTheirStart(r: Recorder): Finding[] {
   const out: Finding[] = []
@@ -4137,6 +5481,9 @@ export function actionsStartAtTheirStart(r: Recorder): Finding[] {
     for (const { rows, before } of actionRuns(track)) {
       const first = rows[0]
       if (first.frame === 0 || !before) continue
+      // (A long display frame may pass over the frames before it, if their whole time fell inside it.)
+      const spec = specOf(first)
+      if (spec && passesOver(spec, 0, first.frame, first.viewDt)) continue
       out.push(
         finding(
           'action starts in its middle',
@@ -4171,9 +5518,39 @@ export function actionsPlayOut(r: Recorder): Finding[] {
       if (!spec || !after) continue
       const last = Math.max(...rows.map((row) => row.frame))
       if (last >= spec.frames - 1) continue
+      // (A long display frame may pass over its last frames, if their whole time fell inside it.)
+      if (passesOver(spec, last + 1, spec.frames, after.viewDt)) continue
+      if (
+        track.kind === 'boss' &&
+        FITTED_BOSS_CLIPS.includes(rows[0].clip) &&
+        passesOver(spec, last + 1, spec.frames, after.dt)
+      )
+        continue
       // The same action again from its start is a new cause (a second hit).
       if (after.clip === rows[0].clip && after.frame === 0) continue
       if (MAY_CUT.includes(after.clip)) continue
+      // (Round 8, decided: a boss's landing the ground ends under, as the king's dash sliding him off the next stair two
+      // frames after he touched down: his body is in the air again. What is drawn then is the business of the rules
+      // about the air and the dash: `dash taken up again`.)
+      if (track.kind === 'boss' && rows[0].clip === 'land' && !after.onGround) continue
+      // (Round 8, the coordinator's decision (d): a boss's fitted clip shown on fewer display frames that advance the
+      // clips than it has frames goes forward a frame a display frame from its first and may end short of its last,
+      // at any rate, having gone as far as its display frames took it: stepped, every display frame that advanced the
+      // clips after its first showed the next frame (a clip at its own pace that something cut shows a frame on
+      // several). With as many, it reaches its last.)
+      if (track.kind === 'boss' && FITTED_BOSS_CLIPS.includes(rows[0].clip)) {
+        // (A cast's release and follow-through are fitted on their own: counted from the release.)
+        const hit = rows[0].clip === 'shoot' && spec.hit !== undefined && last >= spec.hit ? spec.hit : 0
+        const part = rows.filter((row) => row.frame >= hit)
+        const advancing = part.filter((row) => row.viewDt > EPS).length
+        const first = Math.min(...part.map((row) => row.frame))
+        const stepped = part.every((row, k) => k === 0 || row.viewDt <= EPS || row.frame === part[k - 1].frame + 1)
+        // (Round 8d, uneven frames: frames its long display frames may cost it, as in `fitted clip passes over a frame`.)
+        const skipped = part.reduce((n, row, k) => n + (k ? Math.max(0, row.frame - part[k - 1].frame - 1) : 0), 0)
+        if (spec.frames - 1 - last === 1 && skipped === 0 && unevenAdvancingFrames(part)) continue
+        if (advancing < spec.frames - first && (last === spec.frames - 2 || (stepped && last >= first + advancing - 1)))
+          continue
+      }
       // (A plain fall's landing is rest once its impact has shown: a staged moment may take him over from its second
       // frame on. Not a slam's landing, which begins on its shockwaves.)
       const plain =
@@ -4197,7 +5574,10 @@ export function actionsPlayOut(r: Recorder): Finding[] {
       // (Where a shot leaves, its side is where the simulation saw the hero; the frame's own positions may be
       // interpolated half a step behind it.)
       const away = (row: Row) =>
-        row.shot !== 0 ? row.shot !== (end.flip ? -1 : 1) : end.flip ? row.heroDx >= 0 : row.heroDx <= 0
+        row.shot !== 0
+          ? row.shot !== (end.flip ? -1 : 1)
+          : // (The give-up is decided on the step he crosses: the side the simulation aims from there.)
+            ((d: number) => (end.flip ? d >= 0 : d <= 0))(Number.isNaN(row.aimDx) ? row.heroDx : row.aimDx)
       if (rows[0].clip === 'shoot' && spec.hit !== undefined && last < spec.hit && (away(end) || away(after))) continue
       out.push(
         finding(
@@ -4263,7 +5643,11 @@ export function bodiesLieOnTheGround(r: Recorder): Finding[] {
  * and since the first the body has come `BACKWARDS_PX` or more the way it turns to face, from the furthest it went
  * the other way (it really went there and back); a turn standing, in the air, at the start of a throw or in a fall
  * has the time alone. The turn on a hurt's first frame is the blow's, the hero's on a bite's first frame the bite's:
- * neither is the second turn of a flicker. The hero's staged poses are passed over (their own facing is
+ * neither is the second turn of a flicker. The hold is simulation time (round 7c): two drawn turns may be closer on
+ * the screen than `FLICKER_SECONDS` only by what a long display frame did not draw between them (the steps of the
+ * first turn's frame before its last). Round 8d: the hero's turn toward the way his body goes (the simulation facing
+ * that way, the body gone that way on the last two steps) and a brake's turn (his skid's first frame) are causes, as a
+ * blow's and a bite's are. The hero's staged poses are passed over (their own facing is
  * `heroPosesKeepHim`'s): the frame after one is held against the frame before it, the clock running through.
  */
 export function facingDoesNotFlicker(r: Recorder): Finding[] {
@@ -4300,11 +5684,56 @@ export function facingDoesNotFlicker(r: Recorder): Finding[] {
       // Real (display) time: two turns close together flicker on the screen, held simulation or not.
       // (A hit turns a body to face the blow on its flinch's first frame, and a bite the hero's to the side it bit
       // on its own: that turn is the hit's or the bite's, not a flicker's. The turn back after it is ordinary.)
+      // (Round 8d, the hero's model: a turn toward the way his body goes, the simulation facing that way on its last
+      // step and the body gone that way on its last two, and a brake's turn, his skid's first frame, are causes.)
+      const dir = b.flip ? -1 : 1
+      const places: number[] = []
+      for (let c = i; c >= 0 && places.length < 3 + stepsOf(b).length && i - c < 12; c--)
+        places.unshift(...stepsOf(track.rows[c]))
+      places.splice(0, Math.max(0, places.length - 3 - stepsOf(b).length))
+      // (On the step it was decided: a frame of several steps may end on a step the keys dithered back.)
+      const own0 = stepsOf(b)
+      const lead = places.slice(0, Math.max(0, places.length - own0.length))
+      // (Round 8f: not while a knock carries him: rule 1 is the player's drive, and a knock-back (sim.ts `knockX`,
+      // 0.86 a step from 260 px/s, gone below 8 px/s in 0.38 s) moves him whatever the keys say.)
+      let knocked = false
+      for (let c = i; c >= 0 && b.t - track.rows[c].t <= KNOCK_SECONDS + EPS; c--)
+        if (track.rows[c].events.includes('hurt')) knocked = true
+      const toward =
+        hero &&
+        !knocked &&
+        own0.some((x, k) => {
+          if ((b.faces?.[k] ?? b.facing) !== dir) return false
+          const p = [...lead, ...own0.slice(0, k + 1)].slice(-3)
+          return p.length === 3 && (p[1] - p[0]) * dir > 0.01 && (p[2] - p[1]) * dir > 0.01
+        })
+      // (On any step of the frame: a long frame may show the brake's step and the key back after it.)
+      const own = stepsOf(b)
+      const from = places.length > own.length ? places[places.length - own.length - 1] : null
+      const braked =
+        hero &&
+        b.clip === 'skid' &&
+        before.clip !== 'skid' &&
+        from !== null &&
+        own.some(
+          (x, k) => (b.faces?.[k] ?? b.facing) === dir && (x - (k ? own[k - 1] : from)) * dir <= -110 * STEP + EPS
+        )
       const struck =
         (b.clip === 'hurt' && before.clip !== 'hurt') ||
-        (hero && b.clip === 'bite' && b.bit !== 0 && (before.clip !== 'bite' || b.clipT < before.clipT - EPS))
-      if (last && !struck && b.t - last.t < FLICKER_SECONDS - EPS) {
-        const walk = Boolean(specOf(b)?.stride) && b.onGround
+        (hero && b.clip === 'bite' && b.bit !== 0 && (before.clip !== 'bite' || b.clipT < before.clipT - EPS)) ||
+        toward ||
+        braked
+      // (The hold is simulation time, decided on steps: two drawn turns may be closer on the screen only by what a
+      // long frame did not draw between them, the first turn decided on its frame's first step and drawn at its end.)
+      const undrawn = last ? Math.max(0, last.steps - 1) * STEP : 0
+      if (last && !struck && b.t - last.t < FLICKER_SECONDS - undrawn - EPS) {
+        // (The hero's skid is his run braking: a turn his run made by the 8 px, first drawn as the skid that begins
+        // with the facing he is drawn with, is his run's.)
+        // (Round 8: or, the hero, on a step of this frame before its last on which he stood on the ground: his run
+        // turned him there, and the frame draws what came after, a jump.)
+        const walk =
+          ((Boolean(specOf(b)?.stride) || (hero && b.clip === 'skid')) && b.onGround) ||
+          (hero && (b.grounds ?? []).slice(0, -1).some(Boolean))
         // How far it came back the way it now faces, from the furthest it went the other way, on the step of this
         // frame it went furthest the new way (the step the view may have turned it on).
         const here = stepsOf(b)
@@ -4405,7 +5834,19 @@ export function groundPosesNeedGround(r: Recorder): Finding[] {
       let worst = 0
       let first: Row | null = null
       let from: Row | null = null
+      let knocked = false
       for (const row of stretch) {
+        // (Round 8, decided: an enemy knocked up again in the air, as a squirrel in its throw stung twice by a hive's
+        // bees, keeps its pose (the hit is the white flash): its time in the air counts from the last knock, from the
+        // step after it as for a knock off the ground, in the simulation's steps (the knock's flight is the
+        // simulation's: at 144 Hz the frames that still show the knock's step, and the interpolation's part of a step,
+        // are not its flight).)
+        if (track.kind === 'enemy' && row.events.includes('enemy-hit')) {
+          air = 0
+          from = null
+          knocked = true
+          continue
+        }
         // An inactive boss waits where the stage put him; a lunge frame of the bite is thrown off the feet.
         const counts =
           !row.onGround &&
@@ -4415,10 +5856,12 @@ export function groundPosesNeedGround(r: Recorder): Finding[] {
         if (!counts) {
           air = 0
           from = null
+          knocked = false
           continue
         }
+        if (knocked && row.steps === 0) continue
         from ??= row
-        air += row.viewDt
+        air += knocked ? row.steps * STEP : row.viewDt
         if (air > limit + EPS && air > worst) {
           worst = air
           first ??= from
@@ -4484,7 +5927,8 @@ export const STEP_SLACK = 4
 
 /**
  * I11d: a rat or a mole in the air turns round at most once in a fall, and only towards where its body has gone
- * since the fall began (the simulation flips its speed on every step while it is over the hero or against a wall).
+ * since the fall began (the simulation flips its speed on every step while it is over the hero or against a wall),
+ * measured on its places on every step the frames showed, the first frame's all (round 8).
  */
 export function airTurnsFollowTheBody(r: Recorder): Finding[] {
   const out: Finding[] = []
@@ -4493,13 +5937,16 @@ export function airTurnsFollowTheBody(r: Recorder): Finding[] {
     for (const stretch of stretches(track.rows)) {
       if (stretch[0].clip !== 'air') continue
       let turns = 0
-      let min = stretch[0].body
-      let max = stretch[0].body
+      // (Round 8: on the simulation's steps, from every step the first frame of the fall showed: a long frame may
+      // show the end of the action before it and the first steps in the air at once, and the view turns it from
+      // where its body was on the step the action ended.)
+      let min = Math.min(stretch[0].body, ...stepsOf(stretch[0]))
+      let max = Math.max(stretch[0].body, ...stepsOf(stretch[0]))
       for (let i = 1; i < stretch.length; i++) {
         const a = stretch[i - 1]
         const b = stretch[i]
-        min = Math.min(min, b.body)
-        max = Math.max(max, b.body)
+        min = Math.min(min, b.body, ...stepsOf(b))
+        max = Math.max(max, b.body, ...stepsOf(b))
         if (a.flip === b.flip) continue
         turns++
         // How far its body has come back the new way from the furthest point it reached the other way.
@@ -4693,8 +6140,15 @@ export function actionsKeepTheirFacing(r: Recorder): Finding[] {
     if (track.kind !== 'boss' && track.kind !== 'enemy') continue
     for (const { rows } of actionRuns(track)) {
       const first = rows[0]
-      if (first.clip === 'shoot' && first.frame === 0 && Math.abs(first.heroDx) > AIM_CLEAR(track.speed)) {
-        if (first.flip !== first.heroDx < 0)
+      // (Where the simulation aims from, on the last step the frame showed: the cast is begun on its step, the frame
+      // may draw the bodies interpolated half a step behind it.)
+      // (Round 8: on every step the frame showed. The cast is begun on one of them, and at 30 Hz or on a long frame
+      // the last is not that one: it faces away only if every one of them aims clearly away from it.)
+      const aim = Number.isNaN(first.aimDx) ? first.heroDx : first.aimDx
+      const aims = first.aims?.length ? first.aims : [aim]
+      const away = aims.every((dx) => Math.abs(dx) > AIM_CLEAR(track.speed) && first.flip !== dx < 0)
+      if (first.clip === 'shoot' && first.frame === 0 && Math.abs(aim) > AIM_CLEAR(track.speed)) {
+        if (away)
           out.push(
             finding(
               'cast begins facing away from its aim',
@@ -4742,6 +6196,8 @@ export function hurtFacesTheBlow(r: Recorder): Finding[] {
 /**
  * I13b: an enemy's `hurt` faces the blow. A run of `hurt` that an `enemy-hit` began (on its first frame, or the
  * frame before) begins facing against the hit's `dir` (towards whoever hit it) and keeps that facing to its end.
+ * (Round 8: the hit of a frame is its last blow: two on one step, a bite and a sting, knock the body back with the
+ * last one's `dir`, and the flinch shows that knock-back.)
  */
 export function enemyHurtsFaceTheBlow(r: Recorder): Finding[] {
   const out: Finding[] = []
@@ -4819,13 +6275,320 @@ function hurtsOf(r: Recorder, track: Track): Finding[] {
 export const OWN_POSE_MOMENTS: readonly string[] = ['stage-start', 'chase-start', 'princess-free', 'clear', 'death']
 /** The moments that pose the hero facing a named way (ハム姫's rescue, the clear's cheer): they may turn him. */
 export const FACING_MOMENTS: readonly string[] = ['princess-free', 'clear']
+/**
+ * I3b (round 8, a player who is not the bot): the hero is never drawn running against his travel. On the ground his
+ * run (a clip with a stride) is not drawn on a frame whose simulation steps carry his body the other way from the way
+ * it faces: at speed that is his skid, a turn just made his pivot, otherwise he stands, and standing he may slide what a
+ * planted pose may (`plantedPosesStay`). Measured on the simulation's steps (`path`, what the view decides on, never
+ * the interpolated picture): the move of the last step the frame shows, the one it draws (from the step before it,
+ * this frame's or the last one a frame before showed). The earlier steps of a frame that shows several are passed
+ * over as a long frame passes over what it did not draw: under `burst` a 58 ms frame shows a knock's last three
+ * steps back (0.18, 0.16, 0.14 px) and his run's first step on (0.39 px): it draws the run, rightly. Any move back
+ * on that step is the finding, above 0.01 px: the smallest motion the simulation gives a body that really moves is
+ * over 0.1 px a step (a knock-back stops below 8 px/s, a run starts at 23 px/s), and 0.01 px stands clear of the
+ * positions' float noise. A step that moves him further than his speed and a pixel is not his own motion (put back,
+ * pushed), nor a frame a script moved him.
+ * (Round 7's `run frozen after a pose` and the 8 px of `travels backwards` for his run, now one rule everywhere.)
+ */
+export function heroRunsWithHisTravel(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  const track = r.tracks.get('hero')
+  if (!track) return out
+  const rows = track.rows
+  for (let i = 1; i < rows.length; i++) {
+    const a = rows[i - 1]
+    const b = rows[i]
+    if (!specOf(b)?.stride || !b.onGround || b.moved || a.moved || b.step !== a.step + 1) continue
+    const dir = b.flip ? -1 : 1
+    const speed = Math.max(Math.abs(a.vx), Math.abs(b.vx))
+    const steps = stepsOf(b)
+    if (!steps.length) continue
+    let prev: number | undefined = steps.length > 1 ? steps[steps.length - 2] : undefined
+    for (let k = i - 1; prev === undefined && k >= 0 && rows[k].step === rows[k + 1].step - 1; k--)
+      prev = stepsOf(rows[k]).at(-1)
+    if (prev === undefined) continue
+    const move = steps[steps.length - 1] - prev
+    if (Math.abs(move) > speed * STEP + 1) continue
+    const back = -move * dir
+    if (back > 0.01 + EPS) {
+      out.push(
+        finding(
+          'run against its travel',
+          r,
+          track,
+          b,
+          `${b.clip} frame ${b.frame} drawn facing ${side(dir)} while his body goes ${back.toFixed(2)} px ${side(-dir)} (vx ${b.vx.toFixed(0)})`
+        )
+      )
+      // (One finding a stretch of it.)
+      while (i + 1 < rows.length && rows[i + 1].clip === b.clip && rows[i + 1].step === rows[i].step + 1) i++
+    }
+  }
+  return out
+}
+
+/** How long (s) a knock-back carries the hero (sim.ts: 260 px/s, 0.86 a step, gone below 8 px/s: round 8f). */
+export const KNOCK_SECONDS = 0.38
+
+/** One simulation step of the hero as the rows give it (round 8d): where he was, the move, his facing, drawn and not. */
+interface HeroStep {
+  row: number
+  x: number
+  move: number
+  face: number
+  flip: boolean
+  clip: string
+  /** The frame's last step: the one it draws (the others a long frame hides). */
+  drawn: boolean
+  /** A knock-back carried him on this step (no drive of the player's: round 8f, decided). */
+  knocked: boolean
+}
+
+/**
+ * The hero's simulation steps, frame by frame: each step of a frame's `path` with the frame's drawn facing and clip
+ * (what the frame draws for it) and the simulation's facing on that step. A step whose move is beyond his speed and a
+ * pixel is not his own (put back, pushed: its move is 0), nor are frames a script moved him or the end's (no steps).
+ */
+function heroSteps(rows: Row[]): HeroStep[] {
+  const out: HeroStep[] = []
+  let prev: number | null = null
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]
+    if (i > 0 && row.step !== rows[i - 1].step + 1) prev = null
+    if (row.moved || row.over) {
+      prev = null
+      continue
+    }
+    const path = stepsOf(row)
+    path.forEach((x, k) => {
+      let move = prev === null ? 0 : x - prev
+      if (Math.abs(move) > Math.max(Math.abs(row.vx), 215) * STEP + 1) move = 0
+      out.push({
+        row: i,
+        x,
+        move,
+        face: row.faces?.[k] ?? row.facing,
+        flip: row.flip,
+        clip: row.clip,
+        drawn: k === path.length - 1,
+        knocked: row.knocks?.[k] ?? false
+      })
+      prev = x
+    })
+  }
+  return out
+}
+
+/** The hero's own actions and poses: his drawn facing there is theirs, not his drive's. */
+const HERO_ACTIONS: readonly string[] = ['bite', 'hurt', 'die', 'cheer']
+
+/**
+ * I3c (round 8d, the hero's turns on the ground: the coordinator's model, the view's to draw):
+ * - `skid without a brake`: a `skid` is the picture of a brake that has taken hold: it never shows on more than two
+ *   steps on which his body speeds up against the facing he is drawn with.
+ * - `picture for a single step`: nothing of his walk shows for a single simulation step between two other pictures:
+ *   a run of `skid` or `turn`, or an `idle` between two runs, shown for one step (a frame of two steps, at 30 Hz, is
+ *   no such picture).
+ * - `pivot slides`: a pivot (`turn`) gives way to his run once his body has gone 6 px the way he turned: it is not
+ *   drawn on a body that has gone more than 8 px from where it began.
+ * - `turn held against his drive`: his drawn facing is not held against a body the simulation faces and moves the
+ *   other way for more than two steps running, off any action of his (a bite, a hurt, a pose, a moment).
+ * - `run after a hold while he coasts`: after a moment that held him he does not run again while he only coasts to a
+ *   stop (his speed falling on every step since the hold ended); he runs when his speed holds or grows.
+ * On the simulation's steps (`path`, `faces`), not the interpolated picture; not where a script moved him.
+ */
+export function heroWalkFollowsHisModel(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  const track = r.tracks.get('hero')
+  if (!track) return out
+  const rows = track.rows
+  const steps = heroSteps(rows)
+  const said = new Set<string>()
+  const say = (rule: string, row: Row, detail: string) => {
+    if (said.has(rule)) return
+    said.add(rule)
+    out.push(finding(rule, r, track, row, detail))
+  }
+  // A skid that speeds up, and a turn held against his drive.
+  let faster = 0
+  let held = 0
+  for (let k = 1; k < steps.length; k++) {
+    const a = steps[k - 1]
+    const b = steps[k]
+    const row = rows[b.row]
+    const dir = b.flip ? -1 : 1
+    const against = -b.move * dir
+    const before = -a.move * dir
+    if (b.clip === 'skid' && row.posed === null && against > 0.01 && against > before + 0.01) faster++
+    else if (b.clip !== 'skid') faster = 0
+    if (faster > 2) {
+      say(
+        'skid without a brake',
+        row,
+        `skid frame ${row.frame}: his body speeds up against his drawn facing on ${faster} steps`
+      )
+      faster = 0
+    }
+    const action = HERO_ACTIONS.includes(b.clip) || row.posed !== null || row.moment !== null
+    // (Faster than his run's threshold, 20 px/s, the model's (12 px/s in water, his stroke): a drift is no drive.)
+    const drive = (row.water ? 12 : 20) * STEP
+    // (Each step's facing with its own move. The steps a long frame hides are not drawn against anything: they do
+    // not count, but one not driven that way ends the count: keys that dither are no drive two steps running.)
+    const driven = !action && !b.knocked && b.face === -dir && b.move * b.face > drive - EPS
+    if (!driven) held = 0
+    else if (b.drawn) held++
+    if (held > 2) {
+      say(
+        'turn held against his drive',
+        row,
+        `${row.clip} frame ${row.frame} drawn facing ${side(dir)} while he faces and goes ${side(-dir)} for ${held} steps`
+      )
+      held = 0
+    }
+  }
+  // A picture for a single step; a pivot that slides.
+  for (const stretch of stretches(rows)) {
+    const first = stretch[0]
+    const last = stretch[stretch.length - 1]
+    const i = rows.indexOf(first)
+    const before = rows[i - 1]
+    const after = rows[i + stretch.length]
+    const shown = stretch.reduce((n, row) => n + row.steps, 0)
+    const between =
+      before !== undefined &&
+      after !== undefined &&
+      before.step === first.step - 1 &&
+      after.step === last.step + 1 &&
+      !stretch.some((row) => row.posed !== null || row.moved || row.over || row.moment !== null)
+    const single =
+      (first.clip === 'skid' ||
+        first.clip === 'turn' ||
+        ((first.clip === 'idle' || first.clip === 'blink') && before?.clip === 'run' && after?.clip === 'run')) &&
+      shown === 1 &&
+      stretch.every((row) => row.steps <= 1) &&
+      // (A next frame of several steps may hold its second step, decided for it but not drawn: a long frame.)
+      (after?.steps ?? 0) <= 1
+    // (Coordinator, 8d: a skid or pivot that his own bite or jump (he leaves the ground), a hurt or a staged moment cuts
+    // after one step is the action's doing.)
+    const cut =
+      first.clip !== 'idle' &&
+      after !== undefined &&
+      (HERO_ACTIONS.includes(after.clip) || after.posed !== null || after.moment !== null || !after.onGround)
+    if (between && single && !cut)
+      say(
+        'picture for a single step',
+        first,
+        `${first.clip} for one simulation step between ${before.clip} and ${after.clip}`
+      )
+    if (first.clip === 'turn' && !stretch.some((row) => row.moved || row.posed !== null)) {
+      // A discontinuity on any step starts a new measurement, including inside a display frame.
+      let start: number | undefined
+      let prev: number | undefined
+      let far: Row | undefined
+      let distance = 0
+      for (const row of stretch) {
+        for (const x of stepsOf(row)) {
+          if (prev === undefined || Math.abs(x - prev) > Math.max(Math.abs(row.vx), 215) * STEP + 1) start = x
+          prev = x
+          distance = Math.abs(x - (start ?? x))
+          if (distance > 8 + EPS) {
+            far = row
+            break
+          }
+        }
+        if (far) break
+      }
+      if (far)
+        say('pivot slides', far, `turn frame ${far.frame} with his body ${distance.toFixed(1)} px from where it began`)
+    }
+  }
+  // A run after a hold while he coasts.
+  for (let i = 1; i < rows.length; i++) {
+    const a = rows[i - 1]
+    const b = rows[i]
+    // (A hold: a moment that posed him; a slow-motion moment that never posed him is play.)
+    const hold = a.moment !== null && a.steps === 0 && !a.frozen && a.posed !== null
+    if (!hold || b.steps === 0 || b.step !== a.step + 1) continue
+    let speed = Infinity
+    let prev = stepsOf(a).at(-1) ?? a.body
+    for (let j = i; j < rows.length && rows[j].step === rows[j - 1].step + 1; j++) {
+      const row = rows[j]
+      if (row.moved || row.posed !== null || !row.onGround || row.steps === 0) break
+      let growing = false
+      for (const x of stepsOf(row)) {
+        const v = Math.abs(x - prev)
+        if (v > speed + 0.01) growing = true
+        speed = v
+        prev = x
+      }
+      if (growing || speed < 0.01) break
+      if (specOf(row)?.stride) {
+        say(
+          'run after a hold while he coasts',
+          row,
+          `${row.clip} frame ${row.frame} while his speed falls since the hold`
+        )
+        break
+      }
+    }
+  }
+  return out
+}
+
+/** A hero's `hurt` is first shown this long (s of screen time) after its blow at the latest (round 8d). */
+export const HURT_LATE_SECONDS = 0.1
+
+/**
+ * I13c (round 8d, decided): the hero's flinch comes on its blow. A `hurt` (not his knock-out) is first drawn within
+ * `HURT_LATE_SECONDS` of screen time and the frame's own length of the frame that shows its step: a hero hit on the
+ * step a moment begins flinches under the hold, not when it ends.
+ */
+export function heroFlinchesOnTheBlow(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  const track = r.tracks.get('hero')
+  if (!track) return out
+  const rows = track.rows
+  for (let i = 0; i < rows.length; i++) {
+    const hit = rows[i]
+    // (The frame of the step the blow landed on (`blow`), else the frame of its `hurt` event.)
+    const knows = rows.some((row) => row.events.includes('blow'))
+    if (!hit.events.includes(knows ? 'blow' : 'hurt') || hit.events.includes('dead') || hit.moved || hit.over) continue
+    let j = i
+    // (A bite of his own begun on or after the blow wins: the action begun later shows, DESIGN §4.)
+    let bitten = false
+    while (j < rows.length && rows[j].clip !== 'hurt' && !rows[j].events.includes('dead')) {
+      if (rows[j].clip === 'bite' && (rows[j].events.includes('bite') || rows[j].frame === 0)) {
+        bitten = true
+        break
+      }
+      if (j > i && rows[j].events.includes(knows ? 'blow' : 'hurt')) break
+      j++
+    }
+    const shown = rows[j]
+    if (bitten || shown?.events.includes('dead')) continue
+    if (!shown && rows[rows.length - 1].t - hit.t <= HURT_LATE_SECONDS) continue
+    const late = shown ? shown.t - hit.t : Infinity
+    if (late > HURT_LATE_SECONDS + (shown?.dt ?? 0) + EPS) {
+      out.push(
+        finding(
+          'the flinch comes late',
+          r,
+          track,
+          hit,
+          shown ? `his hurt first drawn ${late.toFixed(2)} s after its blow` : 'his hurt never drawn after its blow'
+        )
+      )
+      break
+    }
+  }
+  return out
+}
+
 /** The hero's actions a staged pose covers for good, and the events that begin each of them anew. */
 const COVERED: readonly string[] = ['bite', 'hurt', 'land', 'turn']
 const CAUSE: Readonly<Record<string, string>> = { bite: 'bite', hurt: 'hurt', land: 'land' }
 /** After a pose, the real time (s) over which what it covered must not come back (a skid or a pivot has no event). */
 export const COVER_SECONDS = 0.3
-/** A stride clip held on one frame this many display frames running while he moves is drawn frozen. */
-export const FROZEN_FRAMES = 2
 
 /**
  * I4j: a staged pose keeps the hero. A moment does not turn him: his first posed frame faces as the frame before it
@@ -4833,9 +6596,9 @@ export const FROZEN_FRAMES = 2
  * it plays out keeps its facing, the standing pose after it keeps his); the first frame after the pose faces as its
  * last posed frame did; and what the pose covered is over for good: a bite, a hurt, a landing or a pivot shown on
  * the frame before the pose does not show again within `COVER_SECONDS` after it, unless its event begins it anew (a
- * pivot has none). (A skid is what his body does: after a pose one may begin when he brakes, round 6p.) After a
- * hold no run is drawn frozen while his body slides the other way: a stride clip on one frame for `FROZEN_FRAMES`
- * display frames running while he moves more than a pixel against its facing is `run frozen after a pose`. (Not where a script moves him by hand.)
+ * pivot has none). (A skid is what his body does: after a pose one may begin when he brakes, round 6p.) (Round 8: a
+ * run drawn against his travel after a hold, once `run frozen after a pose`, is `heroRunsWithHisTravel`'s, everywhere.)
+ * (Not where a script moves him by hand.)
  */
 export function heroPosesKeepHim(r: Recorder): Finding[] {
   const out: Finding[] = []
@@ -4887,7 +6650,10 @@ export function heroPosesKeepHim(r: Recorder): Finding[] {
     const last = rows[end]
     const after = rows[end + 1]
     if (!after || after.step !== last.step + 1 || after.moved) continue
-    if (after.flip !== last.flip)
+    // (Round 8: a hit that ends the pose (the simulation runs under ハム姫's cheer, in slow motion) turns him to face
+    // the blow on its hurt's first frame: the blow's own turn, as in `facing flickers`.)
+    const blow = after.clip === 'hurt' && after.events.includes('hurt') && after.frame === 0
+    if (after.flip !== last.flip && !blow)
       out.push(
         finding(
           'hero turns as a pose ends',
@@ -4897,42 +6663,6 @@ export function heroPosesKeepHim(r: Recorder): Finding[] {
           `${after.clip} frame ${after.frame} facing ${facing(after)} on the first frame after the staged ${last.posed} (${last.moment ?? 'no moment'}), which showed him facing ${facing(last)}`
         )
       )
-    // A run frozen on one frame while his body goes on (`FROZEN_FRAMES` frames running, within `COVER_SECONDS`).
-    {
-      let k = end + 1
-      while (
-        k < rows.length &&
-        rows[k].step === rows[k - 1].step + 1 &&
-        rows[k].posed === null &&
-        rows[k].t - last.t <= COVER_SECONDS + EPS
-      ) {
-        let n = k
-        while (
-          n + 1 < rows.length &&
-          rows[n + 1].step === rows[n].step + 1 &&
-          rows[n + 1].clip === rows[k].clip &&
-          rows[n + 1].frame === rows[k].frame &&
-          rows[n + 1].posed === null
-        )
-          n++
-        const run = rows.slice(k, n + 1)
-        // (Backwards: a frozen stride while he slows down the way he faces is the view's stop, `ON_THE_SPOT_SECONDS`.)
-        const went = -(rows[n].x - rows[k].x) * (rows[k].flip ? -1 : 1)
-        if (specOf(rows[k])?.stride && run.length >= FROZEN_FRAMES && went > 1 + EPS) {
-          out.push(
-            finding(
-              'run frozen after a pose',
-              r,
-              track,
-              rows[k],
-              `${rows[k].clip} frame ${rows[k].frame} for ${run.length} frames facing ${facing(rows[k])} while he slides ${went.toFixed(1)} px ${side(rows[n].x - rows[k].x)}, after the staged ${last.posed} (${last.moment ?? 'no moment'})`
-            )
-          )
-          break
-        }
-        k = n + 1
-      }
-    }
     if (!COVERED.includes(a.clip)) continue
     const cause = CAUSE[a.clip]
     for (let j = end + 1; j < rows.length && rows[j].step === rows[j - 1].step + 1 && rows[j].posed === null; j++) {
@@ -5011,20 +6741,41 @@ export const BLINK_HALF_SECONDS = 1 / 20
 
 /**
  * I15b: the hero is drawn. On a frame the simulation is held (a moment's hold, a hit-stop) he is on the screen; in
- * play the invulnerability flicker hides him for no longer than its own half period (`BLINK_HALF_SECONDS`, and a
- * display frame) at a time. (Not once he is down or the stage is over: the view moves his body itself.)
+ * play the invulnerability flicker hides him on the screen (from the frame that first draws him hidden to the frame
+ * that draws him again) for no longer than its own half period (`BLINK_HALF_SECONDS`) and the longest frame in it, and
+ * a phase more for every frame longer than a phase (which may pass over a whole shown phase: round 7). (Not once he is down or the stage is over: the view moves his body itself.)
  */
 export function heroIsDrawn(r: Recorder): Finding[] {
   const out: Finding[] = []
   const track = r.tracks.get('hero')
   if (!track) return out
   const rows = track.rows
-  let hidden = 0
+  let longest = 0
+  let passed = 0
   let since: Row | null = null
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
     if (row.drawn || row.moved || row.over) {
-      hidden = 0
+      // On the screen he was hidden from the frame that first drew him so to this one, which draws him again: the
+      // phase's own length, and the longest frame in it standing on the screen past its end.
+      if (since && row.drawn && !row.moved && !row.over && row.step === rows[i - 1].step + 1) {
+        const hidden = row.t - since.t
+        longest = Math.max(longest, row.dt)
+        if (hidden > BLINK_HALF_SECONDS + longest + passed + EPS) {
+          out.push(
+            finding(
+              'hero not drawn',
+              r,
+              track,
+              since,
+              `hidden for ${hidden.toFixed(3)} s on the screen in play (${since.clip})`
+            )
+          )
+          return out
+        }
+      }
+      longest = 0
+      passed = 0
       since = null
       continue
     }
@@ -5040,15 +6791,15 @@ export function heroIsDrawn(r: Recorder): Finding[] {
       )
       return out
     }
-    if (i > 0 && rows[i - 1].step !== row.step - 1) hidden = 0
-    since ??= row
-    hidden += row.dt
-    if (hidden > BLINK_HALF_SECONDS + r.frameDt + EPS) {
-      out.push(
-        finding('hero not drawn', r, track, since, `hidden for ${hidden.toFixed(3)} s on end in play (${since.clip})`)
-      )
-      return out
+    if (i > 0 && rows[i - 1].step !== row.step - 1) {
+      since = null
+      longest = 0
+      passed = 0
     }
+    if (since) longest = Math.max(longest, row.dt)
+    // (A frame longer than a phase may pass over a whole shown phase and land in the next hidden one.)
+    if (since && row.dt > BLINK_HALF_SECONDS + EPS) passed += BLINK_HALF_SECONDS
+    since ??= row
   }
   return out
 }
@@ -5086,7 +6837,8 @@ export function landingsDoNotSkate(r: Recorder): Finding[] {
     // it may carry him a step's travel past.)
     const speed = Math.max(...stretch.map((row) => Math.abs(row.vx)))
     const frames = specOf(first)?.frames ?? 1
-    const bound = Math.max(LAND_SLIDE_PX, speed * FIT_MIN, speed * (frames + 1) * r.frameDt) + speed * STEP
+    const longest = Math.max(...stretch.map((row) => row.dt))
+    const bound = Math.max(LAND_SLIDE_PX, speed * FIT_MIN, speed * (frames + 1) * longest) + speed * STEP
     if (far > bound + EPS)
       out.push(
         finding(
@@ -5204,7 +6956,8 @@ export function dashesAreWarned(r: Recorder): Finding[] {
       }
     if (touchdown) {
       const left = (b.sim - touchdown.sim) * STEP
-      if (last || left < spec.frames * Math.max(r.frameDt, STEP) - EPS) continue
+      const longest = Math.max(...rows.slice(rows.indexOf(touchdown), i + 1).map((row) => row.dt))
+      if (last || left < spec.frames * Math.max(longest, STEP) - EPS) continue
     } else if (last && shown >= WARNING_SECONDS - STEP - EPS) continue
     out.push(
       finding(
@@ -5215,6 +6968,78 @@ export function dashesAreWarned(r: Recorder): Finding[] {
         `${b.clip} frame ${b.frame} (${b.state}) after ${a.clip} frame ${a.frame}${a.clip === 'windup' ? ` of ${spec.frames - 1}, its wind-up shown ${shown.toFixed(2)} s` : ''}`
       )
     )
+  }
+  return out
+}
+
+/**
+ * I4m: nothing goes back (round 7, the outside reviewer's fourth verdict). Within a run of a clip that does not loop
+ * (the same clip of the same sheet on consecutive display frames, no staged pose beginning or ending in it), the frame
+ * shown never goes back from one display frame to the next: whatever the display frames' lengths, a frame passed
+ * over stays passed. A clip begun again by a cause of its own shows its first frame again (frame 0, or the hero's
+ * clip clock gone back): a new run. Not a frame among a sustained tail's (the wind-up's last `sustain` frames
+ * tremble in turn until the dash), nor a clip whose frame the body chooses rather than time (an `air` by the
+ * vertical speed; the squirrel's lead-in, which pulses between two frames while it waits for the hero). And the boss's gathering light (`gather`, by the frame drawn) never goes back from one lit frame
+ * to the next.
+ */
+/**
+ * Round 8 (decided): a knocked-out body's tumble cycles while it is in the air. A knocked-out enemy's `defeat` tumbles
+ * through its frames from 1 up to the one it lies on (`ENEMY_DEFEAT_GROUND_FRAME`) and the knocked-out hero's `die`
+ * through `DIE_TUMBLE_FIRST` up to `DIE_BOUNCE` (`dieClip`), again and again while the body falls far: those frames
+ * may go back to the tumble's first while the drawn body has no ground under it. Nothing else of them goes back (on
+ * the ground, or into or out of the frames it lies on).
+ */
+function tumblesInTheAir(track: Track, a: Row, b: Row) {
+  if (track.kind === 'ghost' && b.clip === 'defeat') {
+    const lies = (ENEMY_DEFEAT_GROUND_FRAME as Record<string, number>)[b.sheet]
+    return lies !== undefined && a.frame < lies && b.frame >= 1 && !b.supported
+  }
+  if (track.kind === 'hero' && b.clip === 'die')
+    return a.frame < DIE_LIES_FROM && b.frame >= DIE_TUMBLE_FROM && !b.onGround
+  return false
+}
+
+export function framesNeverGoBack(r: Recorder): Finding[] {
+  const out: Finding[] = []
+  for (const track of r.tracks.values()) {
+    if (track.kind === 'prop') continue
+    const rows = track.rows
+    for (let i = 1; i < rows.length; i++) {
+      const a = rows[i - 1]
+      const b = rows[i]
+      if (b.step !== a.step + 1) continue
+      if (a.cue && b.cue && b.cue.frame < a.cue.frame && !b.events.includes('boss-shoot')) {
+        out.push(
+          finding(
+            'light goes back',
+            r,
+            track,
+            b,
+            `gather frame ${a.cue.frame} then ${b.cue.frame} (progress ${a.cue.progress.toFixed(3)} then ${b.cue.progress.toFixed(3)}; display frames of ${(a.dt * 1000).toFixed(1)} and ${(b.dt * 1000).toFixed(1)} ms)`
+          )
+        )
+        continue
+      }
+      if (a.clip !== b.clip || a.sheet !== b.sheet || b.frame >= a.frame || b.frame === 0) continue
+      if ((a.posed === null) !== (b.posed === null)) continue
+      const spec = specOf(b)
+      if (!spec || spec.loop || b.clip === 'air') continue
+      if (b.clipT < a.clipT - EPS) continue
+      const tail = spec.frames - Math.max(1, spec.sustain ?? 0)
+      if (spec.sustain && a.frame >= tail && b.frame >= tail) continue
+      // (The squirrel pulses between two frames of its lead-in while it waits for the hero to come into range.)
+      if (track.art === 'spitter' && b.clip === 'shoot' && spec.hit !== undefined && a.frame < spec.hit) continue
+      if (tumblesInTheAir(track, a, b)) continue
+      out.push(
+        finding(
+          'frame goes back',
+          r,
+          track,
+          b,
+          `${b.clip} frame ${a.frame} then ${b.frame} (display frames of ${(a.dt * 1000).toFixed(1)} and ${(b.dt * 1000).toFixed(1)} ms)`
+        )
+      )
+    }
   }
   return out
 }
@@ -5279,7 +7104,7 @@ export function transformationIsSeen(r: Recorder): Finding[] {
         )
       )
     const up = run.find((row) => row.spot >= 1 - 1e-3)
-    if (!up || up.t - t0 > SPOT_UP_SECONDS + r.frameDt + EPS)
+    if (!up || up.t - t0 > SPOT_UP_SECONDS + up.dt + EPS)
       out.push(
         finding(
           'spotlight is slow',
@@ -5372,6 +7197,7 @@ export const CHECKS = [
   releasesWaitForTheirShots,
   shotsAreAnnounced,
   shotsAreBornFromTheirLight,
+  shotsJoinTheirPath,
   lightsKeepTheirPromise,
   flinchesDoNotCoverShots,
   kingGathersBeforeHeFires,
@@ -5393,8 +7219,11 @@ export const CHECKS = [
   stagedMomentsHandOverCleanly,
   stagedPosesStandOnTheGround,
   transformationBeginsBetweenActions,
+  entranceBeginsBetweenActions,
   slamsLandOnTheirImpact,
   heldWorldsHoldStill,
+  endingsPlayOut,
+  fittedClipsShowEveryFrame,
   heroStandsThroughMoments,
   heavyFallsLand,
   actionsKeepTheirFacing,
@@ -5406,13 +7235,17 @@ export const CHECKS = [
   enemyHurtsFaceTheBlow,
   pushesShowAtOnce,
   heroPosesKeepHim,
+  heroRunsWithHisTravel,
+  heroWalkFollowsHisModel,
+  heroFlinchesOnTheBlow,
   bitesAreDrawn,
   hitsShowTheirFlinch,
   heroIsDrawn,
   landingsDoNotSkate,
   transformationIsSeen,
   dashesStayWhole,
-  dashesAreWarned
+  dashesAreWarned,
+  framesNeverGoBack
 ] as const
 
 /** The checks that read the frames after the stage is over or the hero is down (the others see play only). */
