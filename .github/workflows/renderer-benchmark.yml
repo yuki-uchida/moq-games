@@ -29,7 +29,8 @@ permissions:
   actions: read
 jobs:
   benchmark:
-    runs-on: ubuntu-latest
+    # The pinned Playwright has no Ubuntu 26.04 dependency table, so keep the image it supports.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
