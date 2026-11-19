@@ -83,7 +83,8 @@
 .tc-cluster .tc-btn,
 .tc-interact,
 .tc-menu,
-.tc-score {
+.tc-score,
+.tc-shoulder {
   pointer-events: auto;
 }
 .tc-paw {
@@ -232,7 +233,8 @@
   font-size: 15px;
 }
 .tc-menu,
-.tc-score {
+.tc-score,
+.tc-shoulder {
   position: absolute;
   top: calc(10px + var(--safe-t));
   width: 44px;
@@ -260,6 +262,13 @@
 }
 .tc-score {
   right: calc(64px + var(--safe-r));
+}
+.tc-shoulder {
+  /* under the menu button: the top row is full on small phones (the objective panel reaches it) */
+  top: calc(62px + var(--safe-t));
+  right: calc(12px + var(--safe-r));
+  font-size: 15px;
+  font-weight: 700;
 }
 .touch .hud-feed {
   right: calc(120px + var(--safe-r));

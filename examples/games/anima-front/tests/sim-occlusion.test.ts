@@ -11,7 +11,10 @@ import { FOE_SIDE } from '../src/sim/state'
 import { beamEndPoint } from '../src/render/fx/beam-end'
 import { BTN } from '../src/sim/types'
 import { aimAt, rig } from './sim-helpers'
-import { flatMap } from './sim-maps'
+import { flatMap, playerCfg } from './sim-maps'
+import { getMap } from '../src/sim/api'
+import { Physics } from '../src/sim/physics'
+import { makeLoadout } from '../src/data/loadout'
 
 /** Adds the ヤドカリ wall to the physics (addProp leaves that to the gadget). */
 const syncWalls = (sim: ReturnType<typeof rig>['sim'], _wall: unknown) => sync(sim)
@@ -194,5 +197,46 @@ describe('foe bites and the honey aura', () => {
       if (wall) expect(me.anima).toBeCloseTo(50, 5)
       else expect(me.anima).toBeGreaterThan(53)
     }
+  })
+})
+
+describe('a small body peeking round a cover corner (round 16)', () => {
+  // The review's arena spot: a カバキャノン shell bursts by a corner; the enemy's flank (x + 0.35) is in sight ~3.9 m
+  // from the burst, its centre line is covered. 10 cm further out (the control) the centre line shows too.
+  function fireAtEnemy(x: number) {
+    const map = getMap('arena')
+    const phys = new Physics(map)
+    const r = rig({
+      r: ['hippo'],
+      map,
+      config: { mode: 'pvp', map: 'arena' },
+      extra: [playerCfg('enemy', { team: 1, loadout: makeLoadout(['bee'], [], []) })]
+    })
+    r.step(3)
+    const shooter = r.player('me')
+    const enemy = r.player('enemy')
+    shooter.p = [16.3, 0, 54]
+    enemy.p = [x, 0, 59.5]
+    shooter.protectUntil = 0
+    enemy.protectUntil = 0
+    expect(phys.overlaps(shooter.p, shooter.r, shooter.h)).toBe(false)
+    expect(phys.overlaps(enemy.p, enemy.r, enemy.h)).toBe(false)
+    const before = enemy.anima
+    aimAt(r, [15.55, 0, 57])
+    r.press('R', 65)
+    r.step(100)
+    const explosion = r.of('blast').find((e) => e.item === 'hippo')!
+    expect(explosion).toBeTruthy()
+    const from = [explosion.at[0], explosion.at[1] + 0.3, explosion.at[2]]
+    const visibleBodyPoint = [x + 0.35, 0.5, 59.5]
+    expect(phys.clear(from, visibleBodyPoint, 0)).toBe(true)
+    expect(Math.hypot(...visibleBodyPoint.map((v, i) => v - explosion.at[i]))).toBeLessThan(explosion.radius)
+    return { before, after: enemy.anima }
+  }
+  it('a blast with a visible body point in reach damages it (and the control still does)', () => {
+    const control = fireAtEnemy(16.4)
+    expect(control.after).toBeLessThan(control.before)
+    const corner = fireAtEnemy(16.3)
+    expect(corner.after).toBeLessThan(corner.before)
   })
 })

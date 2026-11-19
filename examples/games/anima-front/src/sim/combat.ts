@@ -9,7 +9,7 @@ import { ITEMS } from '../data/items'
 import { areaContact, cylContact, isDamageableProp, propHostileTo, type Target } from './actors'
 import { recordBurn } from './anima'
 import { BEAR_KNOCK, BLAST_EDGE, CREDIT_WINDOW, OBJECTIVE_ARMOR } from './constants'
-import { bossAreaParts, bossHitModifier } from './foes/bosses'
+import { bossAreaParts, bossHitModifier, kneeling } from './foes/bosses'
 import { onFoeDeath } from './foes/index'
 import { modsOf } from './loadout'
 import { emit, FOE_SIDE, isOver, sideTeam, type Foe, type Player, type Prop, type Side, type Sim } from './state'
@@ -439,6 +439,8 @@ export function areaHitFoe(
     hit = true
     if (pt.alone) replaced = true
     if (f.dead) return true
+    // Breaking the second leg retracts all remaining legs. The hull still gets its own contact below.
+    if (kneeling(f)) break
   }
   if (replaced) return hit
   const bc = areaContact(sim, c, from, { k: 'f', f }, radius, side)

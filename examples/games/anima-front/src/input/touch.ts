@@ -1,7 +1,7 @@
 /**
  * Touch controls for phones in landscape (DESIGN §8): a floating stick on the left half, drag-to-look on the
  * right half, big 右/左 paw buttons with small cycle buttons, ジャンプ, ダッシュ, a contextual 救助 button and
- * the ≡ menu. Styles live in src/ui/styles/touch.css.
+ * the shoulder, score and menu buttons. Styles live in src/ui/styles/touch.css.
  */
 import { itemIconMarkup } from '../ui/thumbs'
 import { h, setClass, setStyle, setText, svg } from '../ui/dom'
@@ -125,6 +125,9 @@ export function createTouchControls(o: {
   })
   score.addEventListener('pointerup', () => o.onUi('scoreboardOff'))
   score.addEventListener('pointercancel', () => o.onUi('scoreboardOff'))
+  // Camera shoulder (V / the right stick press): left ↔ right.
+  const shoulder = h('button', { class: 'tc-shoulder', attrs: { type: 'button', 'aria-label': '肩を切替' } }, '肩')
+  tap(shoulder, () => state.command({ type: 'shoulder' }))
 
   const el = h(
     'div',
@@ -134,7 +137,8 @@ export function createTouchControls(o: {
     h('div', 'tc-cluster', lCycle, rCycle, lBtn, rBtn, jump, dash),
     interact,
     menu,
-    score
+    score,
+    shoulder
   )
 
   // floating stick

@@ -274,3 +274,39 @@ describe('each ゴウテツ leg is its own blast target (round 15)', () => {
     expect(bossAreaParts(f)).toEqual([])
   })
 })
+
+describe('a ゴウテツ that kneels mid-attack (round 16)', () => {
+  /** One attack with the legs at `parts`: マンモス slam from the front, or a blast at the front centre. */
+  function attack(parts: number[], how: 'slam' | 'blast') {
+    const r = rig({ r: ['mammoth'] })
+    r.step(3)
+    const f = spawnFoe(r.sim, 'goutetsu', [0, 0, 0])
+    f.state = 'idle'
+    r.step()
+    f.passive = true
+    f.p = [0, 0, 0]
+    f.yaw = 0
+    f.parts = [...parts]
+    const p = r.player()
+    p.p = [0, 0, -1.6]
+    p.yaw = 0
+    r.input().yaw = 0
+    const hp = f.hp
+    if (how === 'slam') r.press('R', 45)
+    else blast(r.sim, [0, 1, -5.2], 5, 85, 0, 'me', 'hippo')
+    return { partsAfter: f.parts!, state: f.state, hpLost: hp - f.hp }
+  }
+
+  for (const how of ['slam', 'blast'] as const) {
+    it(`${how}: breaking two legs at once hits the hull once; the remaining leg contacts are dropped, not turned into hull hits`, () => {
+      const breaksTwo = attack([1, 1, 200, 200], how)
+      const standing = attack([200, 200, 200, 200], how)
+      expect(breaksTwo.state).toBe('stagger')
+      expect(breaksTwo.partsAfter).toEqual([0, 0, 200, 200])
+      const inReach = how === 'slam' ? standing.partsAfter : standing.partsAfter.slice(0, 2)
+      expect(inReach.every((n) => n < 200)).toBe(true)
+      expect(standing.hpLost).toBeGreaterThan(0)
+      expect(breaksTwo.hpLost).toBeCloseTo(standing.hpLost, 5)
+    })
+  }
+})

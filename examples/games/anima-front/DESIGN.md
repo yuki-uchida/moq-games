@@ -265,7 +265,7 @@ owl) + 0.6/s incoming × (1 − armour reduction)`, minus a third (0.33) of natu
 | jump (hold: glide) | Space                | A           | ジャンプ                      |
 | dash               | Shift                | B           | ダッシュ                      |
 | interact / revive  | F (hold)             | X (hold)    | appears when available        |
-| switch shoulder    | V                    | R3          | —                             |
+| switch shoulder    | V                    | R3          | 肩 (under ≡)                  |
 | scoreboard         | Tab                  | View        | —                             |
 | menu               | Esc                  | Menu        | ≡                             |
 
@@ -302,10 +302,11 @@ are settings. Phones play in landscape; in portrait the game shows a rotate card
 - One occlusion rule for every effect that crosses space: map boxes, ヤドカリ walls of other sides and the solid
   灯台 / 巣核 (whose hit volume is their collider). Rays (shots, pellets, beams, the hook, pad placement, aim) start at
   the shooter's body axis (`shotGuard`: a muzzle poking into a wall, a solid prop or a body hits it there) and use
-  `Physics.raycast`; area effects (melee sweeps, blasts on players, foes, bosses and props, beam chains, foe bites and
-  sweeps, the honey aura) need `targetVisible` (some part of the target in clear sight). The beam is drawn to the end
-  the sim resolved (`HandView.beamEnd`). Not occluded by design: sonar (壁越し), standing in a base / zone / acid
-  puddle, revives and the cart's escort radius. A big body (a boss) also shows its near side and flanks.
+  `Physics.raycast`. Player melee sweeps and blasts use `areaContact` to find a point both in reach and in sight.
+  When the nearest point on a body is covered, they also check its flanks at several heights. Each boss part has its
+  own contact. Once ゴウテツ kneels, the remaining legs cease to be targets for that attack. Beam chains, foe bites and
+  sweeps, and the honey aura use `targetVisible`. The beam is drawn to the end the sim resolved (`HandView.beamEnd`).
+  Sonar (壁越し), standing in a base / zone / acid puddle, revives and the cart's escort radius work through cover.
 - Effects placed at a point (the マンモス slam, クイツクシ's slam) land in front of the first cover between the attacker
   and the point (`placeEffect`); a grenade bouncing off cover at launch stays on the shooter's side; a コロガシ chain
   needs sight like any blast. Distances go to the target's real shape (`targetDistance`: body cylinder, ヤドカリ wall
