@@ -13,6 +13,8 @@ permissions:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+# The pinned Playwright has no Ubuntu 26.04 dependency table, so every job that loads or installs
+# Chromium pins the newest image it supports instead of following ubuntu-latest.
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -111,7 +113,7 @@ jobs:
   check:
     needs: changes
     if: needs.changes.outputs.runtime == 'true' || needs.changes.outputs.debug == 'true' || needs.changes.outputs.ci == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -190,7 +192,7 @@ jobs:
   unit:
     needs: changes
     if: needs.changes.outputs.unit != ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -231,7 +233,7 @@ jobs:
   life-browser:
     needs: changes
     if: needs.changes.outputs.life == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -334,7 +336,7 @@ jobs:
   browser:
     needs: [changes, build]
     if: needs.changes.outputs.pagesBrowser == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       LIBGL_ALWAYS_SOFTWARE: 'true'
       GALLIUM_DRIVER: llvmpipe

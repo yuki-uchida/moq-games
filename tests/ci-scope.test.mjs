@@ -302,7 +302,7 @@ test('Pages browser uses Ubuntu without rebuilding verified artifacts or weakeni
   assert.ok(build)
   assert.doesNotMatch(build, /^    needs:/m)
   assert.doesNotMatch(build, /^    if:/m)
-  assert.match(browser, /^    runs-on: ubuntu-latest$/m)
+  assert.match(browser, /^    runs-on: ubuntu-24\.04$/m)
   assert.doesNotMatch(browser, /defaults:/)
   assert.match(browser, /path: ~\/\.cache\/ms-playwright/)
   assert.match(browser, /key: playwright-\$\{\{ runner.os \}\}/)
@@ -341,6 +341,27 @@ test('Pages browser uses Ubuntu without rebuilding verified artifacts or weakeni
   )
   assert.match(deploy, /needs: \[[^\]\n]*\bbuild\b[^\]\n]*\bbrowser\b[^\]\n]*\]/)
   assert.match(deploy, /\(needs\.browser\.result == 'success' \|\| needs\.browser\.result == 'skipped'\)/)
+})
+
+test('Chromium jobs run on the Ubuntu image the pinned Playwright supports', () => {
+  const pinned = /^    runs-on: ubuntu-24\.04$/m
+  // Appending a job header makes the last job in a file end at the same lookahead.
+  const jobOf = (text, name) =>
+    (text + '\n  __end__:\n').match(new RegExp(`^  ${name}:\\n([\\s\\S]*?)(?=^  \\S)`, 'm'))?.[1]
+  const workflow = readFileSync(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8').replaceAll(
+    '\r\n',
+    '\n'
+  )
+  // Playwright 1.59.1 has no dependency table for Ubuntu 26.04, which ubuntu-latest now resolves to.
+  for (const name of ['check', 'unit', 'life-browser', 'browser']) {
+    const job = jobOf(workflow, name)
+    assert.ok(job, name)
+    assert.match(job, pinned, name)
+  }
+  const benchmark = readFileSync(new URL('../.github/workflows/renderer-benchmark.yml', import.meta.url), 'utf8')
+  const job = jobOf(benchmark, 'benchmark')
+  assert.ok(job)
+  assert.match(job, pinned)
 })
 
 test('Pages keeps headless real-mesh coverage and uses benchmark OpenGL only on Linux CI', () => {
@@ -1874,8 +1895,9 @@ test('Chromium installs reuse Playwright packages and refresh apt lists only on 
     [{ linux: { chromium: ['libnss3;reboot'], tools: ['xvfb'] } }, 'linux']
   ])
     assert.throws(() => chromiumPackages(deps, platform))
-  // ubuntu-latest resolves the installed Playwright's own Ubuntu 24.04 table, fonts included. The changes job runs
-  // these contracts before npm ci, so the table is checked wherever Playwright is installed (the check job, locally).
+  // The Chromium jobs pin ubuntu-24.04, the newest image the installed Playwright has a table for. The
+  // changes job runs these contracts before npm ci, so the table is checked wherever Playwright is
+  // installed (the check job, locally).
   let installed
   try {
     installed = playwrightDependencies()
@@ -1889,7 +1911,7 @@ test('Chromium installs reuse Playwright packages and refresh apt lists only on 
     assert.ok(ubuntu.includes('xvfb'))
     for (const name of ['libnss3', 'xvfb', 'fonts-ipafont-gothic', 'fonts-wqy-zenhei', 'fonts-noto-color-emoji'])
       assert.ok(ubuntu.includes(name), name)
-    if (process.platform === 'linux')
+    if (process.platform === 'linux' && installed.deps[installed.hostPlatform])
       assert.deepEqual(playwrightPackages(), chromiumPackages(installed.deps, installed.hostPlatform))
   }
   const attempt = async (fails = [], packages = () => ['xvfb', 'libnss3'], extra = []) => {
