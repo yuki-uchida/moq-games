@@ -25,6 +25,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { allSheetSpecs } from '../src/art/contract'
+import { emptyInput } from '../src/game/sim'
 import { STAGES } from '../src/game/stages'
 import { LAND_WAIT_SECONDS } from '../src/view/staging'
 import {
@@ -35,6 +36,7 @@ import {
   bossEntrance,
   bruteCrashes,
   crossingShots,
+  fightInput,
   heroDies,
   heroHolds,
   kingPastTheBackstop,
@@ -434,6 +436,15 @@ describe('the picture and the motion agree in the real session, with its directo
     const r = bruteCrashes(no)
     expectClean([r])
     expect(bossRows(r).some((row) => row.state === 'stunned' && row.clip === 'stunned')).toBe(true)
+  })
+
+  it('the chasing parent flinches when the hero turns back and bites her at the first tree', () => {
+    const r = sessionPlay(1, {
+      seconds: 12,
+      plan: ({ world }) => (world.time < 5 ? { ...emptyInput(), right: true } : fightInput(world))
+    })
+    expect(bossRows(r).some((row) => row.state === 'stunned' && row.clip === 'hurt')).toBe(true)
+    expectClean([r])
   })
 
   it("the bear's entrance on the nest stage", { timeout: 120_000 }, () => {

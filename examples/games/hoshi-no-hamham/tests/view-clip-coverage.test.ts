@@ -726,8 +726,9 @@ function playStage(no: number) {
   // The nest stage summons its boss once the materials are in: gather them at once, so the fight has time.
   if (!world.boss)
     for (const prop of [...world.props]) if (prop.kind === 'twig' || prop.kind === 'berry') world.collect(prop)
-  // The bot through the stage until the boss wakes (the chasing parent is awake from the start).
-  r.run(chase ? 20 : 100, () => chase || !world.boss?.active)
+  // Turn back near the first tree to bite the chasing parent while she is stopped there.
+  if (chase) r.run(5, () => true, hold({ right: true }))
+  else r.run(100, () => !world.boss?.active)
   const boss = world.boss
   if (boss?.active && stage.boss.kind === 'brute') wallDodge(r)
   if (boss?.active && stage.boss.kind === 'swarm') standOff(r, 4)
