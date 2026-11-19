@@ -186,19 +186,6 @@ export function targetVisible(sim: Sim, from: readonly number[], t: Target, side
   return false
 }
 
-/**
- * Sample points on a target's shape for area effects centred at `c`: the nearest point of it, then (a body) its
- * axis at the centre's height, its centre and top, and for a wide body (a boss) a fan of points round the side facing
- * `c` (every 7.5°, ±90°) at the centre's height, mid-height and the top, so a part peeking round thin cover counts.
- */
-function areaSamples(t: Target, c: readonly number[]): Vec[] {
-  if (t.k === 'r') return [propNearest(t.r, c), targetCenter(t)]
-  const b = t.k === 'p' ? t.p : (t.f.avatar ?? t.f)
-  const pts = cylSamples({ x: b.p[0], z: b.p[2], r: b.r, y0: b.p[1], y1: b.p[1] + b.h }, c)
-  pts.splice(2, 0, targetCenter(t))
-  return pts
-}
-
 /** An upright cylinder an area effect can reach on its own (a body, a boss part such as a ゴウテツ leg). */
 export interface AreaCyl {
   x: number
@@ -206,34 +193,6 @@ export interface AreaCyl {
   r: number
   y0: number
   y1: number
-}
-
-/** Sample points of a cylinder for an area effect centred at `c` (see areaSamples). */
-function cylSamples(b: AreaCyl, c: readonly number[]): Vec[] {
-  const h = b.y1 - b.y0
-  // the exact nearest point of the cylinder (its distance is the shape distance), then the others
-  const y = Math.min(Math.max(c[1], b.y0), b.y1)
-  const dx = c[0] - b.x
-  const dz = c[2] - b.z
-  const l = Math.hypot(dx, dz)
-  const k = Math.min(l, b.r)
-  const nx = l > 1e-6 ? dx / l : 0
-  const nz = l > 1e-6 ? dz / l : 1
-  const pts: Vec[] = [
-    [b.x + nx * k, y, b.z + nz * k],
-    [b.x, y, b.z],
-    [b.x, b.y0 + h * 0.9, b.z]
-  ]
-  if (b.r > 0.8) {
-    const base = Math.atan2(nx, nz)
-    const rr = b.r * 0.98
-    for (const yy of [y, b.y0 + h * 0.5, b.y0 + h * 0.9])
-      for (let i = -12; i <= 12; i++) {
-        const a = base + (i * Math.PI) / 24
-        pts.push([b.x + Math.sin(a) * rr, yy, b.z + Math.cos(a) * rr])
-      }
-  }
-  return pts
 }
 
 /** The nearest sample that is both within `radius` of `c` and in clear sight from `from`. */
@@ -269,23 +228,53 @@ export function areaContact(
   radius: number,
   side: Side
 ): { at: Vec; d: number } | null {
-  const nearest = targetDistance(t, c)
-  if (nearest > radius) return null
-  return firstReached(sim, areaSamples(t, c), c, from, nearest, radius, side)
+  if (t.k === 'r') {
+    const nearest = propDistance(t.r, c)
+    if (nearest > radius) return null
+    return firstReached(sim, [propNearest(t.r, c), targetCenter(t)], c, from, nearest, radius, side)
+  }
+  const b = t.k === 'p' ? t.p : (t.f.avatar ?? t.f)
+  const cyl = { x: b.p[0], z: b.p[2], r: b.r, y0: b.p[1], y1: b.p[1] + b.h }
+  return cylContact(sim, c, from, cyl, radius, side, targetCenter(t))
 }
 
-/** areaContact for one cylinder part (a ゴウテツ leg, クイツクシ's open maw). */
+/** Area contact on a body or one boss part (a ゴウテツ leg, クイツクシ's open maw). */
 export function cylContact(
   sim: Sim,
   c: readonly number[],
   from: readonly number[],
   b: AreaCyl,
   radius: number,
-  side: Side
+  side: Side,
+  center?: Vec
 ): { at: Vec; d: number } | null {
-  const nearest = cylDistance(b.x, b.z, b.r, b.y0, b.y1, c)
+  const dx = c[0] - b.x
+  const dz = c[2] - b.z
+  const l = Math.hypot(dx, dz)
+  const y = Math.min(Math.max(c[1], b.y0), b.y1)
+  const nearest = Math.hypot(Math.max(0, l - b.r), c[1] - y)
   if (nearest > radius) return null
-  return firstReached(sim, cylSamples(b, c), c, from, nearest, radius, side)
+  const k = l > b.r ? b.r / l : 1
+  const near: Vec = [b.x + dx * k, y, b.z + dz * k]
+  if (sim.phys.clear(from, near, side)) return { at: near, d: nearest }
+
+  // Only a covered body needs the extra rays. Sample its facing half from flank to flank, even on small animals.
+  const h = b.y1 - b.y0
+  const pts: Vec[] = [
+    [b.x, y, b.z],
+    [b.x, b.y0 + h * 0.9, b.z]
+  ]
+  if (center) pts.push(center)
+  const base = Math.atan2(dx, dz)
+  const steps = b.r > 0.8 ? 12 : 3
+  const heights = new Set([y, b.y0, b.y0 + h * 0.5, b.y0 + h * 0.9, b.y1])
+  for (let i = -steps; i <= steps; i++) {
+    const a = base + (i * Math.PI) / (2 * steps)
+    const x = b.x + Math.sin(a) * b.r
+    const z = b.z + Math.cos(a) * b.r
+    for (const yy of heights) pts.push([x, yy, z])
+  }
+  return firstReached(sim, pts, c, from, nearest, radius, side)
 }
 
 /** Ray vs a humanoid body (players and クロヅメ avatars): returns t and whether the head sphere was hit. */

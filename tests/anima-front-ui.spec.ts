@@ -1050,7 +1050,7 @@ test.describe('touch controls', () => {
         for (let y = 0; y < h; y += 8) {
           const el = document.elementFromPoint(x, y) as HTMLElement | null
           if (!el || !el.closest('.touch-controls')) continue
-          if (el.closest('.tc-btn, .tc-menu, .tc-score')) continue
+          if (el.closest('.tc-btn, .tc-menu, .tc-score, .tc-shoulder')) continue
           if (!el.classList.contains('tc-look')) bad.push(`${x},${y}:${el.className}`)
         }
       return bad
@@ -1086,6 +1086,27 @@ test.describe('touch controls', () => {
       .toBeGreaterThan(0.05)
     await t.up(2)
     await t.up(1)
+
+    // the 肩 button swaps the camera shoulder (as V / the right stick press): the aim pivot moves to the other side
+    const side = () =>
+      page.evaluate(() => {
+        type M = {
+          me: string
+          view(): { players: { id: string; p: number[]; yaw: number }[] }
+          cameraPivot(): number[]
+        }
+        const m = (window as unknown as { __anima: { match: M } }).__anima.match
+        const me = m.view().players.find((p) => p.id === m.me)!
+        const q = m.cameraPivot()
+        // right = (−cos yaw, 0, sin yaw)
+        return Math.sign((q[0] - me.p[0]) * -Math.cos(me.yaw) + (q[2] - me.p[2]) * Math.sin(me.yaw))
+      })
+    const s0 = await side()
+    expect(Math.abs(s0)).toBe(1)
+    const sh = await centre(page, '.tc-shoulder')
+    await t.down(4, sh.x, sh.y)
+    await t.up(4)
+    await expect.poll(side).toBe(-s0)
     await context.close()
   })
 
@@ -1106,12 +1127,25 @@ test.describe('touch controls', () => {
           const b = document.querySelector(s)!.getBoundingClientRect()
           return { l: b.left, t: b.top, r: b.right, b: b.bottom }
         }
-        return { gauge: r('.hud-anima'), dash: r('.tc-dash'), jump: r('.tc-jump') }
+        return {
+          gauge: r('.hud-anima'),
+          dash: r('.tc-dash'),
+          jump: r('.tc-jump'),
+          shoulder: r('.tc-shoulder'),
+          others: ['.tc-menu', '.tc-score', '.hud-top', '.tc-cluster', '.tc-interact'].map(r),
+          w: window.innerWidth,
+          h: window.innerHeight
+        }
       })
       const overlap = (a: { l: number; t: number; r: number; b: number }, b: typeof a) =>
         a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b
       expect(overlap(rects.gauge, rects.dash)).toBe(false)
       expect(overlap(rects.gauge, rects.jump)).toBe(false)
+      // the 肩 (shoulder) button: on screen, clear of the other buttons, the objective panel and the cluster
+      const s = rects.shoulder
+      expect(s.l >= 0 && s.t >= 0 && s.r <= rects.w && s.b <= rects.h).toBe(true)
+      for (const o of rects.others) expect(overlap(s, o)).toBe(false)
+      await page.screenshot({ path: test.info().outputPath(`touch-${w}x${h}.png`) })
       await context.close()
 
       // the first-match card: 「わかった」 is fully inside the screen
