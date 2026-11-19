@@ -62,6 +62,12 @@ for (const mobile of [false, true])
     await page.locator('#unit-special').focus()
     await page.keyboard.press('Enter')
     expect((await stored(page)).state.units[0].specialCooldown).toBeUndefined()
+    if (mobile) {
+      await handle.tap()
+      await page.getByRole('button', { name: '必殺技をキャンセル' }).tap()
+      await expect(page.locator('#selection-context')).not.toHaveAttribute('data-aiming')
+      expect((await stored(page)).state.units[0].specialCooldown).toBeUndefined()
+    }
     if (mobile) await handle.tap()
     else await handle.click()
     const invalid = await pointOnVisibleMap(page, { x: unit.x + 250, y: unit.y + 100 })

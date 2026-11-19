@@ -16,9 +16,25 @@ export type ModelRoster = Readonly<Partial<Record<UnitType, UnitModelDefinition>
 interface Actor {
   type: UnitType
   visual: ModelUnitVisual
+  shadow: THREE.Mesh
   last: Unit
   deadAt?: number
   stride?: { travelled: number; cycle: number }
+}
+
+function contactShadowTexture(): THREE.DataTexture {
+  const size = 32
+  const pixels = new Uint8Array(size * size * 4).fill(255)
+  for (let row = 0; row < size; row++) {
+    for (let column = 0; column < size; column++) {
+      const distance = Math.hypot((column + 0.5) / size * 2 - 1, (row + 0.5) / size * 2 - 1)
+      pixels[(row * size + column) * 4 + 3] = 128 * Math.max(0, 1 - distance ** 2) ** 2
+    }
+  }
+  const texture = new THREE.DataTexture(pixels, size, size)
+  texture.magFilter = texture.minFilter = THREE.LinearFilter
+  texture.needsUpdate = true
+  return texture
 }
 
 /** Fast attack, fast decay over ANIMATION.hit; quantized to 10 steps to avoid material churn. */
@@ -40,6 +56,13 @@ export class ModelUnitLayer {
   private previousField?: string
   private presentationScale = 1
   private presentationAspect = 1
+  private shadowGeometry = new THREE.PlaneGeometry(72, 58).rotateX(-Math.PI / 2)
+  private shadowMaterial = new THREE.MeshBasicMaterial({
+    color: 0x15231a,
+    map: contactShadowTexture(),
+    transparent: true,
+    depthWrite: false
+  })
   constructor(
     private readonly scene: THREE.Scene,
     readonly roster: ModelRoster,
@@ -174,11 +197,15 @@ export class ModelUnitLayer {
         }
         const visual = new ModelUnitVisual(definition, this.cache)
         visual.setPresentation(this.presentationScale, this.presentationAspect)
+        const shadow = new THREE.Mesh(this.shadowGeometry, this.shadowMaterial)
+        shadow.position.y = -2
+        visual.root.add(shadow)
         this.scene.add(visual.root)
-        actor = { type: unit.type, visual, last: { ...unit } }
+        actor = { type: unit.type, visual, shadow, last: { ...unit } }
         this.actors.set(unit.id, actor)
       }
       actor.last = { ...unit }
+      actor.shadow.visible = unit.hp > 0
       if (unit.hp <= 0) {
         actor.visual.setPosition(unit.x, unit.y)
         continue
@@ -195,6 +222,8 @@ export class ModelUnitLayer {
         // Keep an explicitly neutral pose instead of showing a damaging sword swing.
         pose = { ...pose, motion: 'idle', seconds: 0, loop: false }
       }
+      if (state.phase === 'preparation' && unit.owner === 'player' && pose.motion === 'idle')
+        pose = { ...pose, facingX: -1 / this.presentationAspect, facingY: 1 }
       if (pose.motion === 'walk') {
         // Distance-driven stride remains synchronized when frost changes movement speed. The
         // per-heading screen rate is integrated, so turning never jumps the stride phase.
@@ -215,6 +244,7 @@ export class ModelUnitLayer {
     }
     for (const [id, actor] of this.actors) {
       if (living.has(id)) continue
+      actor.shadow.visible = false
       const corpse = state.corpses?.find((corpse) => corpse.id === id)
       const deadUnit = state.units.find((unit) => unit.id === id && unit.hp <= 0)
       if ((!corpse && !deadUnit && actor.deadAt === undefined) || (actor.last.owner === 'player' && !deadUnit)) {
@@ -269,7 +299,7 @@ export class ModelUnitLayer {
       if (pending) return pending
     }
   }
-  setPreview(type?: UnitType, point?: Point, facing?: Point, valid = true): void {
+  setPreview(type?: UnitType, point?: Point, facing?: Point, valid = true, preparation = false): void {
     if (!type || !point || !facing) {
       if (this.preview) this.preview.visual.root.visible = false
       return
@@ -290,8 +320,8 @@ export class ModelUnitLayer {
         motion: 'idle',
         seconds: 0,
         loop: true,
-        facingX: facing.x,
-        facingY: facing.y,
+        facingX: preparation ? -1 / this.presentationAspect : facing.x,
+        facingY: preparation ? 1 : facing.y,
         boss: false
       })
     } catch (error) {
@@ -354,6 +384,9 @@ export class ModelUnitLayer {
   }
   dispose(): void {
     this.clearActors()
+    this.shadowGeometry.dispose()
+    this.shadowMaterial.map?.dispose()
+    this.shadowMaterial.dispose()
     this.preview?.visual.dispose()
     this.preview = undefined
     for (const visual of this.prepared.values()) visual.dispose()

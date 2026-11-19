@@ -4,7 +4,7 @@
 .battle-hud {
   position: fixed;
   z-index: 6;
-  top: max(12px, env(safe-area-inset-top));
+  top: var(--battle-hud-top);
   left: 50%;
   translate: -50% 0;
   display: flex;
@@ -12,11 +12,11 @@
   gap: 12px;
   height: 48px;
   padding: 0 6px 0 14px;
-  border: 1px solid #b6c59445;
-  border-radius: 16px;
-  background: #1c3a2cdb;
+  border: 1px solid var(--battle-metal);
+  border-radius: 9px;
+  background: var(--battle-teal);
   box-shadow: 0 4px 14px #10271940;
-  color: #fff8de;
+  color: var(--battle-paper);
   font: 800 15px/1 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', Meiryo, system-ui, sans-serif;
   pointer-events: none;
 }
@@ -44,6 +44,7 @@
 }
 .bhud-num {
   min-width: 2.2ch;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
   text-shadow: 0 1px 2px #0008;
 }
@@ -199,83 +200,30 @@
   }
 }
 
-/* Narrower than the wide layout: castle and progress sit beside the heading, coins and speed bottom-left. */
-@media (max-width: 1179px) {
-  .battle-hud {
-    display: contents;
-  }
-  .bhud-main,
-  .bhud-side {
-    position: fixed;
-    z-index: 6;
-    border: 1px solid #b6c59445;
-    background: #1c3a2cdb;
-    box-shadow: 0 4px 14px #10271940;
-    color: #fff8de;
-    font: 800 14px/1 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', Meiryo, system-ui, sans-serif;
-    pointer-events: none;
-  }
-  .bhud-main {
-    top: max(10px, env(safe-area-inset-top));
-    left: calc(max(14px, env(safe-area-inset-left)) + 138px);
-    height: 40px;
-    padding: 0 12px;
-    border-radius: 14px;
-    gap: 12px;
-  }
-  .bhud-side {
-    left: max(12px, env(safe-area-inset-left));
-    bottom: calc(46px + max(0px, env(safe-area-inset-bottom)));
-    gap: 6px;
-    padding: 0 0 0 6px;
-    border-radius: 14px;
-    height: 48px;
-  }
-  .bhud-bar {
-    width: 84px;
-  }
+@media (max-width: 1359px) {
+  .battle-hud { gap: 6px; padding-inline: 6px; font-size: 13px; }
+  .bhud-main, .bhud-side { gap: 5px; }
+  .bhud-castle, .bhud-enemies, .bhud-coins { gap: 4px; }
+  .bhud-bar { width: clamp(18px, 6vw, 55px); height: 10px; }
+  .battle-hud svg { width: 16px; height: 16px; }
+}
+@media (min-width: 821px) and (max-width: 950px) {
+  .battle-hud { left: calc(50% - 48px); }
+  .bhud-bar { width: 40px; }
+}
+@media (max-width: 820px) {
+  .bhud-coins { padding-inline: 3px; }
+  .bhud-crown { width: 18px; height: 18px; margin-left: 0; }
+  .bhud-crown svg { width: 12px; height: 12px; }
 }
 @media (max-width: 420px) {
-  .bhud-main {
-    top: max(6px, env(safe-area-inset-top));
-    left: max(6px, env(safe-area-inset-left));
-    height: auto;
-    width: max(104px, calc(100vw - 262px));
-    flex-direction: column;
-    align-items: stretch;
-    gap: 4px;
-    padding: 5px 7px;
+  .battle-hud {
+    left: auto;
+    right: max(8px, env(safe-area-inset-right));
+    translate: none;
   }
-  .bhud-castle,
-  .bhud-enemies {
-    gap: 5px;
-  }
-  .bhud-bar {
-    flex: 1;
-    width: auto;
-    min-width: 28px;
-    height: 11px;
-  }
-  .battle-hud svg {
-    width: 16px;
-    height: 16px;
-  }
-  .bhud-num {
-    font-size: 13px;
-    min-width: 2ch;
-  }
-  .bhud-enemies .bhud-num {
-    min-width: 3.4ch;
-  }
-  .bhud-crown {
-    width: 17px;
-    height: 17px;
-    margin-left: 0;
-  }
-  .bhud-crown svg {
-    width: 11px;
-    height: 11px;
-  }
+  .bhud-main { display: grid; gap: 2px; }
+  .bhud-bar { width: 24px; }
 }
 
 /* ---------- Screen-space overlay ---------- */
@@ -329,11 +277,13 @@
   justify-items: center;
   gap: 4px;
   width: max-content;
-  max-width: 100vw;
-  padding: 10px 56px 12px;
+  max-width: calc(100vw - 24px);
+  padding: 10px clamp(14px, 4vw, 56px) 12px;
   text-align: center;
   color: #fff8de;
-  background: linear-gradient(90deg, transparent, #1c3a2ce6 28%, #1c3a2ce6 72%, transparent);
+  background: var(--battle-teal);
+  border-block: 2px solid var(--battle-metal);
+  box-shadow: 0 8px 26px #102c3060;
   animation: fx-banner 1.3s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
   transform: translateX(-50%);
 }
@@ -385,7 +335,7 @@
   color: #ffd0c8;
 }
 .fx-banner.win {
-  background: linear-gradient(90deg, transparent, #5c3d0bd9 26%, #5c3d0bd9 74%, transparent);
+  background: var(--battle-teal);
 }
 .fx-banner.win b {
   color: #ffd84d;
@@ -397,8 +347,7 @@
   text-shadow: none;
 }
 .fx-banner.lose {
-  background: linear-gradient(90deg, transparent, #2d3330e6 26%, #2d3330e6 74%, transparent);
-  filter: saturate(0.25);
+  background: linear-gradient(155deg, #42302a, #102c30);
 }
 .fx-banner.lose b {
   color: #cfd4d0;
@@ -1005,7 +954,7 @@
     opacity: 0.6;
   }
   .fx-banner {
-    animation: fx-fade-banner 1.3s ease-out forwards;
+    animation: fx-fade-banner 1.3s ease-out forwards !important;
   }
   .fx-banner i,
   .bhud-castle[data-level='low'],

@@ -288,7 +288,7 @@ test('two specials cast back-to-back each get their own band one after the other
     const state = JSON.parse(localStorage.getItem('tower-jev-v3')!).run.engine.state,
       unit = state.units.find((u: any) => u.type === 'soldier'),
       field = document.getElementById('field')!,
-      box = field.querySelector('canvas')!.getBoundingClientRect()
+      box = field.getBoundingClientRect()
     return {
       x: box.x + (unit.x / (Number(field.dataset.worldWidth) || 1280)) * box.width,
       y: box.y + (unit.y / (Number(field.dataset.worldHeight) || 920)) * box.height
@@ -529,7 +529,7 @@ for (const [name, viewport] of [
     const aims = await page.evaluate((types) => {
       const state = JSON.parse(localStorage.getItem('tower-jev-v3')!).run.engine.state,
         field = document.getElementById('field')!,
-        box = field.querySelector('canvas')!.getBoundingClientRect()
+        box = field.getBoundingClientRect()
       return types.map((type) => {
         const unit = state.units.find((u: any) => u.type === type),
           x = box.x + ((unit.x + 20) / (Number(field.dataset.worldWidth) || 1280)) * box.width,
@@ -556,11 +556,18 @@ for (const [name, viewport] of [
           )
         // A fired cast is saved at once; its caster starts the cooldown.
         const saved = JSON.parse(localStorage.getItem('tower-jev-v3')!).run.engine.state
-        return { type, aiming, cooldown: saved.units.find((u: any) => u.id === unit.id).specialCooldown }
+        return {
+          type, aiming, cooldown: saved.units.find((u: any) => u.id === unit.id).specialCooldown,
+          hit: target.closest('#field') ? 'field' : target.closest('[id]')?.id ?? target.tagName,
+          point: { x, y }
+        }
       })
     }, types)
     // Each Shift+click opened hand aiming (×) and its ground tap next to the caster fired that special.
-    for (const aim of aims) expect(aim).toEqual({ type: aim.type, aiming: '×', cooldown: expect.any(Number) })
+    for (const aim of aims) {
+      expect(aim.hit, `${aim.type} ground tap at ${aim.point.x}, ${aim.point.y}`).toBe('field')
+      expect(aim).toMatchObject({ type: aim.type, aiming: '×', cooldown: expect.any(Number) })
+    }
     for (const aim of aims) expect(aim.cooldown).toBeGreaterThan(0)
     await expect.poll(() => page.locator('.fx-special').count(), { timeout: 20_000, intervals: [50] }).toBe(3)
     const result = await page.evaluate(() => {

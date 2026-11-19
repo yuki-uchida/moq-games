@@ -15,7 +15,7 @@ function saveAutoSkill(on: boolean) {
   try { localStorage.setItem(AUTO_SKILL_KEY, on ? '1' : '0') } catch { /* private mode: keep it for this session only */ }
 }
 
-interface Entry { button: HTMLButtonElement; ring: HTMLElement; count: HTMLElement; mark: HTMLElement; badge: HTMLElement; name: HTMLElement; tip: string; hintTimer: number; mode: string; charge: number; label: string; targets: number; scanAt: number }
+interface Entry { button: HTMLButtonElement; ring: HTMLElement; count: HTMLElement; mark: HTMLElement; badge: HTMLElement; name: HTMLElement; placeHint(): void; tip: string; hintTimer: number; mode: string; charge: number; label: string; targets: number; scanAt: number }
 export interface SkillBarOptions {
   portrait(type: AllyType): string | undefined
   /** Fired on tap/Enter (manual=false) or long-press/Shift+click (manual=true). */
@@ -26,6 +26,7 @@ export interface SkillBarOptions {
 /** Portrait buttons with a charge ring, one per deployed ally, shown only while the assault runs. */
 export class SkillBar {
   readonly element = document.createElement('div')
+  private readonly skills = document.createElement('div')
   private readonly auto = document.createElement('button')
   private readonly entries = new Map<number, Entry>()
   private order = ''
@@ -45,7 +46,8 @@ export class SkillBar {
     this.auto.textContent = 'AUTO'
     this.auto.onclick = () => this.setAuto(!this.autoOn)
     this.syncAuto()
-    this.element.append(this.auto)
+    this.skills.className = 'skill-scroll'
+    this.element.append(this.skills, this.auto)
     parent.append(this.element)
   }
   get autoEnabled() { return this.autoOn }
@@ -72,13 +74,23 @@ export class SkillBar {
       `<span class="skill-badge" aria-hidden="true"></span><span class="skill-aim" aria-hidden="true">${CROSSHAIR}</span>` +
       `<span class="skill-name" aria-hidden="true">${SPECIALS[type].name}</span>`
     let timer = 0,
-      longPressed = false
+      longPressed = false,
+      startX = 0,
+      startY = 0
     const clear = () => { clearTimeout(timer); timer = 0 }
     button.addEventListener('pointerdown', (event) => {
       if (event.button !== 0) return
       longPressed = false
+      startX = event.clientX
+      startY = event.clientY
       clear()
       timer = window.setTimeout(() => { timer = 0; longPressed = true; this.options.onActivate(unit.id, true) }, LONG_PRESS_MS)
+    })
+    button.addEventListener('pointermove', (event) => {
+      if (timer && event.pointerType === 'touch' && Math.hypot(event.clientX - startX, event.clientY - startY) > 8) {
+        clear()
+        longPressed = true
+      }
     })
     for (const name of ['pointerup', 'pointercancel', 'pointerleave']) button.addEventListener(name, clear)
     button.addEventListener('contextmenu', (event) => event.preventDefault())
@@ -86,13 +98,24 @@ export class SkillBar {
       if (longPressed) { longPressed = false; return }
       this.options.onActivate(unit.id, event.shiftKey)
     })
+    const name = button.querySelector<HTMLElement>('.skill-name')!
+    const placeHint = () => {
+      const buttonBox = button.getBoundingClientRect()
+      const scrollBox = this.skills.getBoundingClientRect()
+      const center = Math.min(scrollBox.right, Math.max(scrollBox.left, buttonBox.left + buttonBox.width / 2))
+      const half = name.offsetWidth / 2
+      name.style.left = `${Math.max(half + 8, Math.min(innerWidth - half - 8, center))}px`
+    }
+    button.addEventListener('pointerenter', placeHint)
+    button.addEventListener('focus', placeHint)
     return {
       button,
       ring: button.querySelector('.skill-ring')!,
       count: button.querySelector('.skill-count')!,
       mark: button.querySelector('.skill-mark')!,
       badge: button.querySelector('.skill-badge')!,
-      name: button.querySelector('.skill-name')!,
+      name,
+      placeHint,
       tip: SPECIALS[type].name,
       hintTimer: 0,
       mode: '',
@@ -108,8 +131,9 @@ export class SkillBar {
     if (!entry) return
     clearTimeout(entry.hintTimer)
     entry.name.textContent = text
+    entry.placeHint()
     entry.button.dataset.hint = 'true'
-    entry.button.animate?.(
+    entry.button.querySelector('img')?.animate?.(
       [{ translate: '0 0' }, { translate: '-4px 0' }, { translate: '4px 0' }, { translate: '-2px 0' }, { translate: '0 0' }],
       { duration: 260 }
     )
@@ -138,7 +162,7 @@ export class SkillBar {
       for (const unit of allies) keep.set(unit.id, this.entries.get(unit.id) ?? this.create(unit))
       this.entries.clear()
       for (const [id, entry] of keep) this.entries.set(id, entry)
-      this.element.replaceChildren(...[...this.entries.values()].map((e) => e.button), this.auto)
+      this.skills.replaceChildren(...[...this.entries.values()].map((e) => e.button))
       this.element.hidden = !allies.length
     }
     const now = performance.now()

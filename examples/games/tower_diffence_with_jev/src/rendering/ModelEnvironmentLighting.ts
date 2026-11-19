@@ -1,6 +1,18 @@
 import * as THREE from 'three'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 
+export function createBattlefieldModelLighting(scene: THREE.Scene, renderer: THREE.WebGLRenderer): ModelEnvironmentLighting {
+  renderer.toneMapping = THREE.NeutralToneMapping
+  const sky = new THREE.HemisphereLight(0xffefd4, 0x7795ac, 1.75)
+  sky.position.set(0, -0.93, 0.37)
+  const light = new THREE.DirectionalLight(0xffe3b8, 2.75)
+  light.position.set(-3, -4, 6)
+  const fill = new THREE.DirectionalLight(0xb8dfe5, 1.3)
+  fill.position.set(4, -2, -1)
+  scene.add(sky, light, fill)
+  return new ModelEnvironmentLighting(scene, 0.5)
+}
+
 /** One renderer-owned IBL, shared by every real model in its scene. No asset requests. */
 export class ModelEnvironmentLighting {
   private target?: THREE.WebGLRenderTarget

@@ -11,6 +11,7 @@ import {
   type Point
 } from '../game/model'
 import { allRoadPaths, distanceToRoadUnion, type ResolvedBattlefield } from '../game/BattlefieldRoutes'
+import { forestMeadowArt } from './ApprovedMazeArt'
 
 type Random = () => number
 type Context = CanvasRenderingContext2D
@@ -620,7 +621,14 @@ function scenery(c: Context, field: ResolvedBattlefield, colors: Palette, random
   }
 }
 
-function slowRoadSurface(c: Context, field: ResolvedBattlefield, colors: Palette, aspect = 1, scale = 1) {
+function slowRoadSurface(
+  c: Context,
+  field: ResolvedBattlefield,
+  colors: Palette,
+  aspect = 1,
+  scale = 1,
+  blend = false
+) {
   const surface = field.slowSurface,
     random = seededRandom(field.id)
   const sample = (progress: number) => {
@@ -649,7 +657,17 @@ function slowRoadSurface(c: Context, field: ResolvedBattlefield, colors: Palette
     left.push([p.x + nx * halfWidth, p.y + ny * halfWidth])
     right.push([p.x - nx * (19 + random() * 3), p.y - ny * (19 + random() * 3)])
   }
-  shape(c, [...left, ...right.reverse()], fill)
+  let coating: string | CanvasGradient = fill
+  if (blend) {
+    const start = points[0], end = points[points.length - 1]
+    const mud = c.createLinearGradient(start.x, start.y, end.x, end.y)
+    mud.addColorStop(0, `${fill}20`)
+    mud.addColorStop(0.2, fill)
+    mud.addColorStop(0.8, fill)
+    mud.addColorStop(1, `${fill}20`)
+    coating = mud
+  }
+  shape(c, [...left, ...right.reverse()], coating)
   for (let i = 0; i < 54; i++) {
     const progress =
       surface.startProgress + 8 + random() * Math.max(1, surface.endProgress - surface.startProgress - 16)
@@ -662,7 +680,7 @@ function slowRoadSurface(c: Context, field: ResolvedBattlefield, colors: Palette
     c.globalAlpha = 0.18 + random() * 0.16
     ellipse(c, x, y, 2 + random() * 4, 0.8 + random() * 2, i % 3 ? colors.accent : fill)
   }
-  c.globalAlpha = 0.65
+  c.globalAlpha = blend ? 0.4 : 0.65
   c.strokeStyle = colors.accent
   c.lineWidth = 1.5
   for (const progress of [surface.startProgress, surface.endProgress]) {
@@ -1218,6 +1236,8 @@ export function createProjectedFieldArt(
 ): HTMLCanvasElement {
   const field = getField(fieldId, 2, 4)
   if (!ground) return createFieldArt(fieldId, false, 2, undefined, 4)
+  const forest = fieldId === 'meadow'
+  if (forest) ground = forestMeadowArt(ground)
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(field.width * aspect))
   canvas.height = field.height
@@ -1249,13 +1269,22 @@ export function createProjectedFieldArt(
   c.fillRect(0, 0, canvas.width, canvas.height)
 
   // Crop and feather only the grass fringe; trees, flowers and masonry keep their source proportions.
-  function patch(x: number, y: number, width: number, height: number, feather = 10) {
+  function patch(x: number, y: number, width: number, height: number, feather = 10, outline?: string) {
     const tile = document.createElement('canvas')
     tile.width = width
     tile.height = height
     const t = tile.getContext('2d')!
     t.drawImage(ground!, x, y, width, height, 0, 0, width, height)
     t.globalCompositeOperation = 'destination-in'
+    if (outline) {
+      const mask = document.createElement('canvas')
+      mask.width = width
+      mask.height = height
+      const ink = mask.getContext('2d')!
+      ink.filter = 'blur(3px)'
+      ink.fill(new Path2D(outline))
+      t.drawImage(mask, 0, 0)
+    }
     for (const [dx, dy] of [
       [width, 0],
       [0, height]
@@ -1272,15 +1301,15 @@ export function createProjectedFieldArt(
     return tile
   }
   const grass = patch(900, 235, 100, 70, 18)
-  for (let y = 0; y < field.height; y += 55 * sourceScale)
-    for (let x = 0; x < canvas.width; x += 75 * sourceScale) {
+  for (let y = 0; y < field.height; y += 55 * (forest ? size : sourceScale))
+    for (let x = 0; x < canvas.width; x += 75 * (forest ? size : sourceScale)) {
       c.save()
       c.translate(x + random() * 30 * sourceScale, y + random() * 30 * sourceScale)
       c.rotate(random() * Math.PI * 2)
       c.drawImage(grass, -50 * sourceScale, -35 * sourceScale, 100 * sourceScale, 70 * sourceScale)
       c.restore()
     }
-  const flowers = [patch(275, 320, 85, 85, 16), patch(545, 420, 85, 60, 14), patch(1000, 780, 85, 85, 16)]
+  const flowers = [patch(275, 320, 85, 85, 16), patch(545, 420, 85, 48, 14), patch(1000, 780, 85, 85, 16)]
   for (let i = 0; i < 95; i++) {
     const p = { x: 110 + random() * (field.width - 220), y: 95 + random() * (field.height - 180) }
     if (distanceToRoadUnion(field, p) < 65) continue
@@ -1294,77 +1323,167 @@ export function createProjectedFieldArt(
     )
   }
 
-  // Constant-width strokes and evenly spaced stones replace the affine-scaled painted road.
+  if (forest) {
+    drawScenery()
+    const light = c.createLinearGradient(0, 0, canvas.width * 0.65, canvas.height)
+    light.addColorStop(0, '#062c38ba')
+    light.addColorStop(0.32, '#123f4568')
+    light.addColorStop(0.49, '#f8d07525')
+    light.addColorStop(0.69, '#15404483')
+    light.addColorStop(1, '#062b38b0')
+    c.fillStyle = light
+    c.fillRect(0, 0, canvas.width, canvas.height)
+    c.save()
+    c.scale(canvas.width, canvas.height)
+    for (const [x, y, radius] of [
+      [0.28, 0.25, 0.26],
+      [0.72, 0.42, 0.23],
+      [0.29, 0.75, 0.29],
+      [0.83, 0.83, 0.22]
+    ]) {
+      const sun = c.createRadialGradient(x, y, 0, x, y, radius)
+      sun.addColorStop(0, '#f3d28250')
+      sun.addColorStop(0.45, '#e5d87922')
+      sun.addColorStop(1, '#e5d87900')
+      c.fillStyle = sun
+      c.fillRect(x - radius, y - radius, radius * 2, radius * 2)
+    }
+    c.restore()
+  }
+
+  // Constant-width strokes replace the affine-scaled painted road.
   c.lineJoin = c.lineCap = 'round'
   traceRoad(c, path)
   for (const [width, color] of [
-    [49, '#52733270'],
-    [45, '#8e794e'],
-    [41, '#ffcf82']
+    [49, forest ? '#16343999' : '#52733270'],
+    [45, forest ? '#76604a' : '#8e794e'],
+    [41, forest ? '#d5a46c' : '#ffcf82']
   ] as const) {
     c.strokeStyle = color
     c.lineWidth = width * size
     c.stroke()
   }
-  c.strokeStyle = pattern(270, 113, 180, 24, sourceScale)
+  const sandstone = c.createLinearGradient(0, 0, canvas.width * 0.55, field.height)
+  sandstone.addColorStop(0, '#c99d72')
+  sandstone.addColorStop(0.45, '#e4b880')
+  sandstone.addColorStop(0.7, '#cea172')
+  sandstone.addColorStop(1, '#e1b079')
+  c.strokeStyle = forest ? sandstone : pattern(270, 113, 180, 24, sourceScale)
   c.lineWidth = 38 * size
   c.stroke()
+  if (forest) {
+    c.save()
+    c.globalAlpha = 0.32
+    c.strokeStyle = pattern(270, 113, 180, 24, sourceScale)
+    c.stroke()
+    c.restore()
+  }
   const length = pathLength(path)
   for (let d = 0; d < length; d += 7 * size) {
     const p = pointOnPath(path, d),
       q = pointOnPath(path, Math.min(length, d + 1))
     const angle = Math.atan2(q.y - p.y, q.x - p.x)
+    if (forest) {
+      c.save()
+      c.translate(p.x, p.y)
+      c.rotate(angle)
+      const offset = (random() - 0.5) * 24 * size
+      ellipse(c, 0, offset, (2 + random() * 9) * size, (1 + random() * 2) * size, '#9b66373b')
+      ellipse(c, 2 * size, offset - size, (2 + random() * 6) * size, size, '#f7dbac39')
+      if (random() < 0.14) {
+        ellipse(c, 0, offset + size, 4.2 * size, 2.5 * size, '#a6744e')
+        ellipse(c, -size, offset, 4 * size, 2 * size, '#e7c398')
+      }
+      c.restore()
+    }
     for (const side of [-1, 1]) {
-      const stone = { x: p.x - Math.sin(angle) * 21.5 * size * side, y: p.y + Math.cos(angle) * 21.5 * size * side }
+      if (forest && random() < 0.18) continue
+      const inset = (forest ? 20 + random() * 3 : 21.5) * size * side
+      const scatter = forest ? (random() - 0.5) * 4 * size : 0
+      const stone = {
+        x: p.x - Math.sin(angle) * inset + Math.cos(angle) * scatter,
+        y: p.y + Math.cos(angle) * inset + Math.sin(angle) * scatter
+      }
       if (distanceToPath(path, stone) < 20 * size) continue
       c.save()
       c.translate(stone.x, stone.y)
-      c.rotate(angle)
-      ellipse(c, 0, size, 3.2 * size, 2.2 * size, '#6b693f')
-      ellipse(c, 0, 0, (2.6 + random() * 0.6) * size, 1.7 * size, d % 3 < 1 ? '#e6dfb4' : '#cfcda6')
+      c.rotate(angle + (forest ? (random() - 0.5) * 0.85 : 0))
+      const stoneWidth = (forest ? 1.7 + random() * 2.4 : 3.2) * size
+      ellipse(c, 0, size, stoneWidth, 2.2 * size, forest ? '#594d3e' : '#6b693f')
+      ellipse(
+        c,
+        0,
+        0,
+        forest ? stoneWidth : (2.6 + random() * 0.6) * size,
+        1.7 * size,
+        forest ? (random() < 0.45 ? '#b2a283' : '#887862') : d % 3 < 1 ? '#e6dfb4' : '#cfcda6'
+      )
       c.restore()
     }
   }
-  const top = patch(290, 0, 850, 95, 8),
-    bottom = patch(0, 1005, 1050, 59, 8)
-  for (const [tile, y] of [
-    [top, 0],
-    [bottom, field.height - bottom.height * sourceScale]
-  ] as const)
-    for (let x = -20 * sourceScale; x < canvas.width; x += (tile.width - 20) * sourceScale)
-      c.drawImage(tile, x, y, tile.width * sourceScale, tile.height * sourceScale)
-  const left = patch(0, 420, 135, 500, 8),
-    right = patch(1375, 120, 103, 610, 8)
-  for (const [tile, x] of [
-    [left, 0],
-    [right, canvas.width - right.width * sourceScale]
-  ] as const)
-    for (let y = 30 * sourceScale; y < field.height; y += (tile.height - 20) * sourceScale)
-      c.drawImage(tile, x, y, tile.width * sourceScale, tile.height * sourceScale)
+  if (!forest) drawScenery()
+  function drawScenery() {
+    const feather = forest ? 29 : 8
+    const overlap = forest ? 50 : 20
+    const top = patch(290, 0, 850, 95, feather),
+      bottom = patch(0, 1005, 1050, 59, feather)
+    for (const [tile, y] of [
+      [top, 0],
+      [bottom, field.height - bottom.height * sourceScale]
+    ] as const)
+      for (let x = -overlap * sourceScale; x < canvas.width; x += (tile.width - overlap) * sourceScale)
+        c.drawImage(tile, x, y, tile.width * sourceScale, tile.height * sourceScale)
+    const left = patch(0, 420, 135, 500, feather),
+      right = patch(1375, 120, 103, 610, feather)
+    for (const [tile, x] of [
+      [left, 0],
+      [right, canvas.width - right.width * sourceScale]
+    ] as const)
+      for (let y = 30 * sourceScale; y < field.height; y += (tile.height - overlap) * sourceScale)
+        c.drawImage(tile, x, y, tile.width * sourceScale, tile.height * sourceScale)
 
-  for (const [x, y, width, height] of [
-    [628, 153, 100, 85],
-    [993, 276, 99, 82],
-    [438, 711, 115, 85],
-    [1256, 663, 110, 87]
-  ]) {
-    const tile = patch(x, y, width, height)
-    const px = ((x + width / 2) * field.width) / 1478,
-      py = ((y + height / 2) * field.height) / 1064
-    c.drawImage(
-      tile,
-      px * aspect - (width * sourceScale) / 2,
-      py - (height * sourceScale) / 2,
-      width * sourceScale,
-      height * sourceScale
-    )
+    for (const [x, y, width, height] of [
+      [628, 153, 100, 85],
+      [993, 276, 99, 82],
+      [438, 711, 115, 85],
+      [1256, 663, 110, 87]
+    ]) {
+      const tile = patch(x, y, width, height, forest ? 23 : 10)
+      const px = ((x + width / 2) * field.width) / 1478,
+        py = ((y + height / 2) * field.height) / 1064
+      c.drawImage(
+        tile,
+        px * aspect - (width * sourceScale) / 2,
+        py - (height * sourceScale) / 2,
+        width * sourceScale,
+        height * sourceScale
+      )
+    }
   }
   // Landmark crops are anchored to the traced entrance and castle, including after rotation.
-  for (const [x, y, width, height, anchor, pivotX, pivotY] of [
-    [0, 0, 280, 155, field.entrance, 104, 68],
-    [1235, 740, 243, 240, field.gate, 125, 200]
+  for (const [x, y, width, height, anchor, pivotX, pivotY, outline] of [
+    [
+      0,
+      0,
+      280,
+      155,
+      field.entrance,
+      104,
+      68,
+      'M0 0H280V85Q254 96 231 97Q198 96 172 103Q157 101 146 87L128 66Q112 66 101 77Q91 84 91 100L105 120Q88 132 81 143Q52 142 39 151L0 149Z'
+    ],
+    [
+      1235,
+      740,
+      243,
+      240,
+      field.gate,
+      125,
+      200,
+      'M0 187Q14 168 25 145Q29 112 48 83Q69 60 86 43L110 9Q138 1 157 14L191 0H243V240H116Q123 225 131 211L129 199L91 188Q81 197 67 199L0 199Z'
+    ]
   ] as const) {
-    const tile = patch(x, y, width, height, 8)
+    const tile = patch(x, y, width, height, 8, outline)
     c.drawImage(
       tile,
       anchor.x * aspect - pivotX * sourceScale,
@@ -1373,16 +1492,61 @@ export function createProjectedFieldArt(
       height * sourceScale
     )
   }
-  slowRoadSurface(c, field, PALETTES[fieldId], aspect, size)
+  if (forest) {
+    const portal = path[0],
+      mouth = pointOnPath(path, 63 * size)
+    const glow = c.createLinearGradient(portal.x, portal.y, mouth.x, mouth.y)
+    glow.addColorStop(0, '#44136beb')
+    glow.addColorStop(0.38, '#913b9fa0')
+    glow.addColorStop(1, '#913b9f00')
+    traceRoad(
+      c,
+      Array.from({ length: 10 }, (_, index) => pointOnPath(path, index * 7 * size))
+    )
+    c.strokeStyle = glow
+    c.lineWidth = 35 * size
+    c.stroke()
+  }
+  slowRoadSurface(c, field, PALETTES[fieldId], aspect, size, forest)
   if (fieldId !== 'meadow') {
-    const filter = {
-      desert: 'sepia(0.82) saturate(0.85) hue-rotate(338deg) brightness(1.05)',
-      frost: 'grayscale(0.7) sepia(0.22) hue-rotate(155deg) saturate(0.8) brightness(1.08)',
-      volcanic: 'grayscale(0.62) sepia(0.58) hue-rotate(320deg) saturate(1.15) brightness(0.74)'
-    }[fieldId]
-    c.filter = filter
-    c.drawImage(canvas, 0, 0)
-    c.filter = 'none'
+    if (typeof c.filter === 'string') {
+      c.filter = {
+        desert: 'sepia(0.82) saturate(0.85) hue-rotate(338deg) brightness(1.05)',
+        frost: 'grayscale(0.7) sepia(0.22) hue-rotate(155deg) saturate(0.8) brightness(1.08)',
+        volcanic: 'grayscale(0.62) sepia(0.58) hue-rotate(320deg) saturate(1.15) brightness(0.74)'
+      }[fieldId]
+      c.drawImage(canvas, 0, 0)
+      c.filter = 'none'
+    } else {
+      const [redMix, greenMix, blueMix] = {
+        desert: [
+          [0.523504, 0.763377, 0.116903],
+          [0.293413, 0.745989, 0.161199],
+          [0.315844, 0.495247, 0.272635]
+        ],
+        frost: [
+          [0.074091, 0.835627, 0.175726],
+          [0.300916, 0.762723, 0.07741],
+          [0.227833, 1.01339, -0.072993]
+        ],
+        volcanic: [
+          [0.326823, 0.646566, -0.001356],
+          [0.149196, 0.560742, 0.087219],
+          [0.224002, 0.388522, 0.157686]
+        ]
+      }[fieldId]
+      const pixels = c.getImageData(0, 0, canvas.width, canvas.height)
+      const { data } = pixels
+      for (let offset = 0; offset < data.length; offset += 4) {
+        const red = data[offset],
+          green = data[offset + 1],
+          blue = data[offset + 2]
+        data[offset] = redMix[0] * red + redMix[1] * green + redMix[2] * blue
+        data[offset + 1] = greenMix[0] * red + greenMix[1] * green + greenMix[2] * blue
+        data[offset + 2] = blueMix[0] * red + blueMix[1] * green + blueMix[2] * blue
+      }
+      c.putImageData(pixels, 0, 0)
+    }
   }
   return canvas
 }

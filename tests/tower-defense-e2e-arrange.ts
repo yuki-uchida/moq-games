@@ -37,8 +37,8 @@ export async function pointOnVisibleMap(page: Page, point: Point) {
     .evaluate(async () => {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     })
-  const bounds = await page.locator('#field canvas').first().boundingBox()
-  if (!bounds) throw new Error('The battle canvas is not visible')
+  const bounds = await page.locator('#field').boundingBox()
+  if (!bounds) throw new Error('The battlefield is not visible')
   const dimensions = await page.locator('#field').evaluate((element) => ({
     width: Number((element as HTMLElement).dataset.worldWidth ?? 1280),
     height: Number((element as HTMLElement).dataset.worldHeight ?? 960)

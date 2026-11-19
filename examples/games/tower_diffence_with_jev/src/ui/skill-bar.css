@@ -1,24 +1,29 @@
-/* One-tap skill bar: bottom-center during the assault. The container ignores the pointer so
-   unit drags, map panning and handles keep working around it; only the buttons are hit targets. */
 .skill-bar {
-  --skill-size: 56px;
-  position: fixed;
-  z-index: 8;
-  left: 50%;
-  bottom: max(10px, env(safe-area-inset-bottom));
-  transform: translateX(-50%);
-  width: max-content;
   display: flex;
-  flex-wrap: wrap-reverse;
-  justify-content: center;
   align-items: center;
-  gap: 8px;
-  max-width: min(calc(100vw - 2 * (92px + env(safe-area-inset-left))), 640px);
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: #14281fa6;
+  min-width: 0;
+  max-width: 100%;
+  height: var(--skill-bar-height);
+  gap: 4px;
+  padding-inline: 3px 6px;
+  border: 1px solid var(--battle-metal);
+  border-radius: 10px;
+  background: var(--battle-teal);
   box-shadow: 0 2px 12px #0d1d1659;
-  pointer-events: none;
+  pointer-events: auto;
+}
+.skill-scroll {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  padding: 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--battle-metal) transparent;
+  touch-action: pan-x pinch-zoom;
 }
 .skill-bar[hidden] {
   display: none;
@@ -45,6 +50,7 @@
   color: #fff8df;
   font: inherit;
   cursor: pointer;
+  touch-action: pan-x pinch-zoom;
 }
 .skill-btn img {
   position: absolute;
@@ -186,9 +192,9 @@
   outline-offset: 3px;
 }
 .skill-name {
-  position: absolute;
-  bottom: calc(100% + 10px);
-  left: 50%;
+  position: fixed;
+  z-index: 1;
+  bottom: var(--battle-field-bottom);
   transform: translateX(-50%);
   padding: 4px 9px;
   border-radius: 8px;
@@ -238,21 +244,6 @@
     box-shadow: 0 0 16px 5px #ffe9a8f2;
   }
 }
-@media (max-width: 600px) {
-  .skill-bar {
-    --skill-size: 48px;
-    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 38px);
-    gap: 6px;
-    max-width: calc(100vw - 16px);
-  }
-}
-@media (max-height: 500px) {
-  .skill-bar {
-    --skill-size: 48px;
-    gap: 6px;
-    padding: 4px 8px;
-  }
-}
 @media (prefers-reduced-motion: reduce) {
   .skill-btn[data-state='ready']:not([data-target-count='0']) {
     animation: none;
@@ -289,8 +280,8 @@
   gap: clamp(12px, 3vw, 32px);
   padding-left: 14%;
   box-sizing: border-box;
-  background: linear-gradient(100deg, #10241ad9 0%, #1e4a38e6 55%, #3a6e4ecc 100%);
-  border-block: 3px solid #ffd96a;
+  background: var(--battle-teal);
+  border-block: 2px solid var(--battle-metal);
   box-shadow: 0 0 28px #0008;
 }
 .skill-cutin[data-side='top'] .skill-cutin-band {
@@ -393,10 +384,10 @@
     --band-h: 70px;
   }
   .skill-cutin[data-side='top'] .skill-cutin-band {
-    top: 56px;
+    top: 112px;
   }
   .skill-cutin[data-side='bottom'] .skill-cutin-band {
-    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 66px);
+    bottom: calc(var(--battle-bottom) + 120px);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -417,22 +408,4 @@
 /* The bar shows the cooldown, so the per-unit "✦ N" chip is redundant during the assault. */
 .battle-special-status {
   display: none;
-}
-
-/* Narrow layouts park the battle coins and the speed toggle bottom-left; while the skill bar is
-   showing, lift them just above it so neither covers the other. */
-@media (max-width: 1179px) {
-  #app:has(#skill-bar:not([hidden])) .bhud-side {
-    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 76px);
-  }
-}
-@media (max-width: 1179px) and (max-height: 500px) {
-  #app:has(#skill-bar:not([hidden])) .bhud-side {
-    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 64px);
-  }
-}
-@media (max-width: 600px) {
-  #app:has(#skill-bar:not([hidden])) .bhud-side {
-    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 106px);
-  }
 }

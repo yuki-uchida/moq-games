@@ -8,14 +8,19 @@ import { GAME_MODEL_PRESENTATION_SCALE } from './BattlefieldPresentation'
 export const MODEL_DEPTH_RADIUS = 2 * 128
 export const MODEL_BOSS_SCALE = 1.35
 export const MODEL_GROUND_DEPTH_OFFSET = 4
+export const COMPACT_BOARD_TOP_BLEED = 88
 export const modelGroundDepth = (y: number): number => y / 10 + MODEL_GROUND_DEPTH_OFFSET
 
-export function configureBoardCamera(camera: THREE.OrthographicCamera, field: { width: number; height: number }): void {
+export function configureBoardCamera(
+  camera: THREE.OrthographicCamera,
+  field: { width: number; height: number },
+  topBleed = 0
+): void {
   const animatedRadius = MODEL_DEPTH_RADIUS * MODEL_BOSS_SCALE * GAME_MODEL_PRESENTATION_SCALE
   camera.left = 0
   camera.right = field.width
-  camera.top = 0
-  camera.bottom = field.height
+  camera.top = field.height
+  camera.bottom = -topBleed
   // The camera looks down -Z: its near plane contains the highest world Z.
   // Derive this from the current field, including retained 1,440-unit layouts.
   camera.near = -(modelGroundDepth(field.height) + animatedRadius)

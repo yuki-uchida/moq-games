@@ -14,6 +14,9 @@ await page.goto(`${process.env.TOWER_E2E_BASE_URL ?? 'http://127.0.0.1:5183'}/mo
 await page.evaluate(async () => {
   const base = '/moq-games/examples/games/tower_diffence_with_jev/src/',
     T = await import('/moq-games/node_modules/.vite/deps/three.js'),
+    { createBoardCamera } = await import(base + 'rendering/BoardCamera.ts'),
+    { drawBoardCanvas } = await import(base + 'rendering/BoardCanvas.ts'),
+    { createBattlefieldModelLighting } = await import(base + 'rendering/ModelEnvironmentLighting.ts'),
     { ModelAssetCache } = await import(base + 'rendering/ModelAssetCache.ts'),
     { ModelUnitVisual } = await import(base + 'rendering/ModelUnitVisual.ts'),
     { UNIT_MODEL_CATALOG } = await import(base + 'rendering/models/catalog.ts')
@@ -27,15 +30,10 @@ await page.evaluate(async () => {
   ]
   const scene = new T.Scene()
   scene.background = new T.Color('#60785e')
-  const camera = new T.OrthographicCamera(0, 1000, 0, 1500, 0.1, 2000)
-  camera.position.z = 1000
+  const camera = createBoardCamera({ width: 1000, height: 1500 })
   const renderer = new T.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
   renderer.setSize(1000, 1500)
-  document.body.append(renderer.domElement)
-  scene.add(new T.HemisphereLight(0xf4ffe3, 0x244352, 2.5))
-  const light = new T.DirectionalLight(0xffe0ad, 3)
-  light.position.set(-120, -240, 100)
-  scene.add(light)
+  createBattlefieldModelLighting(scene, renderer).ensure(renderer)
   const cache = new ModelAssetCache(undefined, Infinity),
     actors = []
   for (let row = 0; row < specs.length; row++) {
@@ -74,7 +72,7 @@ await page.evaluate(async () => {
         throw Error('Not ready')
     }
     renderer.render(scene, camera)
-    ctx.drawImage(renderer.domElement, 0, 0)
+    drawBoardCanvas(ctx, renderer.domElement)
     ctx.fillStyle = 'white'
     ctx.font = '15px monospace'
     for (let i = 0; i < specs.length; i++)

@@ -10,6 +10,7 @@ import {
 import { UNIT_MODEL_CATALOG } from '../examples/games/tower_diffence_with_jev/src/rendering/models/catalog'
 import {
   configureBoardCamera,
+  COMPACT_BOARD_TOP_BLEED,
   createBoardCamera,
   MODEL_DEPTH_RADIUS,
   MODEL_BOSS_SCALE,
@@ -33,6 +34,40 @@ const fields = Object.keys(FIELDS).flatMap((id) => [
   getField(id as keyof typeof FIELDS, 2, 4)
 ])
 
+it('renders above the compact board without shifting board coordinates', () => {
+  const field = getField('meadow', 2, 4)
+  const camera = createBoardCamera(field)
+  configureBoardCamera(camera, field, COMPACT_BOARD_TOP_BLEED)
+  const backingHeight = field.height + COMPACT_BOARD_TOP_BLEED
+  const boardY = (y: number) =>
+    ((1 + new THREE.Vector3(0, y, 0).project(camera).y) * backingHeight) / 2 - COMPACT_BOARD_TOP_BLEED
+  expect(boardY(-80)).toBeCloseTo(-80)
+  expect(boardY(0)).toBeCloseTo(0)
+  expect(boardY(field.height)).toBeCloseTo(field.height)
+  expect(new THREE.Vector3(0, -80, 0).project(camera).y).toBeGreaterThan(-1)
+})
+
+it('keeps outward mesh triangles front-facing in the framebuffer at every heading', () => {
+  const camera = createBoardCamera(fields[0])
+  camera.updateMatrixWorld()
+  const box = new THREE.BoxGeometry().toNonIndexed()
+  const positions = box.getAttribute('position')
+  for (const heading of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+    const rotation = new THREE.Matrix4().makeRotationY(heading)
+    for (let index = 0; index < positions.count; index += 3) {
+      const [origin, right, up] = [index, index + 1, index + 2].map((vertex) =>
+        new THREE.Vector3().fromBufferAttribute(positions, vertex).applyMatrix4(rotation)
+      )
+      const facing = right.clone().sub(origin).cross(up.clone().sub(origin)).z
+      if (Math.abs(facing) < 1e-6) continue
+      origin.project(camera)
+      right.project(camera)
+      up.project(camera)
+      expect(Math.sign(right.sub(origin).cross(up.sub(origin)).z)).toBe(Math.sign(facing))
+    }
+  }
+})
+
 it('updates field-derived depth while preserving the board XY projection on all retained layouts', () => {
   const camera = createBoardCamera(fields[0])
   for (const field of fields) {
@@ -45,7 +80,7 @@ it('updates field-derived depth while preserving the board XY projection on all 
       const old = position.clone().project(previous)
       const projected = position.clone().project(camera)
       expect(projected.x).toBe(old.x)
-      expect(projected.y).toBe(old.y)
+      expect(-projected.y).toBe(old.y)
       for (const z of [
         modelGroundDepth(y) - MODEL_DEPTH_RADIUS * MODEL_BOSS_SCALE * GAME_MODEL_PRESENTATION_SCALE,
         modelGroundDepth(y) + MODEL_DEPTH_RADIUS * MODEL_BOSS_SCALE * GAME_MODEL_PRESENTATION_SCALE
