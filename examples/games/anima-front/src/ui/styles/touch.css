@@ -271,7 +271,7 @@
   font-weight: 700;
 }
 .touch .hud-feed {
-  right: calc(120px + var(--safe-r));
+  right: calc(128px + var(--safe-r));
 }
 
 /* On narrow touch screens the score, objective and optional boss bar share the feed's column. */
@@ -283,8 +283,13 @@
     margin-inline: auto;
   }
   .touch .hud-top {
+    width: min(340px, calc(100vw - 240px));
     margin-top: calc(var(--hud-pad-y) + var(--safe-t));
     transform: none;
+  }
+  .touch .top-wave {
+    white-space: nowrap;
+    flex-shrink: 0;
   }
   .touch .hud-feed {
     align-items: center;
@@ -307,6 +312,60 @@
   .touch .feed-row {
     gap: 4px;
     padding: 2px 6px;
+  }
+}
+@media (orientation: landscape) and (max-width: 1024px) and (max-height: 380px) {
+  /* Compact top objective, boss bar and kill feed so two feed rows clear the centre ±32 px reticle on 568×320. */
+  .touch .hud-top {
+    margin-top: calc(6px + var(--safe-t));
+    gap: 3px;
+  }
+  .touch .top-pve {
+    padding: 3px 10px;
+    gap: 2px;
+  }
+  .touch .top-line {
+    gap: 6px;
+    max-width: 100%;
+  }
+  .touch .top-wave {
+    font-size: 10px;
+  }
+  .touch .top-label {
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .touch .top-bar {
+    height: 4px;
+  }
+  .touch .top-sub {
+    font-size: 10px;
+    line-height: 1.15;
+  }
+  .touch .top-boss {
+    gap: 2px;
+  }
+  .touch .boss-head {
+    line-height: 1.1;
+  }
+  .touch .boss-head small {
+    font-size: 9px;
+  }
+  .touch .boss-name {
+    font-size: 13px;
+  }
+  .touch .boss-bar {
+    height: 7px;
+  }
+  .touch .hud-feed {
+    margin-top: 2px;
+    gap: 2px;
+  }
+  .touch .feed-row {
+    padding: 1px 6px;
+    line-height: 1.2;
   }
 }
 
