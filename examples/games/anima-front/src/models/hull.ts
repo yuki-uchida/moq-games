@@ -112,11 +112,8 @@ export function hullDepthMaterial(): THREE.MeshDepthMaterial {
   return m
 }
 
-let noShadow: THREE.MeshDepthMaterial | null = null
-
-/** Depth material that casts no shadow at all (separate outline meshes, glow cards); shared, never dispose. */
+/** Depth material that casts no shadow at all (separate outline meshes, glow cards); caller owns and disposes it. */
 export function noShadowDepthMaterial(): THREE.MeshDepthMaterial {
-  if (noShadow) return noShadow
   const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking })
   m.onBeforeCompile = (shader) => {
     // A data-dependent discard: with an unconditional one the compiler drops the colour output (GL warnings).
@@ -126,6 +123,5 @@ export function noShadowDepthMaterial(): THREE.MeshDepthMaterial {
     )
   }
   m.customProgramCacheKey = () => 'anima-no-shadow-2'
-  noShadow = m
   return m
 }

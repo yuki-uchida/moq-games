@@ -78,6 +78,7 @@ export class PostChain {
   readonly composer: EffectComposer
   private readonly renderPass: RenderPass
   private readonly bloom: UnrealBloomPass
+  private readonly output: OutputPass
   private readonly grade: ShaderPass
   private readonly aa: ShaderPass | SMAAPass | null
   private readonly target: THREE.WebGLRenderTarget
@@ -105,7 +106,8 @@ export class PostChain {
     sanitizeBloomInput(this.bloom)
     this.bloom.enabled = bloomOn
     this.composer.addPass(this.bloom)
-    this.composer.addPass(new OutputPass())
+    this.output = new OutputPass()
+    this.composer.addPass(this.output)
     this.grade = new ShaderPass(GradeShader)
     this.composer.addPass(this.grade)
     if (preset.aa === 'smaa') this.aa = new SMAAPass()
@@ -156,6 +158,8 @@ export class PostChain {
   dispose() {
     this.composer.dispose()
     this.bloom.dispose()
+    this.output.dispose()
+    this.grade.dispose()
     this.target.dispose()
     if (this.aa && 'dispose' in this.aa) this.aa.dispose()
   }

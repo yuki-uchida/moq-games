@@ -61,6 +61,7 @@ export function createTurntable(kit: ModelKit, o: { className?: string; distance
     }
     if (foe) {
       for (const m of foe.meshes) pivot.remove(m)
+      for (const part of foe.rig.parts) part.material.dispose()
       foe.boss?.dispose()
       foe = null
     }

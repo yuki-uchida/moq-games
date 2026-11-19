@@ -294,6 +294,7 @@ export function createCharacterModel(
     dispose() {
       for (const h of [0, 1] as const) setItem(h, null)
       material.dispose()
+      body.customDepthMaterial?.dispose()
       eyeMat.dispose()
       skeleton.dispose()
       root.removeFromParent()

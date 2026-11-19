@@ -632,9 +632,14 @@ export function createGameScreen(ctx: AppContext, args: RouteArgs['game']): Scre
       stopMembers()
       document.removeEventListener('pointerlockchange', onLockChange)
       km?.dispose()
+      km = null
       touch?.dispose()
+      touch = null
       session?.dispose()
+      session = null
       renderer?.dispose()
+      renderer = null
+      view = null
       ctx.audio.setDuck(0)
     },
     back() {

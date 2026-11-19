@@ -120,6 +120,7 @@ export function createPropModel(asset: PropAsset): PropModelExt {
   const hullDepth = fu ? hullDepthMaterial() : null
   if (hullDepth) materials.push(hullDepth)
   const noShadow = noShadowDepthMaterial()
+  materials.push(noShadow)
 
   const parts: Record<string, THREE.Group> = {}
   for (const { part, baked } of asset.parts) {

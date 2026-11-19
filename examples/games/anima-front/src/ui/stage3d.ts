@@ -5,6 +5,7 @@
 import * as THREE from 'three'
 import type { ItemId } from '../data/items'
 import type { CharacterPose, HandPose } from '../models/api'
+import { guardWebGLRenderer } from '../models/renderer-guard'
 
 export interface Stage {
   readonly renderer: THREE.WebGLRenderer
@@ -26,6 +27,7 @@ export function createStage(
     alpha: o.alpha ?? false,
     powerPreference: 'low-power'
   })
+  const release = guardWebGLRenderer(renderer)
   renderer.outputColorSpace = THREE.SRGBColorSpace
   renderer.toneMapping = THREE.ACESFilmicToneMapping
   renderer.toneMappingExposure = 1.05
@@ -62,12 +64,22 @@ export function createStage(
       renderer.render(scene, camera)
     },
     dispose() {
+      if (scene.background instanceof THREE.Texture) scene.background.dispose()
+      const mats = new Set<THREE.Material>()
       scene.traverse((obj) => {
         const mesh = obj as THREE.Mesh
         if (mesh.geometry) mesh.geometry.dispose()
+        const m = mesh.material
+        if (Array.isArray(m)) m.forEach((x) => mats.add(x))
+        else if (m) mats.add(m)
       })
-      renderer.dispose()
-      renderer.forceContextLoss?.()
+      for (const m of mats) {
+        const map = (m as THREE.MeshBasicMaterial).map
+        if (map) map.dispose()
+        m.dispose()
+      }
+      scene.clear()
+      release()
     }
   }
 }

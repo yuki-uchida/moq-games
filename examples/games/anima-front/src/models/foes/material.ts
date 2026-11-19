@@ -112,8 +112,6 @@ export function createFoeUniforms(look: FoeLook = CREATURE_LOOK): FoeUniforms {
   }
 }
 
-let emptyRegions: THREE.DataTexture | null = null
-
 const VERTEX_PARS = /* glsl */ `
 attribute vec4 animaMask;
 attribute vec4 markColor;
@@ -237,9 +235,16 @@ export function createFoeMaterial(
   opts: { hull?: boolean; side?: THREE.Side } = {}
 ): THREE.MeshToonMaterial {
   const m = new THREE.MeshToonMaterial({ vertexColors: true, color: 0xffffff, side: opts.side ?? THREE.FrontSide })
-  emptyRegions ??= new THREE.DataTexture(new Float32Array(4), 1, 1, THREE.RGBAFormat, THREE.FloatType)
+  const ownEmpty = regions ? null : new THREE.DataTexture(new Float32Array(4), 1, 1, THREE.RGBAFormat, THREE.FloatType)
+  if (ownEmpty) {
+    const onDispose = () => {
+      m.removeEventListener('dispose', onDispose)
+      ownEmpty.dispose()
+    }
+    m.addEventListener('dispose', onDispose)
+  }
   const ru = {
-    uRegions: { value: regions?.texture ?? emptyRegions },
+    uRegions: { value: regions?.texture ?? ownEmpty! },
     uRegionCount: { value: regions?.count ?? 0 },
     uShapeBase: { value: regions?.shapeBase ?? 0 }
   }
