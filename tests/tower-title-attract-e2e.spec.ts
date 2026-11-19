@@ -104,6 +104,12 @@ test('reduced motion keeps the still title and downloads no battle models', asyn
   await page.goto(towerPath)
   await expect(page.locator('#title-screen')).toBeVisible()
   await page.waitForTimeout(4000)
+  const landscape = await page.locator('#title-landscape').evaluate((canvas: HTMLCanvasElement) => {
+    const c = canvas.getContext('2d')!
+    return [50, 510].map((y) => [...c.getImageData(canvas.width / 2, y, 1, 1).data])
+  })
+  expect(landscape.every((pixel) => pixel[3] === 255)).toBe(true)
+  expect(landscape[0]).not.toEqual(landscape[1])
   expect(models).toEqual([])
   expect((await attract(page)).state).toBe('idle')
   await expect(page.locator('.title-demo')).toHaveCount(0)

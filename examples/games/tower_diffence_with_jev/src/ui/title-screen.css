@@ -1,4 +1,8 @@
 .title-screen {
+  --title-ivory: #fff0cf;
+  --title-gold: #dcb977;
+  --title-green: #092823;
+  --title-frame: clamp(9px, 1.5vmin, 18px);
   position: fixed;
   inset: 0;
   width: 100%;
@@ -6,176 +10,297 @@
   max-width: none;
   max-height: none;
   margin: 0;
-  padding: 0;
+  padding: var(--title-frame);
   border: 0;
   border-radius: 0;
-  background: #102c26;
-  color: #f5eddc;
+  background: var(--title-green);
+  color: var(--title-ivory);
   overflow: auto;
   isolation: isolate;
 }
-.title-screen::backdrop {
-  background: #102c26;
+
+.title-screen[open] {
+  display: grid;
+  grid-template-columns: minmax(0, 41fr) minmax(0, 59fr);
+  grid-template-rows: 1fr 1fr;
 }
-.title-screen a {
+
+.title-screen::backdrop {
+  background: #092823;
+}
+
+.title-screen::after {
+  content: '';
+  position: absolute;
+  inset: var(--title-frame);
+  border: 1px solid #dcb97780;
+  outline: 1px solid #dcb97738;
+  outline-offset: -5px;
+  pointer-events: none;
+}
+
+.title-topline {
+  position: absolute;
+  z-index: 2;
+  inset: calc(var(--title-frame) + 8px) auto auto calc(var(--title-frame) + 8px);
+}
+
+.title-topline a {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid #dcb97780;
+  border-radius: 50%;
+  background: #092823;
   color: inherit;
   text-decoration: none;
 }
-.title-topline {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 20px;
-  padding: 30px 5vw;
-  font:
-    600 11px/1.5 system-ui,
-    sans-serif;
-  letter-spacing: 0.14em;
+
+.title-screen :is(#game-title, .title-content) {
+  z-index: 1;
+  width: min(100%, 565px);
+  padding-inline: clamp(28px, 6vw, 100px) 0;
+  justify-self: end;
 }
-.title-topline a {
-  font-size: 15px;
-  letter-spacing: 0;
-  padding: 8px 0;
-}
+
 .title-content {
   position: relative;
-  z-index: 2;
-  width: 59%;
-  min-height: 650px;
-  padding: 7vh 0 6vh 9vw;
+  grid-area: 2 / 1;
+  align-self: start;
 }
-#game-title {
+
+.title-screen #game-title {
+  grid-area: 1 / 1;
+  align-self: end;
   margin: 0;
-  color: #f6efd9;
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: clamp(44px, 5.7vw, 92px);
-  line-height: 1;
-  font-weight: 400;
-  letter-spacing: -0.05em;
+  color: var(--title-ivory);
+  font-family: 'Hiragino Mincho ProN', 'Yu Mincho', Georgia, serif;
+  font-size: clamp(38px, 6vw, 104px);
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: -0.065em;
+  text-shadow: 0 3px #23231a, 0 6px 26px #031d18;
 }
-#game-title span {
-  font-style: italic;
-  color: #ddbb69;
+
+.title-screen #game-title span {
+  color: var(--title-gold);
 }
+
 .title-menu {
-  margin-top: 32px;
-  width: min(350px, 90%);
   display: grid;
-  gap: 9px;
+  gap: 8px;
+  width: min(100%, 340px);
+  margin-top: clamp(15px, 4vh, 38px);
+  padding-top: 13px;
+  border-top: 1px solid #dcb97780;
+  position: relative;
 }
-.title-menu button,
-.title-menu a {
+
+.title-menu::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: 0;
+  width: 7px;
+  height: 7px;
+  transform: rotate(45deg);
+  background: var(--title-gold);
+}
+
+.title-menu button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 57px;
-  padding: 14px 21px;
-  background: #183d31;
-  color: #f3ecd9;
-  border: 1px solid #66807177;
-  border-radius: 3px;
-  font:
-    500 17px/1.5 system-ui,
-    sans-serif;
+  min-height: 48px;
+  padding: 9px 16px;
+  border: 1px solid #dcb9779c;
+  border-radius: 2px;
+  background: #173e34;
+  color: var(--title-ivory);
+  font: 650 16px/1.35 system-ui, sans-serif;
   text-align: left;
+  cursor: pointer;
 }
-.title-menu button.title-menu-primary {
-  background: #ddbb69;
-  border-color: #ddbb69;
-  color: #17382a;
+
+.title-menu .title-menu-primary {
+  background: linear-gradient(#f3deb0, #d4a559);
+  color: #142a21;
+  box-shadow: inset 0 0 0 2px #61462845;
 }
+
 .title-menu button:hover:not(:disabled),
-.title-menu a:hover {
-  background: #2b5140;
-  color: #fff6df;
-  border-color: #ddbb69;
+.title-topline a:hover {
+  background: #ffebbc;
+  color: #142a21;
 }
+
 .title-menu button:disabled {
-  background: #18372e;
-  color: #8b9d90;
-  opacity: 0.62;
+  background: #17362f;
+  color: #a6baac;
+  border-color: #9da98a58;
+  opacity: 1;
+  cursor: default;
 }
+
+.title-screen :is(button, a):focus-visible {
+  outline: 3px solid var(--title-ivory);
+  outline-offset: 3px;
+}
+
 .title-save-status {
-  color: #a8b9a9;
-  max-width: 350px;
-  font-size: 11px;
-  line-height: 1.8;
-  margin: 14px 0 0;
+  max-width: 340px;
+  margin: 9px 0 0;
+  color: #e0d7b8;
+  font: 500 12px/1.5 system-ui, sans-serif;
 }
+
+.title-save-status.sr-only {
+  inset: 1px auto auto 1px;
+}
+
 .title-atmosphere {
   position: absolute;
   inset: 0;
   z-index: -1;
-  overflow: hidden;
   background:
-    radial-gradient(ellipse at 78% 38%, #52745366 0, transparent 48%), linear-gradient(125deg, #112d26, #183b2c);
+    radial-gradient(ellipse at 72% 38%, #d1b576 0, #9d9a67 13%, #4d745d 34%, transparent 63%),
+    linear-gradient(114deg, #082d29, #142e26 62%, #09251f);
 }
-.title-orbit {
-  position: absolute;
-  width: 54vw;
-  height: 54vw;
-  right: -4vw;
-  top: 4vh;
-  border: 1px solid #a9a86e33;
-  border-radius: 50%;
-  box-shadow:
-    0 0 0 55px #92a05c08,
-    0 0 0 110px #92a05c06;
-}
-.title-hill {
-  position: absolute;
-  width: 120%;
-  height: 45%;
-  bottom: -20%;
-  border-radius: 50%;
-  background: #244938;
-  transform: rotate(-9deg);
-}
-.title-hill-front {
-  background: #0b231c;
-  bottom: -30%;
-  left: 22%;
-  transform: rotate(11deg);
-}
+
 .title-party {
-  position: absolute;
-  width: 44%;
-  right: 0;
-  top: 22%;
-  height: 60%;
+  position: relative;
+  grid-area: 1 / 2 / span 2;
+  align-self: center;
+  justify-self: center;
+  width: min(100%, 107vh);
+  aspect-ratio: 1.14;
+  overflow: clip;
   pointer-events: none;
 }
-.title-party-halo {
+
+.title-landscape {
   position: absolute;
-  inset: 9% 9% 0 0;
-  border-radius: 50%;
-  background: radial-gradient(ellipse, #acb36e35, transparent 64%);
+  inset: 1% 2% 9%;
+  overflow: hidden;
+  border: 1px solid #f3dca880;
+  border-radius: 48% 48% 2% 2% / 56% 56% 2% 2%;
+  background:
+    radial-gradient(ellipse at 51% 35%, #f7e4b2bb, #c2ac7066 39%, transparent 72%),
+    linear-gradient(145deg, #122d2577, transparent 64%, #123830a6);
+  box-shadow: inset 0 0 0 5px #152e283b, 0 0 0 5px #dcb97722;
 }
+
+.title-landscape canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.title-ground {
+  position: absolute;
+  inset: 54% 2% 0;
+  border-radius: 50% 50% 8% 8% / 28% 28% 10% 10%;
+  background:
+    radial-gradient(ellipse 13% 6% at 50% 72%, #081a15 5%, #10251dd9 54%, transparent 100%),
+    radial-gradient(ellipse 13% 6% at 22% 41%, #0b251cdc 15%, transparent 100%),
+    radial-gradient(ellipse 14% 6% at 78% 41%, #0b251cdc 15%, transparent 100%),
+    radial-gradient(ellipse 68% 52% at 52% 47%, #8b7c50, #475a3c 66%, transparent 100%),
+    radial-gradient(ellipse 75% 71% at 50% 20%, #234d3d 36%, #092823 78%, transparent 99%);
+}
+
 .title-character {
   position: absolute;
-  object-fit: contain;
-  width: 52%;
-  filter: drop-shadow(0 24px 13px #071c1999);
-  image-rendering: pixelated;
+  width: 65%;
+  max-width: none;
+  top: 12%;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 6px 10px #10271c99);
 }
-.title-soldier {
-  top: 24%;
-  left: 11%;
-  width: 66%;
-  z-index: 2;
-  transform: rotate(-6deg);
-}
+
 .title-archer {
-  top: 4%;
-  left: -10%;
-  transform: rotate(-12deg);
+  left: 23%;
 }
+
 .title-mage {
-  top: 9%;
-  right: 0;
-  transform: rotate(9deg);
+  left: 76%;
+  top: 15%;
+}
+
+.title-soldier {
+  width: 99%;
+  left: 48%;
+  top: -3%;
+}
+
+.title-screen[data-attract='running'] .title-atmosphere {
+  background:
+    radial-gradient(ellipse at 72% 47%, transparent 28%, #0928239c 100%),
+    linear-gradient(90deg, #082823f5 4%, #082823d9 33%, #153b3455 63%, #08282355);
+}
+
+.title-screen[data-attract='running'] .title-landscape {
+  background: transparent;
+}
+
+.title-screen[data-attract='running'] .title-landscape canvas {
+  opacity: 0.2;
+}
+
+@media (max-width: 700px) and (orientation: portrait) {
+  .title-screen[open] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .title-atmosphere {
+    background:
+      radial-gradient(ellipse at 50% 28%, #d1b576, #8d9063 20%, #406a55 40%, transparent 68%),
+      #092823;
+  }
+
+  .title-party {
+    grid-area: 2 / 1;
+    width: min(100%, calc((100dvh - 295px) * 1.14));
+  }
+
+  .title-screen :is(#game-title, .title-content) {
+    justify-self: center;
+    padding-inline: max(17px, 5vw);
+    text-align: center;
+  }
+
+  .title-content {
+    grid-area: 3 / 1;
+    padding-bottom: clamp(16px, 5vh, 48px);
+  }
+
+  .title-screen #game-title {
+    font-size: clamp(28px, 10vw, 62px);
+    padding-top: clamp(62px, 14vh, 130px);
+  }
+
+  .title-screen #game-title br {
+    display: none;
+  }
+
+  .title-menu {
+    margin: 0 auto;
+  }
+
+  .title-menu::before {
+    left: calc(50% - 3px);
+  }
+
+  .title-save-status {
+    margin-inline: auto;
+  }
+
+  .title-screen[data-attract='running'] .title-atmosphere {
+    background:
+      radial-gradient(ellipse at 50% 40%, transparent 24%, #09282385 100%),
+      linear-gradient(#082823bf, #082823df 18%, #08282385 36%, #08282385 60%, #082823f5 78%);
+  }
 }
 .title-return {
   margin-right: auto;
@@ -185,51 +310,6 @@
 #settings .trial-art-tools,
 #settings .enemy-trial-art-tools {
   display: none;
-}
-@media (max-width: 700px) {
-  .title-topline {
-    padding: 18px 6vw;
-  }
-  .title-content {
-    padding: 180px 8vw 20px;
-    width: 100%;
-    min-height: 0;
-  }
-  #game-title {
-    font-size: clamp(42px, 10vw, 66px);
-  }
-  .title-party {
-    top: 55px;
-    right: 9%;
-    width: 54%;
-    height: 190px;
-  }
-  .title-character {
-    width: 40%;
-  }
-  .title-soldier {
-    width: 53%;
-    top: 15%;
-  }
-  .title-mage {
-    right: 8%;
-  }
-  .title-menu {
-    width: 100%;
-  }
-  .title-save-status {
-    max-width: 100%;
-  }
-}
-@media (prefers-reduced-motion: no-preference) {
-  .title-soldier {
-    animation: title-breathe 5s ease-in-out infinite;
-  }
-  @keyframes title-breathe {
-    50% {
-      transform: translateY(-8px) rotate(-4deg);
-    }
-  }
 }
 @media (max-width: 420px) {
   .topbar {
@@ -252,26 +332,6 @@
   }
 }
 
-/* Keep the main action and keyboard focus clear against the title artwork. */
-.title-screen :is(button, a):focus-visible {
-  outline: 3px solid #fff4c9;
-  outline-offset: 3px;
-}
-.title-menu button,
-.title-menu a,
-.title-topline a {
-  cursor: pointer;
-}
-.title-topline a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  min-width: 44px;
-}
-.title-menu button.title-menu-primary:hover:not(:disabled) {
-  background: #f0ce7b;
-  color: #102c26;
-}
 .launch-help {
   margin-top: 12px;
 }
@@ -296,18 +356,6 @@
   outline-offset: 3px;
 }
 
-/* The source portraits are only 52–70px wide; avoid enormous nearest-neighbour pixels. */
-.title-character {
-  image-rendering: auto;
-  max-width: 160px;
-}
-.title-soldier {
-  max-width: 200px;
-}
-@media (max-width: 700px) {
-  .title-character { max-width: 100px; }
-  .title-soldier { max-width: 125px; }
-}
 @media (max-height: 900px) {
   .launch { padding: 16px 24px; }
   .launch .kingdom-crest { width: 48px; height: 42px; margin: 0 auto; }
@@ -321,11 +369,6 @@
 .jev-ui { display: none !important; }
 
 .unused-navigation { display: none !important; }
-@media (min-width: 701px) {
-  .title-party { width: 330px; right: 9vw; }
-  .title-archer { left: 0; }
-  .title-soldier { left: 22%; }
-}
 @media (max-height: 600px) {
   .launch { position: fixed; padding: 8px 16px; }
   .launch .title-return { position: absolute; top: 8px; left: 16px; }
@@ -353,16 +396,6 @@
 }
 @media (max-height: 600px) {
   .settings { padding-block: 6px; }
-}
-@media (min-width: 701px) and (max-height: 600px) {
-  .title-topline { padding-block: 2px; }
-  .title-content { min-height: 0; padding-block: 0 8px; }
-  .title-menu { margin-top: 12px; gap: 5px; }
-  .title-menu button, .title-menu a { min-height: 44px; padding-block: 8px; }
-}
-@media (max-width: 420px) and (max-height: 600px) {
-  .title-content { padding-top: 158px; }
-  .title-party { top: 42px; height: 155px; }
 }
 
 .floating-tray .unit.page-away { display: none; }
@@ -394,21 +427,6 @@
 .upgrade-row[hidden] { display: none !important; }
 .result-note small { font-size: 12px; line-height: 1.4; }
 
-/* Title-only 1024px renders retain their transparent framing. */
-.title-character { max-width: none; width: 105%; }
-.title-soldier { max-width: none; width: 125%; left: 6%; top: 16%; }
-.title-archer { left: -25%; top: -6%; }
-.title-mage { right: -22%; top: -4%; }
-@media (max-width: 700px) {
-  .title-character { width: 75%; }
-  .title-soldier { width: 90%; left: 0; top: 5%; }
-  .title-archer { left: -18%; top: 0; }
-  .title-mage { right: -10%; top: 0; }
-}
-@media (min-width: 701px) and (max-height: 600px) {
-  .title-party { width: 220px; height: 180px; top: 12%; right: 12vw; }
-}
-
 /* Title demo: a live, self-playing battle under the title art. Decoration only: inert, no pointer input. */
 .title-demo {
   position: fixed;
@@ -436,37 +454,4 @@
 /* Interactive labels, handles and slots belong to the real battlefield, not the demo. */
 .title-demo-field > :not(canvas) {
   display: none !important;
-}
-/* While the demo plays, the title art becomes a scrim: dark behind the text and menu, open over the battle. */
-.title-screen[data-attract='running'] .title-atmosphere {
-  background:
-    linear-gradient(90deg, rgba(12, 36, 30, 0.9) 0, rgba(12, 36, 30, 0.74) 38%, rgba(12, 36, 30, 0.34) 70%, rgba(12, 36, 30, 0.2) 100%),
-    radial-gradient(ellipse at 78% 38%, #52745333 0, transparent 48%);
-}
-.title-screen[data-attract='running'] :is(#game-title, .title-topline a, .title-save-status) {
-  text-shadow:
-    0 1px 2px #071c19,
-    0 0 14px #071c19cc;
-}
-.title-screen[data-attract='running'] .title-orbit {
-  opacity: 0.5;
-}
-.title-screen[data-attract='running'] .title-hill {
-  opacity: 0.18;
-}
-.title-screen[data-attract='running'] .title-party-halo {
-  opacity: 0.4;
-}
-@media (max-width: 700px) {
-  /* Portrait: the menu sits low, so darken the lower half and leave the battle visible above. */
-  .title-screen[data-attract='running'] .title-atmosphere {
-    background: linear-gradient(
-      180deg,
-      rgba(12, 36, 30, 0.45) 0,
-      rgba(12, 36, 30, 0.3) 18%,
-      rgba(12, 36, 30, 0.72) 46%,
-      rgba(12, 36, 30, 0.9) 70%,
-      rgba(12, 36, 30, 0.92) 100%
-    );
-  }
 }
