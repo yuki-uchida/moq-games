@@ -416,3 +416,45 @@ describe('round 6f: a shockwave that dies on the step it is born bursts', () => 
     expect(run(0, true)).toEqual([])
   })
 })
+
+describe("round 8: an acorn is its squirrel's, whatever box it is born in", () => {
+  it('keeps the old shot, the new acorn and the boss volley separate between two draws', () => {
+    const enemy = squirrel()
+    const boss = { ...bossBody(), x: 80, y: 170 }
+    const old = shotFrom(enemy)
+    const { world, view } = setup([old], [enemy], boss)
+    Object.assign(world, { state: 'play' })
+    view.simStep()
+    const orb = { ...shotFrom(enemy), skin: 'orb' }
+    const acorn = shotFrom(enemy)
+    acorn.x += acorn.vx / 60
+    world.shots.push(orb, acorn)
+    view.handle({ type: 'spit', id: enemy.id, x: old.x, y: old.y, dir: 1 })
+    view.shotFromLight(5, 0)
+    view.simStep()
+    expect(view.shooterOf(acorn as never)).toBe(enemy)
+    for (const [shot, offset] of [
+      [old, 0],
+      [acorn, 0],
+      [orb, 5]
+    ] as const) {
+      expect(view.shotJoin(shot as never, { x: 0, y: 0 }).x).toBe(offset)
+    }
+  })
+
+  it('spat inside a charging boss, it is the squirrel’s (the step’s spit) and comes out from behind her', () => {
+    // The squirrel stands inside the boss's box (a boar charging through her).
+    const boss = { ...bossBody(), x: 80, y: 170, w: 92, h: 92, def: { kind: 'brute' } }
+    const enemy = squirrel()
+    const acorn = shotFrom(enemy)
+    const { world, view } = setup([], [enemy], boss)
+    view.handle({ type: 'spit', id: enemy.id, x: enemy.x + enemy.w / 2, y: enemy.y + enemy.h * 0.4, dir: 1 } as never)
+    // (On its step it has flown one step.)
+    acorn.x += 260 / 60
+    world.shots.push(acorn)
+    ;(world as unknown as { state: string }).state = 'play'
+    view.simStep()
+    expect(view.shooterOf(acorn as never)).toBe(enemy)
+    expect(view.shotBehind(acorn as never)).toBe(true)
+  })
+})

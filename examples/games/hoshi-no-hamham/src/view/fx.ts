@@ -91,6 +91,8 @@ interface Particle {
   fade: boolean
   delay: number
   alpha: number
+  /** Born on a simulation step since the last update: it is first drawn as it was born, whatever the frame's length. */
+  fresh: boolean
 }
 
 const POOL = 480
@@ -100,6 +102,12 @@ export class FxPool {
   private free: Particle[] = []
   /** View-only random stream. */
   rand: () => number
+  /**
+   * A simulation step's events or decisions are being answered (the stage view sets it): what is spawned now is born
+   * on a step and is first drawn as it was born. What a staged beat spawns after a frame's ageing ages from its own
+   * frame on (it is drawn young on that frame already).
+   */
+  stepBorn = false
 
   constructor(seed = 1) {
     let state = seed >>> 0 || 1
@@ -137,6 +145,7 @@ export class FxPool {
     p.fade = o.fade ?? spec.loop
     p.delay = o.delay ?? 0
     p.alpha = o.alpha ?? 1
+    p.fresh = this.stepBorn
     this.items.push(p)
   }
 
@@ -163,6 +172,12 @@ export class FxPool {
     let write = 0
     for (let i = 0; i < this.items.length; i++) {
       const p = this.items[i]
+      // (Born on a step of this frame: drawn young first, not aged by a long frame before it was ever drawn.)
+      if (p.fresh) {
+        p.fresh = false
+        this.items[write++] = p
+        continue
+      }
       if (p.delay > 0) {
         p.delay -= dt
         this.items[write++] = p

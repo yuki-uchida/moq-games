@@ -138,6 +138,8 @@ export class PlaySession {
   autopilot = false
   /** Where between the last two simulation states the frame's picture is: 1 shows the current state. */
   alpha = 1
+  /** The simulation time the last frame showed (see `frame`). */
+  private shownTime: number | null = null
   private sounds: SoundBoard
   private pacer = new Pacer()
   private mover = new Interpolator()
@@ -192,6 +194,7 @@ export class PlaySession {
   frame(dt: number) {
     const { view, director, world, pacer, mover } = this
     mover.restore()
+    view.beginFrame()
     // What came with a boss's fall, one event a frame (before this frame's steps: the order of the events holds).
     if (this.later.length) this.answer(this.later.shift()!)
     const scale = view.frozen ? 0 : Math.max(0, director.timeScale)
@@ -217,10 +220,22 @@ export class PlaySession {
     const alpha = pacer.finish(view.frozen || scale <= 0)
     this.alpha = alpha
     if (alpha < 1) mover.apply(alpha)
-    view.update(dt, view.frozen ? 0 : dt * scale)
+    // The bodies' clocks run on the simulation time this frame put on the screen (its steps and the change of the
+    // interpolation between them), whatever the frame's real length, a hit-stop or a hold beginning in it.
+    // (A frame that began held, by a hit-stop or a moment, shows no time passing: the picture it shows in full is the
+    // state the last steps left.)
+    // Once the stage is over the simulation's time stands still but its steps go on (`clearTimer`): the ending's
+    // bodies (the knocked-out hero, his drop to the ground and his cheer) run on those steps; what the simulation
+    // stopped stays stopped (`ActorsView.update` holds it).
+    const shown = world.time + world.clearTimer - (1 - alpha) * STEP
+    const animDt =
+      this.shownTime === null || scale <= 0 ? (scale <= 0 ? 0 : dt * scale) : Math.max(0, shown - this.shownTime)
+    this.shownTime = shown
+    view.update(dt, animDt)
     if (!this.demo) this.deps.hud.update(world, dt)
     director.update(dt)
-    if (!this.demo) this.sounds.update(world, dt, view.camera.x + VIEW_W / 2)
+    // (The skid's squeal begins on the frame that first draws his skid.)
+    if (!this.demo) this.sounds.update(world, dt, view.camera.x + VIEW_W / 2, view.actors.heroBrakeSkids())
   }
 
   /** The pause menu is open: duck the music and hush the loops. */

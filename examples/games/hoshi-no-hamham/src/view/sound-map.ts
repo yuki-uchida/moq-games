@@ -288,13 +288,17 @@ export class SoundBoard implements CueSink {
     this.music?.update(world, 0)
   }
 
-  /** Per display frame: delayed calls, the hero's state sounds, the loops and the music. */
-  update(world: World, dt: number, centreX: number) {
+  /**
+   * Per display frame: delayed calls, the hero's state sounds, the loops and the music. `skidShown`: whether the
+   * frame draws the hero in a brake's skid (the view's word, `ActorsView.heroBrakeSkids`): the skid's sound begins
+   * with its picture (a tap too short to show a skid makes no squeal); without it, the simulation's braking.
+   */
+  update(world: World, dt: number, centreX: number, skidShown?: boolean) {
     this.centreX = centreX
     this.flush()
     const p = world.player
 
-    const skidding = !p.dead && isSkidding(p)
+    const skidding = !p.dead && (skidShown ?? isSkidding(p))
     if (skidding && !this.wasSkidding) this.fire(s('skid', { volume: 0.8, pan: panFor(p.x + p.w / 2, centreX) }))
     this.wasSkidding = skidding
 

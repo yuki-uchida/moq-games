@@ -375,3 +375,80 @@ test("a boss's shot is announced on the canvas by its gathering light, which is 
   expect(result.lightAtShot).toBe(false)
   expect(errors).toEqual([])
 })
+
+test("a boss's gathering light never goes back when display frames drop: its last frame stays until the shot", async ({
+  page
+}) => {
+  test.setTimeout(90_000)
+  const errors = collectErrors(page)
+  await openStage(page, 7)
+  await waitForMoment(page, null)
+  await enterArena(page)
+  await waitForMoment(page, 'boss-intro')
+  await page.keyboard.press('KeyX')
+  await waitForMoment(page, null, 1000)
+  // Six of the fox's lights, sampled on every display frame while the page itself drops frames: one frame of every
+  // light is held up for 50 ms about two thirds of the way through it (where a light that grew by the length of the
+  // last display frame would show its last frame for the long frame and fall back to the one before on the next),
+  // and every 5th frame for 5 to 15 ms (the display's intervals are then uneven for the game's own loop).
+  const result = await page.evaluate(
+    () =>
+      new Promise<{ lights: number[][]; longest: number; frames: number }>((resolve, reject) => {
+        const h = (window as unknown as { __hamham: LightHook }).__hamham
+        const actors = h.app.session!.view.actors
+        const GATHER_FRAMES = 6
+        const HOLD_AT = 0.63
+        const started = performance.now()
+        const lights: number[][] = []
+        let current: number[] | null = null
+        let held = false
+        let last = started
+        let longest = 0
+        let frames = 0
+        const tick = () => {
+          const now = performance.now()
+          if (frames > 0) longest = Math.max(longest, now - last)
+          last = now
+          const boss = h.world.boss
+          if (!boss || boss.dead) return reject(new Error('the boss is gone'))
+          if (now - started > 45_000) return reject(new Error(`only ${lights.length} lights within 45 s`))
+          h.world.player.invuln = 999
+          frames += 1
+          const cue = actors.shotCue(boss)
+          let hold = frames % 5 === 0 ? 5 + ((frames * 7919) % 11) : 0
+          if (cue) {
+            current ??= []
+            current.push(Math.min(GATHER_FRAMES - 1, Math.floor(cue.progress * GATHER_FRAMES)))
+            if (!held && cue.progress >= HOLD_AT) {
+              held = true
+              hold = 50
+            }
+          } else if (current) {
+            lights.push(current)
+            current = null
+            held = false
+            if (lights.length >= 6) return resolve({ lights, longest, frames })
+          }
+          if (hold > 0) {
+            const until = performance.now() + hold
+            while (performance.now() < until) {
+              // (Holding the page's thread: the next display frame comes late.)
+            }
+          }
+          requestAnimationFrame(tick)
+        }
+        requestAnimationFrame(tick)
+      })
+  )
+  console.log(
+    `[light, dropped frames] ${result.lights.map((light) => light.join('')).join(' | ')} (longest frame ${result.longest.toFixed(0)} ms, ${result.frames} frames)`
+  )
+  // The display did drop frames.
+  expect(result.longest).toBeGreaterThanOrEqual(45)
+  for (const light of result.lights) {
+    expect(light.length).toBeGreaterThanOrEqual(2)
+    // Never back: so once its last frame has shown, nothing else shows until the shot.
+    for (let i = 1; i < light.length; i++) expect(light[i]).toBeGreaterThanOrEqual(light[i - 1])
+  }
+  expect(errors).toEqual([])
+})

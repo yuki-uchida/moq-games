@@ -131,6 +131,8 @@ interface Ghost {
    * the body and its clip stay together (accelerating from rest, gravity 2·height/at²).
    */
   fall?: { y0: number; ground: number; at: number }
+  /** A boss's body has lain on ground (see `update`: it bursts if that ground goes). */
+  lay?: boolean
 }
 
 /** The feet row of a boss's falling ghost at `age` (exact, so the landing does not depend on the frame rate). */
@@ -265,8 +267,149 @@ export function dieLandTime(y0: number, ground: number, toss: Toss = LAND_TOSS) 
   return capped + (ground - tossY(toss, y0, capped)) / cap
 }
 
+/**
+ * Half the width (px) of the knocked-out hero's drawn body, tumbling or lying (the die frames' paint reaches 30 px
+ * either side of his feet's middle): no part of it goes into a wall (round 8f).
+ */
+export const DIE_HALF_W = 30
+/** His knocked-out body is drawn this tall (px) at most above its feet, plus the 26 px of its hop. */
+export const DIE_REACH_UP = 80
+/** The knocked-out body moves clear of a wall over this long (s), easing out (before his hop comes back down). */
+export const DIE_CLEAR_SECONDS = 0.25
+
+/**
+ * The open span (px, left and right edges) of tile row `row` around `x`, looked at 4 tiles either side (more than a
+ * body needs); null when the tile at `x` is solid.
+ */
+function openSpan(world: Pick<World, 'solidAt'>, x: number, row: number): [number, number] | null {
+  const tx = Math.floor(x / TILE)
+  if (world.solidAt(tx, row)) return null
+  let l = tx
+  let r = tx
+  while (l > tx - 4 && !world.solidAt(l - 1, row)) l--
+  while (r < tx + 4 && !world.solidAt(r + 1, row)) r++
+  return [l * TILE, (r + 1) * TILE]
+}
+
+/**
+ * Where a knocked-out body hit at (x, feet y0) comes to rest (round 8f): its middle `x`, kept `DIE_HALF_W` clear of
+ * the walls of every row it tumbles and lies in, and the ground under that middle (null over a pit). Off a ledge's
+ * lip it tumbles outward, clear of the wall's face; a hole narrower than his lying body he lies across, on the ledge's
+ * top; with no room (a gap narrower than his body) he lies in its middle.
+ */
+export function deathRestPlace(
+  world: Pick<World, 'solidAt' | 'tileAt' | 'h'>,
+  x: number,
+  y0: number
+): { x: number; ground: number | null } {
+  const ground = groundBelow(world, x, y0, world.h)
+  // (The row under his feet: a hole there narrower than his lying body he bridges.)
+  const below = Math.floor((y0 + 1) / TILE)
+  if (ground !== null && ground > y0 + 2) {
+    const hole = openSpan(world, x, below)
+    if (hole && hole[1] - hole[0] < 2 * DIE_HALF_W) return { x: (hole[0] + hole[1]) / 2, ground: y0 }
+  }
+  // The rows his body passes through, from the top of his hop to where he lies (a pit: a few rows down).
+  const top = Math.max(0, Math.floor((y0 - DIE_REACH_UP) / TILE))
+  const bottom = Math.min(world.h - 1, Math.floor(((ground ?? y0 + 3 * TILE) - 1) / TILE))
+  let l = -Infinity
+  let r = Infinity
+  for (let row = top; row <= bottom; row++) {
+    const span = openSpan(world, x, row)
+    if (!span) continue
+    l = Math.max(l, span[0])
+    r = Math.min(r, span[1])
+  }
+  if (!Number.isFinite(l) || !Number.isFinite(r)) return { x, ground }
+  const at = r - l < 2 * DIE_HALF_W ? (l + r) / 2 : Math.min(Math.max(x, l + DIE_HALF_W), r - DIE_HALF_W)
+  if (at === x) return { x, ground }
+  // (Moved clear, he lies on the ground under his new middle, if it is the same ground or lower.)
+  const there = groundBelow(world, at, y0, world.h)
+  if (ground !== null && (there === null || there < ground)) return { x, ground }
+  return { x: at, ground: there }
+}
+
+/** The first die frame (the blow) paints this far (px) behind and in front of his feet's middle. */
+export const DIE_HIT_BACK = 28
+export const DIE_HIT_FRONT = 16
+
+/**
+ * Where the knocked-out body's middle is drawn on the blow's frame (round 8f): where he stood, unless the first die
+ * frame (`DIE_HIT_BACK` behind him, `DIE_HIT_FRONT` in front) would reach into a wall beside him: then clear of it.
+ */
+export function deathStartX(world: Pick<World, 'solidAt'>, x: number, y0: number, flip: boolean) {
+  const left = flip ? DIE_HIT_FRONT : DIE_HIT_BACK
+  const right = flip ? DIE_HIT_BACK : DIE_HIT_FRONT
+  let l = -Infinity
+  let r = Infinity
+  for (let row = Math.floor((y0 - DIE_REACH_UP) / TILE); row <= Math.floor((y0 - 1) / TILE); row++) {
+    const span = openSpan(world, x, row)
+    if (!span) continue
+    l = Math.max(l, span[0])
+    r = Math.min(r, span[1])
+  }
+  if (r - l < left + right) return x
+  return Math.min(Math.max(x, l + left), r - right)
+}
+
+/** The tallest die frame paints this high (px) above its feet (the blow's frame). */
+export const DIE_FRAME_H = 53
+
+/**
+ * Whether a knocked-out body's frame (`left` and `right` px either side of `x`, `DIE_FRAME_H` above `feet`) is clear
+ * of solids.
+ */
+export function dieClear(world: Pick<World, 'solidAt'>, x: number, feet: number, left = DIE_HALF_W, right = left) {
+  const c0 = Math.floor((x - left + 1) / TILE)
+  const c1 = Math.floor((x + right - 1) / TILE)
+  const r0 = Math.floor((feet - DIE_FRAME_H) / TILE)
+  const r1 = Math.floor((feet - 1) / TILE)
+  for (let ty = r0; ty <= r1; ty++) for (let tx = c0; tx <= c1; tx++) if (world.solidAt(tx, ty)) return false
+  return true
+}
+
+/**
+ * Where a knocked-out body whose place the simulation left in or against a solid (a felled tree's log landing on
+ * him, round 8g) is drawn from: the nearest place, up to three tiles away, where his whole die frame is clear of
+ * solids, beside the solid or on top of it (feet on a tile's top). Null when his frame is clear where he is (or no
+ * place near is).
+ */
+export function deathClearPlace(world: Pick<World, 'solidAt'>, x: number, feet: number) {
+  if (dieClear(world, x, feet)) return null
+  let best: { x: number; feet: number; d: number } | null = null
+  const feets = [feet]
+  for (let ty = Math.floor((feet - 1) / TILE); ty * TILE > feet - 3 * TILE; ty--) feets.push(ty * TILE)
+  for (const f of feets)
+    for (let dx = 0; dx <= 3 * TILE; dx++)
+      for (const sx of dx === 0 ? [x] : [x - dx, x + dx]) {
+        const d = Math.hypot(sx - x, f - feet)
+        if (best && d >= best.d) continue
+        if (dieClear(world, sx, f)) best = { x: sx, feet: f, d }
+      }
+  return best && { x: best.x, feet: best.feet }
+}
+
+/**
+ * The knocked-out body's toss under a ceiling (round 8f): its hop is lowered so that no frame reaches into a solid
+ * above it, over the columns its body covers between `x` and `x1` (a ceiling flush on his head: no hop at all).
+ */
+export function tossUnder(world: Pick<World, 'solidAt'>, toss: Toss, x: number, x1: number, y0: number): Toss {
+  const rise = (toss.hop * toss.hop) / (2 * toss.gravity)
+  let ceiling = -Infinity
+  const c0 = Math.floor((Math.min(x, x1) - DIE_HALF_W + 1) / TILE)
+  const c1 = Math.floor((Math.max(x, x1) + DIE_HALF_W - 1) / TILE)
+  const r0 = Math.floor((y0 - DIE_FRAME_H - rise) / TILE)
+  for (let ty = r0; (ty + 1) * TILE <= y0 - DIE_FRAME_H + 2; ty++)
+    for (let tx = c0; tx <= c1; tx++) if (world.solidAt(tx, ty)) ceiling = Math.max(ceiling, (ty + 1) * TILE)
+  if (ceiling === -Infinity) return toss
+  const room = Math.max(0, Math.min(rise, y0 - DIE_FRAME_H - ceiling))
+  return room >= rise ? toss : { ...toss, hop: Math.sqrt(2 * toss.gravity * room) }
+}
+
 interface Fall {
+  /** His middle where he was hit, and where he comes to rest (`deathRestPlace`). */
   x: number
+  x1: number
   /** Feet row where the body was hit, and the ground row below it (null over a pit). */
   y0: number
   ground: number | null
@@ -291,6 +434,30 @@ export const TRAIL_ALPHAS = [0.15, 0.3] as const
 export const BOSS_DEFEAT_TAIL = 0.5
 /** The skid pose ends this long (s) after the braking does. */
 export const SKID_TAIL = 0.08
+/**
+ * Carried on the ground against the facing he is drawn with faster than this (px/s), the hero skids (slower, he
+ * stands: the ground he slides over then stays within a planted pose's few px).
+ */
+export const CARRIED_SKID_SPEED = 50
+/** The skid shows from this step of the simulation's braking on (a tap of fewer steps changes nothing). */
+export const BRAKE_STEPS = 3
+/** A pivot gives way to his run once his body has gone this far (px) the way he turned (or is over, carried back). */
+export const PIVOT_RUN_PX = 6
+/**
+ * Carried this far (px) back the old way, a pivot is over: further than a walk's brake slides him (a turn at
+ * `SKID_SPEED` slides 3.2 px against the key), so it is a slide of keys dithering, not a turn on the spot.
+ */
+export const PIVOT_SLIDE_PX = 4
+/**
+ * In water a body driven faster than this (px/s) goes the way he is driven (rule 1): the water takes 14 % of his
+ * speed a step, so the first stroke from a stand goes 18.6 px/s, under the run's threshold.
+ */
+export const DRIVE_SPEED_WATER = 12
+/**
+ * Out of a stand that shows, he runs once his body goes faster than this (px/s): two steps of his run's speed-up from
+ * a stand (31.7 a step), above the jitter of a body whose keys dither on the spot.
+ */
+export const RUN_START_SPEED = 40
 /** A hit (or a crash into a wall) jolts the boss's sprite this far (px), easing back over `BOSS_JOLT_SECONDS`. */
 export const BOSS_JOLT_PX = 3
 export const BOSS_JOLT_SECONDS = 0.12
@@ -373,6 +540,8 @@ interface Pose {
    * pose never turns him), and he comes out of it so (`heroKeep`).
    */
   own: boolean
+  /** Taken while a step was answered: its clock starts at the next tick (the frame that first draws it). */
+  fromStep: boolean
 }
 
 /** A handle on a staged pose, so the moment that set it can end it (and only it). */
@@ -638,9 +807,88 @@ export const LAND_SLIDE_PX = 20
 export const LAND_HOLD_STEPS = 2
 export const shotBirthY = (boss: Boss) => boss.y + boss.h * (boss.def.kind === 'flyer' ? 0.5 : 0.4) + 7
 
+/**
+ * The time (s) the last frame of a fitted clip keeps when the clip can give it: one display frame at 30 Hz (a 30 Hz
+ * display shows it). A display frame longer than what it keeps may pass over it.
+ */
+const LAST_FRAME_SECONDS = 1 / 30
+/** One display frame at 60 Hz: what every frame of a fitted clip keeps first, when its time allows it. */
+const FRAME_FLOOR_SECONDS = 1 / 60
+/** The boss's clips fitted to the time there is: stepped by display frames (`ActorsView.stepFitted`). */
+const FITTED_CLIPS: readonly string[] = ['hurt', 'shoot', 'land', 'windup']
+
+/** The frame of `spec` at clip time `t` (a `sustain` tail keeps cycling past the clip's end). */
+function specFrameAt(spec: AnimSpec, t: number) {
+  const whole = specDuration(spec)
+  const last = spec.frames - 1
+  if (t >= whole - 1e-9) {
+    const tail = spec.sustain ?? 0
+    if (tail < 2) return last
+    const from = spec.frames - tail
+    const cycle = whole - frameStart(spec, from)
+    t = frameStart(spec, from) + ((t - whole) % cycle)
+  }
+  let k = 0
+  while (k < last && frameStart(spec, k + 1) <= t + 1e-9) k++
+  return k
+}
+
+/** A frame's natural length (s). */
+const frameSeconds = (spec: AnimSpec, frame: number) => (spec.hold?.[frame] ?? 1) / spec.fps
+
+/**
+ * The time into a clip of `spec` fitted to `seconds`, `elapsed` seconds after the frame that first shows it, played
+ * from clip time `from` (a follow-through from its release frame). With the time for it, it plays at its own pace
+ * and its last frame shows until `seconds`. Fitted into less, its last frame keeps `LAST_FRAME_SECONDS` but never
+ * more than is left once every frame before it has had `FRAME_FLOOR_SECONDS` (so a display with as many frames as
+ * the clip passes over none of them); the frames before share the rest, each at least one frame of a 30 Hz display
+ * when the rest allows it, else equal shares, and what is over by their own lengths. Past `seconds` it is over (the
+ * clip's whole length). Within a frame the time is kept clear of its edges, so rounding never shows a neighbour.
+ */
+export function fittedTime(spec: AnimSpec, elapsed: number, seconds: number, from = 0) {
+  const whole = specDuration(spec)
+  if (elapsed >= seconds - 1e-9) return whole
+  const last = spec.frames - 1
+  let first = 0
+  while (first < last && frameStart(spec, first + 1) <= from + 1e-9) first++
+  const pre = last - first
+  // (The natural time the frames before the last take, from `from`.)
+  const preNatural = Math.max(0, frameStart(spec, last) - from)
+  let keep = Math.min(LAST_FRAME_SECONDS, Math.max(FRAME_FLOOR_SECONDS, seconds - pre * FRAME_FLOOR_SECONDS))
+  if (pre > 0) keep = Math.min(keep, seconds / 2)
+  const room = Math.max(0, seconds - keep)
+  const inFrame = (k: number, fraction: number) =>
+    frameStart(spec, k) + (0.001 + 0.998 * Math.max(0, Math.min(1, fraction))) * frameSeconds(spec, k)
+  if (room + 1e-9 >= preNatural) {
+    // Its own pace (a time on a frame's edge is the later frame's).
+    const t = from + elapsed
+    let k = first
+    while (k < last && frameStart(spec, k + 1) <= t + 1e-6) k++
+    if (k === first) return Math.max(from, Math.min(t, frameStart(spec, first) + 0.999 * frameSeconds(spec, first)))
+    return inFrame(k, (t - frameStart(spec, k)) / frameSeconds(spec, k))
+  }
+  if (elapsed + 1e-6 >= room) return inFrame(last, (elapsed - room) / Math.max(1e-6, seconds - room))
+  const floor = Math.min(LAST_FRAME_SECONDS, room / pre)
+  const extra = Math.max(0, room - pre * floor)
+  let at = 0
+  for (let k = first; k < last; k++) {
+    const natural = k === first ? frameStart(spec, k + 1) - from : frameSeconds(spec, k)
+    const span = floor + (extra * natural) / Math.max(1e-9, preNatural)
+    if (elapsed + 1e-6 < at + span || k === last - 1) {
+      if (k === first) {
+        const t = from + Math.max(0, Math.min(0.999, (elapsed - at) / span)) * natural
+        return Math.max(t, frameStart(spec, k) + 0.001 * frameSeconds(spec, k))
+      }
+      return inFrame(k, (elapsed - at) / span)
+    }
+    at += span
+  }
+  return inFrame(last, 0)
+}
+
 /** The last step before a shot (s): the light is full there. */
 const CUE_LAST_STEP = 1 / 60
-const newShotCue = (): ShotCue => ({ sheet: '', progress: 0, x: 0, y: 0 })
+export const newShotCue = (): ShotCue => ({ sheet: '', progress: 0, x: 0, y: 0 })
 const shotCueScratch = newShotCue()
 /** The sheet of the gathering light of each boss that throws or casts (sim.ts `bossSkin`; the king has none). */
 const CUE_SHEETS: Record<string, string> = {
@@ -670,6 +918,34 @@ export class ActorsView {
   private skidAge: number | null = null
   /** Whether the hero was braking on the last update (a new skid starts from frame 0). */
   private skidding = false
+  /** Steps in a row the simulation has braked (`isSkidding`), and driven his body against his drawn facing. */
+  private brakeSteps = 0
+  private driveSteps = 0
+  private driveWay: 1 | -1 = 1
+  /**
+   * His body's centre after this step and on the step before (rule 1), and where his pivot began (`PIVOT_RUN_PX`:
+   * where he stood before the step it began on).
+   */
+  private stepX = NaN
+  private lastX = NaN
+  private pivotX = 0
+  /** Steps in a row the picture decided on the steps has been a stand, and whether a run came before them (rule 5). */
+  private standShown = 0
+  private standFromRun = false
+  /** Rule 1 was put off a step for the stand's second step: it is due on this one (`decideHeroFace`). */
+  private ruleOneDue = false
+  /** The skid under way is a brake's (not a carried slide's): its sound begins with its picture (`heroBrakeSkids`). */
+  private skidBrake = false
+  /** Steps the skid under way has shown on (a slide's skid out of a pose shows two before rule 1 turns him). */
+  private skidSteps = 0
+  /** Coasting to a stop after a hold, his speed falling every step: he stands (round 8d, rule 6). */
+  private coasting = false
+  /** The hit whose hurt a hold's pose played out (its invulnerability then: see `standStill` and `hurt`). */
+  private hurtLed: number | null = null
+  /** Steps in a row his live clip has been a stand, and the run's time he stood out of (rule 5). */
+  private idleSteps = 2
+  private runHold: number | null = null
+  private coastSpeed = 0
   private skidTail = 0
   /** The braking under way is over for good as a skid (a pose or a bite covered it): it shows no more until it ends. */
   private skidGone = false
@@ -680,8 +956,19 @@ export class ActorsView {
   private heroKeep: 0 | 1 | -1 = 0
   /** The hero's facing as the last display frame (`update`) shows it (0: none yet). */
   private heroShownFace: 0 | 1 | -1 = 0
+  /**
+   * The hero's facing as the display frame before shows it: a moment begun after this frame's update (a staged
+   * moment queued behind another) is taken before this frame is drawn.
+   */
+  private heroDrawnFace: 0 | 1 | -1 = 0
+  /** This display frame's `update` has run (it is not drawn yet): see `beginFrame`. */
+  private frameUpdated = false
+  /** The display frames are announced (`beginFrame`, by `PlaySession`). */
+  private framed = false
   /** The hero's clip as the last display frame shows it. */
   private heroShownClip = ''
+  /** The hero's blink has its own random numbers (the particles' depend on how the frames fell). */
+  private blinkSeed = 0x2f6b1e9d
   /** Out of a pose, still carried against the facing it showed him with: drawn standing (see `endPose`). */
   private heroDrift = false
   /** The facing a skid began with (a turn of his ends it). */
@@ -733,6 +1020,12 @@ export class ActorsView {
    */
   private flinchAt: number | null = null
   private flinchSeconds = 0
+  /**
+   * The flinch's simulation seconds left (counted on the steps: what he does and which way he faces never wait for
+   * a frame), and whether no display frame has shown it yet (its clock starts on the first that does).
+   */
+  private flinchLeft = 0
+  private flinchFresh = false
   /** View time and direction of the last jolt (a hit, away from the hero; a crash, away from the wall). */
   private joltAt: number | null = null
   private joltDir: 1 | -1 = 1
@@ -746,10 +1039,17 @@ export class ActorsView {
   private castAt = 0
   /** The shot (or summon) has just left: its follow-through is timed from the first frame that shows it. */
   private castFresh = false
-  /** The length of the last display frame with time passing (s). */
-  private frameDt = 1 / 60
   private castFrom = 0
   private castTail = 0
+  /** The seconds the cast's follow-through is played over (decided when the release begins). */
+  /** The follow-through's simulation seconds left (counted on the steps). */
+  private castLeft = 0
+  /** The simulation's time as the view counts its steps, and when a flinch and a follow-through began on it. */
+  private stepClock = 0
+  private flinchStepAt = 0
+  private castStepAt = 0
+  /** A fresh flinch or release that a display frame has drawn once (see `firstFrame`). */
+  private freshDrawn = { flinch: false, cast: false }
   private castRefused = false
   /** The side the shot went (the facing is kept there while the cast plays out), or 0. */
   private castSide: 0 | 1 | -1 = 0
@@ -764,6 +1064,10 @@ export class ActorsView {
   private volleyCut = false
   /** View time his last dash began, and his tread's gain then. */
   private dashAt: number | null = null
+  /** A dash begun on a step that no display frame has shown yet (its clock starts on the first). */
+  private dashFresh = false
+  /** The state the last display frame drew him in (a clip that takes over inside it: `clipFrom`). */
+  private clipState: BossState | null = null
   private dashGain = 0
   private bossTread = newTread(-1)
   private bossFace: 1 | -1 = -1
@@ -784,8 +1088,14 @@ export class ActorsView {
    */
   private fallLandAt: number | null = null
   private fallLandSeconds = 1
+  /** The frame a fitted clip of the boss's has been stepped to (see `stepFitted`). */
+  private fitShown = { name: '', key: '' as string, frame: 0, t: 0, paced: null as boolean | null }
+  /** A fall's landing has begun in his state (see `BossSnapshot.dashOver`). */
+  private dashLanded = false
   /** The `fallLandAt` of the landing a display frame has drawn (its touchdown has been seen). */
   private fallLandSeen: number | null = null
+  /** A landing begun on a step that no display frame has shown yet (its clock starts on the first). */
+  private fallLandFresh = false
   /** Hit-stop seconds to credit to the facing holds after this step's decisions (see `heldFor`). */
   private heldCredit = 0
   /** The steps in a row he has been off the ground (see `landHolds`). */
@@ -834,12 +1144,11 @@ export class ActorsView {
   /** Real seconds (advances while the simulation is held or slowed; staged poses run on it). */
   private realTime = 0
   /**
-   * A simulation step has been answered since the last display frame's tick, and the real seconds of that tick. A
-   * pose taken on a step is first drawn after the tick of its own frame: a clip it leads with starts that much
-   * earlier (`standStill`), so that the frame which first shows the pose shows the lead where the step left it.
+   * A simulation step has been answered since the last display frame's tick. A pose taken on a step is first drawn
+   * after the tick of its own frame: its clock starts at that tick (`Pose.fromStep`, `tickReal`), so that the frame
+   * which first shows the pose shows the clip it leads with where the step left it, whatever the frame's length.
    */
   private stepPhase = false
-  private realDt = 0
   private poses: Partial<Record<PoseTarget, Pose>> = {}
   /** What `poseClip` hands back (filled for each call). */
   private poseNow = { name: '', t: 0 }
@@ -878,7 +1187,8 @@ export class ActorsView {
       seen: false,
       lead: null,
       face: options.face ?? 0,
-      own: false
+      own: false,
+      fromStep: this.stepPhase
     }
     if (who === 'hero' && !options.face) {
       pose.face = this.liveHeroFace()
@@ -950,11 +1260,19 @@ export class ActorsView {
       const carried = p.onGround && p.vx * shown < 0 && Math.abs(p.vx) > RUN_THRESHOLD
       const skids = carried && Math.abs(p.vx) > SKID_SPEED
       this.skidAge = skids ? 0 : null
+      this.skidSteps = 0
       this.skidTail = 0
       this.heroDrift = carried
+      // (Running on the same way when it ends, he only coasts to a stop unless the player runs him: rule 6.)
+      this.coasting = p.onGround && !carried && Math.abs(p.vx) > RUN_THRESHOLD
+      this.coastSpeed = Math.abs(p.vx)
+      // (The pose stood him: no run's frame is held over into a stand.)
+      this.runHold = null
+      this.idleSteps = 2
       if (skids) {
         this.heroFresh = 'skid'
         this.skidFace = p.facing
+        this.skidBrake = false
       }
       this.turnAge = null
       if (this.heroAction === 'skid' || this.heroAction === 'turn') this.heroAction = ''
@@ -1009,12 +1327,11 @@ export class ActorsView {
       live = { name: 'bite', t: this.heroShownT }
     }
     const pose = this.pose('hero', 'idle', seconds, face ? { face } : {}) as Pose
+    if (live?.name === 'hurt') this.hurtLed = p.invuln
     if (live?.name === 'bite' || live?.name === 'hurt') {
-      // (A bite or a hurt under way plays out on real time first. Taken on a step, the pose is first drawn after
-      // its frame's tick: the lead starts that much earlier, so no frame of it is passed over at a slow display.)
+      // (A bite or a hurt under way plays out on real time first, from where the step left it.)
       const rest = specDuration(HERO_SPEC[live.name]) - live.t
-      const ahead = this.stepPhase ? this.realDt : 0
-      if (rest > 0) pose.lead = { clip: live.name, from: live.t - ahead, seconds: rest + ahead }
+      if (rest > 0) pose.lead = { clip: live.name, from: live.t, seconds: rest }
     }
     return pose
   }
@@ -1043,8 +1360,23 @@ export class ActorsView {
   /** Advances real time (the stage view calls this with the frame's real dt). */
   tickReal(dt: number) {
     this.realTime += dt
-    this.realDt = dt
+    // A hero hit on the step a hold began flinches under it, on real time, from its first frame (round 8d).
+    const held = this.poses.hero
+    const p = this.world.player
+    if (held && held.clip === 'idle' && !held.lead && this.hurtLed === null && this.hurtLive() && !this.hurtGone) {
+      const age = this.realTime - held.start
+      held.lead = { clip: 'hurt', from: -age, seconds: age + specDuration(HERO_SPEC.hurt) }
+      this.hurtLed = p.invuln
+    }
     this.stepPhase = false
+    // A pose taken on a step starts its clock at the tick of the frame that first draws it, whatever its length.
+    for (const who of ['hero', 'boss'] as const) {
+      const pose = this.poses[who]
+      if (!pose?.fromStep) continue
+      pose.fromStep = false
+      pose.until += this.realTime - pose.start
+      pose.start = this.realTime
+    }
     // The time since a body last turned runs on real time: a turn twice in a moment is a flicker on the screen,
     // whether or not a hit-stop holds the simulation in between.
     if (!this.stepDriven) {
@@ -1070,13 +1402,19 @@ export class ActorsView {
   /** The centre of the hero's knocked-out body (null while he lives). */
   deathPoint(): { x: number; y: number } | null {
     const d = this.death
-    return d ? { x: d.x, y: this.deathFeet(d) - d.h / 2 } : null
+    return d ? { x: this.deathX(d), y: this.deathFeet(d) - d.h / 2 } : null
   }
 
   /** Where the hero's knocked-out body comes to lie (its centre): null while he lives, and over a pit. */
   deathRest(): { x: number; y: number } | null {
     const d = this.death
-    return d && d.ground !== null ? { x: d.x, y: d.ground - d.h / 2 } : null
+    return d && d.ground !== null ? { x: d.x1, y: d.ground - d.h / 2 } : null
+  }
+
+  /** The knocked-out body's middle now: moving clear of a wall over `DIE_CLEAR_SECONDS`, easing out (round 8f). */
+  private deathX(d: Fall) {
+    const k = Math.min(1, Math.max(0, d.age / DIE_CLEAR_SECONDS))
+    return d.x + (d.x1 - d.x) * (1 - (1 - k) * (1 - k))
   }
 
   /**
@@ -1160,7 +1498,10 @@ export class ActorsView {
         break
       }
       case 'hurt':
-        this.hurtGone = false
+        // (A hurt a hold's pose already played out, answered only when the simulation runs again, is over.)
+        this.hurtGone = this.hurtLed !== null && p.invuln === this.hurtLed
+        this.hurtLed = null
+        if (this.hurtGone) break
         this.hurtFace = event.dir > 0 ? -1 : 1
         // The player's own body takes over from a staged pose (see `update`).
         if (this.world.state === 'play') delete this.poses.hero
@@ -1168,17 +1509,37 @@ export class ActorsView {
       case 'dead': {
         const x = p.x + p.w / 2
         const y0 = p.y + p.h
+        // He comes to lie on the ground under his middle, his body clear of every wall (round 8f): past a ledge's
+        // edge he tumbles outward as he falls on to the ground below; a hole narrower than his lying body he lies
+        // across; over a pit he keeps tumbling.
+        // (His first frame is drawn clear of a wall beside him; he then eases to where he will lie. Under a ceiling
+        // his hop is lower: no frame reaches into it.)
+        // (A body the simulation left in or against a solid on this step, a felled log landing on him, is drawn from
+        // the nearest place clear of it, round 8g: from there he tumbles and lies by the same rules.)
+        const flip = p.facing < 0
+        let start = deathStartX(this.world, x, y0, flip)
+        let feet = y0
+        let rest = deathRestPlace(this.world, x, y0)
+        if (
+          !dieClear(this.world, start, y0, flip ? DIE_HIT_FRONT : DIE_HIT_BACK, flip ? DIE_HIT_BACK : DIE_HIT_FRONT)
+        ) {
+          const out = deathClearPlace(this.world, x, y0)
+          if (out) {
+            start = out.x
+            feet = out.feet
+            rest = deathRestPlace(this.world, out.x, out.feet)
+          }
+        }
         this.death = {
-          x,
-          y0,
-          // Standing on the ground (his box on it, though his centre may be past the edge of a ledge) he comes to lie
-          // on that ground; in the air, on whatever is below him.
-          ground: p.onGround ? y0 : groundBelow(this.world, x, y0, this.world.h),
+          x: start,
+          x1: rest.x,
+          y0: feet,
+          ground: rest.ground,
           age: 0,
           landAt: null,
           flip: p.facing < 0,
           h: p.h,
-          toss: p.inWater ? WATER_TOSS : LAND_TOSS
+          toss: tossUnder(this.world, p.inWater ? WATER_TOSS : LAND_TOSS, start, rest.x, feet)
         }
         break
       }
@@ -1258,6 +1619,10 @@ export class ActorsView {
           if (seconds > 0) {
             this.flinchAt = this.bodyTime
             this.flinchSeconds = seconds
+            // (Counted from the step after the hit's: its picture's clock starts on the frame after that step.)
+            this.flinchLeft = seconds + SIM_STEP
+            this.flinchStepAt = this.stepClock
+            this.flinchFresh = true
             this.dropCast()
           }
         }
@@ -1282,6 +1647,7 @@ export class ActorsView {
             this.cast = 'release'
             this.castFresh = true
             this.castSide = side
+            this.fitRelease(boss)
           } else {
             // The hero crossed on the very step of the shot: no release frame turned round, no follow-through.
             this.dropCast()
@@ -1431,9 +1797,15 @@ export class ActorsView {
     this.enemyTimers.delete(event.id)
   }
 
+  /** A display frame begins (before its steps): what the last one showed is on the screen. */
+  beginFrame() {
+    this.framed = true
+    this.frameUpdated = false
+  }
+
   update(dt: number) {
     this.time += dt
-    if (dt > 0) this.frameDt = dt
+    this.frameUpdated = true
     const world = this.world
     // (What the simulation holds once the stage is over or the hero is down stands still in the picture too.)
     const held = world.state !== 'play'
@@ -1483,6 +1855,7 @@ export class ActorsView {
     this.updateBoss(bodyDt)
     this.updateTrail(bodyDt)
     if (!this.death && !this.world.player.dead) {
+      this.heroDrawnFace = this.heroShownFace
       this.heroShownFace = this.heroFlip() ? -1 : 1
       const shown = this.selectHero()
       this.heroShownClip = shown?.name ?? ''
@@ -1500,6 +1873,14 @@ export class ActorsView {
         if (landed !== null && g.age >= landed && groundBelow(world, g.x, g.y, 2) !== g.y)
           g.life = Math.min(g.life, g.age)
       } else if (g.fall) g.y = ghostFall(g.fall, g.age)
+      // A boss lying on ground that went from under him (the arena's gate lowered under him) goes at once, in his
+      // burst, as an enemy's body does (he never lies in the air).
+      if (g.end === 'boom' && !g.flight && (!g.fall || g.age >= g.fall.at - 1e-6)) {
+        const under = groundBelow(world, g.x, g.y, 2)
+        const lies = under !== null && under <= g.y + 1
+        if (lies) g.lay = true
+        else if (g.lay) g.life = Math.min(g.life, g.age)
+      }
       if (g.age >= g.life) {
         if (g.end === 'puff') this.fx.spawn('puff', g.x, g.y - g.h / 2, { layer: 'front' })
         if (g.end === 'boom') {
@@ -1535,7 +1916,7 @@ export class ActorsView {
     this.nextBlink -= dt
     if (this.nextBlink <= 0) {
       this.blinkAge = 0
-      this.nextBlink = 2 + this.fx.rand() * 2
+      this.nextBlink = 2 + this.blinkRand() * 2
     }
     if (p.onGround) {
       this.airTime = 0
@@ -1545,18 +1926,50 @@ export class ActorsView {
     }
     this.wasGround = p.onGround
     if (p.onGround) this.distance += Math.abs(p.vx) * dt
-    const still = p.onGround && Math.abs(p.vx) <= RUN_THRESHOLD && p.biteTimer <= 0
+    // (Standing out of a stand until his body goes faster than `RUN_START_SPEED`: his breath goes on, see `standOrRun`.)
+    const still =
+      p.onGround &&
+      p.biteTimer <= 0 &&
+      (Math.abs(p.vx) <= RUN_THRESHOLD || (this.standShown > 0 && Math.abs(p.vx) < RUN_START_SPEED))
     this.idleTime = still ? this.idleTime + dt : 0
     if (!still) this.waitCut = -1
-    // The skid lasts as long as the braking, plus a short tail; a new braking starts it again from frame 0.
-    const skidding = isSkidding(p)
+    // The skid is a brake at speed that has taken hold (round 8d): drawn from the third step of the simulation's own
+    // braking (`isSkidding`), turned to the key's side whatever the hold says, for as long as he brakes and its short
+    // tail (two steps at least); a tap of one or two steps against a run changes nothing. Carried against the facing
+    // he is drawn with with no turn asked (a knock-back's slide) faster than `CARRIED_SKID_SPEED`, he skids too,
+    // facing as he is drawn. A turn of his to his travel ends a skid (rule 1, `decideHeroFace`).
+    // (Driven against his drawn facing: the simulation faces the other way and his body has gone that way.)
+    // (A swimming body is slower: the water takes 14 % of his speed a step, so his first stroke from a stand goes
+    // 18.6 px/s; `DRIVE_SPEED_WATER`.)
+    const bodyX = p.x + p.w / 2
+    // (A body a knock still carries, `knockX`, is not driven by the player: its drift turns nothing, round 8f.)
+    const driven =
+      !p.knockX &&
+      p.facing !== this.heroFace &&
+      p.vx * p.facing > (p.inWater ? DRIVE_SPEED_WATER : RUN_THRESHOLD) &&
+      !Number.isNaN(this.stepX) &&
+      (bodyX - this.stepX) * p.facing > 0
+    // (Two steps running the same way: a drive one way, then the other, as the keys dither, is no drive, round 8e.)
+    this.driveSteps = !driven ? 0 : p.facing === this.driveWay ? this.driveSteps + 1 : 1
+    this.driveWay = p.facing
+    this.lastX = this.stepX
+    this.stepX = bodyX
+    const travel: 1 | -1 = p.vx > 0 ? 1 : -1
+    this.brakeSteps = isSkidding(p) ? this.brakeSteps + 1 : 0
+    // (No turn asked: not within the hold of a turn of his, a pivot's remainder included: rule 3.)
+    const carried =
+      p.onGround &&
+      p.facing === this.heroFace &&
+      p.vx * this.heroFace < 0 &&
+      Math.abs(p.vx) > CARRIED_SKID_SPEED &&
+      this.turnAge === null &&
+      this.heroFaceAge >= FACE_HOLD
+    // (Already drawn facing the key's side, a turn shown in the air before he lands into his brake: there is no tap
+    // to wait out; the brake shows from its first step on the ground, round 8e.)
+    const turnedBrake = isSkidding(p) && p.facing === this.heroFace
+    const skidding = this.brakeSteps >= BRAKE_STEPS || turnedBrake || carried
     if (!skidding) this.skidGone = false
-    // A skid is an action: a turn of his ends it (the turn's own picture follows); it does not mirror.
-    if (this.skidAge !== null && p.facing !== this.skidFace) {
-      this.skidAge = null
-      this.skidGone = skidding
-    }
-    if (skidding && this.skidGone) {
+    if (skidding && this.skidGone && !carried) {
       // (Over for good: no skid until this braking ends.)
       this.skidAge = null
     } else if (skidding) {
@@ -1565,25 +1978,51 @@ export class ActorsView {
       if (fresh) {
         this.heroFresh = 'skid'
         this.skidFace = p.facing
+        this.skidBrake = this.brakeSteps >= BRAKE_STEPS || turnedBrake
       }
+      this.skidGone = false
     } else if (this.skidAge !== null) {
       this.skidTail += dt
       this.skidAge += dt
-      if (this.skidTail > SKID_TAIL) this.skidAge = null
+      // (Its tail runs on into a reversal while his body is driven the new way, until rule 1 turns him: rule 5.)
+      if (this.skidTail > SKID_TAIL && this.skidAge >= 2 * SIM_STEP - 1e-9 && this.driveSteps === 0) this.skidAge = null
     }
+    void travel
+    this.skidSteps = this.skidAge === null ? 0 : this.skidSteps + 1
     if (skidding) this.skidTail = 0
     this.skidding = skidding
     if (this.heroDrift && !(p.onGround && p.vx * this.heroFace < 0 && Math.abs(p.vx) > RUN_THRESHOLD))
       this.heroDrift = false
-    // The hero's pivot is the picture of a turn of his drawn facing: it begins where that turns (`decideHeroFace`).
+    // The hero's pivot is the picture of a turn of his drawn facing: it begins where that turns (`decideHeroFace`); it
+    // gives way to his run once his body has gone `PIVOT_RUN_PX` the way he turned, and it never slides: carried
+    // `PIVOT_SLIDE_PX` back the old way (the player's keys dither while he slides) it is over too, and he stands until
+    // rule 1 turns him to his travel (round 8e).
     if (p.facing !== this.lastFacing) this.lastFacing = p.facing
+    const x = p.x + p.w / 2
     if (this.turnAge !== null) {
       this.turnAge += dt
-      if (!p.onGround || this.turnAge > 0.5) this.turnAge = null
+      const way = (x - this.pivotX) * this.heroFace
+      const gone = way > PIVOT_RUN_PX || -way > PIVOT_SLIDE_PX
+      if (!p.onGround || this.turnAge > 0.5 || gone) this.turnAge = null
     }
+    // After a hold he only coasts to a stop: he stands (the moment showed him standing).
+    if (this.coasting && !(p.onGround && Math.abs(p.vx) < this.coastSpeed - 1e-6 && Math.abs(p.vx) > 0))
+      this.coasting = false
+    this.coastSpeed = Math.abs(p.vx)
     this.waterTime = p.inWater ? this.waterTime + dt : 0
+    // (The hit a hold played out is over once its hurt is: every blow sets the same invulnerability, so a later
+    // blow would read as the one already played and never flinch, round 8e.)
+    if (!this.hurtLive()) this.hurtLed = null
     this.settleHero()
     this.decideHeroFace()
+    this.noteStand()
+  }
+
+  private blinkRand() {
+    let t = (this.blinkSeed = (this.blinkSeed + 0x6d2b79f5) | 0)
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 
   /** Whether the hold lets the hero's drawn facing turn to `way` now (an action is begun turned only by the hold). */
@@ -1615,7 +2054,8 @@ export class ActorsView {
       this.heroFace = p.facing
       this.heroFurthest = x
     }
-    if (this.heroFace * (x - this.heroFurthest) > 0) this.heroFurthest = x
+    // (The decisive distance is gone on the ground: in the air he is measured from where he comes down.)
+    if (this.heroFace * (x - this.heroFurthest) > 0 || !p.onGround) this.heroFurthest = x
     // (An action is begun turned only by the hold, `heroMayHold`: the distance his body went turns his run,
     // `heroMayTurn`, not a pose.)
     // An action begins facing its own way: a bite the side it bit, at once, whatever the hold says (the player
@@ -1641,21 +2081,65 @@ export class ActorsView {
       const moves = Math.abs(p.vx) > RUN_THRESHOLD && (p.vx > 0 ? 1 : -1) === this.heroKeep
       if (p.facing !== this.heroKeep || moves || name === 'bite') this.heroKeep = 0
     }
+    // While a knock still carries him (`knockX`) the simulation's facing is the one from before the blow (a knock
+    // takes no key): his body is not driven and nothing turns him but a bite of his (round 8f). After it he keeps his
+    // facing until the player turns him or runs him that way (`heroKeep`), as out of a pose.
+    if (p.knockX && name !== 'bite') {
+      if (p.facing !== this.heroFace) this.heroKeep = p.facing
+      return
+    }
+    // Rule 1 (round 8d): a turn toward the way his body goes is never held. The simulation faces the other way and
+    // his body has gone that way for two steps running: he turns, on the ground or in the air, and runs (a skid or a
+    // pivot of the other way is over).
+    // (A turn rule 1 put off a step, below, is due on the next while his body still goes that way, slowing or not.)
+    const due = this.ruleOneDue && p.facing !== this.heroFace && (x - this.lastX) * p.facing > 0.01
+    this.ruleOneDue = false
+    if ((this.driveSteps >= 2 || due) && p.facing !== this.heroFace && name !== 'bite' && name !== 'land') {
+      // (Rule 5 first: out of a run he has stood one step only, the run's frame held on the first: he stands this
+      // step too, and turns on the next. A stand of one step between two runs is no picture.)
+      if (p.onGround && this.standShown === 1 && this.standFromRun && !due) {
+        this.ruleOneDue = true
+        return
+      }
+      // (Nor a slide's skid of one step: out of a pose that showed him facing back, carried on by his run, he skids
+      // two steps, then turns, round 8e.)
+      // (`skidSteps` counts this step: it has shown on `skidSteps - 1` steps before.)
+      if (this.skidAge !== null && !this.skidBrake && this.skidSteps < 3) return
+      this.heroFace = p.facing
+      this.heroFaceAge = 0
+      this.heroFurthest = x
+      this.heroKeep = 0
+      this.heroDrift = false
+      this.turnAge = null
+      if (this.skidAge !== null) {
+        this.skidAge = null
+        this.skidGone = this.skidding
+      }
+      this.heroAction = ''
+      return
+    }
     const own: 1 | -1 = this.heroKeep !== 0 ? this.heroFace : p.facing
     let want: 1 | -1 = own
     if (HERO_ACTIONS.includes(name)) {
       if (name !== this.heroAction || fresh) {
         this.heroAction = name
+        // (A skid is a brake: it turns him to the key's side whatever the hold says.)
         this.heroActionFace =
           name === 'bite'
             ? this.biteDir
-            : name === 'wait' || name === 'turn' || !this.heroMayHold(own)
-              ? this.heroFace
-              : own
+            : name === 'skid'
+              ? isSkidding(p)
+                ? own
+                : this.heroFace
+              : name === 'wait' || name === 'turn' || !this.heroMayHold(own)
+                ? this.heroFace
+                : own
       }
       want = this.heroActionFace
     } else this.heroAction = ''
     if (want === this.heroFace) return
+    // (Braking at speed before the brake has taken hold: nothing changes in the picture.)
+    if (!HERO_ACTIONS.includes(name) && isSkidding(p)) return
     if (HERO_ACTIONS.includes(name) || this.heroMayTurn(want, x)) {
       const held = this.heroFaceAge < FACE_HOLD
       this.heroFace = want
@@ -1666,6 +2150,9 @@ export class ActorsView {
       // turn the distance his body went made within the hold: that one he runs into).
       if (!HERO_ACTIONS.includes(name) && !held && p.onGround && Math.abs(p.vx) <= SKID_SPEED) {
         this.turnAge = 0
+        // (Measured from where he stood before this step, unless this step's move was not his own: put back, pushed.)
+        const own = !Number.isNaN(this.lastX) && Math.abs(x - this.lastX) <= Math.abs(p.vx) * SIM_STEP + 1
+        this.pivotX = own ? this.lastX : x
         this.heroAction = 'turn'
         this.heroActionFace = want
       }
@@ -1755,7 +2242,65 @@ export class ActorsView {
 
   // ------------------------------------------------------------------------------------------- hero
 
+  /**
+   * The hero's live clip. Nothing of his walk shows for a single step between two runs (rule 5): his first step
+   * standing out of a run holds the run's frame.
+   */
   private heroSnapshot() {
+    const c = this.standOrRun()
+    // (Nor while his body is already driven the other way, rule 1 about to turn him into his run.)
+    if (
+      c &&
+      (c.name === 'idle' || c.name === 'blink') &&
+      this.runHold !== null &&
+      // (A stop leaves his speed a hair under zero, -1e-14: that is a stop, not a move back.)
+      this.world.player.vx * this.heroFace > -1e-6 &&
+      (this.idleSteps < 2 || this.driveSteps >= 1)
+    )
+      return { name: 'run', t: this.runHold }
+    return c
+  }
+
+  /** Records, on a step, how long he has stood and the run's frame he stood out of (see `heroSnapshot`). */
+  private noteStand() {
+    const raw = this.standOrRun()
+    const stands = raw !== null && (raw.name === 'idle' || raw.name === 'blink')
+    if (stands && this.driveSteps === 0) this.idleSteps++
+    else if (stands) this.idleSteps = Math.min(this.idleSteps, 1)
+    else {
+      this.idleSteps = 0
+      this.runHold = raw?.name === 'run' ? raw.t : null
+    }
+    // (What the step shows: a stand of how many steps, and whether a run came before it; see rule 1's wait.)
+    const shown = this.heroSnapshot()?.name
+    if (shown === 'idle' || shown === 'blink') this.standShown++
+    else {
+      this.standShown = 0
+      this.standFromRun = shown === 'run'
+    }
+  }
+
+  /**
+   * Whether the hero is drawn in a brake's skid now (a carried slide's is not one): the skid's sound begins with
+   * its picture, on the display frame that first shows it (`SoundBoard.update`).
+   */
+  heroBrakeSkids(): boolean {
+    return this.heroShownClip === 'skid' && this.skidBrake && this.skidAge !== null
+  }
+
+  /**
+   * His clip as his body decides it, but out of a stand that shows he runs only once his body goes faster than
+   * `RUN_START_SPEED` (round 8e): a body that jitters on the spot as the keys dither (25 px/s one step, 7 back the
+   * next) stands, rather than a run's frame and a stand taking turns on every step.
+   */
+  private standOrRun() {
+    const c = this.rawHeroSnapshot()
+    if (c?.name === 'run' && this.standShown > 0 && Math.abs(this.world.player.vx) < RUN_START_SPEED)
+      return this.rawHeroSnapshot(true)
+    return c
+  }
+
+  private rawHeroSnapshot(stands = false) {
     const p = this.world.player
     const hurtFor = INVULN - p.invuln
     const since = this.idleTime - WAIT_AFTER
@@ -1769,7 +2314,9 @@ export class ActorsView {
       waterTime: this.waterTime,
       onGround: p.onGround || this.heroRests(),
       // (Drifting against the facing a pose left him with, he stands: see `heroDrift`.)
-      vx: this.heroDrift && this.skidAge === null ? 0 : p.vx,
+      vx: stands || ((this.heroDrift || this.coasting) && this.skidAge === null) ? 0 : p.vx,
+      // (Carried against the facing he is drawn with, he is never drawn running: he stands, or skids.)
+      carriedBack: p.onGround && p.vx * this.heroFace < 0,
       vy: p.vy,
       facing: p.facing,
       airTime: this.airTime,
@@ -1824,7 +2371,7 @@ export class ActorsView {
       const d = this.death
       const choice = this.selectHero()!
       const anim = clip('hero', 'die')
-      if (anim) blit(ctx, anim, choice.t, d.x, this.deathFeet(d), brush(d.flip, undefined, choice.frame))
+      if (anim) blit(ctx, anim, choice.t, this.deathX(d), this.deathFeet(d), brush(d.flip, undefined, choice.frame))
       return
     }
     if (p.dead) return
@@ -1884,8 +2431,10 @@ export class ActorsView {
     const live = this.death || this.world.player.dead || this.dropping() ? null : this.heroSnapshot()
     if (live?.name === 'hurt') return this.hurtFace
     if (live?.name === 'bite') return this.biteDir
-    // (The facing the last display frame showed: a turn decided on the step the moment begins is not drawn.)
-    return this.heroShownFace || this.drawnFace()
+    // (The facing the last display frame showed: a turn decided on the step the moment begins is not drawn. Taken
+    // after this frame's update, before it is drawn, the last frame drawn is the one before.)
+    const shown = this.framed && this.frameUpdated ? this.heroDrawnFace : this.heroShownFace
+    return shown || this.drawnFace()
   }
 
   /** The facing the hero is drawn with in play (before any step: the simulation's). */
@@ -2056,8 +2605,11 @@ export class ActorsView {
   simStep() {
     this.stepDriven = true
     this.stepPhase = true
-    // (A stage that is over is held by the simulation: nothing steps, so nothing is decided.)
+    this.frameUpdated = false
+    // (A stage that is over is held by the simulation: nothing steps, so nothing is decided, and the clocks counted
+    // on the steps, a flinch's or a follow-through's, stand still with it.)
     if (this.world.state !== 'play') return this.creditHeld()
+    this.stepClock += SIM_STEP
     this.heroFaceAge += SIM_STEP
     this.stepHero(SIM_STEP)
     for (const enemy of this.world.enemies) {
@@ -2070,11 +2622,8 @@ export class ActorsView {
     }
     const boss = this.world.boss
     if (boss && !boss.dead) {
-      this.bossSlowSteps = this.restStep(boss)
-      this.trackFall(boss)
       this.bossFaceAge += SIM_STEP
-      stepTread(this.bossTread, boss.x + boss.w / 2, SIM_STEP, boss.onGround)
-      if (this.bossLast !== null && boss.state === this.bossLast && boss.active) this.decideBossFace(boss)
+      this.stepBoss(boss, SIM_STEP)
     }
     this.creditHeld()
   }
@@ -2252,6 +2801,18 @@ export class ActorsView {
     return this.bossChoice(boss)
   }
 
+  /** Whether the live boss's gathering light shows (see `shotCue`). */
+  bossLightShows(): boolean {
+    const boss = this.world.boss
+    return boss !== null && !boss.dead && this.shotCue(boss, shotCueScratch) !== null
+  }
+
+  /** Whether the live boss's picture is held still while his body shakes or walks under it (see `stepPicture`). */
+  bossPictureHeld(boss: Boss): boolean {
+    const walking = boss.state === 'idle' && (WALKERS.includes(boss.def.kind) || boss.def.kind === 'chaser')
+    return walking && boss.active && !this.posing('boss') && this.bossTread.standing
+  }
+
   /** The drawn facing of the live boss (true: left). */
   bossFlip(boss: Boss): boolean {
     // (Before the first update the simulation's own facing stands in.)
@@ -2302,13 +2863,35 @@ export class ActorsView {
     // (The first moments of a wind-up are still a rest, once his walk has slowed in it: after the moment it plays
     // from its first frame, a fair warning of what comes. Judged on the wind-up's own age, `ownTime`: the phase step
     // restarts his state's clock, not the crouch he has shown.)
+    // (A flier brakes in his wind-up as he hovers: his speed is no slide.)
     const early =
-      s === 'windup' && this.ownTime(boss) < WINDUP_REST_SECONDS + 1e-9 && Math.abs(boss.vx) <= WINDUP_REST_SPEED
+      s === 'windup' &&
+      this.ownTime(boss) < WINDUP_REST_SECONDS + 1e-9 &&
+      (Math.abs(boss.vx) <= WINDUP_REST_SPEED || boss.def.kind === 'flyer')
     if ((s === 'windup' && !early) || s === 'charge' || s === 'dive' || s === 'slam' || s === 'shoot') return false
     if (!boss.onGround && boss.def.kind !== 'flyer') return false
     if (s !== 'idle' && !early && (Math.abs(boss.vx) > DASH_REST_SPEED || this.bossSlowSteps < REST_STEPS)) return false
+    // (A light of his gathering is the beginning of his shot: no moment holds it half gathered.)
+    if (this.shotCue(boss, shotCueScratch) !== null) return false
     const name = this.bossChoice(boss).name
     return name !== 'land' && name !== 'shoot' && name !== 'hurt' && !isDashClip(name)
+  }
+
+  /**
+   * Whether the live boss's next step begins his shot: its light shows from it (`shotCue`), or a cast's lead-in may
+   * begin on it (`shotLead` within the cast's lead), while neither has begun yet. A moment that waits for him to be
+   * between his actions begins here at the latest, wherever the hero is (the step before his light or his cast, as
+   * the first moments of a wind-up).
+   */
+  bossShotNext(): boolean {
+    const boss = this.world.boss
+    if (!boss || boss.dead || !boss.active) return false
+    const s = this.fillBoss(boss)
+    const spec = bossSheetSpec(boss.def.kind, boss.def.art)
+    const due = CUE_SHEETS[boss.def.art] ? shotDue(s) : null
+    if (due !== null && due - SIM_STEP <= SHOT_CUE_SECONDS + 1e-9) return true
+    const until = spec.shoot ? shotLead(s) : null
+    return until !== null && until - SIM_STEP <= hitTime(spec.shoot!) + 1e-9
   }
 
   /**
@@ -2374,11 +2957,12 @@ export class ActorsView {
         const spec = bossSheetSpec(boss.def.kind, boss.def.art)
         // (In his wind-up the warning comes first: a landing takes its time only if `WINDUP_WARNING` is left after it.)
         const room = attackRoom(this.fillBoss(boss)) - (boss.state === 'windup' ? WINDUP_WARNING : 0)
-        // (Each frame on at least one display frame, and the first on the frame that shows the touchdown: a landing
-        // with less time than that is not shown.)
-        const shown = spec.land ? (spec.land.frames + 1) * Math.max(this.frameDt, SIM_STEP) : 0
-        if (spec.land && room + 1e-9 >= Math.max(FIT_MIN, shown)) {
+        // (Its clock starts on the display frame that first shows it, `fallLandFresh`: its first frame is never
+        // passed over, whatever the display frames' lengths.)
+        if (spec.land && room + 1e-9 >= FIT_MIN) {
           this.fallLandAt = this.bodyTime
+          this.fallLandFresh = true
+          this.dashLanded = true
           // Walking on (off a ledge in his walk) he takes the impact in a moment: over no more ground than a slam's
           // landing slides (`LAND_SLIDE_PX`), every frame still shown.
           const speed = Math.abs(boss.vx)
@@ -2387,7 +2971,7 @@ export class ActorsView {
           const walk = boss.def.speed * (boss.def.kind === 'final' && (boss.phase ?? 1) >= 2 ? 1.25 : 1)
           const still = stillRoom(s)
           const ground =
-            still === Infinity ? Infinity : Math.max(FIT_MIN, shown, still + LAND_SLIDE_PX / Math.max(speed, walk))
+            still === Infinity ? Infinity : Math.max(FIT_MIN, still + LAND_SLIDE_PX / Math.max(speed, walk))
           this.fallLandSeconds = Math.min(specDuration(spec.land), room, ground)
         }
       }
@@ -2415,8 +2999,7 @@ export class ActorsView {
   /** Whether a flinch is playing. */
   private flinching() {
     const boss = this.world.boss
-    if (this.flinchAt === null || !boss) return false
-    return this.bodyTime - this.flinchAt < this.flinchSeconds
+    return this.flinchAt !== null && boss !== null
   }
 
   /** Ends a cast in progress (a flinch cut it; its shot may still get a fresh pose if one fits after the flinch). */
@@ -2470,10 +3053,10 @@ export class ActorsView {
     if (due === null || due > SHOT_CUE_SECONDS + 1e-9) return null
     const jolt = this.reducedMotion || this.joltAt === null ? 0 : bossJolt(this.bodyTime - this.joltAt, this.joltDir)
     out.sheet = sheet
-    // (Full on the last frame before the shot: the frame before the one that shows it shows the light whole, also
-    // when a display frame spans more than a step.)
-    const last = Math.ceil(this.frameDt / CUE_LAST_STEP - 1e-6) * CUE_LAST_STEP
-    out.progress = Math.max(0, Math.min(1, (SHOT_CUE_SECONDS - due) / (SHOT_CUE_SECONDS - last)))
+    // (By the simulation's time alone, never going back: full on the last step before the shot. The last frame of
+    // `gather` covers the last sixth by itself, so the frame before the one that shows the shot shows it whole,
+    // whatever the display frames' lengths.)
+    out.progress = Math.max(0, Math.min(1, (SHOT_CUE_SECONDS - due) / (SHOT_CUE_SECONDS - CUE_LAST_STEP)))
     out.x = this.bossX(boss) + jolt + SHOT_BIRTH_DX
     out.y = shotBirthY(boss)
     return out
@@ -2506,6 +3089,70 @@ export class ActorsView {
     blit(ctx, anim, 0, cue.x, cue.y, brush(false, undefined, frame))
   }
 
+  /**
+   * The time into a fall's landing, played over `fallLandSeconds`: squeezed into less than its own length, it
+   * reaches its last frame `LAST_FRAME_SECONDS` before its time is up (as a cast's follow-through), so that frame
+   * shows at 30 Hz and above, whatever the display frames' lengths; past its time it is over.
+   */
+  private fallLandTime(land: AnimSpec) {
+    return fittedTime(land, this.bodyTime - this.fallLandAt!, this.fallLandSeconds)
+  }
+
+  /**
+   * The release begins on the shot's step: its follow-through is fitted to the time left before his next attack
+   * less a step (it reaches its last frame before that attack begins, and is neither cut by it nor runs into it);
+   * with less than `FIT_MIN` it shows none. Squeezed into less than its own length it reaches its last frame
+   * `LAST_FRAME_SECONDS` before its time is up.
+   */
+  private fitRelease(boss: Boss) {
+    const spec = bossSheetSpec(boss.def.kind, boss.def.art)
+    if (!spec.shoot) return
+    const room = castRoom(this.fillBoss(boss)) - SIM_STEP
+    // (A shot that left a step later than its lead-in foresaw keeps the follow-through it began with, up to the
+    // attack itself.)
+    let tail = Math.min(this.castTail, room)
+    if (tail + 1e-9 < FIT_MIN) tail = Math.min(this.castTail, room + SIM_STEP)
+    this.castTail = tail + 1e-9 >= FIT_MIN ? tail : 0
+    this.castLeft = this.castTail
+    this.castStepAt = this.stepClock
+  }
+
+  /**
+   * The time into a boss's action that is counted on the steps (a flinch, a follow-through): its first frame shows on
+   * the frame that first draws it (its `Fresh` flag), and from there it runs on the steps from the one that began it,
+   * as its end is counted, so its last frame keeps its time before that end whatever the frames' lengths. (A view
+   * driven without steps: the frame clock from its first frame.)
+   */
+  private actionAge(frameAt: number | null, stepAt: number) {
+    if (!this.stepDriven) return this.bodyTime - (frameAt ?? this.bodyTime)
+    return Math.max(0, this.stepClock - stepAt - SIM_STEP)
+  }
+
+  /**
+   * Where an action counted on the steps (`seconds` of them, ending on the step its time is up, `early` steps before
+   * the clock of `actionAge` has them) ends on that clock: its picture is fitted to the frames it really has. (A view
+   * driven without steps: `seconds`.)
+   */
+  private countedEnd(seconds: number, early: number) {
+    if (!this.stepDriven) return seconds
+    return Math.max(0, Math.ceil(seconds / SIM_STEP - 1e-6) - early) * SIM_STEP
+  }
+
+  /**
+   * Whether an action begun on a step, shown fresh on the frame that first drew it, now goes on: at once without
+   * steps (its frame clock starts here), else on the frame after the one that drew it (its time then comes from the
+   * steps, `actionAge`).
+   */
+  private firstFrame(fresh: boolean, which: 'flinch' | 'cast') {
+    if (!this.stepDriven || !fresh) return true
+    if (this.freshDrawn[which]) {
+      this.freshDrawn[which] = false
+      return true
+    }
+    this.freshDrawn[which] = true
+    return false
+  }
+
   /** The boss snapshot, refilled from the body and the view's records. */
   private fillBoss(boss: Boss): BossSnapshot {
     const s = bossSnapshot
@@ -2525,11 +3172,17 @@ export class ActorsView {
     s.hurtAge =
       this.flinchAt === null || !spec.hurt
         ? null
-        : ((this.bodyTime - this.flinchAt) * specDuration(spec.hurt)) / this.flinchSeconds
+        : this.flinchFresh
+          ? 0
+          : fittedTime(
+              spec.hurt,
+              this.actionAge(this.flinchAt, this.flinchStepAt),
+              this.countedEnd(this.flinchSeconds, 0)
+            )
     s.onGround = boss.onGround
     s.shotTimer = boss.shotTimer
     s.volleyCut = this.volleyCut
-    s.dashAge = this.dashAt === null ? null : this.bodyTime - this.dashAt
+    s.dashAge = this.dashFresh ? 0 : this.dashAt === null ? null : this.bodyTime - this.dashAt
     s.dashGain = this.bossGain - this.dashGain
     s.gain = this.bossGain
     s.standing = shownStanding(this.bossTread)
@@ -2543,24 +3196,18 @@ export class ActorsView {
     s.gatherFrom = fresh ? 0 : this.gatherFrom
     s.landCut = fresh ? this.carriesCut(boss.state, this.bossLast) : this.landCut
     s.fallLandAge =
-      this.fallLandAt === null || !spec.land
-        ? null
-        : ((this.bodyTime - this.fallLandAt) * specDuration(spec.land)) / this.fallLandSeconds
+      this.fallLandAt === null || !spec.land ? null : this.fallLandFresh ? 0 : this.fallLandTime(spec.land)
     s.landHolds = this.fallLandAt !== null && this.landHolds(boss)
     s.airShort = !boss.onGround && this.bossAirSteps <= LAND_HOLD_STEPS && landsSoon(this.world, boss, boss.vy)
+    s.dashOver = !fresh && this.dashLanded
     s.projectiles = boss.def.projectiles
     s.castAge = null
     if (this.cast === 'lead' && spec.shoot) s.castAge = castLeadTime(s, spec, this.castFrom)
     else if (this.cast === 'release' && spec.shoot) {
       const lead = hitTime(spec.shoot)
-      const natural = specDuration(spec.shoot) - lead
-      // Squeezed into less than its own length, the follow-through reaches its last frame a display frame before
-      // its time is up, so that frame shows at any display rate.
-      const seconds =
-        this.castTail < natural - 1e-9 ? Math.max(this.castTail / 2, this.castTail - this.frameDt) : this.castTail
       s.castAge = this.castFresh
         ? lead
-        : lead + Math.min(natural - 1e-6, ((this.bodyTime - this.castAt) * natural) / seconds)
+        : fittedTime(spec.shoot, this.actionAge(this.castAt, this.castStepAt), this.countedEnd(this.castTail, 1), lead)
     }
     return s
   }
@@ -2601,7 +3248,16 @@ export class ActorsView {
         face = x > this.bossAirX ? 1 : -1
         this.bossAirX = x
       }
-    } else if (boss.def.kind === 'chaser') face = heldSideFacing(face, d, age)
+    } else if (boss.def.kind === 'chaser') {
+      // ハム代 runs as the walkers walk: shaking on the spot over the hero (the simulation flips her speed on every
+      // step) she keeps her facing and her picture stands; once her body has gone the decisive distance one way, by
+      // the net travel over her shake, she faces that way.
+      face = walkFacing(this.bossTread, face, d, true, age)
+      // (Her run goes on in the air, off a ledge or a hop: there too, her body gone the decisive distance turns her.)
+      const back: 1 | -1 = face > 0 ? -1 : 1
+      if (!boss.onGround && goneSince(this.bossTread, sinceTurn(this.bossTread), back) >= DECISIVE_PX - 1e-6)
+        face = back
+    }
     // Through a cast he keeps the facing he aimed with (a flier's hover and the fox's leap need not face their drift).
     else if (this.cast !== 'none') face = this.bossFace
     // (Falling in his walk, the bear's and the king's `air` is no dash: he faces as he walks.)
@@ -2644,9 +3300,91 @@ export class ActorsView {
     }
   }
 
-  /** The boss's clip from his state and the view's records (no staged pose). */
+  /**
+   * The boss's clip from his state and the view's records (no staged pose). A fitted clip (`FITTED_CLIPS`) shows the
+   * frame its display frames have stepped it to (see `stepFitted`).
+   */
   private bossChoice(boss: Boss): ClipChoice {
-    return bossClip(this.fillBoss(boss), boss.def.art)
+    const choice = bossClip(this.fillBoss(boss), boss.def.art)
+    const fit = this.fitShown
+    if (fit.name !== choice.name || fit.key !== this.fitKey(choice) || choice.frame !== undefined) return choice
+    const spec = bossSheetSpec(boss.def.kind, boss.def.art)[choice.name]
+    // (A clip begun again since, its time gone back, shows as its time says.)
+    if (!spec || choice.t < fit.t - 1e-9) return choice
+    const start = frameStart(spec, fit.frame)
+    const length = frameSeconds(spec, fit.frame)
+    // (Its own frame: its time kept clear of the frame's edges, so rounding never shows a neighbour; past the clip's
+    // end a trembling tail cycles on its own time.)
+    if (specFrameAt(spec, choice.t) === fit.frame && choice.t >= specDuration(spec)) return choice
+    if (choice.t >= start && choice.t < start + length) return choice
+    return { name: choice.name, t: start + Math.max(1e-7, Math.min(0.999 * length, choice.t - start)) }
+  }
+
+  /** What tells one run of a fitted clip from the next: a cast's lead-in from its release. */
+  private fitKey(choice: ClipChoice) {
+    return choice.name === 'shoot' ? this.cast : ''
+  }
+
+  /**
+   * A boss's fitted clip (a flinch, a cast, a landing, a wind-up taken over late) goes forward by display frames:
+   * on a display frame that advances the clips no more than one frame past the one the last showed, whatever its
+   * time says, but into its last frame once its time is well into it. A short landing reserves its remaining
+   * poses at the first frame's pace, so an intervening hit-stop cannot cost it its final pose.
+   */
+  private stepFitted(boss: Boss, dt: number) {
+    const choice = bossClip(this.fillBoss(boss), boss.def.art)
+    const fit = this.fitShown
+    const spec = bossSheetSpec(boss.def.kind, boss.def.art)[choice.name]
+    if (!FITTED_CLIPS.includes(choice.name) || !spec || choice.frame !== undefined) {
+      fit.name = ''
+      return
+    }
+    const key = this.fitKey(choice)
+    const again = choice.t < fit.t - 1e-9
+    fit.t = choice.t
+    const target = specFrameAt(spec, choice.t)
+    const last = spec.frames - 1
+    const fresh = fit.name !== choice.name || fit.key !== key || again
+    if (fresh) {
+      fit.name = choice.name
+      fit.key = key
+      // (A run begins on its first frame on the frame that first shows it, however far a long display frame took its
+      // time: a cast's lead-in from frame 0, its release from the release frame.)
+      const release = spec.hit ?? 0
+      const first = choice.name === 'shoot' && target >= release ? release : 0
+      fit.frame = Math.min(target, first)
+      // A short landing needs every advancing display frame. Its second frame may be shortened by a hit-stop.
+      fit.paced =
+        choice.name === 'land' && this.fallLandAt !== null && this.fallLandSeconds <= last * dt + 1e-9 ? true : null
+      return
+    }
+    // (Decided once, on the run's second display frame that advances the clips: a display no faster than the clip's
+    // own pace, its time already past its first frame, paces the run one frame a display frame up to its last.)
+    // (Not a cast's lead-in: its release must show on the frame that shows the shot.)
+    const paceable = choice.name !== 'shoot' || this.cast === 'release'
+    // (A display frame that does not advance the clips changes nothing.)
+    if (!(dt > 0)) return
+    // A flinch ends on a simulation step. The next display interval can include a partial step carried from this one.
+    if (
+      choice.name === 'hurt' &&
+      this.stepDriven &&
+      fit.frame >= last - 1 &&
+      (fit.frame === last || this.flinchLeft <= Math.ceil(dt / SIM_STEP - 1e-6) * SIM_STEP + 1e-9)
+    ) {
+      fit.frame = last
+      return
+    }
+    if (fit.paced === null) fit.paced = paceable && target > fit.frame
+    if (fit.paced) {
+      fit.frame = Math.min(last, fit.frame + 1)
+      return
+    }
+    if (target <= fit.frame) {
+      fit.frame = target
+      return
+    }
+    const deep = target === last && choice.t >= frameStart(spec, last) + 0.5 * frameSeconds(spec, last)
+    fit.frame = deep ? last : Math.min(fit.frame + 1, target)
   }
 
   /**
@@ -2656,84 +3394,39 @@ export class ActorsView {
   private updateBoss(dt: number) {
     const boss = this.world.boss
     if (!boss || boss.dead) return
-    // He starts out facing the hero, before any step has run (a stage that opens on him poses him at once).
-    if (!this.bossFaced) {
-      this.bossFaced = true
-      this.bossFace = this.world.player.x > boss.x ? 1 : -1
-    }
-    const newState = boss.state !== this.bossLast
-    if (newState) {
-      // (A landing begins with his recovery after a slam: its impact.)
-      this.bossLandedAt = 0
-      this.bossPrev = this.bossLast
-      this.bossLast = boss.state
-      this.stateStart = this.world.time - boss.stateTime
-      this.stateReset = false
-      this.gatherFrom = 0
-      this.gatherFrame = 0
-      this.clipFrom = 0
-      this.landCut = this.carriesCut(boss.state, this.bossPrev)
-      if (boss.state === 'charge' || boss.state === 'dive') {
-        this.dashAt = this.bodyTime
-        this.dashGain = this.bossGain
+    // A landing begun on a step starts its clock on the display frame that first shows it, and so does a dash.
+    if (dt > 0 && this.fallLandFresh) {
+      this.fallLandFresh = false
+      if (this.fallLandAt !== null) {
+        // (Fitted to the time before his next attack from its step: what the frame's clock has run since comes off.)
+        this.fallLandSeconds = Math.max(1e-3, this.fallLandSeconds - (this.bodyTime - this.fallLandAt))
+        this.fallLandAt = this.bodyTime
       }
-      if (boss.state === 'shoot') this.volleyCut = false
-      this.bossSetOff = boss.state === 'idle'
-    } else if (boss.onGround && !this.bossGrounded) {
-      // In his slam the landing begins on the step after the touchdown (the step the simulation ends the slam on).
-      const slam = boss.state === 'slam'
-      this.bossLandedAt = this.ownTime(boss) + (slam ? SIM_STEP : 0)
-      this.landCut = false
     }
-    if (!this.stepDriven) this.trackFall(boss)
-    // (An attack that begins ends the landing: its own clip takes over.)
-    if (newState && (boss.state === 'slam' || boss.state === 'shoot')) this.fallLandAt = null
-    if (newState) this.slamImpact = false
-    this.bossGrounded = boss.onGround
-    if (!this.stepDriven) {
-      stepTread(this.bossTread, boss.x + boss.w / 2, dt, boss.onGround)
-      if (dt > 0) this.bossSlowSteps = this.restStep(boss)
+    if (dt > 0 && this.dashFresh) {
+      this.dashFresh = false
+      this.dashAt = this.bodyTime
     }
+    // (What he does is decided on the simulation's steps, `stepBoss`; without them, here.)
+    if (!this.stepDriven) this.stepBoss(boss, dt)
     // Only a boss walking on the ground (and ハム代 running) is ever held still; elsewhere the picture is the body.
     const walking = boss.state === 'idle' && (WALKERS.includes(boss.def.kind) || boss.def.kind === 'chaser')
     stepPicture(this.bossTread, boss.x + boss.w / 2, dt, walking && boss.active && !this.posing('boss'))
-    if (this.flinchAt !== null && !this.flinching()) this.flinchAt = null
-    const spec = bossSheetSpec(boss.def.kind, boss.def.art)
-    let s = this.fillBoss(boss)
-    // The cast: started when its lead-in must begin, ended when it has played.
-    if (spec.shoot) {
-      const lead = hitTime(spec.shoot)
-      const until = shotLead(s)
-      if (this.cast === 'lead' && until !== null && (this.world.player.x - boss.x) * this.castAim < 0) {
-        // The hero has gone to the other side before the release: the lead-in is given up on this frame (it never
-        // carries on to a release that would have to turn), and begins again facing the new side where it can.
-        this.dropCast()
-        this.castStats.givenUp++
-        if (this.castRestarts === 0 && this.beginCast(boss, s, spec, until)) {
-          this.castRestarts++
-          this.castStats.begunAgain++
-        } else this.castRefused = true
-      }
-      if (this.cast === 'none') {
-        if (until === null || until > lead) {
-          this.castRefused = false
-          this.castRestarts = 0
-        } else if (!this.castRefused && !this.flinching()) this.beginCast(boss, s, spec, until)
-      } else if (this.cast === 'lead' && until === null) this.dropCast()
-      else if (this.cast === 'release' && this.castFresh) {
-        // The frame that shows the shot shows its release; the follow-through runs from here, fitted to the time
-        // left before his wind-up (at any display rate the release frame lands on the shot).
-        if (dt > 0) {
-          this.castFresh = false
-          this.castAt = this.bodyTime
-          this.castTail = Math.min(this.castTail, Math.max(1e-3, castRoom(s)))
-        }
-      } else if (this.cast === 'release' && this.bodyTime - this.castAt >= this.castTail - 1e-9) {
-        this.cast = 'none'
-        this.castSide = 0
-      }
-      s = this.fillBoss(boss)
+    // A flinch begun on a step starts its clock on the display frame that first shows it.
+    // (A frame held by the hit-stop that came with it shows it too.)
+    // (Driven by steps, the frame after the one that first drew it goes on from the step that began it.)
+    if (this.flinchFresh && this.firstFrame(this.flinchFresh, 'flinch')) {
+      this.flinchFresh = false
+      if (this.flinchAt !== null) this.flinchAt = this.bodyTime
     }
+    const spec = bossSheetSpec(boss.def.kind, boss.def.art)
+    // The frame that shows the shot shows its release; the follow-through runs from here, fitted to the time left
+    // before his wind-up (at any display rate the release frame lands on the shot).
+    if (spec.shoot && this.cast === 'release' && this.castFresh && dt > 0 && this.firstFrame(this.castFresh, 'cast')) {
+      this.castFresh = false
+      this.castAt = this.bodyTime
+    }
+    const s = this.fillBoss(boss)
     const choice = bossClip(s, boss.def.art, spec)
     if (fallLandShows(s, spec) && choice.name === 'land') {
       // A staged pose that takes him over ends a plain fall's landing (it gives way: after the pose he does not
@@ -2741,26 +3434,18 @@ export class ActorsView {
       if (this.posing('boss')) this.fallLandAt = null
       else if (dt > 0) this.fallLandSeen = this.fallLandAt
     }
-    // The drawn facing. An action (a flinch, a throw or cast, a landing) keeps the facing it began with to its last
-    // frame. The king's volley begins facing the hero when he is clearly on one side (on its first frame, also when a
-    // hit-stop holds it, and not straight after another turn); a cast of the others begins facing its aim (`beginCast`).
-    const action = choice.name === 'hurt' || choice.name === 'shoot' || choice.name === 'land'
-    const began = action && choice.name !== this.bossAction
-    this.bossAction = action ? choice.name : ''
-    if (boss.active && began && choice.name === 'shoot' && this.cast === 'none' && this.bossFaceAge >= FACE_HOLD) {
-      const d = this.world.player.x - boss.x
-      const aim: 1 | -1 = d > 0 ? 1 : -1
-      if (Math.abs(d) > aimClear(boss.def.speed) && aim !== this.bossFace) {
-        this.bossFace = aim
-        this.bossFaceAge = 0
-        noteTurn(this.bossTread)
-      }
-    }
-    if (dt > 0 && boss.active) {
-      // (Driven by steps, a new state is first seen here: its step is decided now, the rest on its steps.)
-      if (!this.stepDriven || newState) this.decideBossFace(boss, choice)
-      this.bossGain += drawnGain(this.bossTread, this.bossFace, boss.x + boss.w / 2)
-    }
+    // (What is drawn: the ground his drawn body covers, and where a clip timed from the state's start takes over.)
+    if (dt > 0 && boss.active) this.bossGain += drawnGain(this.bossTread, this.bossFace, boss.x + boss.w / 2)
+    // A clip timed from the state's start that takes over from another clip inside the state begins on its first
+    // frame: it is timed from there (`BossSnapshot.clipFrom`).
+    const shown = this.bossChoice(boss)
+    const name = shown.name
+    if (boss.state === 'shoot' && name === 'shoot') this.gatherFrame = shown.frame ?? 0
+    if (boss.state !== this.clipState) this.clipState = boss.state
+    else if (name !== this.clipLast && STATE_TIMED.includes(name)) this.clipFrom = boss.stateTime
+    this.clipLast = name
+    // (After `clipFrom`: a clip taken over here is stepped from where it begins.)
+    this.stepFitted(boss, dt)
     // A boss on the ground skidding to a stop kicks up dust.
     const art = boss.def.art
     const skids =
@@ -2783,13 +3468,116 @@ export class ActorsView {
         })
       }
     }
-    // A clip timed from the state's start that takes over from another clip inside the state begins on its first
-    // frame: it is timed from there (`BossSnapshot.clipFrom`).
-    const shown = this.bossChoice(boss)
-    const name = shown.name
-    if (boss.state === 'shoot' && name === 'shoot') this.gatherFrame = shown.frame ?? 0
-    if (!newState && name !== this.clipLast && STATE_TIMED.includes(name)) this.clipFrom = boss.stateTime
-    this.clipLast = name
+  }
+
+  /**
+   * One step of the boss's records (or a display frame, for a view driven without steps): his state history (which
+   * state, the one before, when it began, his dash, his setting off; every step, the steps a state changes on
+   * included), his landings, his tread, the cast he shows (started on the step its lead-in must begin, if it fits),
+   * his drawn facing, and where a clip timed from the state's start takes over. What is drawn for him on a step is
+   * then the same at every display schedule: a state that fell inside one long frame is simply not drawn.
+   */
+  private stepBoss(boss: Boss, dt: number) {
+    // He starts out facing the hero, before any step has run (a stage that opens on him poses him at once).
+    if (!this.bossFaced) {
+      this.bossFaced = true
+      this.bossFace = this.world.player.x > boss.x ? 1 : -1
+    }
+    const newState = boss.state !== this.bossLast
+    if (newState) {
+      // (A landing begins with his recovery after a slam: its impact.)
+      this.bossLandedAt = 0
+      this.dashLanded = false
+      this.bossPrev = this.bossLast
+      this.bossLast = boss.state
+      this.stateStart = this.world.time - boss.stateTime
+      this.stateReset = false
+      this.gatherFrom = 0
+      this.gatherFrame = 0
+      this.clipFrom = 0
+      this.landCut = this.carriesCut(boss.state, this.bossPrev)
+      if (boss.state === 'charge' || boss.state === 'dive') {
+        this.dashFresh = true
+        this.dashGain = this.bossGain
+      }
+      if (boss.state === 'shoot') this.volleyCut = false
+      this.bossSetOff = boss.state === 'idle'
+    } else if (boss.onGround && !this.bossGrounded) {
+      // In his slam the landing begins on the step after the touchdown (the step the simulation ends the slam on).
+      const slam = boss.state === 'slam'
+      this.bossLandedAt = this.ownTime(boss) + (slam ? SIM_STEP : 0)
+      this.landCut = false
+    }
+    this.trackFall(boss)
+    // (A flinch ends on the step its time is up.)
+    if (this.flinchAt !== null && dt > 0) {
+      this.flinchLeft -= dt
+      if (this.flinchLeft <= 1e-9) {
+        this.flinchAt = null
+        this.flinchFresh = false
+      }
+    }
+    // (An attack that begins ends the landing: its own clip takes over.)
+    if (newState && (boss.state === 'slam' || boss.state === 'shoot')) this.fallLandAt = null
+    if (newState) this.slamImpact = false
+    this.bossGrounded = boss.onGround
+    stepTread(this.bossTread, boss.x + boss.w / 2, dt, boss.onGround)
+    if (dt > 0) this.bossSlowSteps = this.restStep(boss)
+    const spec = bossSheetSpec(boss.def.kind, boss.def.art)
+    let s = this.fillBoss(boss)
+    // The cast: started when its lead-in must begin, ended when it has played.
+    if (spec.shoot) {
+      const lead = hitTime(spec.shoot)
+      const until = shotLead(s)
+      const across = (this.world.player.x - boss.x) * this.castAim
+      if (this.cast === 'lead' && until !== null && across < 0 && -across > aimClear(boss.def.speed)) {
+        // The hero has gone clearly to the other side before the release (inside the aim zone, where the sign the
+        // simulation aims by flips every few steps, the lead-in goes on: the shot's own step decides): the lead-in is
+        // given up on this step (it never carries on to a release that would have to turn), and begins again facing
+        // the new side where it can.
+        this.dropCast()
+        this.castStats.givenUp++
+        if (this.castRestarts === 0 && this.beginCast(boss, s, spec, until)) {
+          this.castRestarts++
+          this.castStats.begunAgain++
+        } else this.castRefused = true
+      }
+      if (this.cast === 'none') {
+        if (until === null || until > lead) {
+          this.castRefused = false
+          this.castRestarts = 0
+        } else if (!this.castRefused && !this.flinching()) this.beginCast(boss, s, spec, until)
+      } else if (this.cast === 'lead' && until === null) this.dropCast()
+      else if (this.cast === 'release') {
+        // Its time is counted on the steps (its picture's clock starts on the frame that shows the release:
+        // `updateBoss`); it ends on the step its time is up, or his next attack begins.
+        this.castLeft -= dt
+        // (The release frame itself shows on the frame that shows the shot, also with no follow-through after it.)
+        if ((this.castLeft <= 1e-9 && !this.castFresh) || ATTACK_STATES.includes(boss.state)) {
+          this.cast = 'none'
+          this.castSide = 0
+          this.castFresh = false
+        }
+      }
+      s = this.fillBoss(boss)
+    }
+    const choice = bossClip(s, boss.def.art, spec)
+    // The drawn facing. An action (a flinch, a throw or cast, a landing) keeps the facing it began with to its last
+    // frame. The king's volley begins facing the hero when he is clearly on one side (on its first frame, also when a
+    // hit-stop holds it, and not straight after another turn); a cast of the others begins facing its aim (`beginCast`).
+    const action = choice.name === 'hurt' || choice.name === 'shoot' || choice.name === 'land'
+    const began = action && choice.name !== this.bossAction
+    this.bossAction = action ? choice.name : ''
+    if (boss.active && began && choice.name === 'shoot' && this.cast === 'none' && this.bossFaceAge >= FACE_HOLD) {
+      const d = this.world.player.x - boss.x
+      const aim: 1 | -1 = d > 0 ? 1 : -1
+      if (Math.abs(d) > aimClear(boss.def.speed) && aim !== this.bossFace) {
+        this.bossFace = aim
+        this.bossFaceAge = 0
+        noteTurn(this.bossTread)
+      }
+    }
+    if (dt > 0 && boss.active) this.decideBossFace(boss, choice)
   }
 
   /**

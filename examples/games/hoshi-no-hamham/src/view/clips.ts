@@ -97,6 +97,11 @@ export interface HeroSnapshot {
   inWater: boolean
   waterTime: number
   onGround: boolean
+  /**
+   * Carried on the ground against the facing he is drawn with: he is not drawn running (he stands, or skids: see
+   * `ActorsView.stepHero`).
+   */
+  carriedBack?: boolean
   vx: number
   vy: number
   facing: 1 | -1
@@ -160,7 +165,7 @@ export function heroClip(s: HeroSnapshot, spec: Record<string, AnimSpec> = HERO_
   if (s.skidAge !== null) return { name: 'skid', t: s.skidAge }
   if (s.turnAge !== null && s.turnAge < specDuration(spec.turn)) return { name: 'turn', t: s.turnAge }
   // The cycle advances with the ground covered, one pass per stride, so feet never slide.
-  if (Math.abs(s.vx) > RUN_THRESHOLD) return { name: 'run', t: strideTime(spec.run, s.distance) }
+  if (Math.abs(s.vx) > RUN_THRESHOLD && !s.carriedBack) return { name: 'run', t: strideTime(spec.run, s.distance) }
   if (s.idleTime >= WAIT_AFTER && !s.waitCut) {
     const since = (s.idleTime - WAIT_AFTER) % WAIT_EVERY
     if (since < specDuration(spec.wait)) return { name: 'wait', t: since }
@@ -400,6 +405,8 @@ export interface BossSnapshot {
    * ledge's lip): not a fall.
    */
   airShort?: boolean
+  /** A fall's landing has begun in this state: a dash that carried him into it is over (he falls, lands, recovers). */
+  dashOver?: boolean
   /** How many shots he fires at once (`def.projectiles`; 0: he throws nothing). */
   projectiles?: number
 }
@@ -721,7 +728,8 @@ export function castFit(s: BossSnapshot, spec: Record<string, AnimSpec>) {
   const until = shotLead(s)
   if (until === null || until > lead + 1e-9 || until + 1e-9 < FIT_MIN) return 0
   if (!canShow(s, spec, 'shoot')) return 0
-  const after = castRoom(s) - until
+  // (Its follow-through is fitted to the room after the shot less a step: `ActorsView.fitRelease`.)
+  const after = castRoom(s) - until - 1 / 60
   return after + 1e-9 < FIT_MIN ? 0 : Math.min(specDuration(shoot) - lead, after)
 }
 
@@ -893,7 +901,8 @@ function pickBossClip(s: BossSnapshot, spec: Record<string, AnimSpec>): ClipChoi
     case 'recover': {
       // A dash that still carries him is drawn as his dash, on the ground and in the air alike, until it has let him
       // go (the fox's whirl, the king's roll off a ledge). (A slam's recovery slides in its landing.)
-      const dashed = s.prevState === 'charge' || s.prevState === 'dive' || s.prevState === 'stunned'
+      // (Once a landing has begun the dash is over: off the next ledge he falls and lands again.)
+      const dashed = (s.prevState === 'charge' || s.prevState === 'dive' || s.prevState === 'stunned') && !s.dashOver
       if (fast && dash && (!leapsAndSlams || dashed)) return dashClip(s, spec, dash)
       // Slid off a ledge after his slam he falls first (his landing is drawn with planted feet); touching down again
       // he lands again, from its first frame to its last, and then goes on with his recovery from its first frame.
@@ -903,8 +912,12 @@ function pickBossClip(s: BossSnapshot, spec: Record<string, AnimSpec>): ClipChoi
         const lead = hitTime(spec.shoot)
         if (followAge(s) < specDuration(spec.shoot) - lead) return { name: 'shoot', t: lead + followAge(s) }
       }
-      // After a dash he keeps its clip until he has nearly stopped.
-      if (fast && dash) return dashClip(s, spec, dash)
+      // After a dash he keeps its clip until he has nearly stopped (not after a landing that ended it).
+      if (fast && dash && !(leapsAndSlams && s.dashOver)) return dashClip(s, spec, dash)
+      // The bee sits in her recovery on the ground; off it (her dash ended at a ledge and she slid off) she is in her
+      // hover, and sits again, from its first frame, when she is down (not for the shake at a ledge's lip).
+      if (s.kind === 'swarm' && !spec.air && !spec.recover?.travel && !s.onGround && !s.airShort)
+        return { name: 'idle', t: s.time }
       return falling ?? { name: 'recover', t: clipTime(s) }
     }
     case 'idle':

@@ -931,6 +931,7 @@ describe('boss clips', () => {
       expect(recover('swarm', 'beeBoss', 100)).toEqual({ name: 'attack', t: 0.9 })
       expect(recover('final', 'king', 100)).toEqual({ name: 'attack', t: 0.9 })
       expect(recover('flyer', 'crowBoss', 504, crow)).toEqual({ name: 'sweep', t: 0.9 })
+      // (On the ground: off it the bee is in her hover, round 8.)
       for (const [kind, art] of [
         ['brute', 'boarBoss'],
         ['swarm', 'foxBoss'],
@@ -938,7 +939,7 @@ describe('boss clips', () => {
         ['final', 'king'],
         ['flyer', 'crowBoss']
       ] as const)
-        expect(recover(kind, art, DASH_REST_SPEED, crow).name).toBe('recover')
+        expect(recover(kind, art, DASH_REST_SPEED, { ...crow, onGround: true }).name).toBe('recover')
       // The first moments of a stun after a charge too.
       expect(
         bossClip(boss('brute', 'stunned', { prevState: 'charge', stateTime: 0.01, vx: 0, dashAge: 0.5 }), 'boarBoss')
@@ -1552,5 +1553,34 @@ describe('round 6q: a restarted slam rolls to its impact; a roll off a ledge sta
       bossClip(boss('final', 'recover', { prevState: 'slam', onGround: true, vx: 250, stateTime: 0.02 }), 'king', spec)
         .name
     ).toBe('land')
+  })
+})
+
+describe('round 8: once a landing has begun his dash is over', () => {
+  for (const [kind, art] of [['final', 'king']] as const) {
+    const spec = bossSheetSpec(kind, art)
+    it(`${art}: in his recovery after a charge, sliding off the next stair after a landing began, he falls (air), not his dash`, () => {
+      const base = { prevState: 'charge' as BossState, vx: 300, vy: 120, onGround: false }
+      // (Before any landing his dash carries him off the stair: drawn as his dash.)
+      expect(bossClip(boss(kind, 'recover', base), art, spec).name).toBe('attack')
+      expect(bossClip(boss(kind, 'recover', { ...base, dashOver: true }), art, spec).name).toBe('air')
+      // On the ground again after that landing, still fast: his recovery, not the dash.
+      const ground = { ...base, onGround: true, vy: 0, dashOver: true }
+      expect(bossClip(boss(kind, 'recover', ground), art, spec).name).toBe('recover')
+    })
+  }
+})
+
+describe('round 8: the bee off the ground is in her hover', () => {
+  const spec = bossSheetSpec('swarm', 'beeBoss')
+  it('in her recovery, slid off a ledge and falling, she hovers; down again she sits', () => {
+    const air = { prevState: 'charge' as BossState, vx: -20, vy: 250, onGround: false, stateTime: 0.3 }
+    expect(bossClip(boss('swarm', 'recover', air), 'beeBoss', spec).name).toBe('idle')
+    // (The shake at a ledge's lip is no fall: she sits on.)
+    expect(bossClip(boss('swarm', 'recover', { ...air, airShort: true }), 'beeBoss', spec).name).toBe('recover')
+    expect(bossClip(boss('swarm', 'recover', { ...air, onGround: true, vy: 0 }), 'beeBoss', spec).name).toBe('recover')
+    // (The fox, of her kind, falls in his own `air`.)
+    const fox = bossSheetSpec('swarm', 'foxBoss')
+    expect(bossClip(boss('swarm', 'recover', air), 'foxBoss', fox).name).toBe('air')
   })
 })
