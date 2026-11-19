@@ -493,21 +493,73 @@ test('two skills tapped back to back on one tough enemy are both cast: a special
 })
 
 test('a follow-up special is still taken against a fast enemy that will leave the first special\'s circle', async ({ page }) => {
-  await seed(page, { wolf: true })
+  await seed(page, { wolf: true }, async () => {
+    await page.evaluate((specs) => {
+      const readState = (): GameEngine['state'] => JSON.parse(localStorage.getItem('tower-jev-v3')!).run.engine.state
+      const initial = readState(),
+        wolf = initial.units.find((unit) => unit.type === 'wolf')!,
+        types = ['runner', 'archer'] as const,
+        runner = initial.units.find((unit) => unit.type === 'runner')!,
+        app = document.getElementById('app')!,
+        health = (id: number) => document.querySelector<HTMLElement>(`.unit-health[data-unit-id="${id}"]`),
+        result = ((window as any).wolfTargetCast = { done: false } as any)
+      const observer = new MutationObserver(() => {
+        if (
+          app.dataset.phase !== 'assault' ||
+          document.querySelector('#campaign-loading')?.checkVisibility() ||
+          (window as any).towerDefenseDiagnostics().specialAbilities.loaded !== 10
+        ) return
+        const label = health(wolf.id),
+          hp = label ? Number(label.style.getPropertyValue('--hp')) * wolf.maxHp : 0,
+          buttons = types.map((type) => document.querySelector<HTMLButtonElement>(`.skill-btn[data-skill-type="${type}"]`))
+        if (!label || hp <= runner.attack * specs.runner.power / specs.runner.impacts.length) {
+          observer.disconnect()
+          Object.assign(result, { done: true, error: `Missed original wolf's nonlethal frame: HP ${hp}` })
+          return
+        }
+        if (!buttons.every((button) => button?.dataset.state === 'ready' && button.dataset.targetCount === '1')) return
+        if (!types.every((type, index) => {
+          const caster = health(Number(buttons[index]!.dataset.skillUnit))
+          return caster && Math.hypot(
+            Number(label.dataset.worldX) - Number(caster.dataset.worldX),
+            Number(label.dataset.worldY) - Number(caster.dataset.worldY)
+          ) <= specs[type].range
+        })) return
+        observer.disconnect()
+        result.time = Number(app.dataset.simulationTime)
+        result.wolfId = wolf.id
+        buttons[0]!.click()
+        result.first = readState()
+        buttons[1]!.click()
+        result.second = readState()
+        result.done = true
+      })
+      observer.observe(app, { attributes: true, attributeFilter: ['data-simulation-time'] })
+    }, SPECIALS)
+  })
   await assault(page)
   const runner = page.locator('.skill-btn[data-skill-type="runner"]'),
     archer = page.locator('.skill-btn[data-skill-type="archer"]')
-  await expect(runner).toHaveAttribute('data-state', 'ready', { timeout: 120_000 })
-  await expect(archer).toHaveAttribute('data-state', 'ready')
-  // Two taps in the same task: the archer's tap sees the runner's three-hit cast still pending, but the wolf
-  // (speed 130) is out of the 65 px circle before the later hits, so those hits cannot be counted on.
-  await page.evaluate(() => {
-    for (const type of ['runner', 'archer']) document.querySelector<HTMLElement>(`.skill-btn[data-skill-type="${type}"]`)!.click()
-  })
+  await expect.poll(() => page.evaluate(() => (window as any).wolfTargetCast.done)).toBe(true)
+  const { error, time, wolfId, first, second } = await page.evaluate(() => (window as any).wolfTargetCast) as {
+    error?: string; time: number; wolfId: number; first: GameEngine['state']; second: GameEngine['state']
+  }
+  expect(error).toBeUndefined()
+  expect([first.time, second.time]).toEqual([time, time])
+  const wolf = first.units.find((unit) => unit.id === wolfId)!,
+    hits = first.specialEffects ?? []
+  expect(wolf.type).toBe('wolf')
+  expect(hits).toHaveLength(SPECIALS.runner.impacts.length)
+  const [opening, ...later] = hits
+  for (const hit of hits) expect(hit).toMatchObject({ type: 'runner', x: wolf.x, y: wolf.y, applied: false })
+  expect(wolf.hp).toBeGreaterThan(opening!.power)
+  expect(wolf.hp).toBeLessThanOrEqual(hits.reduce((damage, hit) => damage + hit.power, 0))
+  expect(wolf.speed * (opening!.releaseAt - time)).toBeLessThanOrEqual(SPECIALS.runner.radius)
+  for (const hit of later) expect(wolf.speed * (hit.releaseAt - time)).toBeGreaterThan(SPECIALS.runner.radius)
+  expect(second.specialEffects?.find((hit) => hit.type === 'archer')).toMatchObject({ x: wolf.x, y: wolf.y, startedAt: time })
   await expect(runner).toHaveAttribute('data-state', 'charging')
   await expect(archer).toHaveAttribute('data-state', 'charging')
-  const effects = (await stored(page)).state.specialEffects as Array<{ type: string }>
-  expect(new Set(effects.map((e) => e.type))).toEqual(new Set(['runner', 'archer']))
+  expect(new Set(second.specialEffects?.map((effect) => effect.type))).toEqual(new Set(['runner', 'archer']))
 })
 
 for (const [name, viewport] of [

@@ -237,19 +237,23 @@ test('the full roster footer leaves the gate and final road tappable after rotat
   const list = page.locator('.skill-scroll')
   await list.evaluate((element) => { element.scrollLeft = 0 })
   const bar = (await list.boundingBox())!
-  const sendTouch = (type: 'touchStart' | 'touchMove' | 'touchEnd', x = 0, y = 0) =>
-    touch.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] })
-  const swipeY = bar.y + 30
-  await sendTouch('touchStart', bar.x + 180, swipeY)
-  for (let offset = 160; offset >= 20; offset -= 20) await sendTouch('touchMove', bar.x + offset, swipeY)
-  await sendTouch('touchEnd')
+  await touch.send('Input.synthesizeScrollGesture', {
+    x: bar.x + 180,
+    y: bar.y + 30,
+    xDistance: -160,
+    gestureSourceType: 'touch'
+  })
   await expect.poll(() => list.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
   await expect(page.locator('#selection-context[data-aiming]')).toHaveCount(0)
+  await expect(page.locator('.skill-btn[data-state="charging"]')).toHaveCount(0)
   await tenth.scrollIntoViewIfNeeded()
   const last = (await tenth.boundingBox())!
-  await sendTouch('touchStart', last.x + last.width / 2, last.y + last.height / 2)
+  await touch.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: last.x + last.width / 2, y: last.y + last.height / 2 }]
+  })
   await expect(page.locator('#unit-special')).toHaveText('×')
-  await sendTouch('touchEnd')
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
   await page.locator('#unit-special').click()
   await expect(page.locator('#selection-context[data-aiming]')).toHaveCount(0)
   await touch.detach()
