@@ -244,6 +244,7 @@ export function createItemModel(asset: ItemAsset, outline: boolean): KitItemMode
     },
     dispose() {
       material.dispose()
+      mesh.customDepthMaterial?.dispose()
       skeleton?.dispose()
       root.removeFromParent()
     }

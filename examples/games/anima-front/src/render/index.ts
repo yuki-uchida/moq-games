@@ -6,6 +6,7 @@
  */
 import * as THREE from 'three'
 import type { ModelKit, Quality } from '../models/api'
+import { guardWebGLRenderer } from '../models/renderer-guard'
 import { FOES } from '../data/enemies'
 import { propSolids, type SolidCyl } from '../sim/prop-solids'
 import { hermitWallBox } from '../sim/wall-box'
@@ -73,6 +74,7 @@ function solidsOf(pr: PropView): CameraSolid[] {
 class Renderer implements GameRenderer {
   readonly canvas: HTMLCanvasElement
   private readonly gl: THREE.WebGLRenderer
+  private readonly releaseGl: () => void
   private readonly scene = new THREE.Scene()
   private readonly rig = new CameraRig()
   private readonly characters: Characters
@@ -121,6 +123,7 @@ class Renderer implements GameRenderer {
     this.canvas = canvas
     this.opts = { ...options }
     this.gl = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false })
+    this.releaseGl = guardWebGLRenderer(this.gl)
     this.gl.outputColorSpace = THREE.SRGBColorSpace
     this.gl.toneMapping = THREE.ACESFilmicToneMapping
     this.gl.toneMappingExposure = 1
@@ -577,6 +580,7 @@ class Renderer implements GameRenderer {
     this.disposed = true
     this.sound.stopAll()
     this.env?.dispose()
+    this.env = null
     this.characters.dispose()
     this.foes.dispose()
     this.props.dispose()
@@ -584,6 +588,9 @@ class Renderer implements GameRenderer {
     this.effects.dispose()
     this.markers.dispose()
     this.post?.dispose()
-    this.gl.dispose()
+    this.post = null
+    this.scene.clear()
+    this.view = null
+    this.releaseGl()
   }
 }

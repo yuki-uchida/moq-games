@@ -7,6 +7,7 @@
 import * as THREE from 'three'
 import { ITEMS, type ItemId } from '../data/items'
 import type { ModelKit } from '../models/api'
+import { guardWebGLRenderer } from '../models/renderer-guard'
 import { itemIconSvg } from './art'
 
 const pictures = new Map<ItemId, string>()
@@ -69,6 +70,7 @@ export async function renderItemThumbs(kit: ModelKit, ids: readonly ItemId[], si
   } catch {
     return
   }
+  const release = guardWebGLRenderer(renderer)
   renderer.setPixelRatio(1)
   renderer.setSize(size, size, false)
   renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -133,7 +135,6 @@ export async function renderItemThumbs(kit: ModelKit, ids: readonly ItemId[], si
   } catch (err) {
     console.warn('[anima-front] antique thumbnails unavailable', err)
   } finally {
-    renderer.dispose()
-    renderer.forceContextLoss()
+    release()
   }
 }

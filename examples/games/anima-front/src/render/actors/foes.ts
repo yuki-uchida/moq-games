@@ -244,6 +244,7 @@ export class Foes {
         this.group.remove(mesh)
         mesh.dispose()
       }
+      for (const part of b.rig.parts) part.material.dispose()
       this.group.remove(b.ghost)
       b.ghost.dispose()
     }

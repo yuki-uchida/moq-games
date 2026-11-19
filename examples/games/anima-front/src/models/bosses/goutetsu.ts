@@ -111,13 +111,14 @@ export function createGoutetsu(asset: BossAsset): BossModel {
       })
     )
   const beam = pivot(lens, [0, 0, 0.5], 'beam')
+  const noShadow = b.own(noShadowDepthMaterial())
   for (const [r, color, opacity] of [
     [0.55, 0x2fd8ff, 0.35],
     [0.2, 0xd8ffff, 0.9]
   ] as const) {
     const m = new THREE.Mesh(beamGeo, beamMat(color, opacity))
     m.scale.set(r, r, 1)
-    m.customDepthMaterial = noShadowDepthMaterial()
+    m.customDepthMaterial = noShadow
     m.renderOrder = 2
     beam.add(m)
   }

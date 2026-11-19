@@ -147,8 +147,6 @@ export interface RegionUniforms {
   shapeBase: number
 }
 
-let emptyRegions: THREE.DataTexture | null = null
-
 /** Region uniforms of a baked model. */
 export const regionsOf = (b: {
   texture: THREE.Texture
@@ -173,9 +171,16 @@ export function createToonMaterial(
   if (opts.hull) defines.USE_HULL = ''
   if (opts.merged) defines.USE_MERGED = ''
   ;(m as unknown as { defines: Record<string, string> }).defines = defines
-  emptyRegions ??= new THREE.DataTexture(new Float32Array(4), 1, 1, THREE.RGBAFormat, THREE.FloatType)
+  const ownEmpty = regions ? null : new THREE.DataTexture(new Float32Array(4), 1, 1, THREE.RGBAFormat, THREE.FloatType)
+  if (ownEmpty) {
+    const onDispose = () => {
+      m.removeEventListener('dispose', onDispose)
+      ownEmpty.dispose()
+    }
+    m.addEventListener('dispose', onDispose)
+  }
   const ru = {
-    uRegions: { value: regions?.texture ?? emptyRegions },
+    uRegions: { value: regions?.texture ?? ownEmpty! },
     uRegionCount: { value: regions?.count ?? 0 },
     uShapeBase: { value: regions?.shapeBase ?? 0 }
   }
