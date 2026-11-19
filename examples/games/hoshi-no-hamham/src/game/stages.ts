@@ -47,7 +47,7 @@ export const STAGES: StageDef[] = [
       title: 'おふくろ',
       art: 'mom',
       hp: 1,
-      speed: 246,
+      speed: 130,
       scale: 1.125,
       stamina: true
     }),

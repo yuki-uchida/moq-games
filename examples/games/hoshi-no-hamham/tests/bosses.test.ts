@@ -115,6 +115,22 @@ describe('stage bosses', () => {
     expect(world.bossGate).toBeNull()
   })
 
+  it('lets the runner build a lead after a short delay at the start of stage 1', () => {
+    const world = new World(STAGES[0])
+    const boss = world.boss!
+    const startX = boss.x
+    const startGap = world.player.x - (boss.x + boss.w)
+    const input = emptyInput()
+    // Half a second to react, plus one display frame for the press to arrive on a 30 Hz phone.
+    for (let i = 0; i < 32; i++) world.step(1 / 60, input)
+    input.right = true
+    for (let i = 0; i < 120; i++) world.step(1 / 60, input)
+
+    expect(boss.x).toBeGreaterThan(startX)
+    expect(world.player.hp).toBe(world.player.maxHp)
+    expect(world.player.x - (boss.x + boss.w)).toBeGreaterThan(startGap)
+  })
+
   it('the chasing parent tires out instead of dying', () => {
     const world = prepare('stage-1')
     const boss = world.boss!
