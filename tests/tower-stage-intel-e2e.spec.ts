@@ -68,6 +68,7 @@ async function openStageSelect(page: Page, cleared: number) {
 
 for (const size of [
   { width: 1440, height: 900 },
+  { width: 320, height: 568 },
   { width: 390, height: 844 },
   { width: 1280, height: 720 },
   { width: 844, height: 390 }
@@ -78,11 +79,21 @@ for (const size of [
       await openStageSelect(page, 0)
       const foes = page.locator('#stage-enemies .foe')
       await page.locator('[data-stage="1"]').click()
+      await expect(page.locator('[data-stage="2"]')).toBeDisabled()
+      await expect(page.locator('#stage-brief-title')).toHaveText('ステージ 01')
       await expect(foes.first()).toHaveAttribute('data-enemy', 'slime')
       await expect(page.locator('#stage-enemies [data-enemy="goblin"]')).toHaveAttribute('aria-label', /ゴブリン|./)
       await expect(page.locator('#stage-enemies [data-boss="true"]')).toHaveCount(0)
       await expect(page.locator('#stage-enemies small')).toHaveCount(0)
       await shot(page, `stage1-${page.viewportSize()!.width}`)
+      const start = page.locator('#start')
+      const startArea = await start.boundingBox()
+      expect(startArea).toBeTruthy()
+      expect(startArea!.y + startArea!.height).toBeLessThanOrEqual(size.height)
+      const scroll = page.locator('#launch .launch-scroll')
+      expect(await scroll.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
+      await scroll.evaluate((el) => { el.scrollTop = el.scrollHeight })
+      expect(await start.boundingBox()).toEqual(startArea)
       await page.evaluate(() =>
         localStorage.setItem(
           'tower-jev-stages-v1',
@@ -99,6 +110,8 @@ for (const size of [
       await page.reload()
       await page.locator('#title-new').click()
       await page.locator('[data-stage="10"]').click()
+      await expect(page.locator('#stage-brief-title')).toHaveText('ステージ 10')
+      expect(await scroll.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
       await expect(foes.first()).toHaveAttribute('data-boss', 'true')
       await expect(foes.first()).toHaveAttribute('data-enemy', 'dragon')
       await expect(foes.first()).toHaveAttribute('aria-label', /^ボス /)
