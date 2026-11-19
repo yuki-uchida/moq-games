@@ -1,8 +1,137 @@
 import { expect, test } from '@playwright/test'
-import { FIELDS } from '../examples/games/tower_diffence_with_jev/src/game/model'
+import { GameEngine } from '../examples/games/tower_diffence_with_jev/src/game/GameEngine'
+import { FIELDS, type LayoutRevision } from '../examples/games/tower_diffence_with_jev/src/game/model'
+import { freshSave } from '../examples/games/tower_diffence_with_jev/src/progression/UpgradeSystem'
 import { towerPath } from './tower-defense-e2e-arrange'
 
 const rawSave = (page: import('@playwright/test').Page) => page.evaluate(() => localStorage.getItem('tower-jev-v3'))
+const approvedMap = '**/tower-defense-map/approved-meadow.png'
+const remainingEntryWork = (page: import('@playwright/test').Page) =>
+  page.locator('#campaign-loading-progress').evaluate((bar: HTMLProgressElement) => bar.max - bar.value)
+
+function entrySave(revision: LayoutRevision) {
+  const checkpoint = new GameEngine({ decide: async () => null }, freshSave(), 'desert', 42, () => 0, undefined, 2, revision).exportCheckpoint()!
+  return JSON.stringify({ version: 3, profile: checkpoint.profile,
+    run: { version: 1, progress: checkpoint.progress, engine: checkpoint } })
+}
+
+for (const entry of ['new', 'continue'] as const) {
+  test(`${entry} waits for approved map before the first playable frame`, async ({ page }, info) => {
+    const saved = entry === 'continue' ? entrySave(4) : null
+    await page.addInitScript((saved) => {
+      if (saved) localStorage.setItem('tower-jev-v3', saved)
+      const probe = window as Window & { towerDefenseDiagnostics?: () => { battlefield?: { backgroundSource?: string } }; firstPlayableMap?: string }
+      function sample() {
+        if (document.querySelector('.game-layout:not([inert])') &&
+            !document.querySelector('#campaign-loading[open], #launch[open], #title-screen[open]') && probe.towerDefenseDiagnostics) {
+          probe.firstPlayableMap = probe.towerDefenseDiagnostics().battlefield?.backgroundSource ?? 'missing'
+        } else requestAnimationFrame(sample)
+      }
+      requestAnimationFrame(sample)
+    }, saved)
+    let requests = 0
+    const gate = Promise.withResolvers<void>()
+    await page.route(approvedMap, async (route) => {
+      requests++
+      await gate.promise
+      await route.continue()
+    })
+    await page.goto(towerPath)
+    try {
+      if (entry === 'new') {
+        await page.locator('#title-new').click()
+        await page.locator('#start').click()
+      } else await page.locator('#title-continue').click()
+      await expect.poll(() => requests, { timeout: 180_000 }).toBe(1)
+      await expect.poll(() => remainingEntryWork(page), { timeout: 180_000 }).toBe(1)
+      await expect(page.locator('#campaign-loading')).toBeVisible()
+      expect(await rawSave(page)).toBe(saved)
+    } finally { gate.resolve() }
+    await expect.poll(() => page.evaluate(() => Reflect.get(window, 'firstPlayableMap'))).toBe(
+      `approved-map:field:${entry === 'new' ? 'meadow' : 'desert'}:2:4:projected`)
+    expect(await remainingEntryWork(page)).toBe(0)
+    expect(requests).toBe(1)
+    await page.screenshot({ path: info.outputPath('approved-entry.png') })
+  })
+}
+
+for (const revision of [1, 2, 3] as const) {
+  test(`Continue at layout v${revision} does not request approved map`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.addInitScript((saved) => localStorage.setItem('tower-jev-v3', saved), entrySave(revision))
+    const requests: string[] = []
+    await page.route(approvedMap, (route) => {
+      requests.push(route.request().url())
+      return route.abort()
+    })
+    await page.goto(towerPath)
+    await page.locator('#title-continue').click()
+    await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
+    await expect(page.locator('.game-layout')).not.toHaveAttribute('inert')
+    await expect(page.locator('#field')).toHaveAttribute('data-layout-revision', String(revision))
+    expect(requests).toEqual([])
+  })
+}
+
+test('cancelled entry stays at the title even after the approved map arrives', async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(navigator, 'connection', { value: { saveData: true } }))
+  const gate = Promise.withResolvers<void>()
+  let requests = 0
+  await page.route(approvedMap, async (route) => {
+    requests++
+    await gate.promise
+    await route.continue()
+  })
+  await page.goto(towerPath)
+  await page.locator('#title-new').click()
+  await page.waitForTimeout(500)
+  expect(requests).toBe(0)
+  const firstResponse = page.waitForResponse((response) => response.url().endsWith('/approved-meadow.png'))
+  try {
+    await page.locator('#start').click()
+    await expect.poll(() => requests).toBe(1)
+    await expect.poll(() => remainingEntryWork(page), { timeout: 180_000 }).toBe(1)
+    await page.locator('#campaign-loading-cancel').click()
+  } finally { gate.resolve() }
+  const response = await firstResponse
+  expect(response.ok()).toBe(true)
+  await response.finished()
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+  await expect(page.locator('#title-screen')).toBeVisible()
+  await expect(page.locator('.game-layout')).toHaveAttribute('inert', '')
+  expect(await rawSave(page)).toBeNull()
+  expect(requests).toBe(1)
+})
+
+test('a failed approved map permits play and a later entry retries', async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(navigator, 'connection', { value: { saveData: true } }))
+  let requests = 0
+  const gate = Promise.withResolvers<void>()
+  await page.route(approvedMap, async (route) => {
+    if (++requests === 1) return route.fulfill({ status: 503, body: 'unavailable' })
+    await gate.promise
+    return route.continue()
+  })
+  await page.goto(towerPath)
+  await page.locator('#title-new').click()
+  await page.locator('#start').click()
+  await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
+  const background = () => page.evaluate(() => Reflect.get(window, 'towerDefenseDiagnostics')().battlefield.backgroundSource)
+  await expect.poll(background).toBe('field:meadow:2:4')
+  expect(requests).toBe(1)
+  const saved = await rawSave(page)
+  await page.goBack()
+  try {
+    await page.locator('#title-continue').click()
+    await expect.poll(() => requests).toBe(2)
+    await expect(page.getByRole('progressbar', { name: '出撃の準備' })).toBeVisible()
+    await expect(page.locator('#campaign-loading-status')).toHaveText('0 / 1')
+    expect(await rawSave(page)).toBe(saved)
+  } finally { gate.resolve() }
+  await expect.poll(background).toBe('approved-map:field:meadow:2:4:projected')
+  await expect(page.locator('#campaign-loading-status')).toHaveText('1 / 1')
+  expect(requests).toBe(2)
+})
 
 test('title has exact menu, no-save explanation, New game and back', async ({ page }) => {
   await page.goto(towerPath)

@@ -1,13 +1,11 @@
-import { environmentPackAvailable } from './BuildAssets'
 import { FORTIFICATIONS, type RoadItemPlacement } from './game/Fortifications'
 import type { Equipment, RoadItem, RoadItemKind, UnitType } from './game/model'
+import { paintFortificationIcons } from './rendering/FortificationVisual'
 
 const paths = {
   company: '<circle cx="12" cy="10" r="5"/><path d="M3 28v-5a9 9 0 0 1 18 0v5M23 7a5 5 0 0 1 0 10m1 4a7 7 0 0 1 5 7"/>',
   scout: '<circle cx="13" cy="13" r="8"/><path d="m19 19 10 10M9 13h8m-4-4v8"/>',
-  sandbag: '<path d="M5 18h22v8H5zM8 9h17v9H8zM13 9V5h7v4M10 18v8m11-8v8"/>',
-  spike: '<path d="M3 25h26M5 23l4-15 4 15m1 0 4-19 4 19m0 0 4-13 3 13"/>',
-  mud: '<path d="M3 23c5-7 8 5 13-1s8 6 13-1M5 16c4-5 6 3 10-2s8 4 12-1M10 6v4m10-7v5"/>',
+  tools: '<path d="M11 9V6h10v3M4 15h24M13 15v4h6v-4"/><rect x="3" y="9" width="26" height="17" rx="3"/>',
   weapon: '<path d="m9 24 15-15 3-6-6 3L6 21m1-5 9 9M4 28l6-6"/>',
   armor: '<path d="m16 3 11 4v9c0 6-7 11-11 13C12 27 5 22 5 16V7zM16 8v15M10 12h12"/>',
   gate: '<path d="M4 28V9h6V4h4v5h4V4h4v5h6v19M12 28V18a4 4 0 0 1 8 0v10M2 28h28"/>',
@@ -15,20 +13,14 @@ const paths = {
     '<path d="m5 12 20-7 3 9-21 4zM12 19l-3 7h14l-5-8"/><circle cx="9" cy="26" r="3"/><circle cx="23" cy="26" r="3"/>'
 }
 
-export function fortificationIcon(kind: keyof typeof paths): string {
-  const fallback = `<svg class="fortification-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[kind]}</svg>`
-  if (!environmentPackAvailable || (kind !== 'sandbag' && kind !== 'spike' && kind !== 'mud')) return fallback
-  const asset = kind === 'mud' ? 'mud' : `${kind}-intact-0`
-  const src = `../../../tower-defense-art/environment-3d-trial/${asset}.png`
-  return `<span class="item-model" aria-hidden="true">${fallback}<img data-item-art="${kind}" src="${src}" alt="" draggable="false" width="${kind === 'mud' ? 64 : 96}" height="${kind === 'mud' ? 48 : 96}"></span>`
+export function fortificationIcon(kind: keyof typeof paths | 'sandbag' | RoadItemKind): string {
+  if (kind === 'sandbag' || kind === 'spike' || kind === 'mud')
+    return `<canvas class="item-model" data-item-art="${kind}" aria-hidden="true"></canvas>`
+  return `<svg class="fortification-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[kind]}</svg>`
 }
 
 export function initializeFortificationIcons(): void {
-  for (const image of Array.from(document.querySelectorAll<HTMLImageElement>('img[data-item-art]'))) {
-    const reveal = () => image.parentElement?.classList.add('art-ready')
-    image.addEventListener('load', reveal, { once: true })
-    if (image.complete && image.naturalWidth > 0) reveal()
-  }
+  paintFortificationIcons(document)
 }
 
 export const roadItemNames: Record<RoadItemKind, string> = { spike: 'まきびし', mud: 'ぬかるみ' }
@@ -80,6 +72,6 @@ export function gateUpgradePresentation(kind: 'cannon' | 'armor', level: number)
 
 export const equipmentControls = `<section id="equipment-actions" class="equipment-actions" aria-label="個別装備" hidden><p id="equipment-current" class="sr-only"></p><div class="context-actions">${(['weapon', 'armor'] as const).map((kind) => `<button id="equipment-${kind}" aria-describedby="equipment-hint">${fortificationIcon(kind)}<small id="equipment-${kind}-state">◈${FORTIFICATIONS.equipmentCost}</small></button>`).join('')}</div><p id="equipment-hint" class="sr-only" role="status"></p></section>`
 
-export const roadItemControls = `${(['spike', 'mud'] as const).map((kind) => `<button id="item-${kind}" class="item-tool" aria-pressed="false" aria-label="${roadItemNames[kind]} · ${FORTIFICATIONS[kind].cost} G" title="${roadItemNames[kind]} · ${FORTIFICATIONS[kind].cost} G" hidden>${fortificationIcon(kind)}<small id="item-${kind}-count">◈${FORTIFICATIONS[kind].cost}</small></button>`).join('')}<button id="gate-toggle" class="item-tool" aria-controls="gate-panel" aria-expanded="false" aria-label="門の強化" title="門の強化" hidden>${fortificationIcon('gate')}<small id="gate-levels">0 / 0</small></button>`
+export const roadItemControls = `${(['spike', 'mud'] as const).map((kind) => `<button id="item-${kind}" class="item-tool" aria-pressed="false" aria-label="${roadItemNames[kind]} · ${FORTIFICATIONS[kind].cost} G" title="${roadItemNames[kind]} · ${FORTIFICATIONS[kind].cost} G" hidden>${fortificationIcon(kind)}<span class="item-tool-name">${roadItemNames[kind]}</span><small id="item-${kind}-count">◈${FORTIFICATIONS[kind].cost}</small></button>`).join('')}<button id="gate-toggle" class="item-tool" aria-controls="gate-panel" aria-expanded="false" aria-label="門の強化" title="門の強化" hidden>${fortificationIcon('gate')}<span class="item-tool-name">門の強化</span><small id="gate-levels">0 / 0</small></button>`
 
 export const fortificationDialogs = `<dialog id="fortification-confirm" class="panel settings" aria-labelledby="fortification-confirm-title"><h2 id="fortification-confirm-title"></h2><p id="fortification-confirm-detail"></p><div class="road-actions"><button id="fortification-confirm-cancel">戻る</button><button id="fortification-confirm-accept">確認して続ける</button></div></dialog><dialog id="gate-panel" class="panel settings gate-panel" aria-labelledby="gate-title"><div class="dialog-heading"><div><span class="eyebrow">KINGDOM GATE</span><h2 id="gate-title">門の強化</h2></div><button id="gate-close" class="close-button" aria-label="門の強化を閉じる">×</button></div><p class="dialog-intro">強化は次のステージへ引き継ぎます。HPは回復しません。</p><nav class="gate-tabs" aria-label="門の強化項目"><button type="button" data-gate-tab="cannon" aria-pressed="true">大砲</button><button type="button" data-gate-tab="armor" aria-pressed="false">装甲</button></nav>${(['cannon', 'armor'] as const).map((kind) => `<section class="gate-upgrade" data-gate-page="${kind}" ${kind === 'armor' ? 'hidden' : ''}><div>${fortificationIcon(kind)}<b id="gate-${kind}-level"></b></div><p id="gate-${kind}-effect"></p><button id="gate-${kind}-upgrade" aria-describedby="gate-${kind}-reason"></button><p id="gate-${kind}-reason" class="hint" role="status"></p></section>`).join('')}</dialog>`

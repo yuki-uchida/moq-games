@@ -16,13 +16,13 @@ it('uses built-in item icons and avoids sound requests when optional packs are a
   const { soundCatalog } = await import('../src/audio/SoundCatalog')
   // Act / Assert
   for (const kind of ['sandbag', 'spike', 'mud'] as const) {
-    expect(fortificationIcon(kind)).toContain('<svg')
-    expect(fortificationIcon(kind)).not.toContain('<img')
+    expect(fortificationIcon(kind)).toContain('<canvas')
+    expect(fortificationIcon(kind)).not.toMatch(/<img|\.png/)
   }
   expect(soundCatalog(new URL('https://example.invalid/audio/'))).toEqual([])
 })
 
-it('retains existing image icons and sound catalog when local packs are available', async () => {
+it('keeps icon requests independent of local packs while retaining the sound catalog', async () => {
   // Arrange
   vi.stubEnv('VITE_TOWER_ENVIRONMENT_AVAILABLE', 'true')
   vi.stubEnv('VITE_TOWER_AUDIO_AVAILABLE', 'true')
@@ -30,7 +30,8 @@ it('retains existing image icons and sound catalog when local packs are availabl
   const { fortificationIcon } = await import('../src/fortification-ui')
   const { soundCatalog } = await import('../src/audio/SoundCatalog')
   // Act / Assert
-  expect(fortificationIcon('sandbag')).toContain('environment-3d-trial/sandbag-intact-0.png')
+  expect(fortificationIcon('sandbag')).toContain('<canvas')
+  expect(fortificationIcon('sandbag')).not.toMatch(/<img|\.png/)
   expect(soundCatalog(new URL('https://example.invalid/audio/')).length).toBeGreaterThan(0)
 })
 

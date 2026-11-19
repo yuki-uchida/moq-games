@@ -31,7 +31,7 @@ import { HeavyImpactVisual } from './HeavyImpactVisual'
 import { DragonSplashVisual } from './DragonSplashVisual'
 import { FortificationVisual } from './FortificationVisual'
 import {
-  environmentDirection,
+  environmentRoadProp,
   environmentMatchesField,
   loadEnvironmentArt,
   type EnvironmentArt,
@@ -302,7 +302,7 @@ function redeploymentEdgeGeometry(radius: number, dotted: boolean): THREE.RingGe
   if (dotted) geometry.setIndex(Array.from(geometry.index!.array).filter((_, index) => Math.floor(index / 6) % 2 === 0))
   return geometry
 }
-export type CampaignPreparationState = Pick<GameState, 'stage' | 'waveBossPolicy' | 'units' | 'pendingSpawns'>
+export type CampaignPreparationState = Pick<GameState, 'stage' | 'waveBossPolicy' | 'units' | 'pendingSpawns' | 'layoutRevision'>
 
 /** Include every legal random deployment, its boss, and any restored in-flight units. */
 export function campaignRequiredTypes(state: CampaignPreparationState): Set<UnitType> {
@@ -324,9 +324,11 @@ export class GameRenderer {
   campaignPrepared = false
   onContextLost?: () => void
   onContextRestored?: () => void
-  /** Starts model/effect downloads early; GPU warm-up still happens only in prepareCampaign. */
+  /** Starts campaign downloads early; GPU warm-up still happens only in prepareCampaign. */
   prefetchCampaign(base: URL, state: CampaignPreparationState): void {
-    if (this.disposed || !this.models) return
+    if (this.disposed) return
+    if (state.layoutRevision === 4) void loadApprovedMazeArt().catch(() => {})
+    if (!this.models) return
     const types = campaignRequiredTypes(state)
     for (const [type, definition] of Object.entries(this.models.roster))
       if (types.has(type as UnitType)) for (const source of Object.values(definition.clips)) this.models.cache.requestSource(source)
@@ -336,11 +338,8 @@ export class GameRenderer {
   /** `only` narrows preparation to a known set of roles (the title demo); campaigns always omit it. */
   async prepareCampaign(base: URL, state: CampaignPreparationState, signal: AbortSignal, progress: (done: number, total: number) => void, only?: ReadonlySet<UnitType>): Promise<void> {
     const types = only ?? campaignRequiredTypes(state)
-    if (this.campaignPrepared && [...types].every((type) => Object.keys(this.models?.roster[type]?.clips ?? {}).every((motion) => this.campaignJobs.has(`${type}:${motion}`)))) return
     if (this.campaignPreparing) throw new Error('準備は既に実行中です。')
-    // A new stage is not ready until its GPU fence and shared effects also succeed.
-    this.campaignPrepared = false
-    this.campaignPreparing = true
+    signal.throwIfAborted()
     const generation = this.campaignContext
     const check = () => {
       signal.throwIfAborted()
@@ -349,11 +348,33 @@ export class GameRenderer {
       const failure = this.assetErrors['model:shader'] ?? this.assetErrors['model:gpu']
       if (failure) throw new Error(failure)
     }
+    const map = !only && state.layoutRevision === 4
+      ? preparationWait(loadApprovedMazeArt(), signal).then(() => undefined, (error: unknown) =>
+        error instanceof Error ? error.message : 'Approved map could not load')
+      : undefined
+    const finishMap = async () => {
+      const failure = await map
+      check()
+      this.approvedMapError = failure
+      if (!failure && this.field.layoutRevision === 4 && !this.background?.material.map?.name.startsWith('approved-map:field:'))
+        this.refreshBackground()
+    }
+    if (this.campaignPrepared && [...types].every((type) => Object.keys(this.models?.roster[type]?.clips ?? {}).every((motion) => this.campaignJobs.has(`${type}:${motion}`)))) {
+      if (map) {
+        progress(0, 1)
+        await finishMap()
+        progress(1, 1)
+      }
+      return
+    }
+    // A new stage is not ready until its GPU fence and shared effects also succeed.
+    this.campaignPrepared = false
+    this.campaignPreparing = true
     const jobs = Object.entries(this.models?.roster ?? {}).filter(([type]) => types.has(type as UnitType)).flatMap(([type, definition]) =>
       Object.entries(definition.clips).map(([motion, source]) => ({ type: type as UnitType, motion: motion as ModelMotion, source }))
     )
     const effects = this.models ? [undefined, ...new Set(Object.values(this.effectClips))] : []
-    const total = jobs.length * 2 + effects.length + 1
+    const total = jobs.length * 2 + effects.length + 1 + (map ? 1 : 0)
     let done = 0
     progress(done, total)
     this.models?.cache.retryFailed()
@@ -461,6 +482,10 @@ export class GameRenderer {
       for (const type of ALLY_TYPES) if (types.has(type)) this.preparedDefenders.add(type)
       this.campaignPrepared = true
       progress(++done, total)
+      if (map) {
+        await finishMap()
+        progress(++done, total)
+      }
     } finally { this.campaignPreparing = false }
   }
   private preparedDefenders = new Set<AllyType>()
@@ -2205,8 +2230,7 @@ export class GameRenderer {
       after = pointOnPath(path, offset + 1)
     mesh.position.set(point.x, point.y, point.y / 10)
     const angle = Math.atan2(after.y - before.y, after.x - before.x) + Math.PI / 2,
-      sprite =
-        this.environmentArt?.props[`sandbag-${healthRatio < 0.5 ? 'damaged' : 'intact'}-${environmentDirection(angle)}`]
+      sprite = environmentRoadProp(this.environmentArt, 'sandbag', angle, healthRatio)
     if (sprite) this.paintEnvironmentProp(mesh, sprite, point)
     else {
       if (mesh.geometry.parameters.width !== 64 || mesh.geometry.parameters.height !== 40) {
@@ -2521,10 +2545,6 @@ export class GameRenderer {
           edge.geometry = movementEdgeGeometry(definition.leash, edge.name === 'movement-boundary')
         }
       this.movement.scale.set(definition.leash, definition.leash, 1)
-      const labelTop = preview.y + Math.max(36, definition.leash + 10)
-      this.previewLabel.style.left = `${Math.max(8, Math.min(this.field.width - 248, preview.x - 120))}px`
-      const labelHeight = redeploy ? 112 : 90
-      this.previewLabel.style.top = `${Math.max(8, Math.min(this.field.height - labelHeight - 8, labelTop + labelHeight > this.field.height - 8 ? preview.y - 160 : labelTop))}px`
       this.movementLabel.textContent =
         definition.leash > 0 ? `移動上限 · 半径 ${definition.leash}` : '移動上限 · 0（固定）'
       this.attackLabel.textContent =
@@ -2533,6 +2553,14 @@ export class GameRenderer {
           : ['soldier', 'runner', 'tank', 'paladin'].includes(selected)
             ? `近接接触 · 半径 ${definition.range}（索敵 ${definition.range + definition.leash}）`
             : `攻撃・回復 · 半径 ${definition.range}`
+      const fieldBounds = this.host.getBoundingClientRect()
+      const labelBounds = this.previewLabel.getBoundingClientRect()
+      const labelWidth = (labelBounds.width / fieldBounds.width) * this.field.width
+      const labelHeight = (labelBounds.height / fieldBounds.height) * this.field.height
+      const labelTop = preview.y + Math.max(36, definition.leash + 10)
+      const above = preview.y - labelHeight - 36
+      this.previewLabel.style.left = `${Math.max(8, Math.min(this.field.width - labelWidth - 8, preview.x - labelWidth / 2))}px`
+      this.previewLabel.style.top = `${Math.max(8, Math.min(this.field.height - labelHeight - 8, labelTop + labelHeight > this.field.height - 8 && above >= 8 ? above : labelTop))}px`
     }
     if (this.modelsActive) this.models?.render(s)
     const visualTime = performance.now() / 1000

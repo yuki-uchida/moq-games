@@ -3,7 +3,13 @@ import { FORTIFICATIONS, gateMuzzle, roadItems, type RoadItemPlacement } from '.
 import { nearestRoadEdge } from '../game/BattlefieldRoutes'
 import { fieldFor, isAirborneEnemy, pointOnPath, type GameState, type Point, type RoadItemKind } from '../game/model'
 import { projectilePose } from './ProjectileMotion'
-import { environmentDirection, type EnvironmentArt, type EnvironmentSprite } from './EnvironmentArt'
+import {
+  environmentDirection,
+  environmentRoadProp,
+  type EnvironmentArt,
+  type EnvironmentSprite
+} from './EnvironmentArt'
+import { createSandbagArt } from './WorldArt'
 
 type PixelMesh = THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>
 interface RoadVisual {
@@ -23,6 +29,41 @@ function painted(width: number, height: number, paint: (context: CanvasRendering
   context.imageSmoothingEnabled = true
   paint(context)
   return canvas
+}
+
+export function paintFortificationIcons(root: ParentNode | null, art?: EnvironmentArt): void {
+  for (const kind of ['sandbag', 'spike', 'mud'] as const) {
+    const icon = root?.querySelector<HTMLCanvasElement>(`canvas[data-item-art="${kind}"]`)
+    if (!icon) continue
+    const prop = environmentRoadProp(art, kind, 0)
+    const source = prop
+      ? painted(prop.width, prop.height, (context) => {
+          context.translate(0, prop.height)
+          context.scale(1, -1)
+          context.drawImage(prop.texture.image, 0, 0)
+        })
+      : kind === 'sandbag'
+        ? createSandbagArt()
+        : createRoadItemArt(kind)
+    const { width, height } = source
+    const { data } = source.getContext('2d')!.getImageData(0, 0, width, height)
+    let left = width,
+      top = height,
+      right = -1,
+      bottom = -1
+    for (let row = 0; row < height; row++) {
+      for (let column = 0; column < width; column++) {
+        if (data[(row * width + column) * 4 + 3] === 0) continue
+        left = Math.min(left, column)
+        right = Math.max(right, column)
+        top = Math.min(top, row)
+        bottom = Math.max(bottom, row)
+      }
+    }
+    icon.width = Math.max(1, right - left + 1)
+    icon.height = Math.max(1, bottom - top + 1)
+    if (right >= left) icon.getContext('2d')!.drawImage(source, -left, -top)
+  }
 }
 function ellipse(
   context: CanvasRenderingContext2D,
@@ -306,6 +347,7 @@ export class FortificationVisual {
     }
   }
   setEnvironmentArt(art: EnvironmentArt | undefined): void {
+    if (this.environment !== art) paintFortificationIcons(this.host.closest('.game-layout'), art)
     this.environment = art
     this.shotLaunches.clear()
   }
@@ -390,10 +432,7 @@ export class FortificationVisual {
       after = pointOnPath(path, offset + 1)
     mesh.position.set(point.x, point.y, point.y / 10)
     const angle = kind === 'spike' ? Math.atan2(after.y - before.y, after.x - before.x) + Math.PI / 2 : 0,
-      sprite =
-        this.environment?.props[
-          kind === 'mud' ? 'mud' : `spike-${healthRatio < 0.5 ? 'damaged' : 'intact'}-${environmentDirection(angle)}`
-        ]
+      sprite = environmentRoadProp(this.environment, kind, angle, healthRatio)
     if (sprite) this.paintEnvironment(mesh, sprite, point)
     else {
       this.resize(mesh, 64, 48)
