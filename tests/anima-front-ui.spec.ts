@@ -1035,6 +1035,60 @@ const touchContext = (browser: Browser, width: number, height: number) =>
   browser.newContext({ viewport: { width, height }, hasTouch: true, isMobile: true })
 
 test.describe('touch controls', () => {
+  for (const scenario of ['PvP match', 'PvP demo', 'PvE boss demo']) {
+    test(`${scenario}: the kill feed clears scores, objectives and controls in landscape`, async ({ browser }) => {
+      const context = await touchContext(browser, 568, 320)
+      const page = await context.newPage()
+      if (scenario === 'PvP match') {
+        await openTitle(page)
+        await page.evaluate(() => localStorage.setItem('anima-front-v1:guide', JSON.stringify({ seen: true })))
+        await page.click('[data-menu="sortie"]')
+        await page.click('[data-mode="pvp"]')
+        await page.click('[data-room="solo"]')
+        await page.click('.lobby-go')
+        await page.click('.brief-go')
+      } else {
+        await page.goto(scenario === 'PvE boss demo' ? '/?hud-demo=pve' : '/?hud-demo=pvp')
+      }
+      const panel = scenario === 'PvE boss demo' ? '.top-boss.is-on' : '.top-pvp.is-on'
+      await expect(page.locator(panel)).toBeVisible({ timeout: 150_000 })
+      await expect(page.locator('.tc-shoulder')).toBeVisible()
+      const rows = page.locator('.hud-feed .feed-row:visible')
+      for (const [width, height] of [
+        [568, 320],
+        [667, 375],
+        [740, 360],
+        [800, 360],
+        [812, 375],
+        [844, 390]
+      ]) {
+        await page.setViewportSize({ width, height })
+        const collisions = await rows.nth(1).evaluate(
+          (secondRow) => {
+            const rows = [...secondRow.parentElement!.children].map((row) => row.getBoundingClientRect())
+            const targets = document.querySelectorAll(
+              '.top-pvp > *, .top-pve, .top-boss, .hud-radar, .hud-squad, .touch-controls button'
+            )
+            return [...targets]
+              .filter((target) => {
+                const t = target.getBoundingClientRect()
+                return rows.some(
+                  (r) =>
+                    Math.max(r.left, t.left) < Math.min(r.right, t.right) &&
+                    Math.max(r.top, t.top) < Math.min(r.bottom, t.bottom)
+                )
+              })
+              .map((target) => target.className)
+          },
+          undefined,
+          { timeout: 60_000 }
+        )
+        expect(collisions, `${width}x${height}`).toEqual([])
+      }
+      await context.close()
+    })
+  }
+
   test('only the buttons capture touches: look drags work on every other point, even with the stick and fire held', async ({
     browser
   }) => {
