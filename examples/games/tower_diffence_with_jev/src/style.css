@@ -2560,6 +2560,18 @@ dialog::backdrop {
   margin-bottom: 8px;
   gap: 8px;
 }
+.tray-title {
+  margin: 0;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.tray-roster-actions {
+  justify-content: flex-end;
+}
+.tray-roster-actions > [hidden],
+.tray-roster-actions:not(:has(> :not([hidden]))) {
+  display: none;
+}
 .icon-close {
   min-width: 40px;
   min-height: 40px;
@@ -2637,42 +2649,14 @@ dialog::backdrop {
   display: none;
 }
 .item-model {
-  position: relative;
   display: block;
-  width: 64px;
-  height: 44px;
-  overflow: hidden;
-  flex: none;
-}
-.item-model > .fortification-icon {
-  position: absolute;
-  width: 32px;
-  height: 32px;
-  left: 16px;
-  top: 6px;
-}
-.item-model > img {
-  position: absolute;
-  width: 96px;
-  height: 96px;
-  max-width: none;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -62%);
+  width: min(58px, 100%);
+  height: 36px;
   object-fit: contain;
-  opacity: 0;
-  user-select: none;
   pointer-events: none;
 }
-.item-model.art-ready > img {
-  opacity: 1;
-}
-.item-model.art-ready > .fortification-icon {
-  visibility: hidden;
-}
-.field-icon .item-model {
-  width: 64px;
-  transform: scale(0.7);
+.item-tool-name {
+  font-size: 11px;
 }
 .selection-context.floating-tray {
   margin: 0;
@@ -2768,11 +2752,6 @@ dialog::backdrop {
   touch-action: none;
 }
 
-.item-model > img[data-item-art='mud'] {
-  width: 64px;
-  height: 48px;
-  transform: translate(-50%, -54%);
-}
 .reserve-dropzone.drop-ready .icon-count {
   width: auto;
   padding-inline: 4px;
@@ -2813,7 +2792,9 @@ dialog::backdrop {
   image-rendering: auto;
 }
 #field .unit-health {
-  transform: translate(-50%, -100%) scaleX(var(--field-aspect-inverse, 1));
+  --field-hp-boost: max(1, calc(var(--field-label-boost, 1) / 2));
+  transform: scale(calc(var(--field-aspect-inverse, 1) * var(--field-hp-boost)), var(--field-hp-boost)) translate(-50%, -100%);
+  transform-origin: left top;
 }
 #field .base-health,
 #field .sandbag-health {
@@ -2823,8 +2804,11 @@ dialog::backdrop {
   transform: translateX(-50%) scaleX(var(--field-aspect-inverse, 1));
 }
 #field .range-preview {
-  transform: scaleX(var(--field-aspect-inverse, 1));
+  transform: scale(calc(var(--field-aspect-inverse, 1) * var(--field-label-boost, 1)), var(--field-label-boost, 1));
   transform-origin: left top;
+  width: max-content;
+  gap: 3px;
+  padding: 4px 6px;
 }
 
 @media (max-width: 420px) {
@@ -3476,6 +3460,39 @@ dialog::backdrop {
 }
 .field-controls .field-icon.primary:not(:disabled) {
   background: linear-gradient(#ffe7a5, #d8ad60);
+}
+.battle-footer:has(#road-placement-status:not([hidden])) {
+  flex-direction: row;
+}
+#app:has(#road-placement-status:not([hidden])) {
+  --battle-field-bottom: var(--battle-tray-edge);
+}
+#road-placement-status:not([hidden]) {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px;
+  border: 1px solid var(--battle-metal);
+  border-radius: 9px;
+  background: var(--battle-teal);
+  color: var(--battle-paper);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+#road-placement-label {
+  white-space: pre-line;
+}
+#road-placement-cancel {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 2px 4px;
+  background: var(--battle-paper);
+  color: #183334;
+  pointer-events: auto;
+}
+#app:has(.coach:not([hidden]), #road-placement-status:not([hidden])) #control-tooltip {
+  display: none;
 }
 .floating-tray,
 .decision-panel,

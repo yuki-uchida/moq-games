@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { COMPACT_BOARD_TOP_BLEED } from '../examples/games/tower_diffence_with_jev/src/rendering/BoardCamera'
 import sharp from 'sharp'
 import {
@@ -16,6 +16,7 @@ import { GameEngine } from '../examples/games/tower_diffence_with_jev/src/game/G
 import { freshRunFromProfile } from '../examples/games/tower_diffence_with_jev/src/progression/UpgradeSystem'
 import { stageStartGold } from '../examples/games/tower_diffence_with_jev/src/progression/StageProgress'
 import { FORTIFICATIONS } from '../examples/games/tower_diffence_with_jev/src/game/Fortifications'
+import { LONG_PRESS_MS } from '../examples/games/tower_diffence_with_jev/src/ui/SkillBar'
 
 test('snow, desert and volcanic terrain retain their colors without Canvas2D filters', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
@@ -189,15 +190,15 @@ test('compact battlefield fits every supported viewport without scrolling', asyn
   await expect(page.locator('.fx-banner.assault')).toHaveCount(0)
 })
 
-test('the full roster footer leaves the gate and final road tappable after rotation', async ({ page }) => {
+async function openFullRosterAssault(page: Page, resumeAssault = false) {
   const field = getField('meadow', 2, 4)
   const save = freshRunFromProfile({ version: 1, purchased: [...ALLY_TYPES.slice(4)] }, 2, 1)
   save.gold = stageStartGold(10)
   const engine = new GameEngine({ decide: async () => null }, save, 'meadow', 42, () => 0, undefined, 2, 4)
   expect(engine.startAtStage(10)).toBe(true)
   for (const type of ALLY_TYPES) expect(field.slots.some((slot) => engine.place(type, slot)), type).toBe(true)
+  if (resumeAssault) expect(engine.startAssault()).toBe(true)
   const checkpoint = engine.exportCheckpoint()!
-  await page.setViewportSize({ width: 390, height: 844 })
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.addInitScript((raw) => {
     localStorage.setItem('tower-jev-v3', raw)
@@ -206,9 +207,14 @@ test('the full roster footer leaves the gate and final road tappable after rotat
   await page.goto('/moq-games/examples/games/tower_diffence_with_jev/')
   await page.locator('#title-continue').click()
   await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
-  await page.locator('#assault').click()
+  if (!resumeAssault) await page.locator('#assault').click()
   await expect(page.locator('.skill-btn')).toHaveCount(10)
-  await expect(page.locator('.fx-banner.assault')).toBeHidden()
+  return field
+}
+
+test('the full roster footer leaves the gate and final road tappable after rotation', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const field = await openFullRosterAssault(page)
   for (const [width, height] of [[390, 844], [320, 568], [844, 390], [1440, 900]]) {
     await page.setViewportSize({ width, height })
     await expect.poll(() => page.evaluate(({ gate, road, width, height }) => {
@@ -225,54 +231,82 @@ test('the full roster footer leaves the gate and final road tappable after rotat
     }).toEqual({ separate: true, gate: true, road: true, compact: true })
     await page.screenshot({ path: test.info().outputPath(`full-roster-${width}.png`), scale: 'css' })
   }
+  await expect(page.locator('.fx-banner.assault')).toBeHidden()
+})
+
+test('the full roster footer distinguishes a touch swipe from a long press', async ({ page }) => {
+  await page.clock.install()
   await page.setViewportSize({ width: 320, height: 568 })
+  await openFullRosterAssault(page, true)
+  const pausedAt = new Date()
+  await page.clock.setFixedTime(pausedAt)
+  await page.clock.pauseAt(pausedAt)
+  await page.clock.setSystemTime(pausedAt)
   const tenth = page.locator('.skill-btn').nth(9)
+  const touch = await page.context().newCDPSession(page)
+  await touch.send('Emulation.setTouchEmulationEnabled', { enabled: true })
+  const center = (button: HTMLElement) => {
+    const rect = button.getBoundingClientRect()
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+  }
+  const fourth = page.locator('.skill-btn').nth(3)
+  await expect(fourth).toHaveAttribute('data-state', 'ready')
+  const start = await fourth.evaluate(center)
+  expect(await fourth.evaluate((button, { x, y }) => button.contains(document.elementFromPoint(x, y)), start)).toBe(true)
+  const scrollLeft = () => page.locator('.skill-scroll').evaluate((element) => element.scrollLeft)
+  expect(await scrollLeft()).toBe(0)
+  const aiming = page.locator('#selection-context[data-aiming]')
+  const charging = page.locator('.skill-btn[data-state="charging"]')
+  const endTouch = () => touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [start] })
+  for (let distance = 20; distance <= 160; distance += 20) {
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: start.x - distance, y: start.y }] })
+  }
+  await endTouch()
+  await expect.poll(scrollLeft).toBeGreaterThan(0)
+  await page.clock.fastForward(LONG_PRESS_MS)
+  await expect(aiming).toHaveCount(0)
+  await expect(charging).toHaveCount(0)
+
+  await tenth.evaluate((button) => button.scrollIntoView({ block: 'nearest', inline: 'nearest' }))
+  const last = await tenth.evaluate(center)
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [last] })
+  await page.clock.fastForward(LONG_PRESS_MS - 1)
+  await expect(aiming).toHaveCount(0)
+  await page.clock.runFor(1)
+  await expect(page.locator('#unit-special')).toHaveText('×')
+  await endTouch()
+  const click = async (selector: string) => {
+    const { x, y } = await page.locator(selector).evaluate(center)
+    await page.mouse.click(x, y)
+  }
+  await click('#unit-special')
+  await expect(aiming).toHaveCount(0)
+  await touch.detach()
+
   await tenth.focus()
   await page.keyboard.press('Shift+Enter')
   await expect(page.locator('#unit-special')).toHaveText('×')
-  await page.locator('#unit-special').click()
-  await expect(page.locator('#selection-context[data-aiming]')).toHaveCount(0)
-  const touch = await page.context().newCDPSession(page)
-  await touch.send('Emulation.setTouchEmulationEnabled', { enabled: true })
-  const list = page.locator('.skill-scroll')
-  await list.evaluate((element) => { element.scrollLeft = 0 })
-  const bar = (await list.boundingBox())!
-  await touch.send('Input.synthesizeScrollGesture', {
-    x: bar.x + 180,
-    y: bar.y + 30,
-    xDistance: -160,
-    gestureSourceType: 'touch'
-  })
-  await expect.poll(() => list.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
-  await expect(page.locator('#selection-context[data-aiming]')).toHaveCount(0)
-  await expect(page.locator('.skill-btn[data-state="charging"]')).toHaveCount(0)
-  await tenth.scrollIntoViewIfNeeded()
-  const last = (await tenth.boundingBox())!
-  await touch.send('Input.dispatchTouchEvent', {
-    type: 'touchStart',
-    touchPoints: [{ x: last.x + last.width / 2, y: last.y + last.height / 2 }]
-  })
-  await expect(page.locator('#unit-special')).toHaveText('×')
-  await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
-  await page.locator('#unit-special').click()
-  await expect(page.locator('#selection-context[data-aiming]')).toHaveCount(0)
-  await touch.detach()
-  await page.locator('#skill-auto').click()
+  await click('#unit-special')
+  await expect(aiming).toHaveCount(0)
+  await click('#skill-auto')
   await expect(page.locator('#skill-auto')).toHaveAttribute('aria-pressed', 'true')
-  await page.locator('#items-toggle').click()
+  await click('#items-toggle')
   await expect(page.locator('#item-tray')).toBeVisible()
-  await page.locator('#item-tray-close').click()
+  await click('#item-tray-close')
   await expect(page.locator('#item-tray')).toBeHidden()
 })
 
 test.describe('compact road inputs', () => {
   test.use({ hasTouch: true })
-  for (const touch of [false, true]) {
-    test(`road tools commit only on the logical board (${touch ? 'touch' : 'mouse'})`, async ({ page }) => {
-      await page.setViewportSize(touch ? { width: 390, height: 844 } : { width: 1440, height: 900 })
+  for (const [width, height, touch] of [[390, 844, true], [320, 568, true], [844, 390, true], [1440, 900, false]] as const) {
+    test(`road tools commit only on the logical board (${width}x${height})`, async ({ page }) => {
+      await page.setViewportSize({ width, height })
       await openOfflineCampaign(page)
       const tap = (point: { x: number; y: number }) =>
         touch ? page.touchscreen.tap(point.x, point.y) : page.mouse.click(point.x, point.y)
+      const tapControl = (control: ReturnType<typeof page.locator>) =>
+        touch ? control.tap() : control.click()
       const read = () => page.evaluate(() => {
         const { state, progress } = JSON.parse(localStorage.getItem('tower-jev-v3')!).run.engine
         return { gold: progress.gold, stock: state.sandbagStock, bags: state.sandbags.length, items: state.fortifications.items.length }
@@ -284,17 +318,73 @@ test.describe('compact road inputs', () => {
         document.elementFromPoint(x, y)?.matches('#field canvas') ?? false, point)
       expect(await hitsCanvas(headroom)).toBe(true)
       const road = getField('meadow', 2, 4).path
-      for (const [tool, pathIndex] of [['#sandbag-place', 80], ['#item-spike', 150]] as const) {
+      const coach = page.locator('.coach')
+      const status = page.locator('#road-placement-status')
+      await expect(coach).toBeVisible()
+      await openItemTray(page)
+      await expect(coach).toBeHidden()
+      await page.screenshot({ path: test.info().outputPath('items.png') })
+      for (const tool of ['#sandbag-place', '#item-spike', '#item-mud', '#gate-toggle']) {
+        const price = page.locator(`${tool} small`)
+        await expect(price).not.toBeEmpty()
+        expect(await price.evaluate((node) => {
+          const bounds = node.getBoundingClientRect()
+          return document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)?.closest('button') === node.closest('button')
+        })).toBe(true)
+      }
+      await page.locator('#item-tray-close').click()
+      await expect(coach).toBeVisible()
+      for (const [tool, pathIndex, label, cost] of [
+        ['#sandbag-place', 80, '土のう', 0], ['#item-spike', 150, 'まきびし', FORTIFICATIONS.spike.cost],
+        ['#item-mud', 240, 'ぬかるみ', FORTIFICATIONS.mud.cost]
+      ] as const) {
         const before = await read()
         const arm = async () => {
           await openItemTray(page)
-          await page.locator(tool).click()
+          await tapControl(page.locator(tool))
           await expect(page.locator(tool)).toHaveAttribute('aria-pressed', 'true')
         }
         await arm()
-        await tap(headroom)
+        const armedBoard = (await page.locator('#field').boundingBox())!
+        const armedHeadroom = { x: armedBoard.x + armedBoard.width * 0.7, y: armedBoard.y - 4 }
+        expect(await hitsCanvas(armedHeadroom)).toBe(true)
+        await tap(armedHeadroom)
+        const grass = await pointOnVisibleMap(page, { x: 640, y: 20 })
+        expect(await hitsCanvas(grass)).toBe(true)
+        await tap(grass)
         expect(await read()).toEqual(before)
         await expect(page.locator(tool)).toHaveAttribute('aria-pressed', 'true')
+        await page.screenshot({ path: test.info().outputPath(`${tool.slice(1)}-armed.png`) })
+        await expect(status).toContainText(`${label}配置`)
+        await expect(status).toContainText(cost ? `${cost}G` : `在庫${before.stock}`)
+        await expect(status).toContainText('道をタップ')
+        await expect(coach).toBeHidden()
+        expect(await page.locator('#gate-handle').evaluate((gate) => {
+          const bounds = gate.getBoundingClientRect()
+          return document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)?.closest('#gate-handle') === gate
+        }), `${width}x${height} 城門`).toBe(true)
+        expect(await hitsCanvas(await pointOnVisibleMap(page, road.at(-8)!)), `${width}x${height} 最終道路`).toBe(true)
+        const baseHealth = (await page.locator('#base-health').boundingBox())!
+        const statusBox = (await status.boundingBox())!
+        expect(baseHealth.y + baseHealth.height).toBeLessThanOrEqual(statusBox.y)
+        const cancel = page.getByRole('button', { name: '取消', exact: true })
+        const contrast = await cancel.evaluate((button) => {
+          const luminance = (rgb: string) => rgb.match(/\d+/g)!.slice(0, 3).map((value) => {
+            const channel = Number(value) / 255
+            return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+          }).reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0)
+          const style = getComputedStyle(button)
+          const levels = [luminance(style.color), luminance(style.backgroundColor)]
+          return (Math.max(...levels) + 0.05) / (Math.min(...levels) + 0.05)
+        })
+        expect(contrast).toBeGreaterThanOrEqual(4.5)
+        await tapControl(cancel)
+        await expect(status).toBeHidden()
+        await expect(coach).toBeVisible()
+        expect(await page.evaluate(() => localStorage.getItem('tower-jev-coach-v1'))).toBeNull()
+        await tap(await pointOnVisibleMap(page, road[pathIndex]))
+        expect(await read()).toEqual(before)
+        await arm()
         await page.keyboard.press('Escape')
         await expect(page.locator(tool)).toHaveAttribute('aria-pressed', 'false')
         const point = await pointOnVisibleMap(page, road[pathIndex])
@@ -302,21 +392,66 @@ test.describe('compact road inputs', () => {
         await tap(point)
         expect(await read()).toEqual(before)
         await arm()
-        await tap(point)
+        await tap(await pointOnVisibleMap(page, road[pathIndex]))
         const expected = tool === '#sandbag-place'
           ? { ...before, bags: before.bags + 1, stock: before.stock - 1 }
-          : { ...before, items: before.items + 1, gold: before.gold - FORTIFICATIONS.spike.cost }
+          : { ...before, items: before.items + 1, gold: before.gold - cost }
         await expect.poll(read, { timeout: 4000 }).toEqual(expected)
+        await expect(status).toBeHidden()
+        const sandbag = tool === '#sandbag-place'
+        const placed = () => page.evaluate(({ sandbag, tool }) => {
+          const { state } = JSON.parse(localStorage.getItem('tower-jev-v3')!).run.engine
+          return sandbag ? state.sandbags[0] : state.fortifications.items.find((item: { kind: string }) => `#item-${item.kind}` === tool)
+        }, { sandbag, tool })
+        const original = await placed()
+        const handle = page.locator(sandbag ? `.sandbag-handle[data-sandbag="${original.id}"]` : `.road-item-handle[data-road-item-id="${original.id}"]`)
+        await tapControl(page.locator('#selection-close'))
+        const beginMove = async () => {
+          await tapControl(handle)
+          await tapControl(page.locator(sandbag ? '#sandbag-move' : '#road-item-move'))
+          await expect(status).toContainText(`${label}移動`)
+          await expect(status).toContainText('無料')
+        }
+        await beginMove()
+        if (width === 390) await page.screenshot({ path: test.info().outputPath(`${tool.slice(1)}-moving.png`) })
+        await tapControl(cancel)
+        await expect(handle).toBeFocused()
+        expect(await placed()).toEqual(original)
+        await beginMove()
+        await tap(await pointOnVisibleMap(page, road[pathIndex + 20]))
+        await expect(status).toBeHidden()
+        expect(await read()).toEqual(expected)
+        expect(await placed()).toMatchObject({ id: original.id })
+        expect((await placed()).progress).not.toBe(original.progress)
       }
-      expect(await read()).toEqual({ gold: initial.gold - FORTIFICATIONS.spike.cost, stock: initial.stock - 1, bags: 1, items: 1 })
+      expect(await read()).toEqual({ gold: initial.gold - FORTIFICATIONS.spike.cost - FORTIFICATIONS.mud.cost, stock: initial.stock - 1, bags: 1, items: 2 })
+      const afterPlacement = await read()
+      for (const [opener, opened, closer] of [
+        ['#deck-toggle', '#unit-tray', '#unit-tray-close'],
+        ['#items-toggle', '#item-tray', '#item-tray-close'],
+        ['#settings-toggle', '#settings', '#settings-close'],
+        ['#gate-handle', '#gate-panel', '#gate-close']
+      ]) {
+        await openItemTray(page)
+        await tapControl(page.locator('#item-spike'))
+        await expect(status).toBeVisible()
+        await tapControl(page.locator(opener))
+        await expect(page.locator(opened)).toBeVisible()
+        await expect(status).toBeHidden()
+        await tapControl(page.locator(closer))
+        await tap(await pointOnVisibleMap(page, road[80]))
+        expect(await read()).toEqual(afterPlacement)
+      }
       const speed = page.locator('.bhud-speed')
       const speedBox = (await speed.boundingBox())!
       const speedCenter = { x: speedBox.x + speedBox.width / 2, y: speedBox.y + speedBox.height / 2 }
       const canvas = (await page.locator('#field canvas').first().boundingBox())!
-      expect(speedCenter.y).toBeGreaterThan(canvas.y)
-      expect(speedCenter.y).toBeLessThan(board.y)
-      expect(speedCenter.x).toBeGreaterThan(canvas.x)
-      expect(speedCenter.x).toBeLessThan(canvas.x + canvas.width)
+      if (height >= 500) {
+        expect(speedCenter.y).toBeGreaterThan(canvas.y)
+        expect(speedCenter.y).toBeLessThan(board.y)
+        expect(speedCenter.x).toBeGreaterThan(canvas.x)
+        expect(speedCenter.x).toBeLessThan(canvas.x + canvas.width)
+      }
       await expect(speed).toHaveAttribute('aria-pressed', 'false')
       await tap(speedCenter)
       await expect(speed).toHaveAttribute('aria-pressed', 'true')
@@ -400,6 +535,7 @@ test('proportional real models, picking, HP text and preview rings reflow withou
   const rawSave = await page.evaluate(() => localStorage.getItem('tower-jev-v3'))
   for (const viewport of [
     { width: 2048, height: 1173 },
+    { width: 320, height: 700 },
     { width: 390, height: 844 },
     { width: 844, height: 390 },
     { width: 1440, height: 900 }
@@ -417,15 +553,18 @@ test('proportional real models, picking, HP text and preview rings reflow withou
         page.evaluate(() => {
           const value = (window as any).towerDefenseDiagnostics()
           const field = document.getElementById('field')!.getBoundingClientRect()
-          const hp = document.querySelector('.unit-health.player[data-unit-type="soldier"]')!.getBoundingClientRect()
+          const label = document.querySelector('.unit-health.player[data-unit-type="soldier"]')!
+          const hp = label.getBoundingClientRect()
+          const bar = label.querySelector('i')!.getBoundingClientRect()
           const position = value.units.find((unit: any) => unit.type === 'soldier').groundPosition
           return [
             Math.abs(hp.x + hp.width / 2 - field.x - position.x * value.displayGeometry.scaleX) < 0.5,
-            Math.abs(hp.width - 48 * value.displayGeometry.scaleY) < 0.5
+            bar.width >= 19.9,
+            bar.height >= 3.9
           ]
         })
       )
-      .toEqual([true, true])
+      .toEqual([true, true, true])
     expect(await page.evaluate(() => localStorage.getItem('tower-jev-v3'))).toBe(rawSave)
     await selectFieldUnit(page, 'soldier')
     await expect(page.locator('#selection-context')).toBeVisible()
@@ -450,6 +589,43 @@ test('proportional real models, picking, HP text and preview rings reflow withou
     await page.screenshot({
       path: test.info().outputPath(`proportional-placement-${viewport.width}x${viewport.height}.png`)
     })
+    const rangeLabel = page.locator('.range-preview')
+    const reading = () => rangeLabel.evaluate((label) => {
+      const field = label.parentElement!.getBoundingClientRect()
+      const bounds = label.getBoundingClientRect()
+      const text = label.querySelector('.attack-key')!
+      const status = label.querySelector('.placement-status')!
+      return {
+        text: parseFloat(getComputedStyle(text).fontSize) * bounds.height / label.offsetHeight,
+        status: parseFloat(getComputedStyle(status).fontSize) * bounds.height / label.offsetHeight,
+        inside: bounds.left >= field.left && bounds.right <= field.right && bounds.top >= field.top && bounds.bottom <= field.bottom
+      }
+    })
+    expect(await reading()).toMatchObject({ inside: true })
+    expect((await reading()).text).toBeGreaterThanOrEqual(9.9)
+    expect((await reading()).status).toBeGreaterThanOrEqual(9.9)
+    if (viewport.height === 390) {
+      const field = getField('meadow', 2, 4)
+      for (const [edge, target] of [
+        ['left', { x: 12, y: field.height / 2 }],
+        ['right', { x: field.width - 12, y: field.height / 2 }],
+        ['top', { x: field.width / 2, y: 12 }],
+        ['bottom', { x: field.width * 0.78, y: field.height - 12 }],
+        ['gate', field.gate],
+        ['top-left', { x: 12, y: 12 }],
+        ['top-right', { x: field.width - 12, y: 12 }],
+        ['bottom-left', { x: 12, y: field.height - 12 }],
+        ['bottom-right', { x: field.width - 12, y: field.height - 12 }]
+      ] as const) {
+        const screen = await pointOnVisibleMap(page, target)
+        expect(await page.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('#field'), screen), edge).toBe(true)
+        await page.mouse.move(screen.x, screen.y)
+        await expect.poll(() => page.evaluate(() => (window as any).towerDefenseDiagnostics().placementPreview?.point))
+          .toEqual({ x: expect.closeTo(target.x, -1), y: expect.closeTo(target.y, -1) })
+        expect(await reading(), edge).toMatchObject({ inside: true })
+        if (!edge.includes('-')) await page.screenshot({ path: test.info().outputPath(`landscape-${edge}.png`) })
+      }
+    }
     await page.keyboard.press('Escape')
     await page.mouse.up()
     expect(await page.evaluate(() => localStorage.getItem('tower-jev-v3'))).toBe(rawSave)

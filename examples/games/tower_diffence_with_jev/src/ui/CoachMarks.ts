@@ -31,6 +31,7 @@ export interface CoachContext {
   dragging: boolean
   /** A modal dialog is open, so the board is not reachable. */
   modal: boolean
+  roadTools: boolean
 }
 
 /** First-play guidance that never intercepts input: a ring, a pointer and a short bubble. */
@@ -137,7 +138,7 @@ export class CoachMarks {
   }
 
   private pick(ctx: CoachContext, now: number): Step | null {
-    if (!ctx.started || ctx.dragging || ctx.modal) return null
+    if (!ctx.started || ctx.dragging || ctx.modal || ctx.roadTools) return null
     if (ctx.phase === 'preparation') {
       this.skillsSince = 0
       if (ctx.defenders > 0) return 'assault'

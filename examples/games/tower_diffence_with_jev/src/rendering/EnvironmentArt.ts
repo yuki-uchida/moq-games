@@ -86,6 +86,17 @@ export function environmentDirection(angle: number): number {
   return ((Math.round(angle / (Math.PI / 4)) % 8) + 8) % 8
 }
 
+export function environmentRoadProp(
+  art: EnvironmentArt | undefined,
+  kind: 'sandbag' | 'spike' | 'mud',
+  angle: number,
+  healthRatio = 1
+): EnvironmentSprite | undefined {
+  return art?.props[
+    kind === 'mud' ? kind : `${kind}-${healthRatio < 0.5 ? 'damaged' : 'intact'}-${environmentDirection(angle)}`
+  ]
+}
+
 function imageSpec(value: unknown, field: boolean): ImageSpec {
   const spec = value as ImageSpec | undefined
   if (
