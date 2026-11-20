@@ -203,7 +203,7 @@ export class GuestMatch implements Session {
     const own = { ...latest }
     if (this.body?.ready && own.state !== 'away' && own.move !== 'hook') {
       const b = this.body.predictor.body
-      own.p = this.body.drawn()
+      own.p = this.body.drawn(Math.max(0, Math.min(1, this.acc / STEP)))
       own.v = [b.v[0], b.v[1], b.v[2]]
       own.grounded = b.grounded
       own.move = b.move

@@ -476,8 +476,8 @@ Screens (every change uses a transition, never a hard cut):
   `sanitizeLoadout` and every input field by field.
 - Host: steps the world at 60 Hz (a worker clock keeps it running in a hidden tab), sends snapshots at 20 Hz
   (quantized arrays, events since the last snapshot). Guests interpolate others 100–250 ms behind the estimated
-  host clock based on delivery jitter, predict their own movement (`createPredictor`) and reconcile, and send input
-  at 30 Hz with edge counters (`presses`) so no jump or swap is lost or doubled.
+  host clock based on delivery jitter. Their own predicted movement (`createPredictor`) is reconciled and interpolated
+  between local ticks. They send input at 30 Hz with edge counters (`presses`) so no jump or swap is lost or doubled.
 - Up to 4 humans in PvE and 12 in PvP. A member arriving after the start drops into a free seat (a bot's, or one
   whose player left) with its own animal, loadout and name (`World.replace`: it warps in next to the squad in PvE,
   at its team's base with spawn protection in PvP, keeping the seat's scoreboard); PvP prefers its chosen team,
