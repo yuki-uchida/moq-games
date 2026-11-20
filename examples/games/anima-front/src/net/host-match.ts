@@ -31,6 +31,7 @@ import { SmoothedWorld } from './smooth'
 import { releasedInput } from './validate'
 
 const STEP = 1 / 60
+const SNAPSHOT_STEPS = 60 / SNAPSHOT_RATE
 /** Visible tab: at most this many steps per frame; hidden tab: up to a second of catch-up per pulse. */
 const FRAME_STEPS = 6
 const BACKGROUND_STEPS = 60
@@ -49,7 +50,7 @@ export class HostMatch implements Session {
   /** Seat id → currently played by a bot. */
   private readonly isBot = new Map<string, boolean>()
   private snapEvents: SimEvent[] = []
-  private snapAcc = 0
+  private snapSteps = 0
   private disposed = false
   /** Snapshots sent, largest JSON size; PvP: split-to-sealed wall time (ms) and rays of the last snapshot. */
   readonly stats = { snapshots: 0, maxJson: 0, secretMs: 0, secretMaxMs: 0, rays: 0 }
@@ -129,9 +130,9 @@ export class HostMatch implements Session {
       n++
     }
     if (n === max && this.acc >= STEP) this.acc = 0
-    this.snapAcc += n * STEP
-    if (this.snapAcc >= 1 / SNAPSHOT_RATE - 1e-6 && !this.room.busy && !this.sealing) {
-      this.snapAcc = 0
+    this.snapSteps += n
+    if (this.snapSteps >= SNAPSHOT_STEPS && !this.room.busy && !this.sealing) {
+      this.snapSteps %= SNAPSHOT_STEPS
       this.sendSnapshot()
     }
   }
@@ -267,7 +268,6 @@ export class HostMatch implements Session {
     this.disposed = true
     if (this.world.over) {
       // Let the guests see the final state before the room goes back to the lobby.
-      this.snapAcc = 1
       if (!this.room.busy && !this.sealing) this.sendSnapshot()
     }
     this.room.endMatch(this)

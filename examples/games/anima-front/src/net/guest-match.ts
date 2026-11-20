@@ -1,7 +1,7 @@
 /**
- * A guest's match session (DESIGN §18): host snapshots are buffered and everything is drawn ~100 ms behind the
- * estimated host clock (interpolated), except the guest's own body, which is predicted at 60 Hz from the inputs
- * it sends at 30 Hz and reconciled against the host's acknowledged state. The local look (yaw/pitch) is drawn
+ * A guest's match session (DESIGN §18): remote motion is interpolated 100–250 ms behind the estimated host
+ * clock. The guest's own body is predicted at 60 Hz from the inputs it sends at 30 Hz and reconciled
+ * against the host's acknowledged state. The local look (yaw/pitch) is drawn
  * from the local input, never delayed. Events are handed out once each, when the drawn time reaches them.
  *
  * PvP: the guest room opens this guest's team part of each snapshot (receiveSealed); enemies the team cannot see
@@ -19,7 +19,7 @@ import {
 import { Fog } from './fog'
 import { mergeView, type RosterRow, type TeamPart } from './split'
 import type { GuestRoom } from './guest-room'
-import { EventQueue, RENDER_DELAY, SnapshotBuffer } from './interp'
+import { EventQueue, SnapshotBuffer } from './interp'
 import { INPUT_RATE, PROTOCOL, type SnapMsg } from './protocol'
 import { netDebug } from './debug'
 import { OwnBody } from './reconcile'
@@ -41,7 +41,6 @@ export class GuestMatch implements Session {
   private input: PlayerInput = neutralPlayerInput()
   private sent: PlayerInput = neutralPlayerInput()
   private paused = false
-  private clock = 0
   private lastAt: number
   private acc = 0
   private sinceSend = Infinity
@@ -128,7 +127,7 @@ export class GuestMatch implements Session {
   receive(msg: SnapMsg): boolean {
     if (this.disposed || !looksLikeView(msg.view)) return false
     const view = msg.view
-    if (!this.buffer.push(view, this.clock)) return false
+    if (!this.buffer.push(view, this.room.time)) return false
     if (msg.over) this.ended = true
     if (RESULT_PHASES.includes(view.phase)) this.sawResult = true
     // Late joiners skip anything older than a second.
@@ -151,10 +150,9 @@ export class GuestMatch implements Session {
     const now = this.room.time
     const dt = Math.min(1, Math.max(0, now - this.lastAt))
     this.lastAt = now
-    this.clock += dt
-    if (dt > 0.5 && this.buffer.latest) this.queue.skipBefore(this.buffer.latest.time - RENDER_DELAY)
     if (this.body) this.predict(dt)
-    const renderT = this.buffer.hostTime(this.clock) - RENDER_DELAY
+    const renderT = this.buffer.renderTime(now)
+    if (dt > 0.5) this.queue.skipBefore(renderT)
     const sampled = this.buffer.sample(renderT)
     if (!sampled) return null
     const v = this.fog ? this.fog.present(sampled, this.hiddenWhen(renderT), renderT) : sampled
