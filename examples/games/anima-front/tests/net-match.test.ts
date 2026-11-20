@@ -91,6 +91,18 @@ describe('host / guest match', () => {
     t.host.leave()
   }, 60_000)
 
+  it('keeps sending 20 snapshots per second when the host renders at 30 Hz', async () => {
+    const t = await table(['ゲスト'])
+    try {
+      await run(500, () => frame(t), 1000 / 30)
+      const before = t.hub.stats.snapshots
+      await run(3000, () => frame(t), 1000 / 30)
+      expect(t.hub.stats.snapshots - before).toBeGreaterThanOrEqual(59)
+    } finally {
+      t.host.leave()
+    }
+  })
+
   it('events reach guests exactly once', async () => {
     const t = await table(['ゲスト'])
     const seen: number[] = []

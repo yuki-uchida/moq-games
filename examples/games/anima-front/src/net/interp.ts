@@ -3,14 +3,16 @@
  *
  * - interpolateView: blends two views of the same match (positions, velocities, yaw/pitch, anima, hp, timers) by
  *   id; anything that exists only in the newer view appears as it is there.
- * - SnapshotBuffer: guests keep the last snapshots and draw remote entities ~100 ms behind the estimated host
- *   time, so 20 Hz snapshots look like 60+ Hz motion.
+ * - SnapshotBuffer: guests keep the last snapshots and draw remote entities 100–250 ms behind the estimated
+ *   host time, so 20 Hz snapshots look like 60+ Hz motion.
  * - EventQueue: hands out every event exactly once (by id), when the drawn time reaches it.
  */
 import type { FoeView, PlayerView, PropView, ShardView, ShotView, SimEvent, V3, View } from '../sim/types'
+import { SNAPSHOT_RATE } from './protocol'
 
-/** Remote entities are drawn this far behind the estimated host time. */
-export const RENDER_DELAY = 0.1
+/** Keep two snapshots of headroom on a steady connection, with bounded extra time for jitter. */
+const RENDER_DELAY = 0.1
+const MAX_RENDER_DELAY = 0.25
 const KEEP = 10
 /** Teleports (respawn, warp, pads) are not blended across more than this distance per snapshot gap. */
 const SNAP_DISTANCE = 6
@@ -118,6 +120,9 @@ export class SnapshotBuffer {
   private snaps: View[] = []
   /** host time − local seconds, smoothed. */
   private offset: number | undefined
+  private arrivedAt: number | undefined
+  private jitter = 0
+  private playback: { at: number; time: number } | undefined
 
   get latest(): View | undefined {
     return this.snaps[this.snaps.length - 1]
@@ -130,6 +135,9 @@ export class SnapshotBuffer {
   clear() {
     this.snaps = []
     this.offset = undefined
+    this.arrivedAt = undefined
+    this.jitter = 0
+    this.playback = undefined
   }
 
   /** Adds a snapshot received at local time `now` (seconds). Out-of-order or duplicate snapshots are dropped. */
@@ -138,6 +146,15 @@ export class SnapshotBuffer {
     if (last && view.tick <= last.tick) return false
     this.snaps.push(view)
     if (this.snaps.length > KEEP) this.snaps.shift()
+    if (this.arrivedAt !== undefined) {
+      const gap = now - this.arrivedAt
+      // Retain recent excess delivery gaps, releasing 20 ms of headroom per second on a steady link.
+      this.jitter = Math.min(
+        MAX_RENDER_DELAY - RENDER_DELAY,
+        Math.max(gap - 1 / SNAPSHOT_RATE, this.jitter - gap * 0.02)
+      )
+    }
+    this.arrivedAt = now
     const o = view.time - now
     // Track the earliest arrival (least delayed), drifting slowly so jitter does not shake the clock.
     if (this.offset === undefined || Math.abs(o - this.offset) > 0.5) this.offset = o
@@ -145,11 +162,27 @@ export class SnapshotBuffer {
     return true
   }
 
-  /** Estimated current host time. */
-  hostTime(now: number): number {
+  /** A monotonic presentation clock shared by movement, visibility and events. */
+  renderTime(now: number): number {
     const last = this.latest
-    if (!last) return 0
-    return this.offset === undefined ? last.time : now + this.offset
+    if (!last || this.offset === undefined) return 0
+    const target = now + this.offset - RENDER_DELAY - this.jitter
+    const prev = this.playback
+    let time = target
+    if (prev) {
+      const dt = now - prev.at
+      if (dt <= 0.5) {
+        // Slew the clock as latency changes so corrections do not reverse or skip motion.
+        const error = target - (prev.time + dt)
+        const rate = Math.max(0.85, Math.min(1.15, 1 + error * 4))
+        time = prev.time + dt * rate
+      } else {
+        time = Math.max(prev.time, target)
+      }
+    }
+    time = Math.max(this.snaps[0].time, Math.min(last.time, time))
+    this.playback = { at: now, time }
+    return time
   }
 
   /** The interpolated view at host time `t` (clamped to the buffered range; events are left empty). */

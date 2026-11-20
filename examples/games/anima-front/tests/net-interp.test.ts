@@ -74,13 +74,38 @@ describe('interpolation', () => {
 
   it('samples a snapshot buffer 100 ms behind the estimated host clock', () => {
     const buf = new SnapshotBuffer()
-    for (let i = 0; i <= 10; i++) buf.push(view(i * 3, i), i * 0.05 + 0.03)
+    for (let i = 0; i <= 60; i++) {
+      const now = i * 0.05 + 0.03
+      buf.push(view(i * 3, i), now)
+      buf.renderTime(now)
+    }
     expect(buf.push(view(15, 99), 1)).toBe(false)
-    const now = 10 * 0.05 + 0.03
-    const t = buf.hostTime(now) - 0.1
-    const v = buf.sample(t)!
-    expect(v.players[0].p[0]).toBeGreaterThan(7.5)
-    expect(v.players[0].p[0]).toBeLessThan(8.5)
+    const now = 60 * 0.05 + 0.03
+    expect(buf.sample(buf.renderTime(now))!.players[0].p[0]).toBeCloseTo(58, 1)
+  })
+
+  it('keeps remote motion moving every frame after adapting to batched arrivals', () => {
+    const buf = new SnapshotBuffer()
+    let previous = 0
+    const deltas: number[] = []
+    for (let frame = 0; frame < 360; frame++) {
+      const now = frame / 60
+      // Each second, four consecutive snapshots arrive together after a 200 ms gap.
+      const tick = frame - 1
+      if (tick >= 0 && tick % 3 === 0) {
+        if (tick % 60 < 48) buf.push(view(tick, tick / 10), now)
+        if (tick % 60 === 57) {
+          for (let queued = tick - 9; queued <= tick; queued += 3) buf.push(view(queued, queued / 10), now)
+        }
+      }
+      const sampled = buf.sample(buf.renderTime(now))
+      if (!sampled) continue
+      const x = sampled.players[0].p[0]
+      if (frame >= 180) deltas.push(x - previous)
+      previous = x
+    }
+    expect(Math.min(...deltas)).toBeGreaterThan(0.08)
+    expect(Math.max(...deltas)).toBeLessThan(0.12)
   })
 
   it('hands every event out once, in order, when the drawn time reaches it', () => {

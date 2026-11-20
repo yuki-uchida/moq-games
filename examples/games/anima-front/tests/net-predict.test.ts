@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Session } from '../src/app/session'
 import type { GuestMatch } from '../src/net/guest-match'
-import { BTN, neutralPlayerInput, type PlayerInput, type View } from '../src/sim/types'
+import { OwnBody } from '../src/net/reconcile'
+import { createWorld } from '../src/sim/api'
+import { BTN, neutralPlayerInput, type PlayerInput, type V3, type View } from '../src/sim/types'
 import { choice, FakeHub, provider, run, settle } from './net-helpers'
 
 beforeEach(() => {
@@ -43,6 +45,9 @@ async function measure(latency: number, jitter: number, script: (t: number) => P
   const corrections = g.prediction!.corrections
   // The guest draws at 144 Hz, the host at 60 Hz.
   let hostAcc = 0
+  let previousPosition: V3 | undefined
+  let movingFrames = 0
+  let heldFrames = 0
   await run(
     6000,
     () => {
@@ -54,6 +59,12 @@ async function measure(latency: number, jitter: number, script: (t: number) => P
         hv = hostSession.update(1 / 60)
       }
       gv = g.update(1 / 144)
+      const predicted = gv?.players.find((p) => p.id === g.me)
+      if (predicted && previousPosition && Math.hypot(predicted.v[0], predicted.v[2]) > 1) {
+        movingFrames++
+        if (Math.hypot(predicted.p[0] - previousPosition[0], predicted.p[2] - previousPosition[2]) < 1e-4) heldFrames++
+      }
+      previousPosition = predicted?.p
       errors.push(g.prediction!.lastError)
       const own = (hv as View | null)?.players.find((p) => p.id === g.me)
       if (own) moves.add(own.move)
@@ -72,6 +83,8 @@ async function measure(latency: number, jitter: number, script: (t: number) => P
     corrections: g.prediction!.corrections - corrections,
     snaps: g.prediction!.snaps,
     moves: [...moves].sort().join(','),
+    movingFrames,
+    heldFrames,
     drawnGap: Math.hypot(mine[0] - auth[0], mine[2] - auth[2])
   }
 }
@@ -84,7 +97,28 @@ describe('guest prediction', () => {
     console.log('walk', r)
     expect(r.p95).toBeLessThan(0.15)
     expect(r.max).toBeLessThan(0.6)
+    expect(r.movingFrames).toBeGreaterThan(300)
+    expect(r.heldFrames / r.movingFrames).toBeLessThan(0.05)
   }, 60_000)
+
+  it('keeps the interpolated position continuous across a correction and snaps on respawn', () => {
+    const player = { ...choice('ゲスト', 'rabbit', 0), id: 'guest', team: 0 as const }
+    const world = createWorld({ mode: 'pvp', map: 'arena', seed: 1, players: [player] })
+    const initial = world.view().players[0]
+    const body = new OwnBody(world.map, player)
+    body.reconcile(initial, undefined)
+    body.step({ ...neutralPlayerInput(), yaw: initial.yaw, mz: 1 })
+
+    const before = body.drawn(0.5)
+    const latest = body.predictor.body.p
+    const corrected: V3 = [latest[0] + 1, latest[1], latest[2]]
+    body.reconcile({ ...initial, p: corrected, v: body.predictor.body.v }, body.tick)
+    expect(body.drawn(0.5)[0]).toBeCloseTo(before[0], 8)
+
+    body.reconcile({ ...initial, state: 'away' }, body.tick)
+    body.reconcile({ ...initial, p: corrected }, body.tick)
+    expect(body.drawn(0.5)).toEqual(corrected)
+  })
 
   it('jumping and dashing while running stays small', async () => {
     const r = await measure(40, 25, (t) => {

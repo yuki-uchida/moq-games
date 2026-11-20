@@ -4,9 +4,11 @@
  * snapshot, the guest tick its authoritative state corresponds to. The difference between that state and the
  * prediction recorded for the same tick is moved into the physics state at once (so later steps start from the
  * right place) and into a render offset that fades over ~0.1 s (so the drawn body never jumps). Teleports (warp,
- * respawn, hooks, huge errors) snap to the host instead.
+ * respawn, hooks, huge errors) snap to the host instead. Between ticks, the rendered body interpolates the
+ * last two predicted positions.
  */
 import { createPredictor } from '../sim/api'
+import { lerpV3 } from './interp'
 import {
   neutralPlayerInput,
   type MapDef,
@@ -52,6 +54,7 @@ export class OwnBody {
   tick = 0
   private readonly history = new Map<number, Frame>()
   private offset: V3 = [0, 0, 0]
+  private previous: V3 | undefined
   private started = false
   private lastState: PlayerView['state'] | undefined
   readonly stats: ReconcileStats = { corrections: 0, maxError: 0, snaps: 0, lastError: 0, behind: 0 }
@@ -68,6 +71,7 @@ export class OwnBody {
   /** One 60 Hz step with the input sent for this tick. */
   step(input: PlayerInput) {
     this.tick++
+    this.previous = [...this.predictor.body.p]
     this.predictor.step(input)
     const b = this.predictor.body
     this.history.set(this.tick, { p: [b.p[0], b.p[1], b.p[2]], v: [b.v[0], b.v[1], b.v[2]], input })
@@ -80,9 +84,10 @@ export class OwnBody {
     for (let i = 0; i < 3; i++) this.offset[i] = Math.abs(this.offset[i] * k) < 1e-4 ? 0 : this.offset[i] * k
   }
 
-  /** Where to draw the body now. */
-  drawn(): V3 {
-    const p = this.predictor.body.p
+  /** Where to draw the body, at the given fraction of the current render interval. */
+  drawn(alpha = 1): V3 {
+    const latest = this.predictor.body.p
+    const p = this.previous && alpha < 1 ? lerpV3(this.previous, latest, alpha) : latest
     return [p[0] + this.offset[0], p[1] + this.offset[1], p[2] + this.offset[2]]
   }
 
@@ -134,7 +139,10 @@ export class OwnBody {
         if (kick) f.v[i] += dv[i]
       }
     }
-    for (let i = 0; i < 3; i++) this.offset[i] -= err[i]
+    for (let i = 0; i < 3; i++) {
+      this.offset[i] -= err[i]
+      if (this.previous) this.previous[i] += err[i]
+    }
   }
 
   private snapTo(auth: PlayerView, at: number | undefined) {
@@ -143,6 +151,7 @@ export class OwnBody {
     this.predictor.reset(auth)
     this.offset = [0, 0, 0]
     if (at !== undefined && at <= this.tick) this.replayInputs(at)
+    this.previous = undefined
     const b = this.predictor.body
     this.history.set(this.tick, { p: [b.p[0], b.p[1], b.p[2]], v: [b.v[0], b.v[1], b.v[2]], input: this.inputAt() })
   }
@@ -152,6 +161,7 @@ export class OwnBody {
     this.stats.snaps++
     this.predictor.reset(auth)
     this.replayInputs(at)
+    this.previous = undefined
     const now = this.predictor.body.p
     // A huge error is a teleport: draw it at once (no offset) unless it is a short hop.
     const jump = Math.hypot(now[0] - before[0], now[1] - before[1], now[2] - before[2])
