@@ -50,7 +50,7 @@ export const runner: StackDesign = {
         },
         { torsoHalf: 3, torsoDepth: 3, legs: 8, armLength: 7 }
       )
-      b.head.paint((x, y, z) => (y >= 6 && z < 3 ? 'hair' : undefined))
+      b.head.paint((x, y, z) => (z < 1 && y >= 1 ? 'hair' : y >= 6 && z < 3 ? 'hair' : undefined))
       for (const [x, z] of [
         [-3, -2],
         [-1, -3],
@@ -60,15 +60,16 @@ export const runner: StackDesign = {
         [-2, 1]
       ])
         b.head.box([x, 9, z], [x + 1, 11, z + 1], 'hair')
-      b.head.fill([-6, 6, -6], [5, 7, 5], 'band', (x, y, z) => {
+      // Slim ivory headband (single row so rear view doesn't look like a thick white bandage).
+      b.head.fill([-6, 7, -6], [5, 7, 5], 'band', (x, y, z) => {
         const d = Math.hypot(x / 5.0, z / 4.8)
-        return d <= 1.04 && d > 0.72
+        return d <= 1.04 && d > 0.76
       })
-      b.head.box([-1, 6, -6], [0, 7, -5], 'band').box([-1, 5, -8], [0, 6, -6], 'band')
-      // Bold crimson scarf collar + long dramatic streaming scarf tail.
+      b.head.box([-1, 6, -6], [0, 7, -5], 'band').box([-1, 4, -7], [0, 5, -6], 'band')
+      // Bold crimson scarf collar + draped folded tail (never sticking straight out like a T-pose!).
       b.torso.fill([-5, 5, -4], [4, 7, 4], 'scarf', (x, y, z) => Math.hypot(x / 3.9, z / 3.4) <= 1.15)
-      const cape = kit.part('cape', 'torso', [1, 6.5, -3])
-      cape.box([-1, -1, -7], [1, 0, -1], 'scarf').box([-1, -2, -9], [1, -1, -7], 'scarfDark')
+      const cape = kit.part('cape', 'torso', [1, 6.2, -3.2])
+      cape.box([-1, -1, -5], [0, 0, -1], 'scarf').box([-1, -3, -7], [0, -1, -5], 'scarfDark')
       // Sleek tapered spear held firmly in right fist (sharp tapered point, not a blocky sock).
       const spear = kit.part('weapon', 'armR', [0, b.hand, 1])
       spear
@@ -81,12 +82,14 @@ export const runner: StackDesign = {
   },
   pose: (input) => {
     const pose = bipedPose(input, { attack: 'thrust', stride: 0.8, bob: 1.1 })
+    // Negative rx rotates the -z scarf tail DOWNWARD along the back (no T-pose / sticking-out bar!).
+    pose.cape = { rx: -0.82 + 0.08 * Math.sin(input.time * 2.5 + input.seed * TAU) }
     if (input.motion === 'idle') {
       pose.torso = { ...pose.torso, rx: 0.1 }
       pose.armR = { ...pose.armR, rx: -0.4 }
       pose.weapon = { rx: -0.35 }
     }
-    if (input.motion === 'walk') pose.cape = { rx: 0.95 + 0.15 * Math.sin(input.cycle * TAU * 2) }
+    if (input.motion === 'walk') pose.cape = { rx: -0.32 + 0.14 * Math.sin(input.cycle * TAU * 2) }
     return pose
   }
 }

@@ -1,5 +1,6 @@
 export function orientBoardCanvas(canvas: HTMLCanvasElement): void {
   canvas.style.transform = 'scaleY(-1)'
+  canvas.style.imageRendering = 'pixelated'
 }
 
 export function drawBoardCanvas(

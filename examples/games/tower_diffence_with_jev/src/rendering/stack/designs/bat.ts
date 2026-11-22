@@ -9,9 +9,13 @@ export const bat: StackDesign = {
   type: 'bat',
   voxel: 2,
   walkDistance: 40,
-  portraitCrop: 1,
-  portraitYaw: -0.42,
-  portraitSquash: 0.55,
+  portraitCrop: 0.88,
+  portraitYaw: -0.26,
+  portraitSquash: 0.48,
+  portraitPose: {
+    wingL: { rz: 0.78, ry: -0.68 },
+    wingR: { rz: -0.78, ry: 0.68 }
+  },
   shadow: [7, 6],
   blueprint: {
     id: 'bat',
@@ -29,8 +33,8 @@ export const bat: StackDesign = {
     },
     build(kit) {
       const body = kit.part('body', undefined, [0, 0, 0])
-      body.ellipsoid([0, 0, 0], [4.2, 4.2, 4.0], 'fur')
-      body.ellipsoid([0, -0.8, 1.8], [2.5, 2.5, 2.2], 'tummy')
+      body.ellipsoid([0, 0, 0], [4.5, 4.4, 4.6], 'fur')
+      body.ellipsoid([0, -0.8, 2.0], [2.7, 2.6, 2.4], 'tummy')
       for (const [x, ex] of [
         [-3.5, -3],
         [2, 1]

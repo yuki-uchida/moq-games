@@ -40,6 +40,7 @@ export const mage: StackDesign = {
           eye: 'eye',
           shine: 'shine',
           cheek: 'cheek',
+          brow: 'robeDark',
           legs: 'robeDark',
           boots: 'shoe',
           torso: 'robe',
@@ -48,9 +49,11 @@ export const mage: StackDesign = {
           sleeve: 'robeDark',
           hands: 'skin'
         },
-        { robe: true, legs: 5, headRadius: 4.8, eyeRow: 3 }
+        { robe: true, robeFlare: 1.0, robePleat: 'robeDark', legs: 5, headRadius: 4.8, eyeRow: 3 }
       )
-      b.head.paint((x, y, z) => (y >= 6 && z < 2 ? 'hair' : undefined))
+      // Full golden-blonde hair down the back of the head (zero bald flesh rectangle in rear views!).
+      b.head.paint((x, y, z) => (z < 1 && y >= 0 ? 'hair' : y >= 6 && z < 3 ? 'hair' : undefined))
+      b.head.box([-4, 0, -5], [3, 5, -4], 'hair')
       // Wide brim raised at y=8 and shifted slightly back (-z) so eyes & cheeks are NEVER covered!
       b.head.fill([-8, 8, -9], [7, 8, 5], 'hat', (x, y, z) => Math.hypot(x / 7.6, (z + 1.5) / 6.8) <= 1)
       b.head.fill([-5, 9, -6], [4, 9, 3], 'hatBand', (x, y, z) => Math.hypot(x, z + 1.2) <= 4.9)

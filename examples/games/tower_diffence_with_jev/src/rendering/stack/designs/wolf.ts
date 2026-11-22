@@ -9,9 +9,9 @@ export const wolf: StackDesign = {
   type: 'wolf',
   voxel: 2,
   walkDistance: 44,
-  portraitCrop: 1,
-  portraitYaw: -0.92,
-  portraitSquash: 0.52,
+  portraitCrop: 0.78,
+  portraitYaw: -0.72,
+  portraitSquash: 0.48,
   shadow: [8, 11],
   blueprint: {
     id: 'wolf',
@@ -33,11 +33,11 @@ export const wolf: StackDesign = {
     },
     build(kit) {
       const body = kit.part('body', undefined, [0, 8, 0])
-      // Broader shoulders & chest so front views read with muscular volume instead of a thin sliver.
-      body.fill([-5, -3, -8], [4, 4, 7], 'mid', (x, y, z) => Math.hypot(x / 4.4, (y - 0.5) / 3.8, z / 8.2) <= 1)
+      // Broader muscular shoulders & chest so front & back views never collapse into a narrow bar.
+      body.fill([-6, -3, -8], [5, 4, 7], 'mid', (x, y, z) => Math.hypot(x / 5.0, (y - 0.5) / 3.9, z / 8.2) <= 1)
       body.paint((x, y) => (y >= 2 ? 'top' : y <= -2 ? 'under' : undefined))
-      // Thick silver mane ruff framing the shoulders.
-      body.fill([-6, -3, 2], [5, 5, 8], 'ruff', (x, y, z) => Math.hypot(x / 5.2, (y - 1) / 4.4, (z - 5) / 3.0) <= 1)
+      // Thick silver mane ruff framing the broad shoulders.
+      body.fill([-7, -3, 2], [6, 5, 8], 'ruff', (x, y, z) => Math.hypot(x / 5.8, (y - 1) / 4.5, (z - 5) / 3.2) <= 1)
       body.paint((x, y, z) => (z > 2 && y <= -1 && Math.abs(x) > 2 ? 'ruffShade' : undefined))
 
       const head = kit.part('head', 'body', [0, 3.5, 8])

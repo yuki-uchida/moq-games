@@ -9,8 +9,8 @@ export const ogre: StackDesign = {
   type: 'ogre',
   voxel: 2,
   walkDistance: 28,
-  portraitCrop: 0.66,
-  portraitYaw: -0.35,
+  portraitCrop: 0.56,
+  portraitYaw: -0.3,
   shadow: [12, 10],
   blueprint: {
     id: 'ogre',
@@ -59,27 +59,29 @@ export const ogre: StackDesign = {
       )
       torso.box([-1, 4, 8], [0, 5, 8], 'skinDark')
 
-      const head = kit.part('head', 'torso', [0, 12, 1.5])
-      head.fill([-6, 0, -5], [5, 8, 6], 'skin', (x, y, z) => Math.hypot(x / 5.2, (y - 4) / 4.4, (z - 0.5) / 5.0) <= 1)
-      // Heavy protruding ogre brow + glowing eyes + broad nose + twin upturned tusks.
-      head.box([-5, 5, 2], [4, 6, 6], 'brow')
-      head.box([-4, 3, 4], [-3, 4, 5], '*eye').box([2, 3, 4], [3, 4, 5], '*eye')
-      head.set(-3, 3, 5, 'pupil').set(2, 3, 5, 'pupil')
-      head.box([-1, 2, 5], [0, 4, 6], 'skinDark')
-      head.box([-4, 1, 5], [-3, 3, 6], 'tusk').box([2, 1, 5], [3, 3, 6], 'tusk')
+      const head = kit.part('head', 'torso', [0, 11.5, 2.0])
+      // Larger expressive ogre head & jaw so glowing eyes and twin ivory tusks dominate front & 3/4 views.
+      head.fill([-7, 0, -5], [6, 9, 6], 'skin', (x, y, z) => Math.hypot(x / 5.9, (y - 4.4) / 4.8, (z - 0.5) / 5.2) <= 1)
+      head.box([-5, 0, 2], [4, 2, 6], 'belly')
+      // Raised heavy brow over bold 2x2 glowing orange eyes + broad nose + chunky upturned tusks.
+      head.box([-5, 6, 3], [4, 7, 6], 'brow')
+      head.box([-4, 4, 5], [-3, 5, 6], '*eye').box([2, 4, 5], [3, 5, 6], '*eye')
+      head.set(-3, 4, 6, 'pupil').set(2, 4, 6, 'pupil')
+      head.box([-1, 3, 6], [0, 4, 7], 'skinDark')
+      head.box([-4, 1, 6], [-3, 3, 7], 'tusk').box([2, 1, 6], [3, 3, 7], 'tusk')
       // Side ears & topknot.
-      head.box([-6, 3, -1], [-5, 5, 1], 'skinDark').box([4, 3, -1], [5, 5, 1], 'skinDark')
-      head.box([-1, 8, -2], [0, 11, 0], 'hair').box([-2, 11, -3], [1, 12, 0], 'hair')
+      head.box([-7, 4, -1], [-6, 6, 1], 'skinDark').box([5, 4, -1], [6, 6, 1], 'skinDark')
+      head.box([-1, 9, -2], [0, 12, 0], 'hair').box([-2, 12, -3], [1, 13, 0], 'hair')
 
       for (const [name, x] of [
-        ['armL', 9.5],
-        ['armR', -9.5]
+        ['armL', 10],
+        ['armR', -10]
       ] as const) {
         const arm = kit.part(name, 'torso', [x, 10.5, 0])
         arm.box([-2, -10, -2], [1, 0, 2], 'skin').box([-2, -13, -2], [1, -10, 2], 'skinDark')
       }
 
-      const club = kit.part('weapon', 'armR', [0, -12, 0])
+      const club = kit.part('weapon', 'armR', [-1, -12, 1])
       club.box([-1, -1, -2], [1, 1, 5], 'woodDark')
       club.fill([-4, -4, 5], [4, 4, 17], 'wood', (x, y, z) => Math.hypot(x, y) <= 1.6 + (z - 5) * 0.19)
       for (const [x, y, z] of [
@@ -93,5 +95,5 @@ export const ogre: StackDesign = {
         club.box([x, y, z], [x, y, z + 1], 'nail')
     }
   },
-  pose: (input) => bipedPose(input, { attack: 'sweep', stride: 0.35, bob: 1.2, heavy: true, armSpread: 0.24 })
+  pose: (input) => bipedPose(input, { attack: 'sweep', stride: 0.35, bob: 1.2, heavy: true, armSpread: 0.34 })
 }

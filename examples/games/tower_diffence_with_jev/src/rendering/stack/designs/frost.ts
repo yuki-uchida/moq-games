@@ -11,7 +11,7 @@ export const frost: StackDesign = {
   voxel: 2,
   walkDistance: 27,
   portraitCrop: 0.62,
-  portraitYaw: -0.28,
+  portraitYaw: -0.14,
   shadow: [8, 6],
   emitter: { part: 'weapon', at: [0.5, 1.5, 15.5] },
   blueprint: {
@@ -50,22 +50,21 @@ export const frost: StackDesign = {
           sleeve: 'coatDark',
           hands: 'mitten'
         },
-        { robe: true, legs: 5, headRadius: 4.8, eyeRow: 3, coveredSides: true }
+        { robe: true, robeFlare: 0.95, robeLength: 3, robePleat: 'coatDark', legs: 6, headRadius: 4.8, eyeRow: 3, coveredSides: true }
       )
       b.head.paint((x, y, z) => (y >= 7 && z < 3 ? 'hair' : undefined))
-      // Deep sapphire hood framing the face cleanly (open across chin/face so eyes pop!).
+      // Deep sapphire hood framing a wide-open expressive face so eyes & cheeks shine in portraits.
       b.head.fill([-7, 2, -7], [6, 12, 5], 'coat', (x, y, z) => {
-        const d = Math.hypot(x / 5.8, (y - 5.2) / 5.8, (z + 0.6) / 5.6)
-        return d <= 1 && d > 0.78 && !(z > 1.2 && y < 8.4)
+        const d = Math.hypot(x / 5.8, (y - 5.2) / 5.8, (z + 0.8) / 5.6)
+        return d <= 1 && d > 0.78 && !(z > 0.6 && y < 8.6)
       })
-      // Fur trim only along the upper-side hood arch (leaves chin & face crisp, not a white beard!).
-      b.head.fill([-7, 3, 1], [6, 11, 5], 'fur', (x, y, z) => {
-        const ring = Math.hypot(x / 5.7, (y - 5.0) / 5.6)
-        return z > 1.5 && z < 3.6 && ring <= 1.04 && ring > 0.78 && y >= 3.2
+      // Fur trim strictly along the outer arch rim (never blocking eyes!).
+      b.head.fill([-7, 3, 0], [6, 11, 4], 'fur', (x, y, z) => {
+        const ring = Math.hypot(x / 5.7, (y - 5.2) / 5.6)
+        return z > 0.8 && z < 2.8 && ring <= 1.04 && ring > 0.8 && y >= 3.5
       })
       // Fur shoulder collar & vertical coat trim.
       b.torso.fill([-6, 5, -4], [5, 7, 4], 'fur', (x, y, z) => Math.hypot(x / 4.8, z / 3.8) <= 1.1)
-      b.hips.paint((x, y, z) => (y === -4 ? ((x + z) % 3 ? 'fur' : 'furShade') : undefined))
       b.torso.box([-1, 1, 4], [0, 4, 4], 'fur')
       // Chunky 2px birch staff with a glowing six-pointed ice crystal.
       const staff = kit.part('weapon', 'armR', [0, b.hand, 1])

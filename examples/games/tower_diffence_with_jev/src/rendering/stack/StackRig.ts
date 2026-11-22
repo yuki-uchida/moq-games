@@ -147,8 +147,8 @@ void main() {
     float zH = hit.a;
     vec4 nUp = sampleStack(u - duY, c, s, maxR);
     vec4 nL = sampleStack(u - duX, c, s, maxR);
-    if ((nUp.a > 0.5 && nUp.a - zH >= 5.0) || (nL.a > 0.5 && nL.a - zH >= 5.0)) {
-      rgb = mix(rgb, inkFor(rgb), 0.48);
+    if ((nUp.a > 0.5 && nUp.a - zH >= 7.0) || (nL.a > 0.5 && nL.a - zH >= 7.0)) {
+      rgb = mix(rgb, inkFor(rgb), 0.32);
     }
   } else {
     // Crisp 1-art-px dark outline ONCE around the finished stack silhouette.

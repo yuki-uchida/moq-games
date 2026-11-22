@@ -2787,9 +2787,10 @@ dialog::backdrop {
   background-image: linear-gradient(145deg, #101f25, #2c4541 50%, #142529);
 }
 
-/* Widen the scenery without stretching real actors or their readable labels. */
+/* Preserve razor-sharp nearest-neighbor pixel art on the battlefield canvas at every viewport scale. */
 #field > canvas {
-  image-rendering: auto;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 #field .unit-health {
   --field-hp-boost: max(1, calc(var(--field-label-boost, 1) / 2));

@@ -8,9 +8,9 @@ export const beetle: StackDesign = {
   type: 'beetle',
   voxel: 2,
   walkDistance: 24,
-  portraitCrop: 1,
-  portraitYaw: -0.78,
-  portraitSquash: 0.54,
+  portraitCrop: 0.84,
+  portraitYaw: -0.62,
+  portraitSquash: 0.48,
   shadow: [10, 10],
   blueprint: {
     id: 'beetle',

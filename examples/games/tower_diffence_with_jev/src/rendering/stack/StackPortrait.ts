@@ -32,8 +32,9 @@ export interface StackPixelSplat {
  */
 export function stackSplats(design: StackDesign, options: Omit<StackPaintOptions, 'size'> = {}): StackPixelSplat[] {
   const model = stackModel(design)
-  const sheet = options.pose
-    ? bakePoseSliceSheet(model, poseMatrices(model, options.pose, new Float32Array(MAX_STACK_PARTS * 16)))
+  const pose = options.pose ?? design.portraitPose
+  const sheet = pose
+    ? bakePoseSliceSheet(model, poseMatrices(model, pose, new Float32Array(MAX_STACK_PARTS * 16)))
     : model.restSheet
   const rendered = drawStackPixels(sheet, {
     turn: options.yaw ?? design.portraitYaw ?? -0.35,
@@ -64,8 +65,9 @@ export function stackSplats(design: StackDesign, options: Omit<StackPaintOptions
  */
 export function paintStack(context: CanvasRenderingContext2D, design: StackDesign, options: StackPaintOptions): void {
   const model = stackModel(design)
-  const sheet = options.pose
-    ? bakePoseSliceSheet(model, poseMatrices(model, options.pose, new Float32Array(MAX_STACK_PARTS * 16)))
+  const pose = options.pose ?? (options.crop === undefined || options.crop < 0.99 ? design.portraitPose : undefined)
+  const sheet = pose
+    ? bakePoseSliceSheet(model, poseMatrices(model, pose, new Float32Array(MAX_STACK_PARTS * 16)))
     : model.restSheet
   const rendered = drawStackPixels(sheet, {
     turn: options.yaw ?? design.portraitYaw ?? -0.35,
@@ -107,12 +109,12 @@ export function paintStack(context: CanvasRenderingContext2D, design: StackDesig
 
   const cropW = maxX - minX + 1
   const cropH = cropBottom - topY + 1
-  const padding = options.padding ?? 0.08
+  const padding = options.padding ?? 0.06
   const usable = options.size * (1 - padding * 2)
-  // Inscribe inside circular UI badges cleanly while maximizing integer pixel scale for wide winged figures.
-  const circleDiameter = options.size * (1 - padding * 1.45)
+  // Inscribe cleanly inside circular badges with consistent 65-80% fill across busts & monsters.
+  const circleDiameter = options.size * (1 - padding * 1.15)
   const rawScale = Math.min(usable / Math.max(cropW, cropH), circleDiameter / Math.hypot(cropW, cropH))
-  const scale = rawScale >= 2 ? Math.floor(rawScale) : Math.max(1, rawScale)
+  const scale = rawScale >= 2 ? Math.floor(rawScale * 2) / 2 : Math.max(1, rawScale)
   const ox = Math.floor((options.size - cropW * scale) / 2)
   const oy = Math.floor((options.size - cropH * scale) / 2)
 
@@ -170,7 +172,7 @@ export function stackPortrait(design: StackDesign | undefined, size = 128, full?
             crop: design.portraitCrop ?? 0.64,
             yaw: design.portraitYaw ?? -0.32,
             squash: design.portraitSquash ?? PORTRAIT_SQUASH,
-            padding: 0.08,
+            padding: 0.06,
             shadow: false
           }
     )
