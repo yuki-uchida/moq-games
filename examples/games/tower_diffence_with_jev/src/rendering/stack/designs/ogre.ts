@@ -9,8 +9,8 @@ export const ogre: StackDesign = {
   type: 'ogre',
   voxel: 2,
   walkDistance: 28,
-  portraitCrop: 0.56,
-  portraitYaw: -0.3,
+  portraitCrop: 0.5,
+  portraitYaw: -0.26,
   shadow: [12, 10],
   blueprint: {
     id: 'ogre',
@@ -84,8 +84,12 @@ export const ogre: StackDesign = {
       }
 
       const club = kit.part('weapon', 'armR', [-1, -12, 1])
-      club.box([-1, -1, -2], [1, 1, 5], 'woodDark')
+      // Long brown haft visibly connects the fist to the stone head from every facing.
+      club.box([-1, -1, -6], [1, 1, 5], 'woodDark')
+      club.box([0, -1, -6], [1, 0, 4], 'wood')
+      club.box([-1, 0, 1], [1, 1, 2], 'nail')
       club.fill([-4, -4, 5], [4, 4, 17], 'clubStone', (x, y, z) => Math.hypot(x, y) <= 1.6 + (z - 5) * 0.19)
+      club.paint((x, y, z) => (z >= 5 && (x <= -2 || y <= -2) ? 'clubStoneDark' : z >= 15 && x >= 0 && y >= 0 ? 'nail' : undefined))
       club.box([-2, -2, 6], [1, 1, 9], 'clubStoneDark').box([-1, 2, 11], [1, 3, 14], 'clubStoneDark')
       for (const [x, y, z] of [
         [3, 0, 12],

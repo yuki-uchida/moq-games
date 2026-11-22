@@ -9,8 +9,8 @@ export const goblin: StackDesign = {
   type: 'goblin',
   voxel: 2,
   walkDistance: 28,
-  portraitCrop: 0.68,
-  portraitYaw: -0.35,
+  portraitCrop: 0.56,
+  portraitYaw: -0.32,
   shadow: [7, 6],
   blueprint: {
     id: 'goblin',

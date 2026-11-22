@@ -2023,6 +2023,7 @@ export class GameRenderer {
     this.models?.setPresentation(scale, aspect)
     if (this.fieldId) this.refreshBackground()
   }
+
   worldPointAt(clientX: number, clientY: number): Point | null {
     const bounds = this.host.getBoundingClientRect(),
       x = ((clientX - bounds.left) / bounds.width) * this.field.width,
@@ -2596,8 +2597,13 @@ export class GameRenderer {
       visual.coldMist.scale.set(bodyScale(unit), -bodyScale(unit), 1)
       const authored = this.models ? undefined : this.authoredFrame(s, unit, visual, visualTime * 1000)
       if (authored && unit.hp > 0) visual.lastFrame = { atlas: authored.atlas, elapsedMs: authored.elapsedMs }
-      const x = unit.x,
-        y = unit.y - 24
+      // Render-only lane spread: queued monsters keep their simulation position but fan a few
+      // pixels across the lane so silhouettes and their attack reads never fully coincide.
+      const sep = unit.owner === 'ai' ? ((unit.id % 3) - 1) * 8 : 0
+      const sepX = Math.abs(unit.facingX) + Math.abs(unit.facingY) > 0.1 ? -unit.facingY * sep : sep
+      const sepY = Math.abs(unit.facingX) + Math.abs(unit.facingY) > 0.1 ? unit.facingX * sep : 0
+      const x = unit.x + sepX,
+        y = unit.y + sepY - 24
       visual.group.position.set(x, y, y / 10)
       const health = this.healthLabels.get(unit.id)!,
         label = health.element
@@ -2657,7 +2663,7 @@ export class GameRenderer {
       const staggerX = unit.owner === 'ai' ? ((unit.id % 3) - 1) * 7 : 0
       const staggerY = unit.owner === 'ai' ? (unit.id % 2) * 5 : 0
       label.style.left = `${x + staggerX}px`
-      label.style.top = `${Math.max(18, unit.y - (authored ? 82 * bodyScale(unit) : 58) - staggerY)}px`
+      label.style.top = `${Math.max(18, unit.y + sepY - (authored ? 82 * bodyScale(unit) : 58) - staggerY)}px`
       if (health.hp !== unit.hp) {
         health.hp = unit.hp
         label.querySelector('span')!.textContent =

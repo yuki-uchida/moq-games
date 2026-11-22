@@ -9,7 +9,7 @@ export const shaman: StackDesign = {
   type: 'shaman',
   voxel: 2,
   walkDistance: 26,
-  portraitCrop: 0.76,
+  portraitCrop: 0.58,
   portraitYaw: -0.34,
   shadow: [8, 7],
   emitter: { part: 'weapon', at: [0.5, 1.5, 14.5] },

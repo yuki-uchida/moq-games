@@ -8,7 +8,7 @@ export const wraith: StackDesign = {
   type: 'wraith',
   voxel: 2,
   walkDistance: 30,
-  portraitCrop: 0.68,
+  portraitCrop: 0.56,
   portraitYaw: -0.32,
   shadow: [7, 6],
   emitter: { part: 'armR', at: [0, -10, 1] },

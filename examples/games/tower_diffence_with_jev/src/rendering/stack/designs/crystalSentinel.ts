@@ -8,8 +8,8 @@ export const crystalSentinel: StackDesign = {
   type: 'crystalSentinel',
   voxel: 2,
   walkDistance: 26,
-  portraitCrop: 0.68,
-  portraitYaw: -0.35,
+  portraitCrop: 0.56,
+  portraitYaw: -0.32,
   shadow: [11, 9],
   blueprint: {
     id: 'crystalSentinel',

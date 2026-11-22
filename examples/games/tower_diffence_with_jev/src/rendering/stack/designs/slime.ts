@@ -8,7 +8,7 @@ export const slime: StackDesign = {
   type: 'slime',
   voxel: 2,
   walkDistance: 34,
-  portraitCrop: 1,
+  portraitCrop: 0.62,
   portraitYaw: -0.35,
   portraitSquash: 0.56,
   shadow: [7, 6],

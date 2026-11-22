@@ -86,5 +86,5 @@ export const healer: StackDesign = {
       staff.ellipsoid([0.5, 2, 14.5], [1.3, 1.5, 1.3], '*bloom')
     }
   },
-  pose: (input) => bipedPose(input, { attack: 'bloom', stride: 0.4, bob: 0.6 })
+  pose: (input) => bipedPose(input, { attack: 'bloom', stride: 0.4, bob: 0.6, ready: -0.55 })
 }

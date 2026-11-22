@@ -9,9 +9,10 @@ export const wolf: StackDesign = {
   type: 'wolf',
   voxel: 2,
   walkDistance: 44,
-  portraitCrop: 0.78,
-  portraitYaw: -0.72,
+  portraitCrop: 0.58,
+  portraitYaw: -0.35,
   portraitSquash: 0.48,
+  portraitFocus: 0.25,
   shadow: [8, 11],
   blueprint: {
     id: 'wolf',

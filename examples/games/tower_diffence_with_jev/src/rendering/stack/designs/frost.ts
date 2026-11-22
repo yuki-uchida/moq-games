@@ -76,5 +76,5 @@ export const frost: StackDesign = {
       staff.segment([0.5, -0.5, 15.5], [0.5, 3.5, 15.5], 0.7, '*ice').set(0, 1, 15, '*iceCore')
     }
   },
-  pose: (input) => bipedPose(input, { attack: 'frostCast', stride: 0.4, bob: 0.6 })
+  pose: (input) => bipedPose(input, { attack: 'frostCast', stride: 0.4, bob: 0.6, ready: -0.6 })
 }
