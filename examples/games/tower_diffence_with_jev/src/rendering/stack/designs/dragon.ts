@@ -8,8 +8,8 @@ export const dragon: StackDesign = {
   type: 'dragon',
   voxel: 2,
   walkDistance: 34,
-  portraitCrop: 0.5,
-  portraitYaw: -0.16,
+  portraitCrop: 0.64,
+  portraitYaw: -0.28,
   portraitSquash: 0.48,
   portraitFocus: -0.6,
   portraitPose: {
@@ -35,6 +35,7 @@ export const dragon: StackDesign = {
       spine: '#5c1416',
       wing: '#b82a23',
       wingLight: '#e04c38',
+      wingDark: '#7d1712',
       wingBone: '#4f1515',
       claw: '#fff5d6',
       eye: '#1c0b0a',
@@ -104,9 +105,17 @@ export const dragon: StackDesign = {
           const baseTrail = -6.8 + t * 5.0
           const scallop = Math.abs(Math.sin(t * Math.PI * 3)) * 2.4 * (1 - t * 0.45)
           const trailZ = baseTrail + scallop
-          return z <= leadZ && z >= trailZ && y >= arch - 0.85 && y <= arch + 0.75
+          // Require a real chord so the trailing scallops never leave isolated 1-cell pixels.
+          return leadZ - trailZ >= 1.4 && z <= leadZ && z >= trailZ && y >= arch - 0.85 && y <= arch + 0.75
         })
-        wing.paint((x, y, z) => (z > -1.5 && Math.abs(x) > 3 && Math.abs(x) < 11 ? 'wingLight' : undefined))
+        // Dark membrane root separates the wing from the crimson torso in side/back views.
+        wing.paint((x, y, z) =>
+          Math.abs(x) <= 4
+            ? 'wingDark'
+            : z > -1.5 && Math.abs(x) > 3 && Math.abs(x) < 11
+              ? 'wingLight'
+              : undefined
+        )
         // Leading spar sweeping back to wingtip claw + 3 finger ribs.
         wing.segment([0, 0.5, 2], [side * 7, 1.8, 1.2], 0.9, 'wingBone', 0.75)
         wing.segment([side * 7, 1.8, 1.2], [side * 14, 0.4, -2.0], 0.75, 'wingBone', 0.45)

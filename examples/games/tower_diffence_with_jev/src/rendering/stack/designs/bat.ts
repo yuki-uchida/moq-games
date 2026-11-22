@@ -59,7 +59,7 @@ export const bat: StackDesign = {
           const arch = Math.sin((d / 13) * Math.PI) * 1.4
           const leadZ = 3.8 - d * 0.14 + Math.sin((d / 13) * Math.PI) * 1.1
           const trailZ = -4.8 + d * 0.16 - 1.3 * Math.abs(Math.sin(d * 0.68))
-          return z <= leadZ && z >= trailZ && y >= arch - 0.9 && y <= arch + 0.8
+          return leadZ - trailZ >= 1.3 && z <= leadZ && z >= trailZ && y >= arch - 0.9 && y <= arch + 0.8
         })
         wing.paint((x, y, z) => (z > 0 && Math.abs(x) > 2 && Math.abs(x) < 10 ? 'membraneLight' : undefined))
         wing.segment([0, 0.2, 1], [side * 7, 1.5, 2.6], 0.7, 'bone', 0.6)

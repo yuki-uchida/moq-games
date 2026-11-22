@@ -7,6 +7,20 @@ import { StackVisual } from './StackVisual'
 
 export type StackRoster = Readonly<Partial<Record<UnitType, StackDesign>>>
 
+/**
+ * Render-only lateral spread for queued monsters. Shared by the stack layer and the DOM health
+ * labels so the visible body, its shadow and its bar always agree.
+ */
+export function unitDisplayOffset(
+  unit: Pick<Unit, 'id' | 'owner' | 'facingX' | 'facingY'>,
+  spread = 8
+): Point {
+  const sep = unit.owner === 'ai' ? ((unit.id % 3) - 1) * spread : 0
+  return Math.abs(unit.facingX) + Math.abs(unit.facingY) > 0.1
+    ? { x: -unit.facingY * sep, y: unit.facingX * sep }
+    : { x: sep, y: 0 }
+}
+
 export interface StackUnitPose {
   readonly motion: StackMotion
   readonly seconds: number
@@ -174,7 +188,8 @@ export class StackUnitLayer {
         actor.stride = { travelled: unit.travelled, cycle }
         pose = { ...pose, cycle }
       }
-      actor.visual.setPosition(unit.x, unit.y)
+      const offset = unitDisplayOffset(unit)
+      actor.visual.setPosition(unit.x + offset.x, unit.y + offset.y)
       actor.visual.setAppearance(1, 0xffffff, hitFlash(unit))
       this.sample(actor, pose, state.time)
     }

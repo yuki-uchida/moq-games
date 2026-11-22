@@ -9,7 +9,7 @@ export const wolf: StackDesign = {
   type: 'wolf',
   voxel: 2,
   walkDistance: 44,
-  portraitCrop: 0.58,
+  portraitCrop: 0.9,
   portraitYaw: -0.35,
   portraitSquash: 0.48,
   portraitFocus: 0.25,
@@ -35,7 +35,7 @@ export const wolf: StackDesign = {
     build(kit) {
       const body = kit.part('body', undefined, [0, 8, 0])
       // Broader muscular shoulders & chest so front & back views never collapse into a narrow bar.
-      body.fill([-6, -3, -8], [5, 4, 7], 'mid', (x, y, z) => Math.hypot(x / 5.0, (y - 0.5) / 3.9, z / 8.2) <= 1)
+      body.fill([-7, -3, -8], [6, 4, 7], 'mid', (x, y, z) => Math.hypot(x / 6.0, (y - 0.5) / 4.1, z / 8.2) <= 1)
       body.paint((x, y) => (y >= 2 ? 'top' : y <= -2 ? 'under' : undefined))
       // Thick silver mane ruff framing the broad shoulders.
       body.fill([-7, -3, 2], [6, 5, 8], 'ruff', (x, y, z) => Math.hypot(x / 5.8, (y - 1) / 4.5, (z - 5) / 3.2) <= 1)
@@ -75,7 +75,8 @@ export const wolf: StackDesign = {
       }
 
       const tail = kit.part('tail', 'body', [0, 2, -7.5])
-      tail.segment([0, 0, 0], [0, 2.5, -8.5], 2.1, 'top', 1.6).segment([0, 2.5, -8.5], [0, 3, -11], 1.5, 'tip', 0.7)
+      // Carry the tail back and slightly down so front/back views never read as a vertical antenna.
+      tail.segment([0, 0, 0], [0, 0.5, -8.5], 2.1, 'top', 1.6).segment([0, 0.5, -8.5], [0, -0.5, -11], 1.5, 'tip', 0.7)
     }
   },
   pose: (input) => quadrupedPose(input, { stride: 0.85, bob: 1.1, lunge: 6.5 })

@@ -5,7 +5,7 @@ import { SPECIALS } from '../game/SpecialAbilities'
 import { createBattlefieldModelLighting, type ModelEnvironmentLighting } from './ModelEnvironmentLighting'
 import { orientBoardCanvas } from './BoardCanvas'
 import { COMPACT_BOARD_TOP_BLEED, createBoardCamera, configureBoardCamera } from './BoardCamera'
-import { StackUnitLayer, type StackRoster } from './stack/StackUnitLayer'
+import { StackUnitLayer, unitDisplayOffset, type StackRoster } from './stack/StackUnitLayer'
 import { expressiveMotion } from './ExpressiveMotion'
 import { canInitiateDamage, healingAction, HEALING_ACTIONS, temporaryPaladinHeal } from '../game/HealingActions'
 import { BulkArtSwitch, type ArtMode, type ArtSwitchBody, type ArtSwitchStatus } from './BulkArtSwitch'
@@ -2597,11 +2597,10 @@ export class GameRenderer {
       visual.coldMist.scale.set(bodyScale(unit), -bodyScale(unit), 1)
       const authored = this.models ? undefined : this.authoredFrame(s, unit, visual, visualTime * 1000)
       if (authored && unit.hp > 0) visual.lastFrame = { atlas: authored.atlas, elapsedMs: authored.elapsedMs }
-      // Render-only lane spread: queued monsters keep their simulation position but fan a few
-      // pixels across the lane so silhouettes and their attack reads never fully coincide.
-      const sep = unit.owner === 'ai' ? ((unit.id % 3) - 1) * 8 : 0
-      const sepX = Math.abs(unit.facingX) + Math.abs(unit.facingY) > 0.1 ? -unit.facingY * sep : sep
-      const sepY = Math.abs(unit.facingX) + Math.abs(unit.facingY) > 0.1 ? unit.facingX * sep : 0
+      // Match the stack layer's render-only lane spread so bars stay on their visible bodies.
+      const offset = unitDisplayOffset(unit)
+      const sepX = offset.x,
+        sepY = offset.y
       const x = unit.x + sepX,
         y = unit.y + sepY - 24
       visual.group.position.set(x, y, y / 10)
