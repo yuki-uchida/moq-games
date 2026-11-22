@@ -1232,14 +1232,15 @@ dialog::backdrop {
   pointer-events: none;
   width: 48px;
   text-align: center;
-  z-index: 3;
+  z-index: 7;
+  filter: drop-shadow(0 1px 0 #0c1714);
   --health: #b8e79b;
 }
 .unit-health span {
   display: block;
   font: bold 8px/12px monospace;
   color: #f4f5df;
-  background: #243e30e6;
+  background: #243e30f5;
   border-radius: 3px 3px 0 0;
 }
 .unit-health i {

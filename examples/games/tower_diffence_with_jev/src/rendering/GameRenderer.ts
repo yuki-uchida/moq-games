@@ -2653,8 +2653,11 @@ export class GameRenderer {
               : `${DEFINITIONS[unit.type].name}を選択または移動`
           )
       }
-      label.style.left = `${x}px`
-      label.style.top = `${Math.max(18, unit.y - (authored ? 82 * bodyScale(unit) : 58))}px`
+      // Nudge queued enemies' bars apart so a stack of attackers never merges into one unreadable line.
+      const staggerX = unit.owner === 'ai' ? ((unit.id % 3) - 1) * 7 : 0
+      const staggerY = unit.owner === 'ai' ? (unit.id % 2) * 5 : 0
+      label.style.left = `${x + staggerX}px`
+      label.style.top = `${Math.max(18, unit.y - (authored ? 82 * bodyScale(unit) : 58) - staggerY)}px`
       if (health.hp !== unit.hp) {
         health.hp = unit.hp
         label.querySelector('span')!.textContent =

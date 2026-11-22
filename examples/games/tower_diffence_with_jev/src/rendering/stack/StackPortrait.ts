@@ -109,13 +109,22 @@ export function paintStack(context: CanvasRenderingContext2D, design: StackDesig
 
   const cropW = maxX - minX + 1
   const cropH = cropBottom - topY + 1
-  const padding = options.padding ?? 0.06
+  // Bust portraits use a square window centred on the head/shoulders so the figure fills the
+  // circular badge edge-to-edge (no floating body with empty corners), while full-body framing
+  // keeps the whole silhouette inscribed in the circle.
+  const bust = crop < 0.99
+  const padding = options.padding ?? (bust ? 0.02 : 0.06)
   const usable = options.size * (1 - padding * 2)
-  // Inscribe cleanly inside circular badges with consistent 65-80% fill across busts & monsters.
   const circleDiameter = options.size * (1 - padding * 1.15)
-  const rawScale = Math.min(usable / Math.max(cropW, cropH), circleDiameter / Math.hypot(cropW, cropH))
+  const windowW = bust ? Math.max(1, Math.round(cropH * (design.portraitAspect ?? 1))) : cropW
+  const slack = Math.max(0, cropW - windowW)
+  const focus = Math.max(-1, Math.min(1, design.portraitFocus ?? 0))
+  const originX = bust ? minX + Math.round((slack * (focus + 1)) / 2) : minX
+  const rawScale = bust
+    ? usable / windowW
+    : Math.min(usable / Math.max(cropW, cropH), circleDiameter / Math.hypot(cropW, cropH))
   const scale = rawScale >= 2 ? Math.floor(rawScale * 2) / 2 : Math.max(1, rawScale)
-  const ox = Math.floor((options.size - cropW * scale) / 2)
+  const ox = Math.floor((options.size - windowW * scale) / 2)
   const oy = Math.floor((options.size - cropH * scale) / 2)
 
   // Draw crisp stepped shadow when framing the full body (e.g. title screen heroes).
@@ -133,13 +142,15 @@ export function paintStack(context: CanvasRenderingContext2D, design: StackDesig
     }
   }
 
+  const drawLeft = Math.max(0, originX)
+  const drawRight = Math.min(rendered.width - 1, originX + windowW - 1)
   for (let y = topY; y <= cropBottom; y++) {
-    for (let x = minX; x <= maxX; x++) {
+    for (let x = drawLeft; x <= drawRight; x++) {
       const i = (y * rendered.width + x) * 4
       if (rendered.pixels[i + 3] < 128) continue
       context.fillStyle = `rgb(${rendered.pixels[i]},${rendered.pixels[i + 1]},${rendered.pixels[i + 2]})`
       context.fillRect(
-        Math.floor(ox + (x - minX) * scale),
+        Math.floor(ox + (x - originX) * scale),
         Math.floor(oy + (y - topY) * scale),
         Math.ceil(scale),
         Math.ceil(scale)
@@ -172,7 +183,7 @@ export function stackPortrait(design: StackDesign | undefined, size = 128, full?
             crop: design.portraitCrop ?? 0.64,
             yaw: design.portraitYaw ?? -0.32,
             squash: design.portraitSquash ?? PORTRAIT_SQUASH,
-            padding: 0.06,
+            padding: 0.02,
             shadow: false
           }
     )

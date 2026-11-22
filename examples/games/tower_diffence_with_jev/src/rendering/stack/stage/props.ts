@@ -202,6 +202,8 @@ const desertPalm = prop(
     }
     const tx = Math.sin(1.35) * 4.0
     const tz = Math.sin(0.9) * 1.5
+    // Crown knot joins the ringed trunk to the fronds so the palm never reads as two pieces.
+    p.ellipsoid([tx, 20.4, tz], [2.9, 2.4, 2.9], 'frondDark')
     p.box([Math.round(tx) - 1, 19, Math.round(tz) - 1], [Math.round(tx) + 1, 20, Math.round(tz) + 1], 'coconut')
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * Math.PI * 2 + 0.35
@@ -230,17 +232,29 @@ const cactus = prop(
 // Stepped flat-topped boxy desert mesa rock (replaces cylindrical "log/termite mound"!).
 const mesaRock = prop(
   'mesa-rock',
-  { rock: '#bd804a', band: '#915b30', light: '#e3b278', dark: '#734522' },
+  { rock: '#b5855f', band: '#8a5f40', light: '#d9b78f', dark: '#6b4730' },
   (p) => {
-    p.box([-7, 0, -5], [6, 3, 5], 'dark')
-    p.box([-6, 3, -4], [5, 7, 4], 'rock')
-    p.box([-6, 5, -4], [5, 5, 4], 'band')
-    p.box([-5, 7, -3], [4, 10, 3], 'rock')
-    p.box([-5, 10, -3], [4, 10, 3], 'light')
-    // Stepped side outcrop breaking rectangular symmetry.
-    p.box([3, 0, -2], [8, 5, 4], 'rock').box([3, 5, -2], [8, 5, 4], 'light')
+    // Broad eroded butte with sloped sandstone flanks, a narrow wind-carved crown and deep
+    // horizontal strata — reads as weathered rock, not a lit crate or a tree stump.
+    p.fill([-11, 0, -6], [10, 2, 6], 'dark', (x, _y, z) => Math.hypot(x / 11.2, z / 6.2) <= 1)
+    p.fill([-10, 2, -5], [9, 5, 5], 'rock', (x, _y, z) => Math.hypot((x - 0.5) / 9.6, (z + 0.5) / 5.0) <= 1)
+    p.fill([-7, 5, -4], [6, 8, 4], 'rock', (x, _y, z) => Math.hypot((x - 0.5) / 6.8, (z + 0.5) / 4.0) <= 1)
+    p.fill([-4, 8, -3], [3, 10, 3], 'rock', (x, _y, z) => Math.hypot((x - 0.5) / 3.8, (z - 0.5) / 3.0) <= 1)
+    p.paint(
+      (x, y, z) =>
+        y === 2 || y === 5 || y === 8
+          ? 'band'
+          : !p.has(x, y + 1, z) && y >= 8
+            ? 'light'
+            : y <= 1 && (x > 4 || z > 3)
+              ? 'dark'
+              : undefined
+    )
+    // A crack line and a fallen slab break the symmetry.
+    p.box([2, 3, 5], [3, 6, 5], 'dark')
+    p.box([3, 0, -4], [8, 2, 2], 'rock').box([3, 2, -4], [8, 2, 2], 'light')
   },
-  { shadow: [10, 8] }
+  { shadow: [13, 7] }
 )
 
 // Iconic desert sandstone natural rock arch.
@@ -254,6 +268,22 @@ const rockArch = prop(
     p.paint((x, y) => (y === 5 || y === 10 ? 'band' : undefined))
   },
   { shadow: [10, 6] }
+)
+
+// Collapsed caravan wall: one standing column plus a low broken run, replacing a second identical arch.
+const ruinWall = prop(
+  'ruin-wall',
+  { rock: '#c2854e', band: '#945d32', light: '#e6b87e', dark: '#734420' },
+  (p) => {
+    p.box([-8, 0, -3], [-5, 13, 2], 'rock').box([-8, 0, -3], [-5, 1, 2], 'dark')
+    p.box([-8, 10, -3], [-5, 13, 2], 'band').box([-8, 13, -2], [-5, 13, 2], 'light')
+    p.box([-4, 0, -2], [3, 5, 2], 'rock')
+    p.box([-4, 5, -2], [-1, 7, 2], 'rock').box([-3, 7, -1], [-1, 7, 2], 'light')
+    p.box([2, 0, -2], [6, 8, 2], 'rock').box([2, 6, -2], [6, 8, 2], 'band')
+    p.box([5, 2, -1], [7, 4, 3], 'dark')
+    p.paint((x, y) => (y === 3 || y === 9 ? 'band' : undefined))
+  },
+  { shadow: [9, 6] }
 )
 
 // Low angular cracked desert boulder cluster.
@@ -314,6 +344,25 @@ const snowPine = prop(
     })
   },
   { shadow: [10, 8], sway: 0.008 }
+)
+
+const snowPineWide = prop(
+  'snow-pine-wide',
+  { bark: '#59402c', needle: '#2a6b58', needleDark: '#1a4a3d', snow: '#f2f9fe', snowShade: '#bdd3e3' },
+  (p) => {
+    p.cylinder(0.5, 0.5, 0, 7, 2.1, 1.6, 'bark')
+    for (let tier = 0; tier < 3; tier++) {
+      const y0 = 4 + tier * 4
+      p.cylinder(0.5, 0.5, y0, y0 + 7, 10.6 - tier * 2.3, 1.1, 'needle')
+    }
+    p.paint((x, y, z) => {
+      if (y < 4) return undefined
+      if (!p.has(x, y + 1, z)) return x >= 2 && z < 0 ? 'snowShade' : 'snow'
+      if ((y - 4) % 4 === 0) return 'needleDark'
+      return undefined
+    })
+  },
+  { shadow: [11, 8], sway: 0.006 }
 )
 
 const snowPineYoung = prop(
@@ -442,12 +491,12 @@ export const BIOME_PROPS: Record<FieldId, Record<PropKind, readonly StackDesign[
   },
   desert: {
     tree: [desertPalm, cactus, desertPalm, cactus],
-    rock: [mesaRock, desertBoulders, rockArch, desertBoulders],
+    rock: [mesaRock, desertBoulders, rockArch, ruinWall, desertBoulders],
     small: [dryShrub, skull, desertBoulders],
-    accent: [rockArch, dryShrub, skull]
+    accent: [rockArch, ruinWall, dryShrub, skull]
   },
   frost: {
-    tree: [snowPine, snowPineYoung, snowPine],
+    tree: [snowPine, snowPineYoung, snowPineWide, snowPineYoung],
     rock: [snowRock, iceCrystal],
     small: [iceCrystal, snowRock, iceCrystal],
     accent: [iceCrystal, snowRock, snowman, iceCrystal, snowRock]
