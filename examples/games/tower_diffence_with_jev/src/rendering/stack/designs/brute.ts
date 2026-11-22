@@ -9,8 +9,8 @@ export const brute: StackDesign = {
   type: 'brute',
   voxel: 2,
   walkDistance: 26,
-  portraitCrop: 0.68,
-  portraitYaw: -0.35,
+  portraitCrop: 0.56,
+  portraitYaw: -0.32,
   shadow: [12, 10],
   blueprint: {
     id: 'brute',

@@ -198,7 +198,8 @@ const desertPalm = prop(
       const leanX = Math.sin((y / 20) * 1.35) * 4.0
       const leanZ = Math.sin((y / 20) * 0.9) * 1.5
       const rad = 2.6 - y * 0.04
-      p.cylinder(leanX, leanZ, y, y, rad, rad, y % 3 === 0 ? 'trunkBand' : 'trunk')
+      // Cylinder ranges exclude their top, so each ring must span y..y+1 to leave a voxel.
+      p.cylinder(leanX, leanZ, y, y + 1, rad, rad, y % 3 === 0 ? 'trunkBand' : 'trunk')
     }
     const tx = Math.sin(1.35) * 4.0
     const tz = Math.sin(0.9) * 1.5
@@ -270,20 +271,57 @@ const rockArch = prop(
   { shadow: [10, 6] }
 )
 
+// Landmark-scale butte: roughly twice the width of the common rocks, with three eroded tiers.
+const mesaGrand = prop(
+  'mesa-grand',
+  { rock: '#ad7a52', band: '#7c4f31', light: '#d7b088', dark: '#5b3822' },
+  (p) => {
+    p.fill([-18, 0, -9], [17, 4, 9], 'dark', (x, _y, z) => Math.hypot(x / 18.2, z / 9.2) <= 1)
+    p.fill([-16, 4, -8], [15, 9, 8], 'rock', (x, _y, z) => Math.hypot((x - 0.5) / 15.8, (z + 0.5) / 8.2) <= 1)
+    p.fill([-11, 9, -6], [10, 13, 6], 'rock', (x, _y, z) => Math.hypot((x - 0.5) / 10.8, (z - 0.5) / 6.2) <= 1)
+    p.fill([-5, 13, -4], [4, 15, 4], 'rock', (x, _y, z) => Math.hypot((x - 0.5) / 5.2, z / 4.2) <= 1)
+    p.paint(
+      (x, y, z) =>
+        y === 4 || y === 9 || y === 13
+          ? 'band'
+          : !p.has(x, y + 1, z) && y >= 9
+            ? 'light'
+            : y <= 3 && (x > 8 || z > 5)
+              ? 'dark'
+              : undefined
+    )
+    // Two deep gullies split the face into readable buttresses.
+    p.box([-2, 4, 8], [-1, 12, 8], 'dark').box([6, 4, 7], [7, 13, 7], 'dark')
+    p.box([8, 0, -6], [15, 3, 4], 'rock').box([8, 3, -6], [15, 3, 4], 'light')
+  },
+  { shadow: [20, 12] }
+)
+
 // Collapsed caravan wall: one standing column plus a low broken run, replacing a second identical arch.
 const ruinWall = prop(
   'ruin-wall',
   { rock: '#c2854e', band: '#945d32', light: '#e6b87e', dark: '#734420' },
   (p) => {
-    p.box([-8, 0, -3], [-5, 13, 2], 'rock').box([-8, 0, -3], [-5, 1, 2], 'dark')
-    p.box([-8, 10, -3], [-5, 13, 2], 'band').box([-8, 13, -2], [-5, 13, 2], 'light')
-    p.box([-4, 0, -2], [3, 5, 2], 'rock')
-    p.box([-4, 5, -2], [-1, 7, 2], 'rock').box([-3, 7, -1], [-1, 7, 2], 'light')
-    p.box([2, 0, -2], [6, 8, 2], 'rock').box([2, 6, -2], [6, 8, 2], 'band')
-    p.box([5, 2, -1], [7, 4, 3], 'dark')
+    // Three-column colonnade with a surviving lintel, a fallen beam and paving slabs: reads as
+    // a ruined gate rather than an L-shaped crate.
+    for (const [x, top] of [
+      [-10, 13],
+      [-4, 8],
+      [3, 11]
+    ] as const) {
+      p.box([x, 0, -3], [x + 2, top, 2], 'rock').box([x, 0, -3], [x + 2, 1, 2], 'dark')
+      p.box([x, top - 2, -3], [x + 2, top, 2], 'band')
+      p.box([x, top, -2], [x + 2, top, 2], 'light')
+    }
+    p.box([-10, 11, -3], [-2, 13, 2], 'rock').box([-10, 13, -3], [-2, 13, 2], 'light')
+    p.box([-9, 5, -3], [-2, 6, 2], 'band')
+    // Fallen lintel across the foreground and a run of paving stones.
+    p.box([-6, 1, 3], [4, 2, 5], 'rock').box([-6, 2, 3], [4, 2, 5], 'light')
+    p.box([5, 1, 3], [8, 2, 4], 'rock')
+    for (let x = -11; x <= 6; x += 4) p.box([x, 0, 3], [x + 2, 0, 6], 'band')
     p.paint((x, y) => (y === 3 || y === 9 ? 'band' : undefined))
   },
-  { shadow: [9, 6] }
+  { shadow: [10, 6] }
 )
 
 // Low angular cracked desert boulder cluster.
@@ -337,8 +375,8 @@ const snowPine = prop(
     }
     p.paint((x, y, z) => {
       if (y < 6) return undefined
-      if (!p.has(x, y + 1, z)) return x >= 2 && z < 0 ? 'snowShade' : 'snow'
-      if (!p.has(x, y + 2, z) && x < 1) return 'snow'
+      // One solid snow cap per tier plus a single shaded rim; no alternating 1-px stripes.
+      if (!p.has(x, y + 1, z)) return x >= 3 && z < 0 ? 'snowShade' : 'snow'
       if ((y - 6) % 5 === 0) return 'needleDark'
       return undefined
     })
@@ -357,7 +395,7 @@ const snowPineWide = prop(
     }
     p.paint((x, y, z) => {
       if (y < 4) return undefined
-      if (!p.has(x, y + 1, z)) return x >= 2 && z < 0 ? 'snowShade' : 'snow'
+      if (!p.has(x, y + 1, z)) return x >= 3 && z < 0 ? 'snowShade' : 'snow'
       if ((y - 4) % 4 === 0) return 'needleDark'
       return undefined
     })
@@ -435,7 +473,7 @@ const deadTree = prop(
 // Wide, low stepped hexagonal basalt formation (NOT tall thin gravestones!).
 const basalt = prop(
   'basalt',
-  { rock: '#3c3342', top: '#6d5a70', rim: '#b84221', '*crack': '#ff8533' },
+  { rock: '#3c3342', top: '#8d7896', rim: '#b84221', '*crack': '#ff8533' },
   (p) => {
     for (const [x, z, r, h] of [
       [0, 0, 3.2, 8],
@@ -445,10 +483,12 @@ const basalt = prop(
       [-3, -3, 2.3, 4],
       [3, -3, 2.2, 4]
     ]) {
-      p.cylinder(x, z, 0, h - 1, r, r, 'rock')
-      p.cylinder(x, z, h, h, r, r, 'top')
+      p.cylinder(x, z, 0, h, r, r, 'rock')
+      // Cylinder ranges exclude the top, so the lit cap spans h..h+1.
+      p.cylinder(x, z, h, h + 1, r * 0.92, r * 0.92, 'top')
     }
     p.box([-2, 1, 3], [2, 2, 3], '*crack').box([-4, 0, -4], [4, 0, 4], 'rim')
+    p.box([-1, 9, 0], [0, 9, 1], '*crack')
   },
   { shadow: [10, 8] }
 )
@@ -491,7 +531,7 @@ export const BIOME_PROPS: Record<FieldId, Record<PropKind, readonly StackDesign[
   },
   desert: {
     tree: [desertPalm, cactus, desertPalm, cactus],
-    rock: [mesaRock, desertBoulders, rockArch, ruinWall, desertBoulders],
+    rock: [mesaGrand, mesaRock, desertBoulders, rockArch, ruinWall, desertBoulders],
     small: [dryShrub, skull, desertBoulders],
     accent: [rockArch, ruinWall, dryShrub, skull]
   },

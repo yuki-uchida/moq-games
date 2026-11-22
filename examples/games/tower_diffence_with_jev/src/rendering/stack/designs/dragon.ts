@@ -13,9 +13,12 @@ export const dragon: StackDesign = {
   portraitSquash: 0.48,
   portraitFocus: -0.6,
   portraitPose: {
-    // Fold the membranes behind the shoulders so the horned head owns the portrait badge.
+    // Fold the membranes behind the shoulders and turn the head to camera so one eye, both
+    // horn roots and the long snout stay readable inside the circular badge.
     wingL: { rz: 0.12, ry: -1.15 },
     wingR: { rz: -0.12, ry: 1.15 },
+    neck: { ry: 0.28 },
+    head: { ry: 0.55, rx: -0.04 },
     jaw: { rx: 0.3 }
   },
   shadow: [12, 13],

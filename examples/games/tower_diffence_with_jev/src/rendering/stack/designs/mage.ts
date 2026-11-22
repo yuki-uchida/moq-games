@@ -88,5 +88,5 @@ export const mage: StackDesign = {
       staff.set(0, 1, 15, '*glowCore')
     }
   },
-  pose: (input) => bipedPose(input, { attack: 'cast', stride: 0.4, bob: 0.6 })
+  pose: (input) => bipedPose(input, { attack: 'cast', stride: 0.4, bob: 0.6, ready: -0.6 })
 }

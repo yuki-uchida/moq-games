@@ -106,6 +106,8 @@ export interface BipedStyle {
   readonly heavy?: boolean
   /** Arms held out from the body in radians. */
   readonly armSpread?: number
+  /** Idle weapon-arm lift in radians; negative raises staffs/hammers to a clear ready stance. */
+  readonly ready?: number
 }
 
 /**
@@ -119,8 +121,9 @@ export function bipedPose(input: StackMotionInput, style: BipedStyle): StackPose
   pose.hips = { y: breathe > 0.25 ? 1 : 0 }
   pose.torso = { y: breathe * 0.35, sy: 1 + breathe * 0.04 }
   pose.head = { y: breathe * 0.7, rx: 0.04 * Math.sin(input.time * 1.7 + input.seed * 5) }
-  pose.armL = { y: breathe * 0.4, rz: spread + breathe * 0.06 }
-  pose.armR = { y: breathe * 0.4, rz: -spread - breathe * 0.06 }
+  const ready = style.ready ?? 0.12
+  pose.armL = { y: breathe * 0.4, rz: spread + breathe * 0.06, rx: Math.min(0.12, ready * 0.3) }
+  pose.armR = { y: breathe * 0.4, rz: -spread - breathe * 0.06, rx: ready }
   pose.legL = {}
   pose.legR = {}
   pose.cape = { rx: 0.08 + 0.03 * Math.sin(input.time * 2 + input.seed) }

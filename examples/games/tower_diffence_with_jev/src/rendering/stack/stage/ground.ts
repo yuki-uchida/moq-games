@@ -80,14 +80,14 @@ export const BIOMES: Record<FieldId, Biome> = {
     roadEdge: '#734f32',
     roadOutline: '#452d1b',
     pebble: '#cfa97a',
-    slow: '#8a5c2f',
-    slowLight: '#bd9058',
-    slowBorder: '#5c3c1e',
-    slowAccent: '#6b4724',
+    slow: '#7a4e26',
+    slowLight: '#d8a86a',
+    slowBorder: '#3f2814',
+    slowAccent: '#5c3a1c',
     flowers: ['#739149', '#b88542'],
     slotEdge: '#e7c795',
     slotFill: '#c9a069',
-    slotShadow: '#7a5530',
+    slotShadow: '#5a3c20',
     accentA: '#ad8652',
     accentB: '#916e40'
   },
@@ -113,7 +113,7 @@ export const BIOMES: Record<FieldId, Biome> = {
     flowers: ['#8ccbe3', '#e1f0fa'],
     slotEdge: '#e2f1fa',
     slotFill: '#aec8da',
-    slotShadow: '#66849b',
+    slotShadow: '#4a6272',
     accentA: '#5b9ab8',
     accentB: '#7ab8d4',
     accentC: '#d6f2ff',
@@ -494,8 +494,15 @@ export function paintGround(field: ResolvedBattlefield, aspect: number): GroundP
                         ? biome.slowLight
                         : biome.slow
               } else if (field.id === 'desert') {
-                const swirl = Math.sin(sd * 0.48 + noise(i, j, 6, seed + 95) * 4)
-                hex = swirl > 0.52 ? biome.slowLight : swirl < -0.52 ? biome.slowAccent : biome.slow
+                const swirl = Math.sin(sd * 0.44 + noise(i, j, 6, seed + 95) * 4.6)
+                hex =
+                  swirl > 0.42
+                    ? biome.slowLight
+                    : swirl < -0.35
+                      ? biome.slowAccent
+                      : sd + slowJitter > half * 0.84
+                        ? biome.slowBorder
+                        : biome.slow
               } else {
                 const rut = Math.abs(Math.abs(hit.dist) - half * 0.36) < 2.4
                 hex = rut ? biome.slowAccent : sNoise > 0.5 ? biome.slowLight : biome.slow
@@ -607,6 +614,8 @@ export function paintGround(field: ResolvedBattlefield, aspect: number): GroundP
             // Rounded corner stones anchor the pad even against busy grass or ash.
             if ((ax === 10 || ax === 11) && (ay === 8 || ay === 9)) hex = biome.slotEdge
             if (ax === 12 && ay === 9) hex = biome.slotShadow
+            // A one-pixel build glyph marks every pad as interactive at a glance.
+            if ((ax === 0 && ay <= 2) || (ay === 0 && ax <= 2)) hex = lit ? biome.slotEdge : biome.slotFill
           }
         }
 
