@@ -9,8 +9,8 @@ export const goblin: StackDesign = {
   type: 'goblin',
   voxel: 2,
   walkDistance: 28,
-  portraitCrop: 0.74,
-  portraitYaw: -0.32,
+  portraitCrop: 0.68,
+  portraitYaw: -0.35,
   shadow: [7, 6],
   blueprint: {
     id: 'goblin',
@@ -68,12 +68,12 @@ export const goblin: StackDesign = {
       )
       b.head.box([1, 8, 1], [2, 8, 2], 'patch').box([-3, 7, -4], [-2, 8, -4], 'patch2')
       b.head.segment([0, 9, -3], [0, 7.5, -8], 1.2, 'hoodDark', 0.5)
-      // Bulging loot sack on the back.
+      // Bulging loot sack on the back & clean front-only loincloth flap (never bleeding onto rear).
       b.torso
         .ellipsoid([0, 4.5, -5.5], [3.6, 3.8, 2.8], 'sack')
         .box([-1, 8, -5], [0, 8, -4], 'rope')
         .box([-3, 2, -4], [2, 2, -4], 'rope')
-      b.hips.box([-3, -2, -3], [2, 0, 3], 'rags')
+      b.hips.box([-3, -2, 1], [2, 0, 3], 'rags')
       // Curved bent dagger gripped solidly in the hand.
       const knife = kit.part('weapon', 'armR', [0, b.hand, 0])
       knife
@@ -83,9 +83,14 @@ export const goblin: StackDesign = {
     }
   },
   pose: (input) => {
-    const pose = bipedPose(input, { attack: 'stab', stride: 0.75, bob: 1.2 })
+    const pose = bipedPose(input, { attack: 'stab', stride: 0.75, bob: 1.2, armSpread: 0.08 })
     pose.torso = { ...pose.torso, rx: (pose.torso?.rx ?? 0) + 0.28 }
     pose.head = { ...pose.head, rx: (pose.head?.rx ?? 0) - 0.18 }
+    if (input.motion === 'idle') {
+      // Natural crouched sneaky guard (eliminates T-pose horizontal arms!).
+      pose.armL = { rx: -0.32, rz: 0.08 }
+      pose.armR = { rx: -0.48, rz: -0.1 }
+    }
     return pose
   }
 }

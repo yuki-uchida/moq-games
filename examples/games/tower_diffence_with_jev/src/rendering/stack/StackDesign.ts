@@ -30,10 +30,11 @@ export interface StackDesign {
   readonly shadow: readonly [number, number]
   /** Projectile origin: a part and a cell offset in that part. */
   readonly emitter?: { readonly part: string; readonly at: readonly [number, number, number] }
-  /** UI bust framing: fraction of the figure height from the top, turn angle, and camera squash. */
+  /** UI bust framing: fraction of the figure height from the top, turn angle, camera squash, and optional portrait pose. */
   readonly portraitCrop?: number
   readonly portraitYaw?: number
   readonly portraitSquash?: number
+  readonly portraitPose?: StackPose
   pose(input: StackMotionInput): StackPose
 }
 
@@ -457,7 +458,7 @@ function bipedAttack(input: StackMotionInput, attack: BipedAttack, pose: StackPo
         rx: track(ms, [[0, 0], [wind, -0.25], [cue, 0.24], [end, 0]]),
         ry: strike(ms, [[0, 0], [wind, 0.55], [cue, -0.45], [end, 0]])
       }
-      pose.head = { rx: track(ms, [[0, 0], [wind, -0.22], [cue, 0.14], [end, 0]]) }
+      pose.head = { rx: track(ms, [[0, 0], [wind, -0.2], [cue, 0.04], [end, 0]]) }
       pose.hips = { y: track(ms, [[0, 0], [wind, 1.2], [cue, -0.5], [end, 0]]), z: track(ms, [[0, 0], [cue, 1.8], [end, 0]]) }
       pose.cape = { rx: track(ms, [[0, 0.1], [cue, 0.7], [end, 0.1]]) }
       break

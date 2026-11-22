@@ -24,8 +24,14 @@ export interface HumanShape {
   torsoDepth?: number
   headRadius?: number
   armLength?: number
-  /** Robe: widen the torso skirt smoothly down over the legs. */
+  /** Robe: smooth flared ellipsoid skirt over the legs (instead of a boxy square pedestal). */
   robe?: boolean
+  /** Robe skirt flare factor (default 1.3; customize per caster silhouette). */
+  robeFlare?: number
+  /** Robe skirt drop length in cells (default legs - 1; shorter for parkas showing boots). */
+  robeLength?: number
+  /** Optional dark color key for vertical robe pleats. */
+  robePleat?: string
   /** Face rows: eyes at these local head rows. */
   eyeRow?: number
   /** Skip side-ear details (for helmeted/hooded figures). */
@@ -85,12 +91,35 @@ export function human(kit: StackKit, c: HumanColors, shape: HumanShape = {}): Hu
     torso.box([-half + 1, th - 1, -depth], [half - 2, th - 1, depth], c.torsoTrim)
   }
   if (shape.robe) {
-    // Full flared robe reaching down cleanly to ankle height.
-    for (let y = -legs + 1; y <= 1; y++) {
-      const flare = 1 + Math.round(((1 - y) / Math.max(1, legs)) * 1.35)
-      hips.box([-half - flare + 1, y, -depth - flare + 1], [half + flare - 2, y, depth + flare - 1], c.torso)
+    // Rounded flared ellipsoid skirt (zero boxy rectangular pedestal!) with crisp bottom-hem trim & pleats.
+    const drop = shape.robeLength ?? Math.max(1, legs - 1)
+    const flareMax = shape.robeFlare ?? 1.35
+    const yBottom = 1 - drop
+    for (let y = yBottom; y <= 1; y++) {
+      const t = (1 - y) / Math.max(1, drop)
+      const rx = half + 0.4 + t * flareMax
+      const rz = depth + 0.4 + t * (flareMax * 0.85)
+      hips.fill(
+        [-Math.ceil(rx) - 1, y, -Math.ceil(rz) - 1],
+        [Math.ceil(rx), y, Math.ceil(rz)],
+        c.torso,
+        (x, _yy, z) => Math.hypot(x / rx, z / rz) <= 1
+      )
+      if (y === yBottom && c.torsoTrim) {
+        // Trim ONLY on the outer 1-voxel perimeter of the bottom hem (never a flat box frame!).
+        hips.paint((x, yy, z) => {
+          if (yy !== yBottom) return undefined
+          const d = Math.hypot((x + 0.5) / rx, (z + 0.5) / rz)
+          return d >= 0.78 && d <= 1.05 ? c.torsoTrim : undefined
+        })
+      }
+      if (shape.robePleat && y < 1) {
+        hips.paint((x, yy, z) => {
+          if (yy !== y) return undefined
+          return (x === -2 || x === 1) && Math.abs(z) >= rz - 1.4 ? shape.robePleat : undefined
+        })
+      }
     }
-    if (c.torsoTrim) hips.box([-half - 2, -legs + 1, -depth - 2], [half + 1, -legs + 1, depth + 2], c.torsoTrim)
   }
 
   const head = kit.part('head', 'torso', [0, th, 0.5])

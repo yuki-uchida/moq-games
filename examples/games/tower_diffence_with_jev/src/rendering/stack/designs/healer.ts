@@ -41,6 +41,7 @@ export const healer: StackDesign = {
           eye: 'eye',
           shine: 'shine',
           cheek: 'cheek',
+          brow: 'hair',
           legs: 'cream',
           boots: 'shoe',
           torso: 'robe',
@@ -49,10 +50,12 @@ export const healer: StackDesign = {
           sleeve: 'cream',
           hands: 'skin'
         },
-        { robe: true, legs: 5, headRadius: 4.8, eyeRow: 3 }
+        { robe: true, robeFlare: 1.65, robePleat: 'robeDark', legs: 5, headRadius: 4.8, eyeRow: 3 }
       )
-      b.head.paint((x, y, z) => (y >= 6 && z < 2 ? 'hair' : y >= 1 && z < -2 ? 'hair' : undefined))
-      b.head.box([-3, -4, -5], [2, 2, -4], 'hair')
+      b.head.paint((x, y, z) => (z < 1 && y >= 0 ? 'hair' : y >= 6 && z < 3 ? 'hair' : undefined))
+      b.head.box([-3, -4, -5], [2, 3, -4], 'hair')
+      // Cream front apron panel distinguishing healer's bell skirt from mage & frost.
+      b.hips.box([-2, -3, 3], [1, 1, 5], 'cream')
       // Blossom crown perched high at y=8..9 so the eyes & cheeks read clearly underneath.
       for (let i = 0; i < 7; i++) {
         const a = (i / 7) * Math.PI * 2

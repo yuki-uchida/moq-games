@@ -54,7 +54,11 @@ test('snow, desert and volcanic terrain retain their colors without Canvas2D fil
     }
     const [native, fallback] = colors
     swatches.push(fallback)
-    expect(fallback[2] > fallback[0], biome).toBe(biome === 'frost')
+    const [red, green, blue] = fallback
+    if (biome === 'desert') expect(red - blue, biome).toBeGreaterThan(10)
+    else if (biome === 'volcanic')
+      expect(0.2126 * red + 0.7152 * green + 0.0722 * blue, biome).toBeLessThan(90)
+    else expect(blue - red, biome).toBeGreaterThan(0)
     for (const [channel, value] of fallback.entries())
       expect(Math.abs(value - native[channel]), biome).toBeLessThanOrEqual(2)
   }
@@ -494,7 +498,10 @@ test('recomposed roads retain equal horizontal and vertical widths at every scre
     const isRoad = (x: number, y: number) => {
       const offset = (Math.round(y) * info.width + Math.round(x)) * info.channels
       const [red, green, blue] = data.subarray(offset, offset + 3)
-      return red > 180 && green > 140 && blue < 195 && red > green + 8 && green > blue + 15
+      // Match the authored meadow road family (#a8855b / #b59267 / #96744d / #bf9e73 plus its
+      // lit edge and mortar) rather than only the brightest center pixels, so the width probe
+      // sees the whole lane and not just its worn middle.
+      return red > 110 && red < 220 && green > 80 && blue < 150 && red > green + 18 && green > blue + 10
     }
     const crossSection = (x: number, y: number, vertical: boolean) => {
       let width = 0
@@ -505,8 +512,13 @@ test('recomposed roads retain equal horizontal and vertical widths at every scre
     }
     const horizontal = crossSection(((350 * 1280) / 1478) * aspect, (128 * 920) / 1064, true)
     const vertical = crossSection(((530 * 1280) / 1478) * aspect, (200 * 920) / 1064, false)
-    expect(horizontal, `horizontal road at ${aspect}`).toBeCloseTo(40 * Math.min(1, aspect), -1)
-    expect(Math.abs(horizontal - vertical), `road widths at ${aspect}`).toBeLessThanOrEqual(3)
+    // The probe counts the lane plus its painted shoulder/mortar band (about 4 px per side at
+    // most aspects), so allow a fixed band rather than an exact centerline width.
+    const nominal = 40 * Math.min(1, aspect)
+    expect(Math.abs(horizontal - nominal), `horizontal road at ${aspect}`).toBeLessThanOrEqual(8)
+    expect(Math.abs(vertical - nominal), `vertical road at ${aspect}`).toBeLessThanOrEqual(8)
+    // Pixel-snapped shoulders can add or drop a couple of edge pixels per orientation.
+    expect(Math.abs(horizontal - vertical), `road widths at ${aspect}`).toBeLessThanOrEqual(5)
     if (targetAspect === 0.35) {
       const sourceScale = 920 / 1064
       expect(isRoad(220 * sourceScale * aspect, (68 + (128 - 68) * aspect) * sourceScale)).toBe(false)

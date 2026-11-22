@@ -95,7 +95,13 @@ export class SkillBar {
     for (const name of ['pointerup', 'pointercancel', 'pointerleave']) button.addEventListener(name, clear)
     button.addEventListener('contextmenu', (event) => event.preventDefault())
     button.addEventListener('click', (event) => {
-      if (longPressed) { longPressed = false; return }
+      // Suppress only the pointer click that closes the long-press gesture. Keyboard
+      // activation (detail === 0) must still aim even when the previous gesture was a
+      // long press that never produced its own follow-up click.
+      if (longPressed) {
+        longPressed = false
+        if (event.detail > 0) return
+      }
       this.options.onActivate(unit.id, event.shiftKey)
     })
     const name = button.querySelector<HTMLElement>('.skill-name')!

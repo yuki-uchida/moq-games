@@ -6,7 +6,7 @@ import { modelGroundDepth } from '../../BoardCamera'
 import type { StackDesign } from '../StackDesign'
 import { drawStackPixels, STACK_SPACING, STACK_SQUASH } from '../SliceSheet'
 import { stackModel } from '../StackVisual'
-import { paintGround } from './ground'
+import { paintGround, scenicPools } from './ground'
 import { castleDesign, denDesign } from './landmarks'
 import { BIOME_PROPS, type PropKind } from './props'
 
@@ -119,58 +119,86 @@ export function stageLayout(field: ResolvedBattlefield): { kind: PropKind; x: nu
   if (scenery.length) return scenery.map((item) => ({ kind: kindOf(item), x: item.x, y: item.y, scale: 1 }))
 
   const placed: { kind: PropKind; x: number; y: number; scale: number }[] = []
-  const seed = field.id.length * 977 + field.layoutRevision * 19
+  const seed = field.id.length * 977 + field.layoutRevision * 19 + field.id.charCodeAt(0) * 131
   const keep = [field.entrance, field.gate]
   const slowMid = pointOnPath(field.path, (field.slowSurface.startProgress + field.slowSurface.endProgress) / 2)
-  const clear = (point: Point, kind: PropKind, roadPad: number, slotPad: number, spacing: number) =>
-    point.x >= 24 &&
-    point.x <= field.width - 24 &&
-    point.y >= (kind === 'tree' ? 62 : 28) &&
-    point.y <= field.height - 26 &&
-    Math.hypot(slowMid.x - point.x, slowMid.y - point.y) > 64 &&
-    distanceToRoadUnion(field, point) > CONFIG.roadWidth / 2 + roadPad &&
-    keep.every((k) => Math.hypot(k.x - point.x, k.y - point.y) > 158) &&
-    field.slots.every((slot) => Math.hypot(slot.x - point.x, slot.y - point.y) > 42 + slotPad) &&
-    placed.every((other) => Math.hypot(other.x - point.x, other.y - point.y) > spacing)
+  const pools = scenicPools(field, 1)
+
+  const clear = (point: Point, kind: PropKind, roadPad: number, slotPad: number, spacing: number) => {
+    if (
+      point.x < 24 ||
+      point.x > field.width - 24 ||
+      point.y < (kind === 'tree' ? 66 : 30) ||
+      point.y > field.height - 26
+    )
+      return false
+    // Check BOTH foot position AND projected canopy/body height rectangle against road, slow zone & pools!
+    const canopyProbes: Point[] =
+      kind === 'tree'
+        ? [point, { x: point.x, y: point.y - 26 }, { x: point.x, y: point.y - 52 }]
+        : [point, { x: point.x, y: point.y - 16 }]
+    for (const probe of canopyProbes) {
+      const pad = probe === point ? roadPad : Math.max(12, roadPad - 10)
+      if (distanceToRoadUnion(field, probe) <= CONFIG.roadWidth / 2 + pad) return false
+      if (Math.hypot(slowMid.x - probe.x, slowMid.y - probe.y) <= 72) return false
+      if (pools.some((pool) => Math.hypot(pool.bx - probe.x, pool.by - probe.y) <= Math.max(pool.rx, pool.ry) + 18))
+        return false
+    }
+    return (
+      keep.every((k) => Math.hypot(k.x - point.x, k.y - point.y) > 158) &&
+      field.slots.every((slot) => Math.hypot(slot.x - point.x, slot.y - point.y) > 42 + slotPad) &&
+      placed.every((other) => Math.hypot(other.x - point.x, other.y - point.y) > spacing)
+    )
+  }
 
   let i = 0
-  const band = (x: number, y: number, preferTree: boolean) => {
+  const band = (x: number, y: number, preferTree: boolean, allowClose = false) => {
     const roll = hash(i++, seed)
-    const allowTree = preferTree && y >= 58
+    const allowTree = preferTree && y >= 62
     const kind: PropKind = allowTree
-      ? roll < 0.65
+      ? roll < 0.64
         ? 'tree'
         : roll < 0.84
           ? 'rock'
           : 'small'
-      : roll < 0.22
+      : roll < 0.24
         ? 'accent'
-        : roll < 0.64
+        : roll < 0.62
           ? 'small'
           : 'rock'
     const point = {
-      x: x + (hash(i++, seed) - 0.5) * 20,
-      y: y + (hash(i++, seed) - 0.5) * 14
+      x: x + (hash(i++, seed) - 0.5) * 24,
+      y: y + (hash(i++, seed) - 0.5) * 16
     }
-    if (clear(point, kind, kind === 'tree' ? 28 : 20, kind === 'tree' ? 22 : 12, kind === 'tree' ? 38 : 34)) {
+    const minSpace = allowClose ? 28 : kind === 'tree' ? 40 : 34
+    if (clear(point, kind, kind === 'tree' ? 28 : 20, kind === 'tree' ? 22 : 12, minSpace)) {
       placed.push({ kind, ...point, scale: 1 })
     }
   }
 
-  // Top border uses low rocks/bushes above y=58 (zero clipped crowns!) and tall hero trees along sides/bottom.
-  for (let x = 28; x < field.width - 20; x += 40) {
-    band(x, 34, false)
-    band(x + 18, 66, true)
-    band(x, field.height - 30, true)
+  // Organic grove/cluster composition along the perimeter (clusters of 2-4 separated by open clearings!).
+  for (let x = 28; x < field.width - 20; x += 34) {
+    const topWave = Math.sin(x * 0.017 + seed * 0.13) + Math.cos(x * 0.008 + seed * 0.31) * 0.5
+    if (topWave > -0.15) {
+      band(x, 34, false, true)
+      if (topWave > 0.35) band(x + 14, 68, true, true)
+    }
+    const botWave = Math.sin(x * 0.016 + seed * 0.47 + 1.9) + Math.cos(x * 0.009 + seed * 0.21) * 0.5
+    if (botWave > -0.1) {
+      band(x, field.height - 30, true, true)
+      if (botWave > 0.5) band(x + 16, field.height - 48, false, true)
+    }
   }
-  for (let y = 78; y < field.height - 54; y += 44) {
-    band(28, y, true)
-    band(field.width - 28, y, true)
+  for (let y = 78; y < field.height - 54; y += 38) {
+    const leftWave = Math.sin(y * 0.022 + seed * 0.27)
+    if (leftWave > -0.25) band(28, y, true, true)
+    const rightWave = Math.sin(y * 0.021 + seed * 0.61 + 1.4)
+    if (rightWave > -0.25) band(field.width - 28, y, true, true)
   }
-  // Low non-blocking scenic accents nestled inside interior dead-zone pockets (clear of road & slots).
-  for (let y = 104; y < field.height - 76; y += 68) {
-    for (let x = 92; x < field.width - 92; x += 88) {
-      if (hash(i++, seed) > 0.48) continue
+  // Low non-blocking scenic accents in clustered interior dead-zone pockets.
+  for (let y = 104; y < field.height - 76; y += 70) {
+    for (let x = 96; x < field.width - 96; x += 92) {
+      if (hash(i++, seed) > 0.44) continue
       band(x, y, false)
     }
   }
@@ -416,13 +444,15 @@ export class StackStage {
     c.fillRect(107, 6, 3, 3)
     c.fillRect(6, 25, 3, 3)
     c.fillRect(107, 25, 3, 3)
+    const pct = Math.max(5, Math.round((1 - surface.speedFactor) * 100))
+    const labelText = `移動 -${pct}%`
     // Crisp high-contrast label.
     c.fillStyle = '#141012'
     c.font = 'bold 18px "Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", sans-serif'
     c.textAlign = 'center'
-    c.fillText(`地上 ${Math.round(surface.speedFactor * 100)}%`, 59, 24)
+    c.fillText(labelText, 59, 24)
     c.fillStyle = theme.text
-    c.fillText(`地上 ${Math.round(surface.speedFactor * 100)}%`, 58, 23)
+    c.fillText(labelText, 58, 23)
 
     const texture = new THREE.CanvasTexture(canvas)
     texture.magFilter = texture.minFilter = THREE.NearestFilter

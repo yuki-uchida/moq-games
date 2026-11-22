@@ -8,9 +8,14 @@ export const dragon: StackDesign = {
   type: 'dragon',
   voxel: 2,
   walkDistance: 34,
-  portraitCrop: 0.96,
-  portraitYaw: -0.72,
-  portraitSquash: 0.52,
+  portraitCrop: 0.72,
+  portraitYaw: -0.52,
+  portraitSquash: 0.48,
+  portraitPose: {
+    wingL: { rz: 0.16, ry: -0.55 },
+    wingR: { rz: -0.16, ry: 0.55 },
+    jaw: { rx: 0.35 }
+  },
   shadow: [12, 13],
   emitter: { part: 'jaw', at: [0, 1, 6] },
   blueprint: {
@@ -78,31 +83,34 @@ export const dragon: StackDesign = {
         leg.box([-2, -7, -2], [1, 0, 1], 'scaleDark').box([-2, -7, 2], [1, -6, 3], 'claw')
       }
 
-      // Full crimson wing membranes spanning integer voxel layers (VoxelPart.fill evaluates y+0.5).
+      // Swept tapered bat-style crimson wings with 3 deep scallops (clean silhouette from front, side and attack!).
       for (const [name, side] of [
         ['wingL', 1],
         ['wingR', -1]
       ] as const) {
-        const wing = kit.part(name, 'body', [side * 4.5, 4.5, 0])
-        wing.fill([side > 0 ? 0 : -16, -2, -9], [side > 0 ? 15 : -1, 4, 5], 'wing', (x, y, z) => {
+        const wing = kit.part(name, 'body', [side * 4.5, 4.5, -0.5])
+        wing.fill([side > 0 ? 0 : -15, -1, -10], [side > 0 ? 14 : -1, 3, 4], 'wing', (x, y, z) => {
           const d = Math.abs(x)
-          if (d < 0.8 || d > 15.2) return false
-          // Gentle arch peaking mid-span so the membrane reads cleanly from front, side and top.
-          const arch = Math.sin((d / 15) * Math.PI) * 2.2
-          const leadZ = 3.8 - d * 0.16
-          const trailZ = -6.8 + d * 0.18 - 1.9 * Math.abs(Math.sin(d * 0.48))
-          return z <= leadZ && z >= trailZ && y >= arch - 1.1 && y <= arch + 0.9
+          if (d < 0.8 || d > 14.2) return false
+          const t = d / 14.2
+          // Swept delta leading edge curving back + tapered trailing edge with 3 deep scallops.
+          const arch = Math.sin(t * Math.PI) * 1.4
+          const leadZ = 3.2 - t * 5.2
+          const baseTrail = -6.8 + t * 5.0
+          const scallop = Math.abs(Math.sin(t * Math.PI * 3)) * 2.4 * (1 - t * 0.45)
+          const trailZ = baseTrail + scallop
+          return z <= leadZ && z >= trailZ && y >= arch - 0.85 && y <= arch + 0.75
         })
-        wing.paint((x, y, z) => (z > 0 && Math.abs(x) > 3 && Math.abs(x) < 12 ? 'wingLight' : undefined))
-        // Leading spar and three structural wing fingers.
-        wing.segment([0, 0.5, 2], [side * 8, 2.8, 2.5], 0.95, 'wingBone', 0.8)
-        wing.segment([side * 8, 2.8, 2.5], [side * 15, 0.8, 1.5], 0.8, 'wingBone', 0.55)
-        for (const [zEnd, yEnd] of [
-          [-7.5, -0.4],
-          [-3.2, 0.4],
-          [0.8, 0.9]
+        wing.paint((x, y, z) => (z > -1.5 && Math.abs(x) > 3 && Math.abs(x) < 11 ? 'wingLight' : undefined))
+        // Leading spar sweeping back to wingtip claw + 3 finger ribs.
+        wing.segment([0, 0.5, 2], [side * 7, 1.8, 1.2], 0.9, 'wingBone', 0.75)
+        wing.segment([side * 7, 1.8, 1.2], [side * 14, 0.4, -2.0], 0.75, 'wingBone', 0.45)
+        for (const [xEnd, zEnd, yEnd] of [
+          [6.5, -6.5, -0.2],
+          [10.2, -5.0, 0.2],
+          [13.5, -2.5, 0.4]
         ]) {
-          wing.segment([side * 6, 2.2, 1.8], [side * 14.5, yEnd, zEnd], 0.65, 'wingBone', 0.45)
+          wing.segment([side * 5.5, 1.5, 1.0], [side * xEnd, yEnd, zEnd], 0.6, 'wingBone', 0.4)
         }
       }
 
@@ -118,8 +126,8 @@ export const dragon: StackDesign = {
       neck: { rx: -0.1 },
       head: { rx: 0.14 + 0.05 * Math.sin(input.time * 1.4) },
       jaw: { rx: 0.12 },
-      wingL: { rz: 0.45 + beat * 0.25 },
-      wingR: { rz: -0.45 - beat * 0.25 },
+      wingL: { rz: 0.2 + beat * 0.18, ry: -0.22 },
+      wingR: { rz: -0.2 - beat * 0.18, ry: 0.22 },
       tail: { ry: 0.3 * Math.sin(input.time * 1.7 + input.seed * 3) }
     }
     if (input.motion === 'walk') {
@@ -159,8 +167,8 @@ export const dragon: StackDesign = {
           [end, 0.12]
         ])
       }
-      pose.wingL = { rz: 0.55 + 0.65 * rear + Math.sin(ms * 0.02) * 0.2 }
-      pose.wingR = { rz: -0.55 - 0.65 * rear - Math.sin(ms * 0.02) * 0.2 }
+      pose.wingL = { rz: 0.32 + 0.42 * rear + Math.sin(ms * 0.02) * 0.15, ry: -0.28 }
+      pose.wingR = { rz: -0.32 - 0.42 * rear - Math.sin(ms * 0.02) * 0.15, ry: 0.28 }
       pose.legFL = { rx: -0.65 * rear }
       pose.legFR = { rx: -0.65 * rear }
     }

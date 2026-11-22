@@ -5,7 +5,7 @@ import type { VoxelPart } from '../Voxel'
 
 /**
  * Static scenery on the unified voxel=2 art-pixel grid (zero fractional scaling, zero random speckle).
- * Hero trees are authored taller than soldiers (~26–30 slices) with clean directional NW highlights.
+ * Every biome includes 3+ distinct sculpted prop silhouettes so perimeter clusters never feel repetitive.
  */
 function prop(
   id: string,
@@ -51,7 +51,6 @@ const oak = prop(
     apple: '#e04634'
   },
   (p) => {
-    // Tall hero oak (30 slices) towering over soldiers with sculpted multi-lobed canopy & clean NW light.
     p.cylinder(0.5, 0.5, 0, 12, 2.5, 1.8, 'bark')
       .box([-3, 0, -2], [3, 1, 2], 'barkDark')
       .box([-2, 0, -3], [2, 1, 3], 'barkDark')
@@ -73,7 +72,6 @@ const oak = prop(
             ? 'leafDark'
             : undefined
     )
-    // Intentional crisp 2x2 apples nestled on sunlit lobes (no 1px noise).
     p.box([-5, 17, 6], [-4, 18, 6], 'apple').box([3, 19, 6], [4, 20, 6], 'apple')
   },
   { shadow: [12, 10], sway: 0.01 }
@@ -97,7 +95,7 @@ const oakYoung = prop(
       [0, 18, 0, 4.5]
     ])
       p.ellipsoid([x + 0.5, y, z + 0.5], [r, r * 0.82, r], 'leaf')
-    p.paint((x, y, z) => (y >= 16 && x <= 1 ? 'leafLight' : y <= 11 && x > 0 ? 'leafDark' : undefined))
+    p.paint((x, y) => (y >= 16 && x <= 1 ? 'leafLight' : y <= 11 && x > 0 ? 'leafDark' : undefined))
   },
   { shadow: [9, 8], sway: 0.012 }
 )
@@ -112,7 +110,6 @@ const pine = prop(
       const r0 = 8.4 - tier * 1.65
       p.cylinder(0.5, 0.5, y0, y0 + 8, r0, 1.0, 'needle')
     }
-    // Crisp directional NW foliage highlight + tier underside shadow (zero random hash speckle).
     p.paint((x, y, z) => {
       if (y < 6) return undefined
       const inTier = (y - 6) % 5
@@ -161,7 +158,6 @@ const stump = prop(
     p.cylinder(0.5, 0.5, 0, 5, 3.6, 3.0, 'bark').box([-4, 0, -2], [4, 0, 2], 'barkDark')
     p.fill([-3, 5, -3], [3, 5, 3], 'ring', (x, y, z) => Math.hypot(x - 0.5, z - 0.5) <= 2.6)
     p.set(0, 5, 0, 'ringDark').set(1, 5, 0, 'ringDark')
-    // Tiny cute red toadstool growing beside the stump.
     p.box([4, 0, 2], [4, 1, 2], 'ring').box([3, 2, 1], [5, 3, 3], 'cap').set(4, 3, 2, 'spot')
   },
   { shadow: [5, 4] }
@@ -188,31 +184,34 @@ const mushrooms = prop(
 const desertPalm = prop(
   'desert-palm',
   {
-    trunk: '#8c5e34',
-    trunkBand: '#633f20',
-    frond: '#4e8a42',
-    frondLight: '#7ab85c',
-    frondDark: '#33612c',
-    coconut: '#5c381c'
+    trunk: '#8f5f34',
+    trunkBand: '#5e3a1c',
+    frond: '#45873d',
+    frondLight: '#74b856',
+    frondDark: '#2c5c28',
+    coconut: '#543218'
   },
   (p) => {
-    // Graceful curved desert oasis palm (26 slices tall) giving desert a true hero tree silhouette!
-    for (let y = 0; y <= 18; y++) {
-      const leanX = Math.sin((y / 18) * 1.2) * 2.5
-      p.cylinder(leanX, 0, y, y, 2.1 - y * 0.04, 2.1 - y * 0.04, y % 3 === 0 ? 'trunkBand' : 'trunk')
+    // Tall visible curved ringed trunk (radius 2.8 -> 1.8) lifting the arching fronds high above the sand!
+    p.box([-3, 0, -2], [3, 1, 2], 'trunkBand')
+    for (let y = 0; y <= 20; y++) {
+      const leanX = Math.sin((y / 20) * 1.35) * 4.0
+      const leanZ = Math.sin((y / 20) * 0.9) * 1.5
+      const rad = 2.6 - y * 0.04
+      p.cylinder(leanX, leanZ, y, y, rad, rad, y % 3 === 0 ? 'trunkBand' : 'trunk')
     }
-    const tx = Math.sin(1.2) * 2.5
-    p.box([Math.round(tx) - 1, 17, -1], [Math.round(tx) + 1, 18, 1], 'coconut')
-    // Six arching palm fronds radiating outward from crown.
+    const tx = Math.sin(1.35) * 4.0
+    const tz = Math.sin(0.9) * 1.5
+    p.box([Math.round(tx) - 1, 19, Math.round(tz) - 1], [Math.round(tx) + 1, 20, Math.round(tz) + 1], 'coconut')
     for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2 + 0.3
+      const a = (i / 6) * Math.PI * 2 + 0.35
       const dx = Math.cos(a),
         dz = Math.sin(a)
-      p.segment([tx, 19, 0], [tx + dx * 6, 22, dz * 6], 1.7, i % 2 === 0 ? 'frondLight' : 'frond', 1.3)
-      p.segment([tx + dx * 6, 22, dz * 6], [tx + dx * 10.5, 18.5, dz * 10.5], 1.2, 'frond', 0.6)
+      p.segment([tx, 21, tz], [tx + dx * 6.5, 24, tz + dz * 6.5], 1.8, i % 2 === 0 ? 'frondLight' : 'frond', 1.3)
+      p.segment([tx + dx * 6.5, 24, tz + dz * 6.5], [tx + dx * 11, 20, tz + dz * 11], 1.2, 'frond', 0.6)
     }
   },
-  { shadow: [10, 8], sway: 0.012 }
+  { shadow: [11, 9], sway: 0.012 }
 )
 
 const cactus = prop(
@@ -222,38 +221,65 @@ const cactus = prop(
     p.cylinder(0.5, 0.5, 0, 21, 2.6, 2.3, 'green')
     p.segment([2.5, 9, 0.5], [6.5, 9, 0.5], 1.7, 'green').cylinder(6.5, 0.5, 9, 16, 1.8, 1.5, 'green')
     p.segment([-1.5, 6, 0.5], [-5.5, 6, 0.5], 1.6, 'green').cylinder(-5.5, 0.5, 6, 13, 1.6, 1.4, 'green')
-    // Clean vertical fluted saguaro ribs instead of noisy checkerboard.
     p.paint((x, y, z) => (x <= -1 && z >= 0 ? 'light' : x >= 2 && z < 0 ? 'dark' : undefined))
     p.box([0, 22, 0], [1, 22, 1], 'flower')
   },
   { shadow: [7, 6] }
 )
 
-const sandstone = prop(
-  'sandstone',
-  { rock: '#bd834d', band: '#966134', light: '#deab72' },
+// Stepped flat-topped boxy desert mesa rock (replaces cylindrical "log/termite mound"!).
+const mesaRock = prop(
+  'mesa-rock',
+  { rock: '#bd804a', band: '#915b30', light: '#e3b278', dark: '#734522' },
   (p) => {
-    p.cylinder(0.5, 0.5, 0, 16, 6.2, 4.2, 'rock').ellipsoid([0.5, 16, 0.5], [4.6, 2.0, 4.6], 'light')
-    p.paint((x, y) => (y % 4 === 1 ? 'band' : y >= 15 ? 'light' : undefined))
+    p.box([-7, 0, -5], [6, 3, 5], 'dark')
+    p.box([-6, 3, -4], [5, 7, 4], 'rock')
+    p.box([-6, 5, -4], [5, 5, 4], 'band')
+    p.box([-5, 7, -3], [4, 10, 3], 'rock')
+    p.box([-5, 10, -3], [4, 10, 3], 'light')
+    // Stepped side outcrop breaking rectangular symmetry.
+    p.box([3, 0, -2], [8, 5, 4], 'rock').box([3, 5, -2], [8, 5, 4], 'light')
+  },
+  { shadow: [10, 8] }
+)
+
+// Iconic desert sandstone natural rock arch.
+const rockArch = prop(
+  'rock-arch',
+  { rock: '#c2854e', band: '#945d32', light: '#e6b87e', dark: '#734420' },
+  (p) => {
+    p.box([-8, 0, -3], [-4, 9, 3], 'rock').box([-8, 0, -3], [-4, 1, 3], 'dark')
+    p.box([4, 0, -3], [8, 9, 3], 'rock').box([4, 0, -3], [8, 1, 3], 'dark')
+    p.box([-7, 9, -3], [7, 12, 3], 'rock').box([-6, 12, -2], [6, 13, 2], 'light')
+    p.paint((x, y) => (y === 5 || y === 10 ? 'band' : undefined))
+  },
+  { shadow: [10, 6] }
+)
+
+// Low angular cracked desert boulder cluster.
+const desertBoulders = prop(
+  'desert-boulders',
+  { rock: '#b87d48', band: '#8a572d', light: '#deb078' },
+  (p) => {
+    p.box([-5, 0, -4], [2, 5, 3], 'rock').box([-5, 5, -4], [2, 5, 3], 'light')
+    p.box([1, 0, -2], [6, 3, 4], 'band').box([1, 3, -2], [6, 3, 4], 'rock')
+    p.box([-7, 0, 1], [-3, 2, 5], 'band')
   },
   { shadow: [8, 6] }
 )
 
 const dryShrub = prop(
   'dry-shrub',
-  { twig: '#8c693e', twigLight: '#b8925a' },
+  { twig: '#78542e', twigLight: '#a67b48', leaf: '#6d8a42' },
   (p) => {
-    for (let i = 0; i < 7; i++) {
-      const a = (i / 7) * Math.PI * 2
-      p.segment(
-        [0.5, 0, 0.5],
-        [0.5 + Math.sin(a) * 5, 5 + (i % 3), 0.5 + Math.cos(a) * 5],
-        0.7,
-        i % 2 ? 'twig' : 'twigLight'
-      )
-    }
+    // Crisp 3-branch gnarled woody scrub with dry olive leaf tips (not a fuzzball!).
+    p.box([-1, 0, -1], [0, 3, 0], 'twig')
+    p.segment([0, 2, 0], [-5, 6, 1], 0.9, 'twig', 0.6)
+      .segment([0, 3, 0], [5, 7, -1], 0.9, 'twigLight', 0.6)
+      .segment([0, 3, 0], [0, 7, 4], 0.85, 'twig', 0.55)
+    p.box([-6, 6, 0], [-4, 7, 2], 'leaf').box([4, 7, -2], [6, 8, 0], 'leaf').box([-1, 7, 3], [1, 8, 5], 'leaf')
   },
-  { shadow: [5, 4] }
+  { shadow: [6, 5] }
 )
 
 const skull = prop(
@@ -273,7 +299,6 @@ const snowPine = prop(
   'snow-pine',
   { bark: '#59402c', needle: '#266152', needleDark: '#184238', snow: '#edf6fc', snowShade: '#b8cfe0' },
   (p) => {
-    // Tall snow-laden hero pine (30 slices) with crisp layered snow mantles & ZERO random speckle!
     p.cylinder(0.5, 0.5, 0, 8, 1.8, 1.4, 'bark')
     for (let tier = 0; tier < 4; tier++) {
       const y0 = 6 + tier * 5
@@ -314,7 +339,7 @@ const iceCrystal = prop(
       [1, -3.5, 8, 0.1]
     ])
       p.segment([x + 0.5, 0, z + 0.5], [x + 0.5 + lean * h, h, z + 0.5], 2.1, 'ice', 0.45)
-    p.paint((x, y, z) => (y >= 9 && x <= 0 ? '*ice' : y <= 2 ? 'iceDark' : undefined))
+    p.paint((x, y) => (y >= 9 && x <= 0 ? '*ice' : y <= 2 ? 'iceDark' : undefined))
   },
   { shadow: [6, 5] }
 )
@@ -346,12 +371,10 @@ const deadTree = prop(
   'dead-tree',
   { bark: '#362a2a', barkLight: '#594542', emberRim: '#c94c24', '*ember': '#ff9938' },
   (p) => {
-    // Tall charred dead tree (24 slices) with warm glowing ember tips & fissures so it pops off dark basalt!
-    p.cylinder(0.5, 0.5, 0, 14, 2.3, 1.3, 'bark').box([-3, 0, -2], [3, 1, 2], 'bark')
+    p.cylinder(0.5, 0.5, 0, 14, 2.4, 1.4, 'bark').box([-3, 0, -2], [3, 1, 2], 'bark')
     p.segment([0.5, 10, 0.5], [6.5, 17, 2], 1.1, 'barkLight', 0.6)
       .segment([0.5, 12, 0.5], [-5.5, 20, -1], 1.0, 'barkLight', 0.55)
       .segment([0.5, 13, 0.5], [1.5, 22, -4.5], 0.9, 'barkLight', 0.5)
-    // Glowing ember crown tips & trunk fissure rim-light.
     p.box([6, 17, 1], [7, 18, 2], '*ember')
       .box([-6, 20, -1], [-5, 21, 0], '*ember')
       .box([1, 22, -5], [2, 23, -4], '*ember')
@@ -360,24 +383,38 @@ const deadTree = prop(
   { shadow: [8, 6] }
 )
 
+// Wide, low stepped hexagonal basalt formation (NOT tall thin gravestones!).
 const basalt = prop(
   'basalt',
-  { rock: '#3b3240', top: '#69566b', rim: '#b84221', '*crack': '#ff8533' },
+  { rock: '#3c3342', top: '#6d5a70', rim: '#b84221', '*crack': '#ff8533' },
   (p) => {
-    for (const [x, z, h] of [
-      [0, 0, 16],
-      [3.5, 1, 12],
-      [-3, 2, 9],
-      [1, -3.5, 13],
-      [-3.5, -2.5, 7]
+    for (const [x, z, r, h] of [
+      [0, 0, 3.2, 8],
+      [4, 1, 2.8, 5],
+      [-4, 1, 2.6, 6],
+      [1, -4, 2.7, 7],
+      [-3, -3, 2.3, 4],
+      [3, -3, 2.2, 4]
     ]) {
-      p.box([Math.round(x) - 1, 0, Math.round(z) - 1], [Math.round(x) + 1, h, Math.round(z) + 1], 'rock')
-      p.box([Math.round(x) - 1, h, Math.round(z) - 1], [Math.round(x) + 1, h, Math.round(z) + 1], 'top')
+      p.cylinder(x, z, 0, h - 1, r, r, 'rock')
+      p.cylinder(x, z, h, h, r, r, 'top')
     }
-    // Warm molten ember seam hugging the base of the basalt columns so they glow crisply against dark ash!
-    p.box([-2, 1, 2], [2, 2, 2], '*crack').box([-3, 0, -3], [3, 0, 3], 'rim')
+    p.box([-2, 1, 3], [2, 2, 3], '*crack').box([-4, 0, -4], [4, 0, 4], 'rim')
   },
-  { shadow: [7, 6] }
+  { shadow: [10, 8] }
+)
+
+// Wide jagged volcanic crag split by a glowing molten fissure.
+const obsidianCrag = prop(
+  'obsidian-crag',
+  { rock: '#2e2533', light: '#5c4b66', '*lava': '#ff7b24', '*lavaCore': '#ffe066' },
+  (p) => {
+    p.ellipsoid([-2.5, 3, 0], [4.5, 5.5, 4.2], 'rock')
+    p.ellipsoid([3.2, 2.5, 1], [4.2, 4.5, 3.8], 'rock')
+    p.paint((x, y) => (y < 0 ? 0 : y >= 6 && x < 0 ? 'light' : undefined))
+    p.box([0, 1, -2], [1, 5, 3], '*lava').box([0, 2, 0], [0, 4, 2], '*lavaCore')
+  },
+  { shadow: [9, 7] }
 )
 
 const lavaVent = prop(
@@ -405,9 +442,9 @@ export const BIOME_PROPS: Record<FieldId, Record<PropKind, readonly StackDesign[
   },
   desert: {
     tree: [desertPalm, cactus, desertPalm, cactus],
-    rock: [sandstone],
-    small: [dryShrub, skull, dryShrub],
-    accent: [dryShrub, skull]
+    rock: [mesaRock, desertBoulders, rockArch, desertBoulders],
+    small: [dryShrub, skull, desertBoulders],
+    accent: [rockArch, dryShrub, skull]
   },
   frost: {
     tree: [snowPine, snowPineYoung, snowPine],
@@ -416,10 +453,10 @@ export const BIOME_PROPS: Record<FieldId, Record<PropKind, readonly StackDesign[
     accent: [iceCrystal, snowRock, snowman, iceCrystal, snowRock]
   },
   volcanic: {
-    tree: [deadTree],
-    rock: [basalt],
-    small: [lavaVent, basalt, lavaVent],
-    accent: [lavaVent, basalt]
+    tree: [deadTree, obsidianCrag, deadTree],
+    rock: [basalt, obsidianCrag],
+    small: [lavaVent, basalt, obsidianCrag],
+    accent: [lavaVent, obsidianCrag]
   }
 }
 export const ALL_PROPS: readonly StackDesign[] = [

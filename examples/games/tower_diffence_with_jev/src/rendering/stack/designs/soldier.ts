@@ -58,13 +58,14 @@ export const soldier: StackDesign = {
 
       const head = kit.part('head', 'torso', [0, 7, 0.5])
       head.ellipsoid([0, 4.7, 0], [4.7, 4.8, 4.5], 'skin')
-      head.paint((x, y, z) => (y >= 4 && z < 1 ? 'hair' : undefined))
+      // Full back-of-head hair + steel neck guard so rear view never looks bald!
+      head.paint((x, y, z) => (z < 1 && y >= 2 ? 'hair' : z < 1 && y < 2 ? 'steelDark' : undefined))
       // Steel helm tilted slightly back so the face and eyes read boldly from 3/4 top-down.
-      head.ellipsoid([0, 7.0, -0.8], [5.4, 1.0, 5.2], 'steelDark')
-      head.ellipsoid([0, 7.6, -0.8], [4.9, 3.2, 4.8], 'steel')
+      head.ellipsoid([0, 7.2, -0.8], [5.4, 1.0, 5.2], 'steelDark')
+      head.ellipsoid([0, 7.8, -0.8], [4.9, 3.2, 4.8], 'steel')
       head.box([-1, 10, -4], [0, 12, 3], 'crest').box([-1, 12, -3], [0, 13, 1], 'crest')
-      // Bold eyes + catchlight + side wrap + cheeks.
-      for (const x of [-3, -2, 1, 2]) head.face(x, 3, 'eye').face(x, 4, 'eye')
+      // Bold eyes + catchlight + brow + side wrap + cheeks.
+      for (const x of [-3, -2, 1, 2]) head.face(x, 3, 'eye').face(x, 4, 'eye').face(x, 5, 'hair')
       head.face(-2, 4, 'shine').face(2, 4, 'shine')
       head.face(-4, 2, 'cheek').face(3, 2, 'cheek')
       head.set(4, 3, 2, 'eye').set(-5, 3, 2, 'eye')
@@ -79,14 +80,15 @@ export const soldier: StackDesign = {
           .box([-1, -5, -1], [0, -3, 1], 'tabard')
           .box([-1, -7, -1], [0, -6, 1], 'leather')
       }
-      // Broad short sword anchored directly inside right fist (no floating gap).
+      // Broad knight's sword with crisp gold crossguard, pommel, center steel fuller & tapered point.
       const sword = kit.part('weapon', 'armR', [-0.5, -6, 1])
       sword
-        .box([0, 0, -2], [1, 1, 1], 'leather')
-        .box([-2, 0, 1], [2, 1, 2], 'gold')
-        .box([-1, 0, 2], [1, 1, 10], 'blade')
-        .box([0, 1, 2], [0, 1, 9], 'steel')
-        .box([0, 0, 11], [0, 1, 12], 'blade')
+        .box([0, 0, -3], [1, 1, -2], 'gold')
+        .box([0, 0, -1], [1, 1, 1], 'leather')
+        .box([-3, 0, 1], [3, 1, 2], 'gold')
+        .box([-1, 0, 3], [1, 1, 10], 'blade')
+        .box([0, 1, 3], [0, 1, 9], 'steelDark')
+        .box([0, 0, 11], [0, 1, 13], 'blade')
       // Round heraldic buckler snug against left forearm.
       const buckler = kit.part('offhand', 'armL', [1, -4.5, 1])
       buckler.fill([0, -4, -4], [1, 4, 4], 'crest', (x, y, z) => x < 2 && Math.hypot(y, z) <= 3.8)

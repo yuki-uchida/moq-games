@@ -88,13 +88,13 @@ export function outlineColorFor(r: number, g: number, b: number): [number, numbe
   ]
 }
 
-/** Internal depth-step crease ink: subtler than exterior outline so parts separate cleanly without clutter. */
+/** Internal depth-step crease ink: subtle contour separating major overlapping volumes without cluttering thin parts. */
 function creaseColorFor(r: number, g: number, b: number): [number, number, number] {
   const [or, og, ob] = outlineColorFor(r, g, b)
   return [
-    clamp255(r * 0.52 + or * 0.48),
-    clamp255(g * 0.52 + og * 0.48),
-    clamp255(b * 0.52 + ob * 0.48)
+    clamp255(r * 0.68 + or * 0.32),
+    clamp255(g * 0.68 + og * 0.32),
+    clamp255(b * 0.68 + ob * 0.32)
   ]
 }
 
@@ -351,15 +351,21 @@ export function bakePoseSliceSheet(
         colCounts[idx]++
 
         const topExposed = !hasAt(z + 1, sx, sy)
-        const openLeft = !hasAt(z, sx - 1, sy) ? 1 : 0
-        const openRight = !hasAt(z, sx + 1, sy) ? 1 : 0
-        const openBack = !hasAt(z, sx, sy - 1) ? 1 : 0
+        // Broad 2-voxel macro-normal bias (prevents 1px checkerboard noise on curved ellipsoids & helmets!).
+        const openLeft2 = !hasAt(z, sx - 2, sy) ? 1 : 0
+        const openRight2 = !hasAt(z, sx + 2, sy) ? 1 : 0
+        const openBack2 = !hasAt(z, sx, sy - 2) ? 1 : 0
+        const openFront2 = !hasAt(z, sx, sy + 2) ? 1 : 0
         const openFront = !hasAt(z, sx, sy + 1) ? 1 : 0
-        // Overhang AO: only cast by voxels sticking out into open air above this surface (never interior voxels).
         const occluded = topExposed
-          ? hasAt(z + 2, sx, sy) || hasAt(z + 3, sx, sy) || hasAt(z + 1, sx - 1, sy - 1)
+          ? hasAt(z + 2, sx, sy) || hasAt(z + 3, sx, sy)
           : openFront === 1 && hasAt(z + 1, sx, sy + 1)
-        const lightBias = (openLeft - openRight) * 0.42 + (openFront * 0.35 - openBack * 0.35)
+        // On tops, use broad NW spatial crown test so highlights form clean solid bands rather than 1px stipple.
+        const lightBias = topExposed
+          ? z >= count * 0.48 && (sx - cx) + (sy - cy) * 0.45 < -1.5
+            ? 0.4
+            : 0
+          : (openLeft2 - openRight2) * 0.42 + (openFront2 * 0.42 - openBack2 * 0.35)
 
         const [r0, g0, b0] = paletteRgb[color]
         const [r, g, b] = shadeSliceColor(
@@ -384,13 +390,23 @@ export function bakePoseSliceSheet(
   }
 
   // Build compact grounded contact-shadow footprint from columns with solid vertical mass (>= 3 voxels,
-  // or >= 2 for short sprites like slimes/bats) so protruding thin swords/staffs don't cast antenna shadows!
+  // or >= 2 for short sprites like slimes/bats) + 1px morphological gap close so notched wings cast solid shadows.
   const minColMass = count >= 12 ? 3 : 2
   const shadow = new Uint8Array(layerSize)
   for (let sy = 0; sy < height; sy++) {
     for (let sx = 0; sx < width; sx++) {
       const idx = sy * width + sx
       if (colCounts[idx] >= minColMass) shadow[idx] = 255
+    }
+  }
+  const rawCore = new Uint8Array(shadow)
+  for (let sy = 1; sy < height - 1; sy++) {
+    for (let sx = 1; sx < width - 1; sx++) {
+      const idx = sy * width + sx
+      if (rawCore[idx] >= 200) continue
+      const hBridge = rawCore[idx - 1] >= 200 && rawCore[idx + 1] >= 200
+      const vBridge = rawCore[idx - width] >= 200 && rawCore[idx + width] >= 200
+      if (hBridge || vBridge) shadow[idx] = 255
     }
   }
   // Soft 1px outer shadow rim around the solid core (encoded as 160 vs core 255 for 2-tone pixel shadow).
@@ -552,7 +568,7 @@ export function drawStackPixels(sheet: SliceSheet, options: DrawStackOptions = {
               ny = oy + dy
             if (nx < 0 || nx >= outW || ny < 0 || ny >= outH) continue
             const nz = hitZ[ny * outW + nx]
-            if (nz >= 0 && nz - zHere >= 5) {
+            if (nz >= 0 && nz - zHere >= 7) {
               stepUp = true
               break
             }

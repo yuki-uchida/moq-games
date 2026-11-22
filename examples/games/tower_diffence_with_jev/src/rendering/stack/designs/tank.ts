@@ -44,8 +44,11 @@ export const tank: StackDesign = {
           sleeve: 'plateDark',
           hands: 'plate'
         },
-        { torsoHalf: 6, torsoDepth: 4, legs: 5, headRadius: 4.5, armLength: 7, coveredSides: true }
+        { torsoHalf: 5, torsoDepth: 4, legs: 5, headRadius: 4.5, armLength: 7, coveredSides: true }
       )
+      // Taper waist narrower than the broad overhanging pauldrons so side & back views read with heroic knight form!
+      b.hips.paint(() => 0)
+      b.hips.box([-4, 0, -3], [3, 1, 3], 'cloth').box([-1, 0, 3], [0, 1, 3], 'gold')
       // Sculpted bucket helm with gold brow crest and glowing eyes inside dark T-visor.
       b.head.paint(() => 0)
       b.head
@@ -58,14 +61,21 @@ export const tank: StackDesign = {
         .set(-2, 4, 4, '*eyeGlow')
         .set(1, 4, 4, '*eyeGlow')
         .box([-1, 9, -3], [0, 11, 2], 'gold')
-      // Broad cobalt-and-gold pauldrons + tabard (contrasts strongly on frost snow!).
+      // Broad sculpted overhanging cobalt-and-gold pauldrons + chest tabard (contrasts strongly on frost snow!).
       for (const x of [-8, 5])
-        b.torso.box([x, 4, -4], [x + 2, 7, 4], 'cloth').box([x, 7, -3], [x + 2, 7, 3], 'gold')
+        b.torso
+          .box([x, 4, -5], [x + 2, 7, 5], 'cloth')
+          .box([x, 7, -4], [x + 2, 8, 4], 'gold')
+          .box([x, 3, -4], [x + 2, 3, 4], 'plateDark')
       b.torso.box([-2, 0, 4], [1, 6, 5], 'cloth').box([-1, 2, 5], [0, 4, 5], 'gold')
-      b.hips.box([-2, -3, 4], [1, 1, 5], 'cloth')
-      // Short armored cape on back.
+      b.hips.box([-2, -3, 3], [1, 1, 4], 'cloth')
+      // Flowing royal cobalt cape with white tower emblem & gold hem so side & back views never look like a flat slab.
       const cape = kit.part('cape', 'torso', [0, 6, -4.5])
-      cape.box([-5, -7, -1], [4, 0, 0], 'cloth').box([-5, -7, -1], [4, -7, 0], 'gold')
+      cape
+        .box([-5, -8, -2], [4, 0, 0], 'cloth')
+        .box([-5, -8, -2], [4, -8, 0], 'gold')
+        .box([-1, -6, -2], [0, -2, -2], 'emblem')
+        .box([-2, -3, -2], [1, -2, -2], 'emblem')
       // Towering kite shield held snug against left forearm.
       const shield = kit.part('offhand', 'armL', [0.5, -3, 2])
       const halfWidth = (y: number) => (y > 1 ? 4.8 : 4.8 * Math.max(0, (y + 9) / 10))
