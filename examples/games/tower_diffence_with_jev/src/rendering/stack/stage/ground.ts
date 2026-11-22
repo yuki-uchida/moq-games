@@ -614,9 +614,14 @@ export function paintGround(field: ResolvedBattlefield, aspect: number): GroundP
             // Rounded corner stones anchor the pad even against busy grass or ash.
             if ((ax === 10 || ax === 11) && (ay === 8 || ay === 9)) hex = biome.slotEdge
             if (ax === 12 && ay === 9) hex = biome.slotShadow
-            // A one-pixel build glyph marks every pad as interactive at a glance.
-            if ((ax === 0 && ay <= 2) || (ay === 0 && ax <= 2)) hex = lit ? biome.slotEdge : biome.slotFill
           }
+          // A build glyph sits on the texel nearest the pad centre (slot centres rarely land on
+          // an exact texel), so the marker stays visible in all four biomes.
+          const padX = Math.round(slots[s].x / GROUND_CELL),
+            padY = Math.round(slots[s].y / GROUND_CELL)
+          const mdx = i - padX,
+            mdy = j - padY
+          if (Math.abs(mdx) <= 2 && Math.abs(mdy) <= 2 && (mdx === 0 || mdy === 0)) hex = biome.slotShadow
         }
 
         if (d < half + rim + outlineWidth + 3.4) {

@@ -360,12 +360,18 @@ export function bakePoseSliceSheet(
         const occluded = topExposed
           ? hasAt(z + 2, sx, sy) || hasAt(z + 3, sx, sy)
           : openFront === 1 && hasAt(z + 1, sx, sy + 1)
+        // Ambiguous two-sided normals happen on thin shells; forcing them neutral removes the
+        // checkerboard shimmer on curved ogre/wraith/paladin surfaces.
+        const sideOpen = openLeft2 + openRight2,
+          depthOpen = openFront2 + openBack2
         // On tops, use broad NW spatial crown test so highlights form clean solid bands rather than 1px stipple.
         const lightBias = topExposed
           ? z >= count * 0.48 && (sx - cx) + (sy - cy) * 0.45 < -1.5
             ? 0.4
             : 0
-          : (openLeft2 - openRight2) * 0.42 + (openFront2 * 0.42 - openBack2 * 0.35)
+          : sideOpen === 2 || depthOpen === 2
+            ? 0
+            : (openLeft2 - openRight2) * 0.42 + (openFront2 * 0.42 - openBack2 * 0.35)
 
         const [r0, g0, b0] = paletteRgb[color]
         const [r, g, b] = shadeSliceColor(

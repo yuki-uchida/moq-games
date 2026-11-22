@@ -1240,14 +1240,18 @@ dialog::backdrop {
   display: block;
   font: bold 8px/12px monospace;
   color: #f4f5df;
-  background: #243e30f5;
-  border-radius: 3px 3px 0 0;
+  background: #17261f;
+  border-radius: 0;
+  box-shadow:
+    0 0 0 1px #0a100d,
+    inset 0 0 0 1px #35513f;
 }
 .unit-health i {
   display: block;
-  height: 4px;
-  background: #132e31;
+  height: 5px;
+  background: #0c1512;
   border: 1px solid #a9cfa2;
+  border-radius: 0;
   overflow: hidden;
 }
 .unit-health.ai i {
