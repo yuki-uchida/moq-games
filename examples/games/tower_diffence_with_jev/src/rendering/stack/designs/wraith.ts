@@ -13,14 +13,14 @@ export const wraith: StackDesign = {
   blueprint: {
     id: 'wraith',
     colors: {
-      shroud: '#88ceda',
-      shroudDark: '#5a9fb0',
-      shroudPale: '#c9eef3',
-      void: '#14202a',
-      hand: '#d8f4f7',
-      iron: '#3e4a55',
-      '*eye': '#e9fffb',
-      '*lamp': '#9ff8e4'
+      shroud: '#5ad1e6',
+      shroudDark: '#2c8fa8',
+      shroudPale: '#ccf7ff',
+      void: '#0d1824',
+      hand: '#d9fbff',
+      iron: '#394754',
+      '*eye': '#f0fffc',
+      '*lamp': '#6effdf'
     },
     build(kit) {
       const body = kit.part('body', undefined, [0, 4, 0])

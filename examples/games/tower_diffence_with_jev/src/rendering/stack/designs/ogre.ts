@@ -12,19 +12,19 @@ export const ogre: StackDesign = {
   blueprint: {
     id: 'ogre',
     colors: {
-      skin: '#ca9b83',
-      skinDark: '#a2755f',
-      belly: '#e3bea4',
-      eye: '#24180f',
-      tusk: '#fff4dc',
-      hair: '#4a2c1c',
-      cloth: '#6b7d4a',
-      patch: '#b8604a',
-      rope: '#c9a46a',
-      wood: '#7d5533',
-      woodDark: '#5a3b22',
-      nail: '#c6ccd2',
-      foot: '#8a604c'
+      skin: '#db9369',
+      skinDark: '#a6623f',
+      belly: '#f5c79e',
+      eye: '#1c120a',
+      tusk: '#fff9e6',
+      hair: '#3d1f12',
+      cloth: '#528738',
+      patch: '#d94836',
+      rope: '#e0b35e',
+      wood: '#875126',
+      woodDark: '#543014',
+      nail: '#dce4eb',
+      foot: '#8f5236'
     },
     build(kit) {
       const hips = kit.part('hips', undefined, [0, 5, 0])

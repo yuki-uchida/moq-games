@@ -22,14 +22,14 @@ function mount() {
   const session = new StackViewerSession()
   let renderer: THREE.WebGLRenderer
   try {
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: true })
   } catch {
     status.textContent = '表示を開始できませんでした。WebGLが使えるブラウザーで開いてください。'
     role.disabled = motion.disabled = true
     session.dispose()
     return () => listeners.abort()
   }
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2))
+  renderer.setPixelRatio(1)
   renderer.outputColorSpace = THREE.SRGBColorSpace
   const scene = new THREE.Scene()
   scene.add(session.root)
@@ -194,6 +194,7 @@ function mount() {
     if (session.state === 'ready' && !fitted) fitCamera()
     updateUI()
     controls.update()
+    session.syncCamera(camera, controls.target)
     renderer.render(scene, camera)
     renderCount++
     frameRequest = requestAnimationFrame(frame)

@@ -14,25 +14,25 @@ export const ranger: StackDesign = {
   blueprint: {
     id: 'ranger',
     colors: {
-      skin: '#e5b88f',
-      eye: '#1e2a24',
+      skin: '#f2be91',
+      eye: '#182620',
       shine: '#ffffff',
-      coat: '#67b38d',
-      coatDark: '#447f62',
-      hat: '#5b4632',
-      hatBand: '#c7a457',
-      feather: '#f3ead2',
-      featherTip: '#2f3b43',
-      leather: '#7c5434',
-      boot: '#4a3324',
-      wood: '#8a5d38',
-      steel: '#aab6bf',
-      hawk: '#9a6a3e',
-      hawkLight: '#e8d2a8',
-      beak: '#f0b23a',
+      coat: '#34ad7d',
+      coatDark: '#1f7856',
+      hat: '#69482a',
+      hatBand: '#ebb838',
+      feather: '#fff6de',
+      featherTip: '#24303a',
+      leather: '#8a562c',
+      boot: '#472c1a',
+      wood: '#995e2c',
+      steel: '#bdcbd6',
+      hawk: '#a86930',
+      hawkLight: '#f5deb0',
+      beak: '#ffb824',
       hawkEye: '#121212',
-      hair: '#6b4528',
-      beard: '#7d5432'
+      hair: '#693f1f',
+      beard: '#7d4d26'
     },
     build(kit) {
       const b = human(kit, {
@@ -67,15 +67,15 @@ export const ranger: StackDesign = {
         .set(0, 4, 2, 'beak')
         .set(0, 4, 3, 'beak')
         .box([-2, 1, -3], [1, 1, -2], 'hawk')
-      // Heavy crossbow: stock along z, steel bow across the front.
+      // Heavy crossbow: chunky 2px stock along z, bold steel bow across the front.
       const bow = kit.part('weapon', 'armR', [0, b.hand, 0])
       bow
-        .box([0, 0, -2], [0, 1, 10], 'wood')
-        .box([-5, 1, 10], [5, 1, 10], 'steel')
-        .box([-6, 1, 9], [-6, 1, 9], 'steel')
-        .box([6, 1, 9], [6, 1, 9], 'steel')
+        .box([0, 0, -2], [1, 1, 11], 'wood')
+        .box([-5, 0, 9], [5, 1, 10], 'steel')
+        .box([-6, 0, 8], [-6, 1, 9], 'steel')
+        .box([6, 0, 8], [6, 1, 9], 'steel')
         .box([-5, 2, 8], [5, 2, 8], 'feather')
-        .box([0, 2, 3], [0, 2, 11], 'steel')
+        .box([0, 2, 3], [1, 2, 11], 'steel')
     }
   },
   pose: (input) => {

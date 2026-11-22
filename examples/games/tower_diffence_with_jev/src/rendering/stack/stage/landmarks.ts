@@ -8,7 +8,7 @@ const hash = (x: number, y: number, z: number) => {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967295
 }
 
-const ROOF: Record<FieldId, string> = { meadow: '#4f8fc0', desert: '#c4683f', frost: '#5f7fae', volcanic: '#7a3f52' }
+const ROOF: Record<FieldId, string> = { meadow: '#287de0', desert: '#d9582c', frost: '#4370c4', volcanic: '#a62b52' }
 
 function tower(p: VoxelPart, cx: number, cz: number, height: number, radius: number, damage: number) {
   const broken = damage > 0.6 && cx < 0

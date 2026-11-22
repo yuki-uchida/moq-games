@@ -13,14 +13,14 @@ export const slime: StackDesign = {
   blueprint: {
     id: 'slime',
     colors: {
-      jelly: '#83ceae',
-      jellyDark: '#56a988',
-      jellyLight: '#c7f2df',
-      eye: '#173c32',
-      mouth: '#2c5c4c',
-      cheek: '#f3a6b2',
-      pebble: '#d7c58a',
-      '*gloss': '#f4fffa'
+      jelly: '#3fd4a4',
+      jellyDark: '#1c9674',
+      jellyLight: '#9cf7d9',
+      eye: '#102b24',
+      mouth: '#1f4d40',
+      cheek: '#ff8da8',
+      pebble: '#e8cf7a',
+      '*gloss': '#ffffff'
     },
     build(kit) {
       const body = kit.part('body', undefined, [0, 0, 0])
@@ -87,6 +87,13 @@ export const slime: StackDesign = {
       }
     }
     const wobble = Math.sin(input.time * 4 + input.seed * TAU)
-    return { body: { sy: 1 + wobble * 0.04, sx: 1 - wobble * 0.02, sz: 1 - wobble * 0.02 } }
+    return {
+      body: {
+        y: wobble > 0.2 ? 1 : 0,
+        sy: 1 + wobble * 0.14,
+        sx: 1 - wobble * 0.09,
+        sz: 1 - wobble * 0.09
+      }
+    }
   }
 }

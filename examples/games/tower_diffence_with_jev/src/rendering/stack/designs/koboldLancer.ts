@@ -13,20 +13,20 @@ export const koboldLancer: StackDesign = {
   blueprint: {
     id: 'koboldLancer',
     colors: {
-      fur: '#b07a4a',
-      furLight: '#e7c79a',
-      nose: '#2a1a12',
-      eye: '#1b1410',
+      fur: '#c47a38',
+      furLight: '#f7d59e',
+      nose: '#24140d',
+      eye: '#17100c',
       shine: '#ffffff',
-      pot: '#8a8f96',
-      potDark: '#5d6269',
-      vest: '#7d5a2f',
-      scale: '#a87b3c',
-      wood: '#8c5f36',
-      rim: '#5d6269',
-      shaft: '#6b4a2b',
-      '*amber': '#ffb33a',
-      amberDark: '#d79c47'
+      pot: '#8c99a8',
+      potDark: '#535e6b',
+      vest: '#8a5822',
+      scale: '#c98a2c',
+      wood: '#9c5e28',
+      rim: '#566270',
+      shaft: '#734620',
+      '*amber': '#ffaa1c',
+      amberDark: '#d97e1c'
     },
     build(kit) {
       const b = human(
@@ -61,10 +61,10 @@ export const koboldLancer: StackDesign = {
       targe.paint((x, y, z) =>
         Math.hypot(y + 0.5, z + 0.5) > 2.8 ? 'rim' : Math.hypot(y + 0.5, z + 0.5) < 1 ? '*amber' : undefined
       )
-      // Lance with an amber tip.
+      // Lance with a chunky 2px shaft and bold amber tip.
       const lance = kit.part('weapon', 'armR', [0, b.hand, 0])
-      lance.box([0, 0, -8], [0, 0, 16], 'shaft').box([-1, -1, 4], [1, 1, 5], 'rim')
-      lance.ellipsoid([0.5, 0.5, 18.5], [1.5, 1.5, 2.6], '*amber').box([0, 0, 21], [0, 0, 22], 'amberDark')
+      lance.box([0, 0, -8], [1, 1, 16], 'shaft').box([-1, -1, 4], [1, 1, 5], 'rim')
+      lance.ellipsoid([0.5, 0.5, 18.5], [1.6, 1.6, 2.8], '*amber').box([0, 0, 21], [1, 1, 22], 'amberDark')
     }
   },
   pose: (input) => {

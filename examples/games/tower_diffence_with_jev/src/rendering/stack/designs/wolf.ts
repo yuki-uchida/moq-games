@@ -14,18 +14,18 @@ export const wolf: StackDesign = {
   blueprint: {
     id: 'wolf',
     colors: {
-      top: '#e0894e',
-      mid: '#c79478',
-      under: '#7a5a8e',
-      ruff: '#f6dfc0',
-      nose: '#2a1d22',
-      eye: '#ffd66a',
-      pupil: '#2a1d22',
-      mouth: '#5a2230',
-      tooth: '#fffaf0',
-      paw: '#5b3f66',
-      ear: '#a65a3c',
-      tip: '#ffc35a'
+      top: '#f07832',
+      mid: '#d48252',
+      under: '#684487',
+      ruff: '#ffebc7',
+      nose: '#21151a',
+      eye: '#ffe047',
+      pupil: '#21151a',
+      mouth: '#6b1c2e',
+      tooth: '#ffffff',
+      paw: '#4d305c',
+      ear: '#b54c28',
+      tip: '#ffd24a'
     },
     build(kit) {
       const body = kit.part('body', undefined, [0, 8, 0])

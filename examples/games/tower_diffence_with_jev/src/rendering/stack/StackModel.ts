@@ -1,5 +1,16 @@
 import * as THREE from 'three'
 import { palette, VoxelPart, type PaletteBook, type Vec3 } from './Voxel'
+import {
+  bakePoseSliceSheet,
+  MAX_STACK_PARTS,
+  MAX_STACK_SLICES,
+  shadeSliceColor,
+  type SliceSheet
+} from './SliceSheet'
+import type { StackDesign, StackMotion } from './StackDesign'
+import { poseMatrices, type StackPose } from './StackRig'
+
+export { MAX_STACK_PARTS }
 
 /** Hierarchical parts of one sprite-stacked figure, authored in voxel cells. */
 export interface StackPartSpec {
@@ -16,7 +27,7 @@ export interface StackKit {
 export interface StackBlueprint {
   readonly id: string
   readonly colors: Readonly<Record<string, string>>
-  /** Thin horizontal copies per voxel layer, so a low camera never sees gaps between slices. */
+  /** Retained for blueprint compatibility; true slice sheets use 1 slice per art-pixel layer. */
   readonly layerCopies?: number
   build(kit: StackKit): void
 }
@@ -28,6 +39,7 @@ export interface StackPartRuntime {
   readonly min: Vec3
   readonly max: Vec3
 }
+
 export interface StackModel {
   readonly id: string
   readonly parts: readonly StackPartRuntime[]
@@ -35,28 +47,46 @@ export interface StackModel {
   readonly geometry: THREE.BufferGeometry
   readonly texture: THREE.DataTexture
   readonly palette: PaletteBook
-  /** Retained for software painting (portraits) and tests. */
+  /** Retained for software painting (portraits), baking slice sheets, and tests. */
   readonly voxels: readonly VoxelPart[]
   readonly sliceCount: number
+  /** Rest-pose SpriteCook horizontal slice sheet (ground slice on left, facing +y down). */
+  readonly restSheet: SliceSheet
   dispose(): void
 }
 
-export const MAX_STACK_PARTS = 24
+export interface StackMotionBand {
+  readonly offset: number
+  readonly frames: number
+}
 
-const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)))
+/**
+ * Multi-frame SpriteCook slice-sheet atlas for one animated design:
+ * each row is one animation frame's horizontal slice strip (`count` slices + 1 shadow union slice).
+ */
+export interface StackFrameAtlas {
+  readonly sliceWidth: number
+  readonly sliceHeight: number
+  readonly sliceCount: number
+  readonly baseLift: number
+  readonly cx: number
+  readonly cy: number
+  readonly frameCount: number
+  readonly atlasWidth: number
+  readonly atlasHeight: number
+  readonly texture: THREE.DataTexture
+  readonly bands: Readonly<Record<StackMotion, StackMotionBand>>
+  readonly sheets: readonly SliceSheet[]
+  dispose(): void
+}
+
 function hexRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.slice(1), 16)
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
 }
-function hash(x: number, y: number, z: number): number {
-  let h = (x * 374761393 + y * 668265263 + z * 2147483647) | 0
-  h = Math.imul(h ^ (h >>> 13), 1274126177)
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967295
-}
 
 /**
- * Baked light: tops are lit, covered cells only show as side bands, the left/back sides
- * fall into shade and silhouettes get a darker rim so stacked slices read as solid volume.
+ * Clean SpriteCook top-vs-side voxel shading (flat fills, height-based side darkening, no noisy grain).
  */
 export function shadeVoxel(
   part: VoxelPart,
@@ -67,41 +97,54 @@ export function shadeVoxel(
   color: number
 ): [number, number, number] {
   const [r, g, b] = hexRgb(book.colors[color])
-  if (book.glow.has(color)) return [r, g, b]
-  const top = !part.has(x, y + 1, z)
-  const right = !part.has(x + 1, y, z)
-  const left = !part.has(x - 1, y, z)
-  const front = !part.has(x, y, z + 1)
-  const back = !part.has(x, y, z - 1)
-  let k: number
-  if (top) {
-    k = 1.08
-    if (right || left || front || back) k = 0.96
-    if (!part.has(x, y + 1, z) && part.has(x, y - 1, z) === false) k -= 0.04
-  } else {
-    k = 0.72
-    if (front) k = 0.86
-    if (right) k = Math.max(k, 0.9)
-    if (left && !front && !right) k = 0.66
-    if (back && !front && !right && !left) k = 0.7
-  }
-  // Ambient occlusion below an overhang and a faint per-cell grain.
-  if (part.has(x, y + 2, z) && (front || right)) k -= 0.03
-  k *= 0.97 + hash(x, y, z) * 0.06
-  const lift = top ? 10 : 0
-  return [clamp(r * k + lift), clamp(g * k + lift), clamp(b * k + lift * 0.8)]
+  const bounds = part.bounds()
+  const height = bounds ? Math.max(1, bounds.max[1] - bounds.min[1] + 1) : 16
+  const layer = bounds ? Math.max(0, y - bounds.min[1]) : Math.max(0, y)
+  return shadeSliceColor(r, g, b, !part.has(x, y + 1, z), layer, height, book.glow.has(color))
 }
 
-interface Slice {
-  part: number
-  layer: number
-  minX: number
-  minZ: number
-  width: number
-  depth: number
-  cellX: number
-  cellY: number
-  pixels: Uint8Array
+function packSheetsToTexture(sheets: readonly SliceSheet[]): {
+  texture: THREE.DataTexture
+  atlasWidth: number
+  atlasHeight: number
+} {
+  const first = sheets[0]
+  const w = first.width
+  const h = first.height
+  const count = first.count
+  // Extra column at index `count` holds the union ground-projection shadow footprint.
+  const atlasWidth = w * (count + 1)
+  const atlasHeight = h * sheets.length
+  const data = new Uint8Array(atlasWidth * atlasHeight * 4)
+
+  for (let f = 0; f < sheets.length; f++) {
+    const sheet = sheets[f]
+    const stripW = w * count
+    for (let sy = 0; sy < h; sy++) {
+      const dstRow = (f * h + sy) * atlasWidth * 4
+      const srcRow = sy * stripW * 4
+      data.set(sheet.pixels.subarray(srcRow, srcRow + stripW * 4), dstRow)
+      // Shadow union footprint in column `count`.
+      const shadowBase = dstRow + stripW * 4
+      for (let sx = 0; sx < w; sx++) {
+        if (sheet.shadow[sy * w + sx] >= 128) {
+          const o = shadowBase + sx * 4
+          data[o] = 255
+          data[o + 1] = 255
+          data[o + 2] = 255
+          data[o + 3] = 255
+        }
+      }
+    }
+  }
+
+  const texture = new THREE.DataTexture(data, atlasWidth, atlasHeight, THREE.RGBAFormat)
+  texture.magFilter = texture.minFilter = THREE.NearestFilter
+  texture.generateMipmaps = false
+  texture.flipY = false
+  texture.colorSpace = THREE.NoColorSpace
+  texture.needsUpdate = true
+  return { texture, atlasWidth, atlasHeight }
 }
 
 export function buildStackModel(blueprint: StackBlueprint): StackModel {
@@ -119,120 +162,48 @@ export function buildStackModel(blueprint: StackBlueprint): StackModel {
   })
   if (specs.length > MAX_STACK_PARTS) throw new Error(`${blueprint.id} has more than ${MAX_STACK_PARTS} parts`)
   const partIndex = new Map(specs.map((spec, i) => [spec.name, i]))
-  const parts: StackPartRuntime[] = []
-  const slices: Slice[] = []
-  specs.forEach((spec, index) => {
+  const parts: StackPartRuntime[] = specs.map((spec) => {
     const bounds = spec.voxels.bounds() ?? {
       min: [0, 0, 0] as [number, number, number],
       max: [-1, -1, -1] as [number, number, number]
     }
-    parts.push({
+    return {
       name: spec.name,
       parent: spec.parent ? partIndex.get(spec.parent)! : -1,
       at: spec.at,
       min: bounds.min,
       max: bounds.max
-    })
-    if (!spec.voxels.size) return
-    const width = bounds.max[0] - bounds.min[0] + 1
-    const depth = bounds.max[2] - bounds.min[2] + 1
-    const layers = new Map<number, [number, number, number, number][]>()
-    for (const cell of spec.voxels.entries()) {
-      const list = layers.get(cell[1]) ?? []
-      list.push(cell)
-      layers.set(cell[1], list)
-    }
-    for (const [layer, cells] of [...layers].sort((a, b) => a[0] - b[0])) {
-      const pixels = new Uint8Array(width * depth * 4)
-      for (const [x, y, z, color] of cells) {
-        const [r, g, b] = shadeVoxel(spec.voxels, book, x, y, z, color)
-        const offset = ((z - bounds.min[2]) * width + (x - bounds.min[0])) * 4
-        pixels[offset] = r
-        pixels[offset + 1] = g
-        pixels[offset + 2] = b
-        pixels[offset + 3] = 255
-      }
-      slices.push({
-        part: index,
-        layer,
-        minX: bounds.min[0],
-        minZ: bounds.min[2],
-        width,
-        depth,
-        cellX: 0,
-        cellY: 0,
-        pixels
-      })
     }
   })
-  // Shelf-pack slices with one transparent texel of padding.
-  const atlasWidth = Math.max(
-    64,
-    Math.min(
-      1024,
-      2 ** Math.ceil(Math.log2(Math.sqrt(slices.reduce((s, sl) => s + (sl.width + 1) * (sl.depth + 1), 0)) * 1.25 + 1))
-    )
-  )
-  let x = 1,
-    y = 1,
-    row = 0
-  for (const slice of [...slices].sort((a, b) => b.depth - a.depth)) {
-    if (x + slice.width + 1 > atlasWidth) {
-      x = 1
-      y += row + 1
-      row = 0
-    }
-    slice.cellX = x
-    slice.cellY = y
-    x += slice.width + 1
-    row = Math.max(row, slice.depth)
-  }
-  const atlasHeight = Math.max(16, y + row + 1)
-  const data = new Uint8Array(atlasWidth * atlasHeight * 4)
-  for (const slice of slices)
-    for (let j = 0; j < slice.depth; j++)
-      data.set(
-        slice.pixels.subarray(j * slice.width * 4, (j + 1) * slice.width * 4),
-        ((slice.cellY + j) * atlasWidth + slice.cellX) * 4
-      )
-  const texture = new THREE.DataTexture(data, atlasWidth, atlasHeight, THREE.RGBAFormat)
-  texture.magFilter = texture.minFilter = THREE.NearestFilter
-  texture.generateMipmaps = false
-  texture.flipY = false
-  texture.colorSpace = THREE.NoColorSpace
-  texture.name = `stack:${blueprint.id}`
-  texture.needsUpdate = true
 
-  const copies = blueprint.layerCopies ?? 3
-  const positions: number[] = []
-  const uvs: number[] = []
-  const partAttr: number[] = []
-  const indices: number[] = []
-  for (const slice of slices) {
-    const u0 = slice.cellX / atlasWidth,
-      u1 = (slice.cellX + slice.width) / atlasWidth,
-      v0 = slice.cellY / atlasHeight,
-      v1 = (slice.cellY + slice.depth) / atlasHeight
-    const x0 = slice.minX,
-      x1 = slice.minX + slice.width,
-      z0 = slice.minZ,
-      z1 = slice.minZ + slice.depth
-    for (let c = 0; c < copies; c++) {
-      const h = slice.layer + (c + 1) / copies
-      const base = positions.length / 3
-      positions.push(x0, h, z0, x1, h, z0, x1, h, z1, x0, h, z1)
-      uvs.push(u0, v0, u1, v0, u1, v1, u0, v1)
-      partAttr.push(slice.part, slice.part, slice.part, slice.part)
-      indices.push(base, base + 1, base + 2, base, base + 2, base + 3)
-    }
+  const tempModel: StackModel = {
+    id: blueprint.id,
+    parts,
+    partIndex,
+    geometry: new THREE.PlaneGeometry(1, 1),
+    texture: new THREE.DataTexture(new Uint8Array(4), 1, 1, THREE.RGBAFormat),
+    palette: book,
+    voxels: specs.map((spec) => spec.voxels),
+    sliceCount: 1,
+    restSheet: {
+      width: 2,
+      height: 2,
+      count: 1,
+      cx: 1,
+      cy: 1,
+      baseLift: 0,
+      pixels: new Uint8ClampedArray(16),
+      shadow: new Uint8Array(4)
+    },
+    dispose() {}
   }
-  const geometry = new THREE.BufferGeometry()
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
-  geometry.setAttribute('partIndex', new THREE.Float32BufferAttribute(partAttr, 1))
-  geometry.setIndex(indices)
-  // Animated parts leave the static bounds; actors disable culling instead.
-  geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e6)
+
+  const restSheet = bakePoseSliceSheet(tempModel, poseMatrices(tempModel, {}, new Float32Array(MAX_STACK_PARTS * 16)))
+  const { texture } = packSheetsToTexture([restSheet])
+  texture.name = `stack:${blueprint.id}`
+  tempModel.texture.dispose()
+  const geometry = new THREE.PlaneGeometry(1, 1)
+
   return {
     id: blueprint.id,
     parts,
@@ -240,10 +211,159 @@ export function buildStackModel(blueprint: StackBlueprint): StackModel {
     geometry,
     texture,
     palette: book,
-    voxels: specs.map((spec) => spec.voxels),
-    sliceCount: slices.length,
+    voxels: tempModel.voxels,
+    sliceCount: restSheet.count,
+    restSheet,
     dispose() {
       geometry.dispose()
+      texture.dispose()
+    }
+  }
+}
+
+const MOTION_FRAMES: Readonly<Record<StackMotion, number>> = {
+  idle: 4,
+  walk: 6,
+  attack: 6,
+  heal: 6,
+  breath: 6,
+  special: 4,
+  death: 1
+}
+
+function sampleMotionPose(design: StackDesign, motion: StackMotion, index: number, total: number): StackPose {
+  if (motion === 'death') {
+    return design.pose({ motion: 'idle', seconds: 0, cycle: 0, time: 0, durationMs: 900, cueMs: 450, seed: 0.25 })
+  }
+  const f = total > 1 ? index / total : 0
+  if (motion === 'idle') {
+    return design.pose({
+      motion: 'idle',
+      seconds: f * 2.2,
+      cycle: 0,
+      time: f * 2.2,
+      durationMs: 900,
+      cueMs: 450,
+      seed: 0
+    })
+  }
+  if (motion === 'walk') {
+    return design.pose({
+      motion: 'walk',
+      seconds: f,
+      cycle: f,
+      time: f,
+      durationMs: 900,
+      cueMs: 450,
+      seed: 0
+    })
+  }
+  if (motion === 'special') {
+    const t = total > 1 ? (index / (total - 1)) * 1.3 : 0.4
+    return design.pose({
+      motion: 'special',
+      seconds: t,
+      cycle: 0,
+      time: t,
+      durationMs: 1400,
+      cueMs: 500,
+      seed: 0
+    })
+  }
+  // Attack / heal / breath: distribute keyframes tightly around the strike cue (0.5).
+  const keys = [0.05, 0.28, 0.5, 0.65, 0.82, 0.96]
+  const frac = keys[index % keys.length]
+  const durationMs = 1000
+  const cueMs = 500
+  return design.pose({
+    motion,
+    seconds: (frac * durationMs) / 1000,
+    cycle: 0,
+    time: (frac * durationMs) / 1000,
+    durationMs,
+    cueMs,
+    seed: 0
+  })
+}
+
+/**
+ * Build one unified SpriteCook slice-sheet atlas containing all animation keyframes for a design.
+ * All frames share identical `(sliceWidth, sliceHeight, sliceCount)` so switching animation frames
+ * is a zero-allocation uniform update (`uFrame`).
+ */
+export function buildStackFrameAtlas(design: StackDesign, model: StackModel): StackFrameAtlas {
+  const isProp = design.type.startsWith('prop:')
+  const motions: StackMotion[] = isProp
+    ? ['idle']
+    : design.type === 'dragon'
+      ? ['idle', 'walk', 'attack', 'breath']
+      : design.type === 'healer'
+        ? ['idle', 'walk', 'heal', 'special']
+        : ['idle', 'walk', 'attack', 'special']
+
+  const entries: { motion: StackMotion; pose: StackPose }[] = []
+  const bandMap: Partial<Record<StackMotion, StackMotionBand>> = {}
+
+  for (const motion of motions) {
+    const frames = isProp ? 1 : MOTION_FRAMES[motion]
+    bandMap[motion] = { offset: entries.length, frames }
+    for (let i = 0; i < frames; i++) {
+      entries.push({ motion, pose: sampleMotionPose(design, motion, i, frames) })
+    }
+  }
+
+  // First pass: measure max dimensions across all frames so every frame fits in one shared slice size.
+  const entryMatrices = entries.map(({ pose }) => poseMatrices(model, pose, new Float32Array(MAX_STACK_PARTS * 16)))
+  const rawSheets = entryMatrices.map((m) => bakePoseSliceSheet(model, m))
+  let maxW = model.restSheet.width
+  let maxH = model.restSheet.height
+  let minLift = model.restSheet.baseLift
+  let maxTop = model.restSheet.baseLift + model.restSheet.count - 1
+  for (const sh of rawSheets) {
+    if (sh.width > maxW) maxW = sh.width
+    if (sh.height > maxH) maxH = sh.height
+    if (sh.baseLift < minLift) minLift = sh.baseLift
+    const top = sh.baseLift + sh.count - 1
+    if (top > maxTop) maxTop = top
+  }
+  const sliceCount = Math.min(MAX_STACK_SLICES, Math.max(1, maxTop - minLift + 1))
+
+  // Re-bake only frames whose bounds differed from the unified envelope (fast: most already match).
+  const sheets = entryMatrices.map((m, idx) => {
+    const s = rawSheets[idx]
+    if (s.width === maxW && s.height === maxH && s.count === sliceCount && s.baseLift === minLift) return s
+    return bakePoseSliceSheet(model, m, { width: maxW, height: maxH, count: sliceCount, minY: minLift })
+  })
+
+  const { texture, atlasWidth, atlasHeight } = packSheetsToTexture(sheets)
+  texture.name = `stack-atlas:${design.blueprint.id}`
+
+  const idleBand = bandMap.idle ?? { offset: 0, frames: 1 }
+  const attackBand = bandMap.attack ?? bandMap.heal ?? idleBand
+  const bands: Record<StackMotion, StackMotionBand> = {
+    idle: idleBand,
+    walk: bandMap.walk ?? idleBand,
+    attack: attackBand,
+    heal: bandMap.heal ?? attackBand,
+    breath: bandMap.breath ?? attackBand,
+    special: bandMap.special ?? attackBand,
+    death: idleBand
+  }
+
+  return {
+    sliceWidth: maxW,
+    sliceHeight: maxH,
+    sliceCount,
+    baseLift: minLift,
+    cx: Math.floor(maxW / 2),
+    cy: Math.floor(maxH / 2),
+    frameCount: sheets.length,
+    atlasWidth,
+    atlasHeight,
+    texture,
+    bands,
+    sheets,
+    dispose() {
       texture.dispose()
     }
   }

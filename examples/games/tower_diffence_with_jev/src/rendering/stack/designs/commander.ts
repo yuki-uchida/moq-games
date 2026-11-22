@@ -14,20 +14,20 @@ export const commander: StackDesign = {
   blueprint: {
     id: 'commander',
     colors: {
-      skin: '#8f6bb0',
-      skinDark: '#6c4f8a',
-      eye: '#ffe36a',
-      pupil: '#1d1424',
-      coat: '#a8323a',
-      coatDark: '#7a2129',
-      gold: '#e8bd4f',
-      hat: '#2a2230',
-      horn: '#efe4c8',
-      glass: '#bfe8ff',
-      boot: '#231c28',
-      baton: '#3a2a20',
-      banner: '#d8553a',
-      bannerDark: '#9e3424'
+      skin: '#9561d4',
+      skinDark: '#64389c',
+      eye: '#ffe438',
+      pupil: '#1a1024',
+      coat: '#d42c3c',
+      coatDark: '#8f1726',
+      gold: '#f7c334',
+      hat: '#241c2e',
+      horn: '#faf0d7',
+      glass: '#9ee8ff',
+      boot: '#1c1524',
+      baton: '#4a2e1c',
+      banner: '#f04330',
+      bannerDark: '#a6221b'
     },
     build(kit) {
       const b = human(
@@ -61,10 +61,10 @@ export const commander: StackDesign = {
       // Epaulettes and buttons.
       for (const x of [-7, 4]) b.torso.box([x, 6, -3], [x + 2, 7, 3], 'gold')
       for (const y of [1, 3, 5]) b.torso.set(-1, y, 4, 'gold')
-      // Baton with a little banner.
+      // Baton with a chunky 2px shaft and war banner.
       const baton = kit.part('weapon', 'armR', [0, b.hand, 0])
-      baton.box([0, 0, -1], [0, 0, 9], 'baton').set(0, 0, 10, 'gold')
-      baton.box([1, 0, 6], [4, 0, 9], 'banner').box([1, 0, 6], [4, 0, 6], 'bannerDark')
+      baton.box([0, 0, -1], [1, 1, 9], 'baton').box([0, 0, 10], [1, 1, 10], 'gold')
+      baton.box([1, 0, 6], [4, 1, 9], 'banner').box([1, 0, 6], [4, 1, 6], 'bannerDark')
     }
   },
   pose: (input) => {

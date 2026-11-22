@@ -13,21 +13,21 @@ export const runner: StackDesign = {
   blueprint: {
     id: 'runner',
     colors: {
-      skin: '#e9b98c',
-      eye: '#2a2118',
+      skin: '#f7c192',
+      eye: '#241810',
       shine: '#ffffff',
-      cheek: '#dc8c72',
-      jerkin: '#f0be72',
-      jerkinDark: '#c98f45',
-      scarf: '#d8553a',
-      scarfDark: '#a83a28',
-      hair: '#3c2a1d',
-      band: '#f6ead0',
-      pants: '#6a5a46',
-      boot: '#4a3626',
-      shaft: '#9c6b3c',
-      blade: '#e6eef2',
-      bladeDark: '#9fb0bb'
+      cheek: '#eb7d6a',
+      jerkin: '#f5b33d',
+      jerkinDark: '#c47b1e',
+      scarf: '#e83b3b',
+      scarfDark: '#a61c24',
+      hair: '#3a2214',
+      band: '#fff6de',
+      pants: '#574838',
+      boot: '#3b2619',
+      shaft: '#a66832',
+      blade: '#eef7ff',
+      bladeDark: '#95adc2'
     },
     build(kit) {
       const b = human(
@@ -67,14 +67,14 @@ export const runner: StackDesign = {
       b.torso.fill([-5, 6, -4], [4, 7, 4], 'scarf', (x, y, z) => Math.hypot(x / 3.6, z / 2.8) <= 1.15)
       const cape = kit.part('cape', 'torso', [1, 6.5, -2.5])
       cape.box([0, -1, -6], [1, 0, -1], 'scarf').box([0, -1, -7], [1, -1, -6], 'scarfDark')
-      // Spear: shaft through the right hand, leaf blade forward.
+      // Spear: chunky 2px shaft and broad leaf blade so diagonals never break up.
       const spear = kit.part('weapon', 'armR', [0, b.hand, 0])
       spear
-        .box([0, 0, -6], [0, 0, 13], 'shaft')
-        .box([-1, 0, 14], [1, 0, 16], 'blade')
-        .box([0, 0, 17], [0, 0, 18], 'blade')
-        .box([0, 1, 14], [0, 1, 16], 'bladeDark')
-        .box([-1, 0, 12], [1, 0, 12], 'scarf')
+        .box([0, 0, -6], [1, 1, 13], 'shaft')
+        .box([-1, 0, 14], [1, 1, 16], 'blade')
+        .box([0, 0, 17], [1, 1, 18], 'blade')
+        .box([0, 1, 14], [1, 1, 16], 'bladeDark')
+        .box([-1, 0, 12], [2, 1, 12], 'scarf')
     }
   },
   pose: (input) => {

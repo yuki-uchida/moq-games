@@ -3,13 +3,14 @@ import { createBoardCamera } from '../rendering/BoardCamera'
 import { orientBoardCanvas } from '../rendering/BoardCanvas'
 import { ATTACK_PROFILES } from '../game/AttackProfiles'
 import { STACK_DESIGNS } from '../rendering/stack/designs'
-import { StackVisual } from '../rendering/stack/StackVisual'
+import { StackVisual, stackModel } from '../rendering/stack/StackVisual'
 import type { StackMotion } from '../rendering/stack/StackDesign'
 import { getField, type BattlefieldVersion, type FieldId, type LayoutRevision, type UnitType } from '../game/model'
 import { StackStage } from '../rendering/stack/stage/StackStage'
 import { stackPortrait } from '../rendering/stack/StackPortrait'
 
 // ?types=a,b&motions=idle,walk,attack&facings=8&scale=1.5&t=<seconds fraction of motion>&still
+// ?portraits  |  ?slices=soldier,mage,dragon  |  ?stage=meadow&aspect=1.6&tier=2
 const params = new URL(location.href).searchParams
 const types = (params.get('types')?.split(',') ?? Object.keys(STACK_DESIGNS)) as UnitType[]
 const motions = (params.get('motions')?.split(',') ?? ['idle', 'walk', 'attack']) as StackMotion[]
@@ -19,6 +20,40 @@ const cellW = Number(params.get('cell') ?? 110)
 const cellH = Number(params.get('cellh') ?? 120)
 const still = params.has('still')
 const phase = Number(params.get('t') ?? 0.5)
+
+if (params.has('slices')) {
+  const sliceTypes = (params.get('slices')?.split(',').filter(Boolean) ?? ['soldier', 'mage', 'tank', 'dragon']) as UnitType[]
+  const zoom = Number(params.get('zoom') ?? 4)
+  const container = document.querySelector('#stage')!
+  for (const type of sliceTypes) {
+    const design = STACK_DESIGNS[type]
+    if (!design) continue
+    const sheet = stackModel(design).restSheet
+    const stripW = sheet.width * sheet.count
+    const canvas = document.createElement('canvas')
+    canvas.width = stripW * zoom
+    canvas.height = sheet.height * zoom
+    const ctx = canvas.getContext('2d')!
+    ctx.imageSmoothingEnabled = false
+    for (let y = 0; y < sheet.height; y++) {
+      for (let x = 0; x < stripW; x++) {
+        const i = (y * stripW + x) * 4
+        if (sheet.pixels[i + 3] < 128) continue
+        ctx.fillStyle = `rgb(${sheet.pixels[i]},${sheet.pixels[i + 1]},${sheet.pixels[i + 2]})`
+        ctx.fillRect(x * zoom, y * zoom, zoom, zoom)
+      }
+    }
+    const row = document.createElement('div')
+    row.style.cssText = 'margin:8px;padding:8px;background:#1e2630;border-radius:8px;color:#e6eef8;font:12px monospace'
+    row.textContent = `${type}: ${sheet.count} slices of ${sheet.width}x${sheet.height}px`
+    canvas.style.cssText = 'display:block;margin-top:6px;image-rendering:pixelated;background:#2b3644'
+    row.append(canvas)
+    container.append(row)
+  }
+  document.body.dataset.ready = 'true'
+  throw new Error('slices only')
+}
+
 if (params.has('stage')) {
   const id = params.get('stage') as FieldId
   const layout = Number(params.get('layout') ?? 4) as LayoutRevision
@@ -54,7 +89,7 @@ if (params.has('portraits')) {
   for (const type of types) {
     const img = document.createElement('img')
     img.src = stackPortrait(STACK_DESIGNS[type], 128)
-    img.style.cssText = 'width:128px;height:128px;background:#2c3a46;margin:4px;border-radius:50%'
+    img.style.cssText = 'width:128px;height:128px;background:#263340;margin:4px;border-radius:50%;image-rendering:pixelated'
     document.querySelector('#stage')!.append(img)
   }
   document.body.dataset.ready = 'true'
@@ -64,7 +99,7 @@ const rows = types.flatMap((type) => motions.map((motion) => ({ type, motion }))
 const width = cellW * facings
 const height = cellH * rows.length
 const scene = new THREE.Scene()
-scene.background = new THREE.Color(params.get('bg') ?? '#5f7f4f')
+scene.background = new THREE.Color(params.get('bg') ?? '#568c48')
 const camera = createBoardCamera({ width, height })
 const renderer = new THREE.WebGLRenderer({ antialias: false })
 renderer.setPixelRatio(Number(params.get('dpr') ?? 1))

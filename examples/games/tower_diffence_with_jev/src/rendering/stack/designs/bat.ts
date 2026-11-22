@@ -14,14 +14,14 @@ export const bat: StackDesign = {
   blueprint: {
     id: 'bat',
     colors: {
-      fur: '#a594d6',
-      furDark: '#6f5fa3',
-      tummy: '#e6dcf6',
-      ear: '#f0b3cf',
-      membrane: '#4d3f78',
-      bone: '#8d7cc4',
+      fur: '#896be0',
+      furDark: '#5339a3',
+      tummy: '#efe5ff',
+      ear: '#ff96c7',
+      membrane: '#3b2475',
+      bone: '#7b5fd6',
       fang: '#ffffff',
-      '*eye': '#ffe36a'
+      '*eye': '#ffe438'
     },
     build(kit) {
       const body = kit.part('body', undefined, [0, 0, 0])

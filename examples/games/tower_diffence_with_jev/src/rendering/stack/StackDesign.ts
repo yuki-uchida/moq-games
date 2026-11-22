@@ -107,12 +107,12 @@ export interface BipedStyle {
 export function bipedPose(input: StackMotionInput, style: BipedStyle): StackPose {
   const pose: StackPose = {}
   const spread = style.armSpread ?? 0.12
-  const breathe = (style.breathe ?? 0.35) * Math.sin(input.time * (style.heavy ? 2.1 : 2.8) + input.seed * TAU)
-  pose.hips = { y: 0 }
-  pose.torso = { sy: 1 + breathe * 0.02 }
-  pose.head = { y: breathe * 0.3, rx: 0.03 * Math.sin(input.time * 1.7 + input.seed * 5) }
-  pose.armL = { rz: spread + breathe * 0.02 }
-  pose.armR = { rz: -spread - breathe * 0.02 }
+  const breathe = (style.breathe ?? 0.85) * Math.sin(input.time * (style.heavy ? 2.1 : 2.8) + input.seed * TAU)
+  pose.hips = { y: breathe > 0.25 ? 1 : 0 }
+  pose.torso = { y: breathe * 0.35, sy: 1 + breathe * 0.04 }
+  pose.head = { y: breathe * 0.7, rx: 0.04 * Math.sin(input.time * 1.7 + input.seed * 5) }
+  pose.armL = { y: breathe * 0.4, rz: spread + breathe * 0.06 }
+  pose.armR = { y: breathe * 0.4, rz: -spread - breathe * 0.06 }
   pose.legL = {}
   pose.legR = {}
   pose.cape = { rx: 0.08 + 0.03 * Math.sin(input.time * 2 + input.seed) }

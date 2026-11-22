@@ -13,14 +13,14 @@ export const beetle: StackDesign = {
   blueprint: {
     id: 'beetle',
     colors: {
-      shell: '#8a8ec7',
-      shellDark: '#5c5f95',
-      shellLight: '#c4c8ec',
-      rivet: '#e2d38a',
-      belly: '#9c6f3e',
-      leg: '#3b3550',
-      horn: '#d9dbe8',
-      '*eye': '#ff7a5a'
+      shell: '#4c68d6',
+      shellDark: '#2b3d91',
+      shellLight: '#9cb4ff',
+      rivet: '#ffd24a',
+      belly: '#a66b2e',
+      leg: '#2b2442',
+      horn: '#f0f3ff',
+      '*eye': '#ff5938'
     },
     build(kit) {
       const body = kit.part('body', undefined, [0, 4, 0])

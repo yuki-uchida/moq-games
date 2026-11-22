@@ -14,20 +14,20 @@ export const paladin: StackDesign = {
   blueprint: {
     id: 'paladin',
     colors: {
-      skin: '#f1cba6',
-      eye: '#3a2a1a',
+      skin: '#ffd0a8',
+      eye: '#332214',
       shine: '#ffffff',
-      plate: '#f3efe3',
-      plateShade: '#cfc6ae',
-      gold: '#e8c35a',
-      goldDark: '#b98f2f',
-      tabard: '#edda8c',
-      cloth: '#fff7da',
-      boot: '#8a7a55',
-      haft: '#6d4c2f',
+      plate: '#fbf7eb',
+      plateShade: '#cfc3a3',
+      gold: '#f7c234',
+      goldDark: '#bd851a',
+      tabard: '#f7df74',
+      cloth: '#fff9e0',
+      boot: '#8a7244',
+      haft: '#7a4b24',
       wing: '#ffffff',
-      '*sun': '#ffe58a',
-      '*sunCore': '#fff8d4'
+      '*sun': '#ffe46b',
+      '*sunCore': '#fffbe0'
     },
     build(kit) {
       const b = human(
@@ -76,9 +76,9 @@ export const paladin: StackDesign = {
         const a = (i / 8) * Math.PI * 2
         halo.set(Math.round(Math.sin(a) * 7.3 - 0.5), Math.round(Math.cos(a) * 7.3 - 0.5), 0, '*sunCore')
       }
-      // Two-handed hammer with a glowing head.
+      // Two-handed hammer with a chunky 2px haft and glowing head.
       const hammer = kit.part('weapon', 'armR', [0, b.hand, 0])
-      hammer.box([0, 0, -4], [0, 0, 11], 'haft').box([0, 0, 4], [0, 0, 4], 'gold')
+      hammer.box([0, 0, -4], [1, 1, 11], 'haft').box([0, 0, 4], [1, 1, 4], 'gold')
       hammer
         .box([-3, -2, 11], [3, 2, 14], 'gold')
         .box([-2, -1, 12], [2, 1, 13], '*sun')

@@ -1,66 +1,89 @@
 import { pointOnPath, type FieldId, type Point } from '../../../game/model'
 import { allRoadPaths, type ResolvedBattlefield } from '../../../game/BattlefieldRoutes'
 
-/** Board units per ground pixel; the texture is magnified with nearest filtering. */
+/** Board units per ground pixel; magnified with nearest filtering to harmonize with stacked sprites. */
 export const GROUND_CELL = 2
 
 interface Biome {
   ground: readonly string[]
+  tuft: string
+  tuftLight: string
   edge: string
   road: readonly string[]
+  roadCenter: string
   roadEdge: string
+  roadOutline: string
   pebble: string
   slow: string
   slowLight: string
-  accents: readonly string[]
-  accentRate: number
+  slowBorder: string
+  flowers: readonly string[]
   glow?: string
+  glowCrust?: string
 }
+
 export const BIOMES: Record<FieldId, Biome> = {
   meadow: {
-    ground: ['#5f9a45', '#6aa84c', '#76b354', '#588f40'],
-    edge: '#4b7f38',
-    road: ['#c8a06a', '#d2ab74', '#bd9460'],
-    roadEdge: '#9a7448',
-    pebble: '#e6d1a6',
-    slow: '#7d5f42',
-    slowLight: '#93714f',
-    accents: ['#f5f1dc', '#f2d14c', '#f09ab8', '#9fd36a'],
-    accentRate: 0.035
+    ground: ['#4f9442', '#5aa148', '#66ad50', '#45843b'],
+    tuft: '#3b7334',
+    tuftLight: '#7bc45c',
+    edge: '#2d5929',
+    road: ['#d4a96a', '#dfb778', '#c49658'],
+    roadCenter: '#e7c68c',
+    roadEdge: '#9e7242',
+    roadOutline: '#593d24',
+    pebble: '#f0ddb2',
+    slow: '#6d5038',
+    slowLight: '#826146',
+    slowBorder: '#473323',
+    flowers: ['#fff6d6', '#ffd24a', '#ff8fb8']
   },
   desert: {
-    ground: ['#e1bf7d', '#e8c98a', '#d8b26e', '#eed39a'],
-    edge: '#c9a062',
-    road: ['#c99a5c', '#d2a566', '#bd8e52'],
-    roadEdge: '#a47744',
-    pebble: '#f3e2bd',
-    slow: '#b6884f',
-    slowLight: '#c69a60',
-    accents: ['#c9a062', '#b58d55', '#8fae5a'],
-    accentRate: 0.02
+    ground: ['#dfba72', '#e8c682', '#d2a960', '#efd292'],
+    tuft: '#be914d',
+    tuftLight: '#f6dea6',
+    edge: '#9c713a',
+    road: ['#c79052', '#d29c5e', '#b88246'],
+    roadCenter: '#deac70',
+    roadEdge: '#8f5f32',
+    roadOutline: '#5a3a1e',
+    pebble: '#f5e2ba',
+    slow: '#a3713b',
+    slowLight: '#b88449',
+    slowBorder: '#6e4924',
+    flowers: ['#86a852', '#d8a654']
   },
   frost: {
-    ground: ['#e8f0f5', '#dde8ef', '#f3f8fb', '#d2e0ea'],
-    edge: '#c2d3df',
-    road: ['#a9b7c3', '#b5c3ce', '#9daab6'],
-    roadEdge: '#7f8e9b',
-    pebble: '#e4ecf2',
-    slow: '#7f9ea7',
-    slowLight: '#93b2ba',
-    accents: ['#ffffff', '#bfe9f6', '#a8d0e0'],
-    accentRate: 0.03
+    ground: ['#dce8f2', '#e6f0f8', '#eef6fc', '#cadbe8'],
+    tuft: '#b5cada',
+    tuftLight: '#ffffff',
+    edge: '#7b97ad',
+    road: ['#92a6b8', '#a0b3c4', '#8397a9'],
+    roadCenter: '#b4c5d4',
+    roadEdge: '#667a8c',
+    roadOutline: '#3c4c5c',
+    pebble: '#dce6ef',
+    slow: '#6598b3',
+    slowLight: '#82b6d0',
+    slowBorder: '#3e6a82',
+    flowers: ['#9eddf2', '#ffffff']
   },
   volcanic: {
-    ground: ['#4a4049', '#423842', '#544852', '#3c333c'],
-    edge: '#342c34',
-    road: ['#6b5d61', '#75676a', '#625457'],
-    roadEdge: '#4d4044',
-    pebble: '#8a7a7c',
-    slow: '#3f3843',
-    slowLight: '#4e4652',
-    accents: ['#6a5a5e', '#5a4c50', '#7a6a6c'],
-    accentRate: 0.02,
-    glow: '#ff8a3c'
+    ground: ['#3e3642', '#473e4c', '#362f3a', '#504656'],
+    tuft: '#2a242e',
+    tuftLight: '#605468',
+    edge: '#221c26',
+    road: ['#695c63', '#75676f', '#5c5057'],
+    roadCenter: '#83757d',
+    roadEdge: '#473d43',
+    roadOutline: '#261f24',
+    pebble: '#968890',
+    slow: '#36303d',
+    slowLight: '#473f4f',
+    slowBorder: '#221d28',
+    flowers: ['#6c5d66', '#564952'],
+    glow: '#ff7d2e',
+    glowCrust: '#281d22'
   }
 }
 
@@ -94,10 +117,6 @@ function slowPoints(field: ResolvedBattlefield): Point[] {
   return points
 }
 
-/**
- * Distance from a display-space point to display-space polylines, capped at `reach`.
- * Segments are bucketed once so each ground pixel only tests the few nearby segments.
- */
 function roadDistance(paths: readonly Point[][], reach: number): (x: number, y: number) => number {
   const size = 32
   const buckets = new Map<number, number[][]>()
@@ -144,83 +163,131 @@ export interface GroundPixels {
 }
 
 /**
- * Pixel-art ground in display proportions (board x is widened by `aspect`), one pixel per
- * GROUND_CELL board units: biome tiles, the road union with worn edges and pebbles, the
- * field's slow stretch, and scattered flowers or embers that never block anything.
+ * Crisp top-down pixel-art ground harmonized with SpriteCook sprite stacks:
+ * - Clean banded biome tiles (grass tufts, dune ripples, snow drifts, crusted magma cracks)
+ * - Intentional small pixel-art flower blossoms (no single-pixel confetti noise)
+ * - Crisp dark-bordered road with worn lighter center track and clear slow-terrain stretch
  */
 export function paintGround(field: ResolvedBattlefield, aspect: number): GroundPixels {
   const biome = BIOMES[field.id]
   const width = Math.max(1, Math.round((field.width * aspect) / GROUND_CELL))
   const height = Math.max(1, Math.round(field.height / GROUND_CELL))
   const data = new Uint8ClampedArray(width * height * 4)
-  // Work in display space so a road reads equally wide horizontally and vertically.
   const half = (ROAD_PAINT_WIDTH / 2) * Math.min(1, aspect)
   const paths = allRoadPaths(field).map((path) => path.map((p) => ({ x: p.x * aspect, y: p.y })))
   const slow = slowPoints(field).map((p) => ({ x: p.x * aspect, y: p.y }))
   const distance = roadDistance(paths, half + 40)
   const seed = field.id.length * 31 + field.layoutRevision * 7
-  const rgb = (hex: string) => [
-    parseInt(hex.slice(1, 3), 16),
-    parseInt(hex.slice(3, 5), 16),
-    parseInt(hex.slice(5, 7), 16)
-  ]
-  const cache = new Map<string, number[]>()
-  const color = (hex: string) => cache.get(hex) ?? (cache.set(hex, rgb(hex)), cache.get(hex)!)
-  const rim = Math.max(1.5, half * 0.16)
-  // Grass is decided once per 2x2 pixel block (4 board units); only road pixels need full detail.
-  const coarseWidth = (width >> 1) + 1
-  const grass: { hex: string; accent?: string; glow: boolean; shade: number }[] = []
-  for (let cj = 0; cj <= height >> 1; cj++)
-    for (let ci = 0; ci < coarseWidth; ci++) {
-      const large = noise(ci, cj, 14, seed),
-        small = noise(ci, cj, 4, seed + 3)
-      const v = large * 0.65 + small * 0.35
-      const cell: { hex: string; accent?: string; glow: boolean; shade: number } = {
-        hex: biome.ground[v < 0.38 ? 3 : v < 0.52 ? 0 : v < 0.66 ? 1 : 2],
-        glow: !!biome.glow && Math.abs(noise(ci, cj, 18, seed + 13) - 0.5) < 0.012,
-        shade: 1
-      }
-      // Flowers and pebbles gather in patches instead of scattering evenly.
-      const rate = noise(ci, cj, 7, seed + 21) > 0.68 ? biome.accentRate * 5 : biome.accentRate * 0.15
-      if (hash(ci, cj, seed + 1) < rate)
-        cell.accent = biome.accents[Math.floor(noise(ci, cj, 5, seed + 2) * biome.accents.length * 0.999)]
-      else if (hash(ci, cj, seed + 6) < 0.05 && small > 0.5) cell.shade = 0.88
-      if (field.id === 'desert' && Math.sin(ci * 0.35 + noise(ci, cj, 20, seed) * 6 + cj * 0.12) > 0.93)
-        cell.shade = 0.94
-      grass.push(cell)
+
+  const cache = new Map<string, [number, number, number]>()
+  const color = (hex: string): [number, number, number] => {
+    let c = cache.get(hex)
+    if (!c) {
+      c = [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)]
+      cache.set(hex, c)
     }
-  const grassColor = (ci: number, cj: number, d: number): [string, number] => {
-    const cell = grass[cj * coarseWidth + ci]
-    let hex = cell.accent && d > half + 16 ? cell.accent : cell.hex
-    if (cell.glow && d > half + 20) hex = biome.glow!
-    return [hex, cell.shade]
+    return c
   }
-  for (let j = 0; j < height; j++)
+
+  const rim = Math.max(2, half * 0.16)
+  const outlineWidth = Math.max(1.6, GROUND_CELL * 0.9)
+
+  // Coarse pixel-art tile grid (2x2 ground pixels = 4 board units, matching character art-pixel scale).
+  const cw = (width >> 1) + 1
+  const ch = (height >> 1) + 1
+  const tiles = new Array<string>(cw * ch)
+
+  for (let cj = 0; cj < ch; cj++) {
+    for (let ci = 0; ci < cw; ci++) {
+      const large = noise(ci, cj, 16, seed)
+      const med = noise(ci, cj, 6, seed + 3)
+      const v = large * 0.72 + med * 0.28
+      let hex = biome.ground[v < 0.34 ? 3 : v < 0.52 ? 0 : v < 0.7 ? 1 : 2]
+
+      if (field.id === 'desert') {
+        const wave = Math.sin(ci * 0.16 + noise(ci, cj, 22, seed) * 3.2 + cj * 0.09)
+        if (wave > 0.93) hex = biome.tuftLight
+        else if (wave < -0.94) hex = biome.tuft
+      } else if (field.id === 'volcanic') {
+        const ridge = Math.abs(noise(ci, cj, 16, seed + 13) - 0.5)
+        if (ridge < 0.011) hex = biome.glow!
+        else if (ridge < 0.025) hex = biome.glowCrust!
+      }
+      tiles[cj * cw + ci] = hex
+    }
+  }
+
+  // Stamp clean 2-3 tile pixel-art tufts and blossoms on meadow/frost (never random confetti!).
+  for (let cj = 2; cj < ch - 2; cj += 4) {
+    for (let ci = 2; ci < cw - 2; ci += 4) {
+      const r = hash(ci, cj, seed + 41)
+      const ox = ci + Math.floor(hash(ci, cj, seed + 42) * 3)
+      const oy = cj + Math.floor(hash(ci, cj, seed + 43) * 3)
+      if (ox < 1 || ox >= cw - 1 || oy < 1 || oy >= ch - 1) continue
+      if (field.id === 'meadow') {
+        if (r < 0.16) {
+          // Small pixel-art V grass tuft.
+          tiles[oy * cw + ox] = biome.tuft
+          tiles[(oy - 1) * cw + (ox - 1)] = biome.tuftLight
+          tiles[(oy - 1) * cw + (ox + 1)] = biome.tuftLight
+        } else if (r > 0.91) {
+          // Crisp 3-pixel blossom with green base.
+          const flower = biome.flowers[Math.floor(hash(ci, cj, seed + 44) * biome.flowers.length)]
+          tiles[oy * cw + ox] = flower
+          tiles[(oy + 1) * cw + ox] = biome.tuft
+        }
+      } else if (field.id === 'frost' && r < 0.12) {
+        tiles[oy * cw + ox] = biome.tuftLight
+        tiles[oy * cw + (ox + 1)] = biome.tuft
+      } else if (field.id === 'desert' && r < 0.07) {
+        tiles[oy * cw + ox] = biome.tuft
+      }
+    }
+  }
+
+  for (let j = 0; j < height; j++) {
     for (let i = 0; i < width; i++) {
-      const ci = i >> 1,
-        cj = j >> 1
+      const ci = i >> 1
+      const cj = j >> 1
       const point = { x: (i + 0.5) * GROUND_CELL, y: (j + 0.5) * GROUND_CELL }
       const d = distance(point.x, point.y)
       let hex: string
       let shade = 1
-      if (d <= half + rim) {
-        const n = noise(ci, cj, 3, seed + 5)
-        hex = biome.road[n < 0.35 ? 2 : n > 0.7 ? 1 : 0]
-        // A worn rim just outside the walkable width.
-        if (d > half) hex = biome.roadEdge
-        else if (hash(ci, cj, seed + 9) > 0.965) hex = biome.pebble
-        if (
-          d <= half &&
-          slow.some((p) => Math.abs(p.x - point.x) < half && Math.hypot(p.x - point.x, p.y - point.y) < half * 0.82 - 2)
-        )
-          hex = noise(ci, cj, 2, seed + 11) > 0.55 ? biome.slowLight : biome.slow
+
+      if (d <= half + rim + outlineWidth) {
+        if (d > half + rim) {
+          // Crisp pixel-art dark border separating the road cleanly from terrain.
+          hex = biome.roadOutline
+        } else if (d > half) {
+          hex = biome.roadEdge
+        } else {
+          const n = noise(ci, cj, 4, seed + 5)
+          hex = d < half * 0.45 && n > 0.35 ? biome.roadCenter : biome.road[n < 0.34 ? 2 : n > 0.72 ? 1 : 0]
+          // Occasional crisp 2x2 flagstone/pebble accent.
+          if ((ci + cj) % 2 === 0 && hash(ci, cj, seed + 9) > 0.965) hex = biome.pebble
+          // Slow terrain stretch with a crisp border.
+          const inSlow = slow.some(
+            (p) => Math.abs(p.x - point.x) < half && Math.hypot(p.x - point.x, p.y - point.y) < half * 0.84
+          )
+          if (inSlow) {
+            const inner = slow.some(
+              (p) => Math.abs(p.x - point.x) < half && Math.hypot(p.x - point.x, p.y - point.y) < half * 0.72
+            )
+            hex = !inner ? biome.slowBorder : noise(ci, cj, 2.5, seed + 11) > 0.54 ? biome.slowLight : biome.slow
+          }
+        }
       } else {
-        ;[hex, shade] = grassColor(ci, cj, d)
-        if (d < half + rim + GROUND_CELL * 1.5) hex = biome.edge
-        // Soft darkening toward the board edges frames the field.
+        hex = tiles[cj * cw + ci]
+        // Keep magma glow and flowers cleanly off the road shoulder.
+        if (d < half + rim + outlineWidth + 6 && (hex === biome.glow || biome.flowers.includes(hex))) {
+          hex = biome.ground[0]
+        }
+        if (d < half + rim + outlineWidth + GROUND_CELL * 1.4) hex = biome.edge
+        // Subtle vignette framing the outer board edges.
         const edgeDistance = Math.min(i, j, width - 1 - i, height - 1 - j) / 2
-        if (edgeDistance < 6) shade *= 0.86 + edgeDistance * 0.023
+        if (edgeDistance < 6) shade *= 0.88 + edgeDistance * 0.02
       }
+
       const [r, g, b] = color(hex)
       const o = (j * width + i) * 4
       data[o] = r * shade
@@ -228,5 +295,6 @@ export function paintGround(field: ResolvedBattlefield, aspect: number): GroundP
       data[o + 2] = b * shade
       data[o + 3] = 255
     }
+  }
   return { width, height, data }
 }

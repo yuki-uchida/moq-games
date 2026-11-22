@@ -13,21 +13,21 @@ export const goblin: StackDesign = {
   blueprint: {
     id: 'goblin',
     colors: {
-      skin: '#a8bb69',
-      skinDark: '#7f9447',
-      eye: '#f6e35a',
-      pupil: '#2a1c0c',
-      tooth: '#fff8e6',
-      mouth: '#3b2416',
-      hood: '#9b7a4f',
-      patch: '#c95a48',
-      patch2: '#5c7fa8',
-      rags: '#6f5638',
-      sack: '#c8ad78',
-      rope: '#6a4b2b',
-      knife: '#c9d1d6',
-      handle: '#5a3a22',
-      foot: '#7f9447'
+      skin: '#88c942',
+      skinDark: '#5c9428',
+      eye: '#ffe838',
+      pupil: '#1c1208',
+      tooth: '#fffbf0',
+      mouth: '#3b1e14',
+      hood: '#9e703c',
+      patch: '#e04838',
+      patch2: '#3c78bf',
+      rags: '#6b4928',
+      sack: '#d9b56c',
+      rope: '#694420',
+      knife: '#e2ebf2',
+      handle: '#593319',
+      foot: '#5c9428'
     },
     build(kit) {
       const b = human(
