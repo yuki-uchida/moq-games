@@ -261,9 +261,12 @@ export class StackUnitLayer {
     const candidate = this.actors.get(attack.attackerId)
     const live = candidate && candidate.deadAt === undefined ? candidate : undefined
     const visual = live?.visual ?? new StackVisual(design, 0)
+    // Use the same render-only lane offset as the visible body so breaths and projectiles leave
+    // the mouth of the sprite the player actually sees.
+    const offset = live ? unitDisplayOffset(live.last) : { x: 0, y: 0 }
     try {
       visual.setPresentation(this.presentationScale, this.presentationAspect)
-      visual.setPosition(attack.origin.x, attack.origin.y)
+      visual.setPosition(attack.origin.x + offset.x, attack.origin.y + offset.y)
       const profile = ATTACK_PROFILES[attack.type]
       visual.sample({
         motion:
@@ -283,8 +286,8 @@ export class StackUnitLayer {
       return point ? { x: point.x, y: point.y } : undefined
     } finally {
       if (live) {
-        // Restore the live figure's own pose on the next render; keep its position now.
-        visual.setPosition(live.last.x, live.last.y)
+        // Restore the live figure's own pose on the next render; keep its offset position now.
+        visual.setPosition(live.last.x + offset.x, live.last.y + offset.y)
       } else visual.dispose()
     }
   }
