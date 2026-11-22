@@ -14,21 +14,21 @@ export const healer: StackDesign = {
   blueprint: {
     id: 'healer',
     colors: {
-      skin: '#f6d2b4',
-      eye: '#3b2430',
+      skin: '#ffd6b8',
+      eye: '#331c29',
       shine: '#ffffff',
-      cheek: '#f09aa6',
-      robe: '#f1a6b8',
-      robeDark: '#d07a91',
-      cream: '#fbeedd',
-      leaf: '#7fbf6a',
-      leafDark: '#5a9a4b',
-      hair: '#a86a3f',
-      petal: '#ff8fb0',
-      petalLight: '#ffd0de',
-      stem: '#5f9e4a',
-      shoe: '#b5657a',
-      '*bloom': '#fff2a6'
+      cheek: '#ff8da1',
+      robe: '#f77ea6',
+      robeDark: '#cc4e7a',
+      cream: '#fff5e4',
+      leaf: '#5cc452',
+      leafDark: '#36943c',
+      hair: '#b86832',
+      petal: '#ff5c96',
+      petalLight: '#ffc2d9',
+      stem: '#469e3a',
+      shoe: '#a84266',
+      '*bloom': '#fff078'
     },
     build(kit) {
       const b = human(
@@ -68,9 +68,9 @@ export const healer: StackDesign = {
       b.torso.paint((x, y, z, c) => (y === 5 && (x + z) % 3 === 0 ? 'leafDark' : undefined))
       // Petal hem.
       b.hips.paint((x, y, z) => (y === -3 && (x + z) % 2 === 0 ? 'petalLight' : undefined))
-      // Flower staff.
+      // Flower staff: chunky 2px stem so diagonals stay solid when turning.
       const staff = kit.part('weapon', 'armR', [0, b.hand, 0])
-      staff.box([0, 0, -3], [0, 0, 12], 'stem').box([1, 0, 6], [2, 0, 7], 'leaf')
+      staff.box([0, 0, -3], [1, 1, 13], 'stem').box([1, 0, 6], [2, 1, 7], 'leaf')
       for (let i = 0; i < 6; i++) {
         const a = (i / 6) * Math.PI * 2
         staff.ellipsoid(

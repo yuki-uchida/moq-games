@@ -15,18 +15,18 @@ export const dragon: StackDesign = {
   blueprint: {
     id: 'dragon',
     colors: {
-      scale: '#d28d70',
-      scaleDark: '#a5604a',
-      belly: '#f3d78c',
-      horn: '#f6efdc',
-      spine: '#8f3f33',
-      wing: '#b8503e',
-      wingBone: '#7a3328',
-      claw: '#fff4dc',
-      eye: '#1c120e',
-      mouth: '#5a1d1d',
-      '*eyeGlow': '#ffe07a',
-      '*ember': '#ff8a3c'
+      scale: '#e04f38',
+      scaleDark: '#9e2b1f',
+      belly: '#ffd452',
+      horn: '#fff7de',
+      spine: '#6e1919',
+      wing: '#c23428',
+      wingBone: '#6e1c18',
+      claw: '#fff8e0',
+      eye: '#1a0d0a',
+      mouth: '#591414',
+      '*eyeGlow': '#ffea52',
+      '*ember': '#ff7b1c'
     },
     build(kit) {
       const body = kit.part('body', undefined, [0, 8, 0])

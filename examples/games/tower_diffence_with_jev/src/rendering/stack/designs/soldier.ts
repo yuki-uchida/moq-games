@@ -13,20 +13,20 @@ export const soldier: StackDesign = {
   blueprint: {
     id: 'soldier',
     colors: {
-      skin: '#f2c9a0',
-      cheek: '#e89a86',
-      eye: '#1d2433',
-      steel: '#b9c4cf',
-      steelDark: '#7d8a99',
-      crest: '#75b6d5',
-      tabard: '#5fa4c9',
-      tabardDark: '#3f7ea3',
-      emblem: '#f4f1e6',
-      leather: '#7a4f31',
-      boot: '#4e3424',
-      blade: '#e3edf3',
-      gold: '#e2b54a',
-      hair: '#8a5a2f'
+      skin: '#ffcca3',
+      cheek: '#f08278',
+      eye: '#171c2b',
+      steel: '#c8d6e5',
+      steelDark: '#6b7d94',
+      crest: '#2986e8',
+      tabard: '#2c7be5',
+      tabardDark: '#1b4f9e',
+      emblem: '#fff9eb',
+      leather: '#8a522b',
+      boot: '#4b2d1b',
+      blade: '#eef7ff',
+      gold: '#f5be36',
+      hair: '#7a4520'
     },
     build(kit) {
       const hips = kit.part('hips', undefined, [0, 6, 0])

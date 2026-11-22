@@ -14,21 +14,21 @@ export const archer: StackDesign = {
   blueprint: {
     id: 'archer',
     colors: {
-      skin: '#f0c59b',
-      eye: '#22301f',
+      skin: '#ffc89e',
+      eye: '#182419',
       shine: '#ffffff',
-      cheek: '#e5977f',
-      hood: '#4f7f3a',
-      hoodDark: '#36592a',
-      tunic: '#8fb85b',
-      leaf: '#c6e07a',
-      leather: '#83593a',
-      boot: '#5a3b26',
-      wood: '#d9b77a',
-      string: '#f3eedb',
-      quiver: '#6e4a2f',
-      fletch: '#f1e6c4',
-      hair: '#c7843f'
+      cheek: '#eb8674',
+      hood: '#2c7a3b',
+      hoodDark: '#1d5428',
+      tunic: '#57b848',
+      leaf: '#b8f056',
+      leather: '#8c552b',
+      boot: '#52301a',
+      wood: '#e8bc66',
+      string: '#fff7e0',
+      quiver: '#6e3f1e',
+      fletch: '#fff3c4',
+      hair: '#d97b29'
     },
     build(kit) {
       const b = human(kit, {
@@ -56,11 +56,11 @@ export const archer: StackDesign = {
       b.torso.box([-1, 5, 3], [0, 6, 3], 'leaf')
       // Quiver on the back with fletchings.
       b.torso.box([1, 1, -4], [2, 7, -3], 'quiver').box([1, 8, -4], [2, 9, -3], 'fletch').set(1, 10, -4, 'fletch')
-      // Longbow in the left hand: limbs curl back from the grip along local z.
+      // Longbow in the left hand: chunky 2px limbs so diagonals stay solid when turning.
       const bow = kit.part('offhand', 'armL', [-0.5, b.hand, 0.5])
       for (let z = -9; z <= 9; z++) {
         const y = Math.round(2.6 * (z / 9) ** 2)
-        bow.box([0, y, z], [0, y + (Math.abs(z) < 2 ? 1 : 0), z], Math.abs(z) < 2 ? 'leather' : 'wood')
+        bow.box([-1, y, z], [0, y + 1, z], Math.abs(z) < 2 ? 'leather' : 'wood')
       }
       bow.box([0, 3, -8], [0, 3, 8], 'string')
     }

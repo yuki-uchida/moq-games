@@ -12,14 +12,14 @@ export const brute: StackDesign = {
   blueprint: {
     id: 'brute',
     colors: {
-      stone: '#b39e7a',
-      stoneDark: '#867257',
-      stoneLight: '#d4c4a2',
-      crack: '#5d4e3c',
-      moss: '#7ea256',
-      mossDark: '#5a7a3c',
-      petal: '#f6c64f',
-      '*eye': '#ffae42'
+      stone: '#b8a07a',
+      stoneDark: '#7a664a',
+      stoneLight: '#e0cfa8',
+      crack: '#4a3c2c',
+      moss: '#55ad42',
+      mossDark: '#36782a',
+      petal: '#ffd138',
+      '*eye': '#ff9d24'
     },
     build(kit) {
       const hips = kit.part('hips', undefined, [0, 5, 0])

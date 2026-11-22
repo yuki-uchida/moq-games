@@ -13,18 +13,18 @@ export const tank: StackDesign = {
   blueprint: {
     id: 'tank',
     colors: {
-      plate: '#9faec6',
-      plateDark: '#6e7d97',
-      plateLight: '#d3dceb',
-      visor: '#1c2230',
-      gold: '#e0b24c',
-      cloth: '#3d5c8f',
-      shield: '#3f659f',
-      shieldRim: '#c8d3e4',
-      emblem: '#f3efe2',
-      mace: '#7b8796',
-      grip: '#5b3d27',
-      boot: '#4a5468'
+      plate: '#b8c8de',
+      plateDark: '#697b99',
+      plateLight: '#e6effa',
+      visor: '#141a29',
+      gold: '#f5be36',
+      cloth: '#2359b8',
+      shield: '#1e58c7',
+      shieldRim: '#dce6f5',
+      emblem: '#fff9eb',
+      mace: '#7a8a9e',
+      grip: '#693f1f',
+      boot: '#3c485e'
     },
     build(kit) {
       const b = human(

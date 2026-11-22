@@ -14,20 +14,20 @@ export const frost: StackDesign = {
   blueprint: {
     id: 'frost',
     colors: {
-      skin: '#f4dccb',
-      eye: '#1f3548',
+      skin: '#ffe0cf',
+      eye: '#172d42',
       shine: '#ffffff',
-      cheek: '#f0a8b4',
-      coat: '#4f9fc4',
-      coatDark: '#33789c',
-      fur: '#f4f7fb',
-      furShade: '#cfdce8',
-      mitten: '#8ddbe4',
-      boot: '#2f4f66',
-      birch: '#e9e4d6',
-      knot: '#7a6f61',
-      hair: '#dfeefa',
-      '*ice': '#c8f6ff',
+      cheek: '#f598aa',
+      coat: '#2596d4',
+      coatDark: '#16669e',
+      fur: '#f5faff',
+      furShade: '#c2d8ed',
+      mitten: '#6de6f5',
+      boot: '#23425e',
+      birch: '#f2ece0',
+      knot: '#786858',
+      hair: '#d9f0ff',
+      '*ice': '#9ef5ff',
       '*iceCore': '#ffffff'
     },
     build(kit) {
@@ -62,9 +62,9 @@ export const frost: StackDesign = {
       b.torso.fill([-6, 5, -4], [5, 7, 4], 'fur', (x, y, z) => Math.hypot(x / 4.6, z / 3.2) <= 1.1)
       b.hips.paint((x, y, z) => (y === -3 ? ((x + z) % 3 ? 'fur' : 'furShade') : undefined))
       b.torso.box([-1, 1, 3], [0, 4, 3], 'fur')
-      // Birch staff with a floating snow crystal.
+      // Birch staff: chunky 2px shaft with a bold floating snow crystal.
       const staff = kit.part('weapon', 'armR', [0, b.hand, 0])
-      staff.box([0, 0, -3], [0, 0, 12], 'birch').set(0, 0, 4, 'knot').set(0, 0, 9, 'knot')
+      staff.box([0, 0, -3], [1, 1, 13], 'birch').set(0, 1, 4, 'knot').set(1, 1, 9, 'knot')
       for (let i = 0; i < 6; i++) {
         const a = (i / 6) * Math.PI * 2
         staff.segment([0.5, 1.5, 15.5], [0.5 + Math.sin(a) * 3, 1.5, 15.5 + Math.cos(a) * 3], 0.6, '*ice')

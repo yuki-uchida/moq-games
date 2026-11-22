@@ -13,17 +13,17 @@ export const clockworkPatchling: StackDesign = {
   blueprint: {
     id: 'clockworkPatchling',
     colors: {
-      cloth: '#b38455',
-      clothDark: '#8a6238',
-      patchA: '#6f9bb3',
-      patchB: '#d2785a',
-      patchC: '#e3d07a',
-      stitch: '#f4ead4',
-      button: '#2d2a33',
-      buttonRim: '#f0e6d2',
-      brass: '#d7a640',
-      brassDark: '#9c7425',
-      foot: '#5d4430'
+      cloth: '#c48547',
+      clothDark: '#8c5828',
+      patchA: '#3ea4d4',
+      patchB: '#e35c42',
+      patchC: '#f5d442',
+      stitch: '#fff5de',
+      button: '#211d29',
+      buttonRim: '#faf0d7',
+      brass: '#f0b62b',
+      brassDark: '#a67414',
+      foot: '#593b24'
     },
     build(kit) {
       const hips = kit.part('hips', undefined, [0, 4, 0])

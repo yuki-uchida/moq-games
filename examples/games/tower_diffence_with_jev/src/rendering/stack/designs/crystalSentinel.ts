@@ -13,14 +13,14 @@ export const crystalSentinel: StackDesign = {
   blueprint: {
     id: 'crystalSentinel',
     colors: {
-      stone: '#8c8a99',
-      stoneDark: '#646274',
-      stoneLight: '#b6b3c4',
-      crystal: '#9c8cc7',
-      crystalLight: '#d6ccf2',
-      crystalDark: '#6a5a9c',
-      '*gem': '#f1e6ff',
-      '*vein': '#c6a8ff'
+      stone: '#7a7b94',
+      stoneDark: '#4d4d66',
+      stoneLight: '#aeb0cc',
+      crystal: '#9661f2',
+      crystalLight: '#dbbfff',
+      crystalDark: '#5b31a8',
+      '*gem': '#f8edff',
+      '*vein': '#c98aff'
     },
     build(kit) {
       const hips = kit.part('hips', undefined, [0, 6, 0])

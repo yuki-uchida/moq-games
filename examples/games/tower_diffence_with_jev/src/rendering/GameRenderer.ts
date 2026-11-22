@@ -725,7 +725,7 @@ export class GameRenderer {
         effectUrls.has(url) ? loadEffectWholeFrameAtlas(url, signal) : loadRuntimeWholeFrameAtlas(url, signal)
       )
     const devicePixelRatio = window.devicePixelRatio || 1
-    this.renderer = new THREE.WebGLRenderer({ antialias: Boolean(this.models) && devicePixelRatio < 2, alpha: true })
+    this.renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true })
     if (this.models) {
       this.modelEnvironment = createBattlefieldModelLighting(this.scene, this.renderer)
       this.renderer.debug.onShaderError = (gl, program) => {

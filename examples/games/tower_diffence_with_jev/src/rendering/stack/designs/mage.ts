@@ -14,21 +14,21 @@ export const mage: StackDesign = {
   blueprint: {
     id: 'mage',
     colors: {
-      skin: '#f3cfae',
-      eye: '#2b2140',
+      skin: '#ffd4b0',
+      eye: '#211638',
       shine: '#ffffff',
-      cheek: '#eaa0a0',
-      robe: '#7b5aa6',
-      robeDark: '#55397d',
-      trim: '#be91d8',
-      star: '#f6d35b',
-      hat: '#5b3f8c',
-      hatBand: '#be91d8',
-      hair: '#f2e6c8',
-      shoe: '#3a2a4e',
-      wood: '#8b5e3c',
-      '*glow': '#fff3a8',
-      '*glowCore': '#ffd84a'
+      cheek: '#f28b99',
+      robe: '#6f3ec7',
+      robeDark: '#47238a',
+      trim: '#d28ef7',
+      star: '#ffd93b',
+      hat: '#4d2899',
+      hatBand: '#e08ef7',
+      hair: '#ffefc2',
+      shoe: '#2d1c47',
+      wood: '#995c2e',
+      '*glow': '#fff494',
+      '*glowCore': '#ffcf24'
     },
     build(kit) {
       const b = human(
@@ -72,9 +72,9 @@ export const mage: StackDesign = {
         [1, -3, 4]
       ])
         b.hips.set(x, y, z, 'star')
-      // Crook staff with a glowing star.
+      // Crook staff with a chunky 2px shaft and glowing star.
       const staff = kit.part('weapon', 'armR', [0, b.hand, 0])
-      staff.box([0, 0, -3], [0, 0, 12], 'wood').box([0, 1, 12], [0, 1, 13], 'wood')
+      staff.box([0, 0, -3], [1, 1, 12], 'wood').box([0, 1, 12], [1, 2, 13], 'wood')
       staff.ellipsoid([0.5, 1.5, 15.5], [1.6, 1.6, 1.6], '*glow')
       staff
         .box([-2, 1, 15], [2, 1, 15], '*glow')

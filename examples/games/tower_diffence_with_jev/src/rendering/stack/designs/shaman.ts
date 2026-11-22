@@ -14,18 +14,18 @@ export const shaman: StackDesign = {
   blueprint: {
     id: 'shaman',
     colors: {
-      stem: '#f2e4cc',
-      stemShade: '#d9c5a3',
-      cap: '#ca83bd',
-      capDark: '#9c5a92',
-      spot: '#fff4f8',
-      gill: '#e9c9d8',
-      eye: '#2b1a2e',
-      moss: '#6f9a4a',
-      mossDark: '#4f7536',
-      root: '#6d4c35',
-      foot: '#c9b48e',
-      '*spore': '#d6ff8a',
+      stem: '#faecd2',
+      stemShade: '#d9bf94',
+      cap: '#d645b0',
+      capDark: '#99227a',
+      spot: '#fff7fc',
+      gill: '#f2c4dc',
+      eye: '#26142b',
+      moss: '#4ea83c',
+      mossDark: '#307528',
+      root: '#784a28',
+      foot: '#bfa375',
+      '*spore': '#c2ff52',
       '*sporeCore': '#ffffff'
     },
     build(kit) {
@@ -65,11 +65,14 @@ export const shaman: StackDesign = {
         cap.box([x, y, z], [x + 1, y, z + 1], 'spot')
       // Moss shawl.
       b.torso.fill([-5, 3, -4], [4, 5, 4], 'moss', (x, y, z) => Math.hypot(x / 4.4, z / 3.2) <= 1)
-      // Twisted root staff with a glowing spore bulb.
+      // Twisted root staff: chunky 2px shaft with a glowing spore bulb.
       const staff = kit.part('weapon', 'armR', [0, b.hand, 0])
-      for (let z = -3; z <= 12; z++) staff.set(Math.round(Math.sin(z * 0.8) * 0.6), 0, z, 'root')
-      staff.ellipsoid([0.5, 1.5, 14.5], [2, 2, 2], '*spore').set(0, 1, 14, '*sporeCore')
-      staff.box([1, 0, 11], [2, 0, 12], 'root')
+      for (let z = -3; z <= 13; z++) {
+        const ox = Math.round(Math.sin(z * 0.6) * 0.6)
+        staff.box([ox, 0, z], [ox + 1, 1, z], 'root')
+      }
+      staff.ellipsoid([0.5, 1.5, 14.5], [2.1, 2.1, 2.1], '*spore').set(0, 1, 14, '*sporeCore')
+      staff.box([1, 0, 11], [2, 1, 12], 'root')
     }
   },
   pose: (input) => bipedPose(input, { attack: 'cast', stride: 0.55, bob: 0.9 })
