@@ -2,13 +2,16 @@ import { bipedPose, type StackDesign } from '../StackDesign'
 import { human } from './common'
 
 /**
- * 花の癒やし手 — a gentle healer with a crown of pink blossoms, a petal-hemmed robe of rose
- * and cream, a leaf mantle, and a green staff crowned by an open flower with a glowing heart.
+ * 花の癒やし手 — a gentle healer crowned with rose blossoms perched above a clearly visible
+ * smiling face, wide petal-hemmed rose-and-cream robe, emerald leaf mantle, and glowing flower staff.
+ * Uses the dedicated wide-open `bloom` casting pose.
  */
 export const healer: StackDesign = {
   type: 'healer',
   voxel: 2,
   walkDistance: 28,
+  portraitCrop: 0.62,
+  portraitYaw: -0.25,
   shadow: [8, 6],
   emitter: { part: 'weapon', at: [0.5, 2, 14.5] },
   blueprint: {
@@ -19,14 +22,14 @@ export const healer: StackDesign = {
       shine: '#ffffff',
       cheek: '#ff8da1',
       robe: '#f77ea6',
-      robeDark: '#cc4e7a',
+      robeDark: '#c74875',
       cream: '#fff5e4',
-      leaf: '#5cc452',
-      leafDark: '#36943c',
+      leaf: '#4cb848',
+      leafDark: '#2c8234',
       hair: '#b86832',
-      petal: '#ff5c96',
-      petalLight: '#ffc2d9',
-      stem: '#469e3a',
+      petal: '#ff5291',
+      petalLight: '#ffc7dc',
+      stem: '#3f9638',
       shoe: '#a84266',
       '*bloom': '#fff078'
     },
@@ -46,41 +49,39 @@ export const healer: StackDesign = {
           sleeve: 'cream',
           hands: 'skin'
         },
-        { robe: true, legs: 5 }
+        { robe: true, legs: 5, headRadius: 4.8, eyeRow: 3 }
       )
-      // Long hair falling down the back, braided ends.
-      b.head.paint((x, y, z) => (y >= 5 && z < 2 ? 'hair' : y >= 1 && z < -2 ? 'hair' : undefined))
-      b.head.box([-3, -4, -4], [2, 1, -4], 'hair')
-      // Blossom crown: a ring of flowers around the head.
+      b.head.paint((x, y, z) => (y >= 6 && z < 2 ? 'hair' : y >= 1 && z < -2 ? 'hair' : undefined))
+      b.head.box([-3, -4, -5], [2, 2, -4], 'hair')
+      // Blossom crown perched high at y=8..9 so the eyes & cheeks read clearly underneath.
       for (let i = 0; i < 7; i++) {
         const a = (i / 7) * Math.PI * 2
-        const x = Math.round(Math.sin(a) * 4.4 - 0.5)
-        const z = Math.round(Math.cos(a) * 4.2 - 0.5)
-        b.head.box([x - 1, 7, z - 1], [x + 1, 7, z + 1], 'petal').set(x, 8, z, i % 2 ? 'petalLight' : '*bloom')
+        const x = Math.round(Math.sin(a) * 4.5 - 0.5)
+        const z = Math.round(Math.cos(a) * 4.2 - 0.8)
+        b.head.box([x - 1, 8, z - 1], [x + 1, 8, z + 1], 'petal').set(x, 9, z, i % 2 ? 'petalLight' : '*bloom')
       }
-      // Leaf mantle over the shoulders.
+      // Emerald leaf mantle over shoulders.
       b.torso.fill(
-        [-6, 5, -4],
+        [-6, 5, -5],
         [5, 7, 4],
         'leaf',
-        (x, y, z) => Math.hypot(x / 5.2, z / 3.4) <= 1 && y < 6.5 + (Math.abs(x) < 3 ? 0.5 : 0)
+        (x, y, z) => Math.hypot(x / 5.4, z / 4.0) <= 1 && y < 6.6 + (Math.abs(x) < 3 ? 0.5 : 0)
       )
-      b.torso.paint((x, y, z, c) => (y === 5 && (x + z) % 3 === 0 ? 'leafDark' : undefined))
-      // Petal hem.
-      b.hips.paint((x, y, z) => (y === -3 && (x + z) % 2 === 0 ? 'petalLight' : undefined))
-      // Flower staff: chunky 2px stem so diagonals stay solid when turning.
-      const staff = kit.part('weapon', 'armR', [0, b.hand, 0])
+      b.torso.paint((x, y, z) => (y === 5 && (x + z) % 3 === 0 ? 'leafDark' : undefined))
+      b.hips.paint((x, y, z) => (y === -4 && (x + z) % 2 === 0 ? 'petalLight' : undefined))
+      // Chunky 2px flower staff with glowing golden heart.
+      const staff = kit.part('weapon', 'armR', [0, b.hand, 1])
       staff.box([0, 0, -3], [1, 1, 13], 'stem').box([1, 0, 6], [2, 1, 7], 'leaf')
       for (let i = 0; i < 6; i++) {
         const a = (i / 6) * Math.PI * 2
         staff.ellipsoid(
-          [0.5 + Math.sin(a) * 2, 2, 14.5 + Math.cos(a) * 2],
-          [1.4, 1.1, 1.4],
+          [0.5 + Math.sin(a) * 2.1, 2, 14.5 + Math.cos(a) * 2.1],
+          [1.5, 1.2, 1.5],
           i % 2 ? 'petal' : 'petalLight'
         )
       }
-      staff.ellipsoid([0.5, 2, 14.5], [1.2, 1.4, 1.2], '*bloom')
+      staff.ellipsoid([0.5, 2, 14.5], [1.3, 1.5, 1.3], '*bloom')
     }
   },
-  pose: (input) => bipedPose(input, { attack: 'cast', stride: 0.4, bob: 0.6 })
+  pose: (input) => bipedPose(input, { attack: 'bloom', stride: 0.4, bob: 0.6 })
 }

@@ -2,13 +2,16 @@ import { bipedPose, strike, track, type StackDesign } from '../StackDesign'
 import { human } from './common'
 
 /**
- * 火薬の工兵 — a stout powder engineer with brass goggles on a leather cap, a soot-streaked
- * orange coat and apron, standing beside a squat bronze cannon on two spoked wheels.
+ * 火薬の工兵 — a stout powder engineer in a bright saffron coat, dark leather apron, and glowing
+ * cyan-lensed brass goggles, separated cleanly from a dark gunmetal-iron & gleaming brass wheeled
+ * cannon with a deep black bore and bright gold muzzle ring.
  */
 export const cannon: StackDesign = {
   type: 'cannon',
   voxel: 2,
   walkDistance: 26,
+  portraitCrop: 0.64,
+  portraitYaw: -0.35,
   shadow: [11, 8],
   emitter: { part: 'barrel', at: [0, 0, 11] },
   blueprint: {
@@ -18,20 +21,21 @@ export const cannon: StackDesign = {
       eye: '#26170e',
       shine: '#ffffff',
       cheek: '#e6825c',
-      coat: '#f59536',
-      coatDark: '#bf651b',
-      apron: '#6b442a',
-      cap: '#7d4c26',
-      goggle: '#f0b82e',
-      lens: '#6be3ff',
-      boot: '#3b2418',
-      bronze: '#d48d33',
-      bronzeDark: '#875118',
-      bore: '#1c130e',
-      wood: '#8a5628',
-      iron: '#596470',
+      coat: '#f5982e',
+      coatDark: '#bf6515',
+      apron: '#543522',
+      cap: '#6b3e1e',
+      goggle: '#f7c534',
+      '*lens': '#7aefff',
+      boot: '#301d14',
+      gunmetal: '#4a5566',
+      gunmetalLight: '#8596ad',
+      brass: '#f0b830',
+      bore: '#121018',
+      wood: '#855024',
+      iron: '#2e3542',
       beard: '#b04819',
-      '*fuse': '#ffd936'
+      '*fuse': '#ffe040'
     },
     build(kit) {
       const b = human(
@@ -49,50 +53,53 @@ export const cannon: StackDesign = {
           sleeve: 'coat',
           hands: 'skin'
         },
-        { torsoHalf: 5, torsoDepth: 3, legs: 5 }
+        { torsoHalf: 5, torsoDepth: 3, legs: 5, headRadius: 4.8 }
       )
-      b.head.paint((x, y, z) => (y <= 2 && z >= 1 ? 'beard' : undefined))
-      // Leather cap with goggles pushed up on the brow.
-      b.head.fill([-6, 6, -6], [5, 10, 5], 'cap', (x, y, z) => Math.hypot(x / 4.7, (y - 6) / 3.6, z / 4.5) <= 1)
+      b.head.paint((x, y, z) => (y <= 1 && z >= 2 ? 'beard' : undefined))
+      // Leather cap with bright gleaming cyan goggles pushed onto brow.
+      b.head.fill([-6, 7, -6], [5, 10, 5], 'cap', (x, y, z) => Math.hypot(x / 5.0, (y - 6.8) / 3.6, z / 4.8) <= 1)
       for (const x of [-3, 1])
         b.head
-          .box([x, 7, 4], [x + 1, 8, 4], 'goggle')
-          .set(x, 7, 5, 'lens')
-          .set(x + 1, 8, 5, 'lens')
-      b.head.paint((x, y, z, c) => (y === 7 && z < 4 && Math.hypot(x + 0.5, z + 0.5) > 3.6 ? 'goggle' : undefined))
-      // Apron and soot.
-      b.torso.box([-3, 0, 4], [2, 5, 4], 'apron').box([-3, 5, 4], [-3, 5, 4], 'coatDark')
+          .box([x, 7, 4], [x + 1, 8, 5], 'goggle')
+          .set(x, 7, 5, '*lens')
+          .set(x + 1, 8, 5, '*lens')
+      b.head.paint((x, y, z) => (y === 7 && z < 4 && Math.hypot(x + 0.5, z + 0.5) > 3.8 ? 'goggle' : undefined))
+      b.torso.box([-3, 0, 4], [2, 5, 4], 'apron')
       b.hips.box([-3, -3, 4], [2, 1, 4], 'apron')
-      // Linstock in the right hand with a glowing slow match.
-      const stick = kit.part('weapon', 'armR', [0, b.hand, 0])
-      stick.box([0, 0, -1], [0, 0, 7], 'wood').box([0, 1, 7], [0, 1, 7], '*fuse')
-      // Cannon on its carriage, its own root on the ground to the engineer's right and front.
-      const carriage = kit.part('carriage', undefined, [-6, 0, 7])
+      // Linstock with glowing slow-match.
+      const stick = kit.part('weapon', 'armR', [0, b.hand, 1])
+      stick.box([0, 0, -1], [1, 1, 7], 'wood').box([0, 1, 7], [1, 2, 7], '*fuse')
+      // Wheeled gunmetal-iron cannon set slightly further out (-8) for clear daylight gap from torso!
+      const carriage = kit.part('carriage', undefined, [-8, 0, 6])
       carriage.box([-2, 2, -5], [1, 3, 4], 'wood')
       for (const x of [-4, 3]) {
         carriage.fill(
           [x, 0, -3],
           [x, 6, 3],
           'wood',
-          (cx, y, z) => Math.hypot(y - 3, z) <= 3 && Math.hypot(y - 3, z) > 2
+          (cx, y, z) => Math.hypot(y - 3, z) <= 3.1 && Math.hypot(y - 3, z) > 1.9
         )
         carriage.fill(
           [x, 0, -3],
           [x, 6, 3],
           'iron',
           (cx, y, z) =>
-            Math.hypot(y - 3, z) <= 1 || ((Math.abs(y - 3) < 0.6 || Math.abs(z) < 0.6) && Math.hypot(y - 3, z) <= 2.6)
+            Math.hypot(y - 3, z) <= 1.1 ||
+            ((Math.abs(y - 3) < 0.6 || Math.abs(z) < 0.6) && Math.hypot(y - 3, z) <= 2.6)
         )
       }
-      const barrel = kit.part('barrel', 'carriage', [0, 5, -1])
-      barrel.fill([-3, -3, -5], [3, 3, 11], 'bronze', (x, y, z) => {
-        const r = 2.9 - Math.max(0, z) * 0.05
+      const barrel = kit.part('barrel', 'carriage', [0, 5.5, -1])
+      barrel.fill([-3, -3, -5], [3, 3, 10], 'gunmetal', (x, y, z) => {
+        const r = 3.0 - Math.max(0, z) * 0.04
         return Math.hypot(x, y) <= r && z <= 10
       })
-      barrel.fill([-3, -3, 9], [3, 3, 10], 'bronzeDark', (x, y, z) => Math.hypot(x, y) <= 3.3)
-      barrel.fill([-1, -1, 10], [0, 0, 10], 'bore', (x, y) => Math.hypot(x, y) <= 1.2)
-      barrel.fill([-3, -3, -5], [3, 3, -4], 'bronzeDark', (x, y) => Math.hypot(x, y) <= 2.4)
-      barrel.box([0, 3, -3], [0, 3, -3], '*fuse')
+      // Metallic top highlight stripe + bright gleaming brass bands & muzzle rim + deep dark bore!
+      barrel.box([-1, 2, -3], [1, 3, 8], 'gunmetalLight')
+      barrel.fill([-3, -3, 9], [3, 3, 10], 'brass', (x, y) => Math.hypot(x, y) <= 3.4)
+      barrel.fill([-3, -3, 1], [3, 3, 2], 'brass', (x, y) => Math.hypot(x, y) <= 3.1)
+      barrel.fill([-2, -2, 10], [1, 1, 11], 'bore', (x, y) => Math.hypot(x + 0.5, y + 0.5) <= 1.7)
+      barrel.fill([-3, -3, -5], [3, 3, -4], 'iron', (x, y) => Math.hypot(x, y) <= 2.5)
+      barrel.box([0, 3, -3], [0, 4, -3], '*fuse')
     }
   },
   pose: (input) => {
@@ -100,7 +107,6 @@ export const cannon: StackDesign = {
     if (input.motion === 'attack') {
       const ms = input.seconds * 1000
       const cue = input.cueMs
-      // The engineer touches the match to the vent, the barrel kicks back on the cue.
       pose.armR = {
         rx: track(ms, [
           [0, 0],
@@ -128,8 +134,8 @@ export const cannon: StackDesign = {
               [cue + 500, 0]
             ])
           : 0
-      pose.barrel = { z: -2.5 * kick, rx: -0.12 - 0.25 * kick }
-      pose.carriage = { z: -1 * kick }
+      pose.barrel = { z: -2.8 * kick, rx: -0.12 - 0.28 * kick }
+      pose.carriage = { z: -1.2 * kick }
     } else pose.barrel = { rx: -0.12 }
     return pose
   }

@@ -1,84 +1,97 @@
 import { bipedPose, type StackDesign } from '../StackDesign'
 
 /**
- * おなかオーガ — a big round-bellied ogre with a tiny topknot, one tusk poking up, a patched
- * loincloth with a rope belt, and a knotty tree-trunk club studded with nails.
+ * おなかオーガ — an imposing broad-bellied ogre on the unified voxel=2 grid with clean warm-bronze
+ * skin, heavy brow over glowing red-orange eyes, twin upturned tusks, patched loincloth and a giant
+ * iron-studded tree-trunk club.
  */
 export const ogre: StackDesign = {
   type: 'ogre',
-  voxel: 2.4,
+  voxel: 2,
   walkDistance: 28,
-  shadow: [11, 9],
+  portraitCrop: 0.66,
+  portraitYaw: -0.35,
+  shadow: [12, 10],
   blueprint: {
     id: 'ogre',
     colors: {
-      skin: '#db9369',
-      skinDark: '#a6623f',
-      belly: '#f5c79e',
-      eye: '#1c120a',
-      tusk: '#fff9e6',
-      hair: '#3d1f12',
-      cloth: '#528738',
-      patch: '#d94836',
-      rope: '#e0b35e',
-      wood: '#875126',
-      woodDark: '#543014',
-      nail: '#dce4eb',
-      foot: '#8f5236'
+      skin: '#cf835b',
+      skinDark: '#965436',
+      belly: '#edb88c',
+      brow: '#783e26',
+      '*eye': '#ff6a24',
+      pupil: '#1c0b08',
+      tusk: '#fff8e0',
+      hair: '#331a10',
+      cloth: '#467834',
+      patch: '#d43d32',
+      rope: '#deb054',
+      wood: '#7d4922',
+      woodDark: '#4d2b12',
+      nail: '#e6eef5',
+      foot: '#7d452c'
     },
     build(kit) {
-      const hips = kit.part('hips', undefined, [0, 5, 0])
+      const hips = kit.part('hips', undefined, [0, 6, 0])
       hips
-        .box([-6, -2, -4], [5, 1, 4], 'cloth')
-        .box([2, -2, 5], [3, -1, 5], 'patch')
-        .box([-6, 1, -4], [5, 1, 4], 'rope')
+        .box([-7, -2, -5], [6, 1, 5], 'cloth')
+        .box([2, -2, 6], [4, 0, 6], 'patch')
+        .box([-7, 1, -5], [6, 2, 5], 'rope')
       for (const [name, x] of [
-        ['legL', 3],
-        ['legR', -3]
+        ['legL', 3.5],
+        ['legR', -3.5]
       ] as const) {
         const leg = kit.part(name, 'hips', [x, -1, 0])
-        leg.box([-2, -4, -2], [1, 0, 2], 'skinDark').box([-2, -4, -2], [1, -4, 3], 'foot')
+        leg.box([-2, -5, -2], [1, 0, 2], 'skinDark').box([-2, -5, -2], [1, -4, 4], 'foot')
       }
-      const torso = kit.part('torso', 'hips', [0, 1.5, 0])
+      const torso = kit.part('torso', 'hips', [0, 2, 0])
       torso.fill(
-        [-8, 0, -6],
-        [7, 11, 7],
+        [-9, 0, -7],
+        [8, 13, 8],
         'skin',
-        (x, y, z) => Math.hypot(x / 7.4, (y - 4.5) / 6.5, (z - 0.5) / 6.2) <= 1
+        (x, y, z) => Math.hypot(x / 8.6, (y - 5.5) / 7.5, (z - 0.5) / 7.2) <= 1
       )
       torso.fill(
-        [-6, 0, 0],
-        [5, 9, 8],
+        [-7, 0, 0],
+        [6, 10, 9],
         'belly',
-        (x, y, z) => Math.hypot(x / 5.2, (y - 4) / 5, (z - 2) / 5) <= 1 && z > 2.5
+        (x, y, z) => Math.hypot(x / 6.2, (y - 4.8) / 5.8, (z - 2.2) / 5.8) <= 1 && z > 3
       )
-      torso.set(-1, 4, 7, 'skinDark')
-      const head = kit.part('head', 'torso', [0, 10, 1])
-      head.fill([-5, 0, -4], [4, 7, 5], 'skin', (x, y, z) => Math.hypot(x / 4.4, (y - 3.4) / 3.8, (z - 0.5) / 4.2) <= 1)
-      for (const x of [-2, 1]) head.face(x, 4, 'eye')
-      head.face(-3, 3, 'skinDark').face(2, 3, 'skinDark')
-      head.box([-1, 2, 5], [0, 3, 5], 'skinDark')
-      head.box([1, 1, 4], [1, 3, 4], 'tusk')
-      head.box([-1, 7, -1], [0, 9, 0], 'hair').box([-1, 10, -2], [0, 10, 0], 'hair')
+      torso.box([-1, 4, 8], [0, 5, 8], 'skinDark')
+
+      const head = kit.part('head', 'torso', [0, 12, 1.5])
+      head.fill([-6, 0, -5], [5, 8, 6], 'skin', (x, y, z) => Math.hypot(x / 5.2, (y - 4) / 4.4, (z - 0.5) / 5.0) <= 1)
+      // Heavy protruding ogre brow + glowing eyes + broad nose + twin upturned tusks.
+      head.box([-5, 5, 2], [4, 6, 6], 'brow')
+      head.box([-4, 3, 4], [-3, 4, 5], '*eye').box([2, 3, 4], [3, 4, 5], '*eye')
+      head.set(-3, 3, 5, 'pupil').set(2, 3, 5, 'pupil')
+      head.box([-1, 2, 5], [0, 4, 6], 'skinDark')
+      head.box([-4, 1, 5], [-3, 3, 6], 'tusk').box([2, 1, 5], [3, 3, 6], 'tusk')
+      // Side ears & topknot.
+      head.box([-6, 3, -1], [-5, 5, 1], 'skinDark').box([4, 3, -1], [5, 5, 1], 'skinDark')
+      head.box([-1, 8, -2], [0, 11, 0], 'hair').box([-2, 11, -3], [1, 12, 0], 'hair')
+
       for (const [name, x] of [
-        ['armL', 8],
-        ['armR', -8]
+        ['armL', 9.5],
+        ['armR', -9.5]
       ] as const) {
-        const arm = kit.part(name, 'torso', [x, 9, 0])
-        arm.box([-2, -9, -2], [1, 0, 1], 'skin').box([-2, -11, -2], [1, -9, 2], 'skinDark')
+        const arm = kit.part(name, 'torso', [x, 10.5, 0])
+        arm.box([-2, -10, -2], [1, 0, 2], 'skin').box([-2, -13, -2], [1, -10, 2], 'skinDark')
       }
-      const club = kit.part('weapon', 'armR', [0, -10.5, 0])
-      club.box([0, 0, -2], [0, 0, 4], 'woodDark')
-      club.fill([-3, -3, 4], [3, 3, 14], 'wood', (x, y, z) => Math.hypot(x, y) <= 1.4 + (z - 4) * 0.17)
+
+      const club = kit.part('weapon', 'armR', [0, -12, 0])
+      club.box([-1, -1, -2], [1, 1, 5], 'woodDark')
+      club.fill([-4, -4, 5], [4, 4, 17], 'wood', (x, y, z) => Math.hypot(x, y) <= 1.6 + (z - 5) * 0.19)
       for (const [x, y, z] of [
-        [2, 0, 10],
-        [-3, 1, 12],
-        [0, 2, 13],
-        [1, -3, 11],
-        [-1, 2, 8]
+        [3, 0, 12],
+        [-4, 1, 14],
+        [0, 3, 15],
+        [1, -4, 13],
+        [-2, 2, 9],
+        [2, 2, 16]
       ])
-        club.set(x, y, z, 'nail')
+        club.box([x, y, z], [x, y, z + 1], 'nail')
     }
   },
-  pose: (input) => bipedPose(input, { attack: 'sweep', stride: 0.35, bob: 1.1, heavy: true, armSpread: 0.22 })
+  pose: (input) => bipedPose(input, { attack: 'sweep', stride: 0.35, bob: 1.2, heavy: true, armSpread: 0.24 })
 }

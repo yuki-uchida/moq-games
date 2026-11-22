@@ -89,7 +89,8 @@ if (params.has('portraits')) {
   for (const type of types) {
     const img = document.createElement('img')
     img.src = stackPortrait(STACK_DESIGNS[type], 128)
-    img.style.cssText = 'width:128px;height:128px;background:#263340;margin:4px;border-radius:50%;image-rendering:pixelated'
+    img.style.cssText =
+      'width:128px;height:128px;background:radial-gradient(circle at 38% 30%,#3b5169 0%,#1d2836 78%,#141d26 100%);margin:5px;border-radius:50%;border:2px solid #526b85;box-sizing:border-box;image-rendering:pixelated'
     document.querySelector('#stage')!.append(img)
   }
   document.body.dataset.ready = 'true'
