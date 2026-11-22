@@ -34,7 +34,7 @@ for (const role of roles)
         await page.screenshot({ path: info.outputPath(`${motion}-direction-${direction}.png`) })
       }
       fs.writeFileSync(info.outputPath(`${motion}-playback.json`), JSON.stringify(samples, null, 2))
-      expect(samples.every((s: any) => s.actor.meshes > 0)).toBe(true)
+      expect(samples.every((s: any) => s.actor.slices > 0)).toBe(true)
       expect(samples.some((s: any) => s.seconds > 0)).toBe(true)
     }
     expect(errors).toEqual([])
@@ -79,7 +79,7 @@ test('live game restores and renders caster formation', async ({ page }, info) =
           (window as any)
             .towerDefenseDiagnostics()
             .modelRendering.units.filter(
-              (u: any) => ['mage', 'frost', 'healer'].includes(u.type) && u.visible && u.meshes > 0
+              (u: any) => ['mage', 'frost', 'healer'].includes(u.type) && u.visible && u.slices > 0
             ).length
       )
     )

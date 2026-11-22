@@ -1,13 +1,11 @@
 import { preparationPause, preparationWait, preparationGpu } from './CampaignPreparation'
-import type { ModelMotion } from './ModelUnitVisual'
-import { prepareFadePrograms } from './FadePrograms'
 import { SpecialAbilityVisual } from './SpecialAbilityVisual'
 import { ImpactVfx, impactFrame, impactStyle, impactDuration } from './ImpactVfx'
 import { SPECIALS } from '../game/SpecialAbilities'
 import { createBattlefieldModelLighting, type ModelEnvironmentLighting } from './ModelEnvironmentLighting'
 import { orientBoardCanvas } from './BoardCanvas'
 import { COMPACT_BOARD_TOP_BLEED, createBoardCamera, configureBoardCamera } from './BoardCamera'
-import { ModelUnitLayer, type ModelRoster } from './ModelUnitLayer'
+import { StackUnitLayer, type StackRoster } from './stack/StackUnitLayer'
 import { expressiveMotion } from './ExpressiveMotion'
 import { canInitiateDamage, healingAction, HEALING_ACTIONS, temporaryPaladinHeal } from '../game/HealingActions'
 import { BulkArtSwitch, type ArtMode, type ArtSwitchBody, type ArtSwitchStatus } from './BulkArtSwitch'
@@ -73,8 +71,8 @@ import type { SpriteMotion, SpriteDirection } from './UnitSprites'
 import { AnimationTimer, attackPose, hitPose } from './CombatMotion'
 import { AttackPlayback } from './AttackPlayback'
 import { ATTACK_PROFILES, attackTimeScale, attackAssetElapsedMs, ENEMY_ACTION_TIME_SCALE } from '../game/AttackProfiles'
-import { approvedMazeArt, loadApprovedMazeArt } from './ApprovedMazeArt'
-import { createBaseArt, createFieldArt, createProjectedFieldArt, createSandbagArt } from './WorldArt'
+import { StackStage } from './stack/stage/StackStage'
+import { createSandbagArt } from './WorldArt'
 import { RuntimeAtlasCache } from './RuntimeAtlasCache'
 import {
   authoredEmitter,
@@ -124,7 +122,7 @@ interface UnitVisual {
   defenderHandle?: HTMLButtonElement
 }
 export interface AuthoredAtlasOptions {
-  readonly models?: ModelRoster
+  readonly models?: StackRoster
   readonly deathAnimations?: Readonly<Record<string, CorpseDeathAnimation>>
   readonly environmentTrial?: boolean
   readonly environmentBase?: URL
@@ -315,7 +313,7 @@ export class GameRenderer {
   private modelEnvironment?: ModelEnvironmentLighting
   private renderer: THREE.WebGLRenderer
   private disposed = false
-  private models?: ModelUnitLayer
+  private models?: StackUnitLayer
   private modelsActive = false
   private campaignJobs = new Set<string>()
   private campaignPreparing = false
@@ -327,11 +325,7 @@ export class GameRenderer {
   /** Starts campaign downloads early; GPU warm-up still happens only in prepareCampaign. */
   prefetchCampaign(base: URL, state: CampaignPreparationState): void {
     if (this.disposed) return
-    if (state.layoutRevision === 4) void loadApprovedMazeArt().catch(() => {})
     if (!this.models) return
-    const types = campaignRequiredTypes(state)
-    for (const [type, definition] of Object.entries(this.models.roster))
-      if (types.has(type as UnitType)) for (const source of Object.values(definition.clips)) this.models.cache.requestSource(source)
     for (const url of new Set(Object.values(this.effectClips))) this.atlasCache.get(url, false)
     void this.specialAbilities.preload(base).catch(() => {})
   }
@@ -348,18 +342,13 @@ export class GameRenderer {
       const failure = this.assetErrors['model:shader'] ?? this.assetErrors['model:gpu']
       if (failure) throw new Error(failure)
     }
-    const map = !only && state.layoutRevision === 4
-      ? preparationWait(loadApprovedMazeArt(), signal).then(() => undefined, (error: unknown) =>
-        error instanceof Error ? error.message : 'Approved map could not load')
-      : undefined
+    // The sprite-stacked battlefield is procedural; there is no map image to wait for.
+    const map: Promise<void> | undefined = undefined
     const finishMap = async () => {
-      const failure = await map
+      await map
       check()
-      this.approvedMapError = failure
-      if (!failure && this.field.layoutRevision === 4 && !this.background?.material.map?.name.startsWith('approved-map:field:'))
-        this.refreshBackground()
     }
-    if (this.campaignPrepared && [...types].every((type) => Object.keys(this.models?.roster[type]?.clips ?? {}).every((motion) => this.campaignJobs.has(`${type}:${motion}`)))) {
+    if (this.campaignPrepared && [...types].every((type) => !this.models?.roster[type] || this.campaignJobs.has(type))) {
       if (map) {
         progress(0, 1)
         await finishMap()
@@ -370,14 +359,12 @@ export class GameRenderer {
     // A new stage is not ready until its GPU fence and shared effects also succeed.
     this.campaignPrepared = false
     this.campaignPreparing = true
-    const jobs = Object.entries(this.models?.roster ?? {}).filter(([type]) => types.has(type as UnitType)).flatMap(([type, definition]) =>
-      Object.entries(definition.clips).map(([motion, source]) => ({ type: type as UnitType, motion: motion as ModelMotion, source }))
-    )
+    // Sprite stacks are procedural: one job builds a figure and compiles its draw once.
+    const jobs = Object.keys(this.models?.roster ?? {}).filter((type) => types.has(type as UnitType)).map((type) => ({ type: type as UnitType }))
     const effects = this.models ? [undefined, ...new Set(Object.values(this.effectClips))] : []
     const total = jobs.length * 2 + effects.length + 1 + (map ? 1 : 0)
     let done = 0
     progress(done, total)
-    this.models?.cache.retryFailed()
     if (this.models) for (const key of Object.keys(this.models.errors)) delete this.models.errors[key]
     const draw = async (root: THREE.Object3D) => {
       check()
@@ -397,36 +384,19 @@ export class GameRenderer {
     try {
       check()
       this.modelEnvironment?.ensure(this.renderer)
-      // Request all sources together; the shared cache limits model decoding concurrency.
-      for (const job of jobs) this.models!.cache.requestSource(job.source)
-      // Warm each available motion while the remaining queued sources continue loading.
       for (const job of jobs) {
-        const start = performance.now()
-        while (true) {
-          check()
-          const status = this.models!.cache.requestSource(job.source)
-          if (status === 'ready') break
-          if (status === 'error' || performance.now() - start > 90_000)
-            throw new Error(`素材を読み込めませんでした: ${job.type} / ${job.motion}`)
-          await preparationPause(signal)
-        }
-        progress(++done, total)
         check()
-        const key = `${job.type}:${job.motion}`
-        if (!this.campaignJobs.has(key)) {
-          const visual = this.models!.campaignVisual(job.type)
-          if (!visual.sample({ motion: job.motion, seconds: 0, loop: false, facingX: 0, facingY: 1, boss: false }))
-            throw new Error(`姿勢を準備できませんでした: ${key}`)
+        progress(++done, total)
+        if (!this.campaignJobs.has(job.type)) {
+          const visual = this.models!.warmVisual(job.type)
+          if (!visual?.sample({ motion: 'idle', seconds: 0, facingX: 0, facingY: 1, boss: false }))
+            throw new Error(`姿勢を準備できませんでした: ${job.type}`)
           await draw(visual.root)
-          visual.rememberInitialBounds(job.motion)
-          visual.root.visible = true
-          try { await preparationWait(prepareFadePrograms(this.renderer, visual.root, this.camera, this.scene, signal), signal) }
-          finally { visual.root.visible = false }
           visual.setAppearance(0.5)
           try { await draw(visual.root) }
           finally { visual.setAppearance(1) }
           check()
-          this.campaignJobs.add(key)
+          this.campaignJobs.add(job.type)
         }
         progress(++done, total)
         await preparationPause(signal)
@@ -539,7 +509,7 @@ export class GameRenderer {
       modelRendering: this.models?.diagnostics() ?? null,
       campaignPreparation: { ready: this.campaignPrepared, completed: this.campaignJobs.size },
       artSwitch: this.artSwitchStatus,
-      soldierArt: this.models ? 'gltf-mesh' : this.unitTrials.soldier ? '3d-trial' : '2d',
+      soldierArt: this.models ? 'sprite-stack' : this.unitTrials.soldier ? '3d-trial' : '2d',
       unitArt: Object.fromEntries(
         UNIT_TRIAL_TYPES.map((type) => [type, this.unitTrials[type] ? '3d-trial' : '2d'])
       ) as Record<AlliedTrialType, '3d-trial' | '2d'>,
@@ -664,9 +634,8 @@ export class GameRenderer {
   private projectileLaunches = new Map<string, Point>()
   private textures = new Map<string, THREE.CanvasTexture>()
   private impactVfx = new ImpactVfx()
-  private approvedMapLoading = false
-  private approvedMapError?: string
   private background?: PixelMesh
+  private stage = new StackStage(this.scene)
   private environmentEnabled = false
   private environmentLoading = false
   private environmentError?: string
@@ -731,7 +700,7 @@ export class GameRenderer {
     private host: HTMLElement,
     authored: AuthoredAtlasOptions = {}
   ) {
-    if (authored.models) this.models = new ModelUnitLayer(this.scene, authored.models)
+    if (authored.models) this.models = new StackUnitLayer(this.scene, authored.models)
     this.environmentEnabled = authored.environmentTrial ?? false
     this.environmentBase = authored.environmentBase
     this.standardClips = authored.clips ?? {}
@@ -943,7 +912,7 @@ export class GameRenderer {
       }
     })
     for (const texture of this.textures.values()) texture.dispose()
-    this.background?.material.map?.dispose()
+    this.stage.dispose()
     for (const slot of this.slots) slot.element.remove()
     for (const label of this.healthLabels.values()) label.element.remove()
     for (const visual of this.units.values()) visual.defenderHandle?.remove()
@@ -1063,14 +1032,13 @@ export class GameRenderer {
     return {
       enabled: this.environmentEnabled,
       active:
-        (this.field.layoutRevision === 4
-          ? this.background?.material.map?.name.startsWith('approved-map:field:') === true
-          : this.field.layoutRevision === 3) ||
+        this.field.layoutRevision === 4 ||
+        this.field.layoutRevision === 3 ||
         (!!this.environmentArt && environmentMatchesField(this.environmentArt, this.field)),
       layoutRevision: this.field.layoutRevision,
-      loading: this.environmentLoading || (this.field.layoutRevision === 4 && this.approvedMapLoading),
+      loading: this.environmentLoading,
       waitingForPreparation: !!this.pendingEnvironment,
-      error: this.field.layoutRevision === 4 ? this.approvedMapError : this.environmentError
+      error: this.environmentError
     }
   }
 
@@ -1167,43 +1135,9 @@ export class GameRenderer {
   }
 
   private refreshBackground(): void {
-    const { width, height, id, version, layoutRevision } = this.field
-    if (this.background) {
-      this.scene.remove(this.background)
-      this.background.geometry.dispose()
-      this.background.material.map?.dispose()
-      this.background.material.dispose()
-    }
-    const mazeArt = layoutRevision === 4 ? approvedMazeArt() : undefined
-    if (layoutRevision === 4 && !mazeArt && !this.approvedMapLoading && !this.approvedMapError) {
-      this.approvedMapLoading = true
-      void loadApprovedMazeArt()
-        .then(() => {
-          this.approvedMapLoading = false
-          if (!this.disposed && this.field.layoutRevision === 4) this.refreshBackground()
-        })
-        .catch((error: unknown) => {
-          this.approvedMapLoading = false
-          this.approvedMapError = error instanceof Error ? error.message : 'Approved map could not load'
-        })
-    }
-    const projected = layoutRevision === 4
-    const fieldArt = projected
-      ? createProjectedFieldArt(id, this.modelPresentationAspect, mazeArt)
-      : createFieldArt(id, false, version, mazeArt ?? this.environmentArt?.field, layoutRevision)
-    const texture = this.texture(fieldArt)
-    texture.name = mazeArt
-      ? `approved-map:field:${id}:${version}:${layoutRevision}${projected ? ":projected" : ""}`
-      : this.environmentArt
-        ? `environment:field:${id}:${version}:${layoutRevision}`
-        : `field:${id}:${version}:${layoutRevision}`
-    this.background = new THREE.Mesh(
-      new THREE.PlaneGeometry(width, height),
-      new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, toneMapped: false })
-    )
-    this.background.scale.y = -1
-    this.background.position.set(width / 2, height / 2, -20)
-    this.scene.add(this.background)
+    // Ground, scenery, the monster den and the castle are one sprite-stacked stage.
+    this.stage.build(this.field, this.modelPresentationAspect, this.modelPresentationScale)
+    this.background = this.stage.ground
   }
 
   private paintEnvironmentProp(mesh: PixelMesh, sprite: EnvironmentSprite, anchor: Point): void {
@@ -1304,41 +1238,24 @@ export class GameRenderer {
 
   prepareDefenders(types: readonly AllyType[]): void {
     if (!this.models || !this.modelsActive || this.disposed || performance.now() < this.defenderRetryAt) return
-    const pending = types.filter(
-      (type) =>
-        !this.preparedDefenders.has(type) && !this.compilingDefenders.has(type) && this.models!.prepareDefender(type)
-    )
+    const pending = types.filter((type) => !this.preparedDefenders.has(type) && !this.compilingDefenders.has(type))
     if (!pending.length) return
+    const visuals = pending.flatMap((type) => {
+      const visual = this.models!.warmVisual(type)
+      if (!visual) return []
+      visual.sample({ motion: 'idle', seconds: 0, facingX: 0, facingY: 1, boss: false })
+      return [visual]
+    })
     for (const type of pending) this.compilingDefenders.add(type)
-    this.models.setDefenderPreparationVisible(pending, false)
-    // Keep pending shaders out of normal draws; warm once before enabling a drag.
+    // Every figure shares one program; compile it off board before enabling a drag.
     void Promise.resolve()
       .then(() => {
         if (this.disposed) return
-        this.models?.setDefenderPreparationVisible(pending, true)
-        try {
-          return this.renderer.compileAsync(this.scene, this.camera)
-        } finally {
-          this.models?.setDefenderPreparationVisible(pending, false)
-        }
+        for (const visual of visuals) this.scene.add(visual.root)
+        return this.renderer.compileAsync(this.scene, this.camera)
       })
       .then(() => {
         if (this.disposed) return
-        this.models?.setDefenderPreparationVisible(pending, true)
-        this.renderer.render(this.scene, this.camera)
-        this.models?.setDefenderPreparationVisible(pending, false)
-        // Preview transparency has its own shader variants; compile before accepting a drag.
-        this.models?.setDefenderPreparationOpacity(pending, 0.55)
-        this.models?.setDefenderPreparationVisible(pending, true)
-        try {
-          return this.renderer.compileAsync(this.scene, this.camera)
-        } finally {
-          this.models?.setDefenderPreparationVisible(pending, false)
-        }
-      })
-      .then(() => {
-        if (this.disposed) return
-        this.models?.setDefenderPreparationOpacity(pending, 1)
         for (const type of pending) {
           this.preparedDefenders.add(type)
           delete this.assetErrors[`defenderPreparation:${type}`]
@@ -1350,28 +1267,9 @@ export class GameRenderer {
         for (const type of pending) this.assetErrors[`defenderPreparation:${type}`] = String(error)
       })
       .finally(() => {
-        this.models?.setDefenderPreparationOpacity(pending, 1)
-        this.models?.setDefenderPreparationVisible(pending, false)
+        for (const visual of visuals) visual.root.removeFromParent()
         for (const type of pending) this.compilingDefenders.delete(type)
       })
-  }
-
-  private prepareActorMotion(): void {
-    if (this.campaignPreparing || this.disposed || !this.modelsActive || this.motionPreparation || this.compilingDefenders.size) return
-    try {
-      const pending = this.models?.prepareNextMotion(
-        (root) => this.renderer.compileAsync(root, this.camera, this.scene),
-        (root) => prepareFadePrograms(this.renderer, root, this.camera, this.scene)
-      )
-      if (pending) {
-        // Failure leaves the same lease available for the normal draw path.
-        this.motionPreparation = pending.catch(() => undefined).finally(() => {
-          this.motionPreparation = undefined
-        })
-      }
-    } catch {
-      // Background preparation must not prevent the current pose from rendering.
-    }
   }
 
   assetStatus: 'ready' | 'loading' | 'error' = 'loading'
@@ -2104,36 +2002,26 @@ export class GameRenderer {
   }
 
   private renderBase(s: Readonly<GameState>): void {
-    // Revision 4 already contains the approved castle; avoid a second sprite castle.
-    this.baseVisual!.visible =
-      this.field.layoutRevision !== 4 || !this.background?.material.map?.name.startsWith('approved-map:field:')
+    // The castle is part of the sprite-stacked stage; the legacy sprite stays hidden.
+    this.baseVisual!.visible = false
     const ratio = s.playerBaseHp / CONFIG.baseHp,
       tier = ratio < 0.34 ? 0 : ratio < 0.67 ? 1 : 2
     if (this.previousBaseHp !== undefined && s.playerBaseHp < this.previousBaseHp) this.baseHitAt = s.time
     this.previousBaseHp = s.playerBaseHp
-    if (tier !== this.baseHpTier) {
-      const key = `base:${s.fieldId}:${s.battlefieldVersion}:${s.layoutRevision === undefined ? 1 : s.layoutRevision}:${tier}`
-      let texture = this.textures.get(key)
-      if (!texture) {
-        texture = this.texture(createBaseArt(s.fieldId, [0.2, 0.5, 1][tier]))
-        texture.name = key
-        this.textures.set(key, texture)
-      }
-      this.baseVisual!.material.map =
-        this.environmentArt?.props[`gate-${['critical', 'damaged', 'intact'][tier]}`].texture ?? texture
-      this.baseHpTier = tier
-    }
+    this.baseHpTier = tier
     const age = s.time - this.baseHitAt
     const shake = s.phase === 'assault' && age >= 0 && age < 0.18 ? Math.sin(age * 90) * 2.5 * (1 - age / 0.18) : 0
     const base = fieldFor(s).gate
     this.baseVisual!.position.set(base.x + shake, base.y - 56, base.y / 10 - 1)
+    this.stage.setBase(tier, shake)
+    this.stage.update(s.time)
   }
   setPresentation(scale: number, aspect: number): void {
     if (this.modelPresentationScale === scale && this.modelPresentationAspect === aspect) return
     this.modelPresentationScale = scale
     this.modelPresentationAspect = aspect
     this.models?.setPresentation(scale, aspect)
-    if (this.fieldId && this.field.layoutRevision === 4) this.refreshBackground()
+    if (this.fieldId) this.refreshBackground()
   }
   worldPointAt(clientX: number, clientY: number): Point | null {
     const bounds = this.host.getBoundingClientRect(),
@@ -2938,7 +2826,7 @@ export class GameRenderer {
         body.visible = false
         const visible = this.models.visible(unit.id)
         updateDataset(label, {
-          artSource: visible ? 'gltf-mesh' : 'loading',
+          artSource: visible ? 'sprite-stack' : 'loading',
           renderedMotion: this.models.motion(unit.id) ?? '',
           healingAnimation: unit.type === 'paladin' && currentAttack?.kind === 'heal' ? 'neutral-held-3d-pose' : ''
         })
@@ -2980,7 +2868,6 @@ export class GameRenderer {
     // Title/launch dialogs cover the battlefield. Do not upload textures or compile
     // its shaders before the player starts; this also keeps cold startup responsive.
     if (interactive) this.drawBoard()
-    if (interactive) this.prepareActorMotion()
     this.lastRenderedSimulationTime = s.time
   }
 

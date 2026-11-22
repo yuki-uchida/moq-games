@@ -1,4 +1,6 @@
 import type { CampaignLoadIssue } from '../progression/CampaignStorage'
+import { archer, mage, soldier } from '../rendering/stack/designs'
+import { stackPortrait } from '../rendering/stack/StackPortrait'
 
 export function titleSaveStatus(hasRun: boolean, issue: CampaignLoadIssue, legacy: boolean): string {
   if (hasRun) return '保存した遠征を再開できます。'
@@ -8,8 +10,10 @@ export function titleSaveStatus(hasRun: boolean, issue: CampaignLoadIssue, legac
   return '保存した遠征はありません。'
 }
 
-export function titleScreenMarkup(artBase: URL): string {
-  const portrait = (type: string) => new URL(`title/${type}.png`, artBase).href
+export function titleScreenMarkup(_artBase?: URL): string {
+  // The three heroes are painted from their own sprite stacks, turned toward the menu.
+  const figures = { soldier: stackPortrait(soldier, 384, { yaw: -0.5 }), archer: stackPortrait(archer, 384, { yaw: -0.8 }), mage: stackPortrait(mage, 384, { yaw: -0.3 }) }
+  const portrait = (type: keyof typeof figures) => figures[type]
   return `<dialog id="title-screen" class="title-screen" aria-labelledby="game-title">
     <div class="title-atmosphere" aria-hidden="true"></div>
     <header class="title-topline"><a href="../../../index.html" aria-label="MoQ Games ホームへ戻る" title="MoQ Games ホームへ戻る">← <span class="sr-only">MoQ Games</span></a></header>

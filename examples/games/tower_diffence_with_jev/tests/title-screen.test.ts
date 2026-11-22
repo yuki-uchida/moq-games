@@ -14,7 +14,9 @@ describe('title screen', () => {
     expect(html).not.toContain('extra.html')
     expect(html).not.toContain('EXTRA')
     expect(html).toContain('href="../../../index.html"')
-    expect(html).toContain('https://example.test/moq-games/tower-defense-art/title/soldier.png')
+    // The heroes are painted from their sprite stacks, never loaded from retired title art.
+    expect(html).toContain('class="title-character title-soldier"')
+    expect(html).not.toContain('title/soldier.png')
   })
   it('keeps the title action-first without decorative explanations', () => {
     const html = titleScreenMarkup(new URL('https://example.test/art/'))

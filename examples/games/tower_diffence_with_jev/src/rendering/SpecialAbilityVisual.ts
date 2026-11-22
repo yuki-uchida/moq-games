@@ -1,4 +1,4 @@
-import { loadGLTF } from './ModelAssetCache'
+import { loadEffectGLTF as loadGLTF } from './EffectGltf'
 import * as THREE from 'three'
 import { ALLY_TYPES, type AllyType, type GameState, type Point } from '../game/model'
 import { SPECIALS, specialReady } from '../game/SpecialAbilities'

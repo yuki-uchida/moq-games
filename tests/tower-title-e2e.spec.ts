@@ -6,8 +6,6 @@ import { towerPath } from './tower-defense-e2e-arrange'
 
 const rawSave = (page: import('@playwright/test').Page) => page.evaluate(() => localStorage.getItem('tower-jev-v3'))
 const approvedMap = '**/tower-defense-map/approved-meadow.png'
-const remainingEntryWork = (page: import('@playwright/test').Page) =>
-  page.locator('#campaign-loading-progress').evaluate((bar: HTMLProgressElement) => bar.max - bar.value)
 
 function entrySave(revision: LayoutRevision) {
   const checkpoint = new GameEngine({ decide: async () => null }, freshSave(), 'desert', 42, () => 0, undefined, 2, revision).exportCheckpoint()!
@@ -16,7 +14,7 @@ function entrySave(revision: LayoutRevision) {
 }
 
 for (const entry of ['new', 'continue'] as const) {
-  test(`${entry} waits for approved map before the first playable frame`, async ({ page }, info) => {
+  test(`${entry} plays on the sprite-stacked battlefield from its first playable frame`, async ({ page }, info) => {
     const saved = entry === 'continue' ? entrySave(4) : null
     await page.addInitScript((saved) => {
       if (saved) localStorage.setItem('tower-jev-v3', saved)
@@ -29,34 +27,25 @@ for (const entry of ['new', 'continue'] as const) {
       }
       requestAnimationFrame(sample)
     }, saved)
-    let requests = 0
-    const gate = Promise.withResolvers<void>()
-    await page.route(approvedMap, async (route) => {
-      requests++
-      await gate.promise
-      await route.continue()
+    const requests: string[] = []
+    await page.route(approvedMap, (route) => {
+      requests.push(route.request().url())
+      return route.abort()
     })
     await page.goto(towerPath)
-    try {
-      if (entry === 'new') {
-        await page.locator('#title-new').click()
-        await page.locator('#start').click()
-      } else await page.locator('#title-continue').click()
-      await expect.poll(() => requests, { timeout: 180_000 }).toBe(1)
-      await expect.poll(() => remainingEntryWork(page), { timeout: 180_000 }).toBe(1)
-      await expect(page.locator('#campaign-loading')).toBeVisible()
-      expect(await rawSave(page)).toBe(saved)
-    } finally { gate.resolve() }
-    await expect.poll(() => page.evaluate(() => Reflect.get(window, 'firstPlayableMap'))).toBe(
-      `approved-map:field:${entry === 'new' ? 'meadow' : 'desert'}:2:4:projected`)
-    expect(await remainingEntryWork(page)).toBe(0)
-    expect(requests).toBe(1)
-    await page.screenshot({ path: info.outputPath('approved-entry.png') })
+    if (entry === 'new') {
+      await page.locator('#title-new').click()
+      await page.locator('#start').click()
+    } else await page.locator('#title-continue').click()
+    await expect.poll(() => page.evaluate(() => Reflect.get(window, 'firstPlayableMap')), { timeout: 180_000 }).toBe(
+      `stack-stage:field:${entry === 'new' ? 'meadow' : 'desert'}:2:4`)
+    expect(requests).toEqual([])
+    await page.screenshot({ path: info.outputPath('stack-stage-entry.png') })
   })
 }
 
-for (const revision of [1, 2, 3] as const) {
-  test(`Continue at layout v${revision} does not request approved map`, async ({ page }) => {
+for (const revision of [1, 2, 3, 4] as const) {
+  test(`Continue at layout v${revision} never requests the retired map image`, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.addInitScript((saved) => localStorage.setItem('tower-jev-v3', saved), entrySave(revision))
     const requests: string[] = []
@@ -72,66 +61,6 @@ for (const revision of [1, 2, 3] as const) {
     expect(requests).toEqual([])
   })
 }
-
-test('cancelled entry stays at the title even after the approved map arrives', async ({ page }) => {
-  await page.addInitScript(() => Object.defineProperty(navigator, 'connection', { value: { saveData: true } }))
-  const gate = Promise.withResolvers<void>()
-  let requests = 0
-  await page.route(approvedMap, async (route) => {
-    requests++
-    await gate.promise
-    await route.continue()
-  })
-  await page.goto(towerPath)
-  await page.locator('#title-new').click()
-  await page.waitForTimeout(500)
-  expect(requests).toBe(0)
-  const firstResponse = page.waitForResponse((response) => response.url().endsWith('/approved-meadow.png'))
-  try {
-    await page.locator('#start').click()
-    await expect.poll(() => requests).toBe(1)
-    await expect.poll(() => remainingEntryWork(page), { timeout: 180_000 }).toBe(1)
-    await page.locator('#campaign-loading-cancel').click()
-  } finally { gate.resolve() }
-  const response = await firstResponse
-  expect(response.ok()).toBe(true)
-  await response.finished()
-  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
-  await expect(page.locator('#title-screen')).toBeVisible()
-  await expect(page.locator('.game-layout')).toHaveAttribute('inert', '')
-  expect(await rawSave(page)).toBeNull()
-  expect(requests).toBe(1)
-})
-
-test('a failed approved map permits play and a later entry retries', async ({ page }) => {
-  await page.addInitScript(() => Object.defineProperty(navigator, 'connection', { value: { saveData: true } }))
-  let requests = 0
-  const gate = Promise.withResolvers<void>()
-  await page.route(approvedMap, async (route) => {
-    if (++requests === 1) return route.fulfill({ status: 503, body: 'unavailable' })
-    await gate.promise
-    return route.continue()
-  })
-  await page.goto(towerPath)
-  await page.locator('#title-new').click()
-  await page.locator('#start').click()
-  await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
-  const background = () => page.evaluate(() => Reflect.get(window, 'towerDefenseDiagnostics')().battlefield.backgroundSource)
-  await expect.poll(background).toBe('field:meadow:2:4')
-  expect(requests).toBe(1)
-  const saved = await rawSave(page)
-  await page.goBack()
-  try {
-    await page.locator('#title-continue').click()
-    await expect.poll(() => requests).toBe(2)
-    await expect(page.getByRole('progressbar', { name: '出撃の準備' })).toBeVisible()
-    await expect(page.locator('#campaign-loading-status')).toHaveText('0 / 1')
-    expect(await rawSave(page)).toBe(saved)
-  } finally { gate.resolve() }
-  await expect.poll(background).toBe('approved-map:field:meadow:2:4:projected')
-  await expect(page.locator('#campaign-loading-status')).toHaveText('1 / 1')
-  expect(requests).toBe(2)
-})
 
 test('title has exact menu, no-save explanation, New game and back', async ({ page }) => {
   await page.goto(towerPath)
@@ -251,16 +180,16 @@ test('explicit Save and Title restore this tab after another tab replaces an unc
 test('viewer opens from catalog and returns without changing a saved campaign', async ({ page }) => {
   await page.goto('/moq-games/')
   await page.evaluate(() => localStorage.setItem('tower-jev-v3', '{preserved'))
-  await page.getByRole('link', { name: '3Dモデルビューワー', exact: true }).click()
+  await page.getByRole('link', { name: 'キャラクタービューワー', exact: true }).click()
   await expect(page).toHaveURL(/extra\.html$/)
-  await expect(page).toHaveTitle('3Dモデルビューワー · MoQ Games')
+  await expect(page).toHaveTitle('キャラクタービューワー · MoQ Games')
   await expectModel(page, 'soldier', 'idle')
   expect(await rawSave(page)).toBe('{preserved')
   await page.reload()
   await expectModel(page, 'soldier', 'idle')
   await page.getByRole('link', { name: '← ゲーム一覧' }).click()
   await expect(page).toHaveTitle('MoQ Games')
-  await page.getByRole('link', { name: '3Dモデルビューワー', exact: true }).click()
+  await page.getByRole('link', { name: 'キャラクタービューワー', exact: true }).click()
   await page.goBack()
   await expect(page).toHaveTitle('MoQ Games')
   expect(await rawSave(page)).toBe('{preserved')
@@ -283,11 +212,11 @@ const expectModel = async (page: import('@playwright/test').Page, role: string, 
       })
       return [value?.state, value?.role, value?.motion, value?.actor?.renderer, value?.actor?.visible]
     })
-    .toEqual(['ready', role, motion, 'gltf-mesh', true])
+    .toEqual(['ready', role, motion, 'sprite-stack', true])
   const value = await diagnostics(page)
-  expect(value.actor.meshes).toBeGreaterThan(0)
+  expect(value.actor.slices).toBeGreaterThan(0)
   expect(value.renderer.triangles).toBeGreaterThan(0)
-  // Normalized actors should fill the inspection camera, even with custom skinning.
+  // The figure fills the inspection camera.
   expect(value.camera.distance).toBeLessThan(1000)
 }
 
@@ -319,9 +248,9 @@ test('EXTRA exposes every runtime role/action and never requests sheets, audio o
     const actions = await page
       .locator('#viewer-motion option')
       .evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value))
-    if (role === 'healer') expect(actions).toEqual(['idle', 'walk', 'heal', 'death'])
+    if (role === 'healer') expect(actions).toEqual(['idle', 'walk', 'heal', 'special', 'death'])
     if (role === 'dragon') expect(actions).toContain('breath')
-    if (role === 'slime') expect(actions).toContain('death')
+    if (role === 'slime') expect(actions).not.toContain('death')
     if (role === 'soldier') expect(actions).toContain('death')
     for (const action of actions) {
       await page.locator('#viewer-motion').selectOption(action)
@@ -372,9 +301,9 @@ test('EXTRA orbits, zooms, resets, pauses and uses non-looping authored death', 
   const paused = (await diagnostics(page)).seconds
   await page.waitForTimeout(150)
   expect((await diagnostics(page)).seconds).toBe(paused)
-  await page.locator('#viewer-role').selectOption('slime')
+  await page.locator('#viewer-role').selectOption('tank')
   await page.locator('#viewer-motion').selectOption('death')
-  await expectModel(page, 'slime', 'death')
+  await expectModel(page, 'tank', 'death')
   await page.locator('#viewer-speed').selectOption('2')
   await expect(page.locator('#viewer-play')).toHaveText('Play', {
     timeout: 5000
@@ -451,7 +380,7 @@ test('EXTRA survives rapid switches and repeated pagehide/pageshow without leaki
   await page.goto('/moq-games/')
   await page.evaluate(() => localStorage.setItem('tower-jev-v3', '{preserve-me'))
   for (let i = 0; i < 3; i++) {
-    await page.getByRole('link', { name: '3Dモデルビューワー', exact: true }).click()
+    await page.getByRole('link', { name: 'キャラクタービューワー', exact: true }).click()
     await expectModel(page, 'soldier', 'idle')
     expect(initializationErrors).toEqual([])
     await page.locator('#viewer-role').selectOption('dragon')
@@ -459,7 +388,8 @@ test('EXTRA survives rapid switches and repeated pagehide/pageshow without leaki
     await page.locator('#viewer-role').selectOption('slime')
     await expectModel(page, 'slime', 'idle')
     const ownership = await diagnostics(page)
-    expect(ownership.cache.entries.reduce((sum: number, entry: any) => sum + entry.references, 0)).toBe(1)
+    // Only the selected figure is alive in the viewer.
+    expect(ownership.actor.design).toBe('slime')
     await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })))
     const stopped = await diagnostics(page)
     expect(stopped.disposed).toBe(true)
@@ -475,19 +405,6 @@ test('EXTRA survives rapid switches and repeated pagehide/pageshow without leaki
     expect(await rawSave(page)).toBe('{preserve-me')
     expect(initializationErrors).toEqual([])
   }
-})
-
-test('EXTRA reports a failed model and Retry loads the same action without sprite fallback', async ({ page }) => {
-  await page.route('**/models/soldier/*.glb*', (route) => route.abort())
-  await page.goto(extraPath)
-  await expect(page.locator('#viewer-status')).toContainText('読み込めません')
-  await expect(page.locator('#viewer-retry')).toBeVisible()
-  await expect(page.locator('#viewer-play')).toBeDisabled()
-  await page.unroute('**/models/soldier/*.glb*')
-  await page.locator('#viewer-retry').click()
-  await expectModel(page, 'soldier', 'idle')
-  await expect(page.locator('#viewer-play')).toBeEnabled()
-  await expect(page.locator('#viewer-retry')).toBeHidden()
 })
 
 test.describe('mobile EXTRA', () => {
@@ -529,25 +446,6 @@ test.describe('mobile EXTRA', () => {
   })
 })
 
-test('EXTRA ignores a late failed load after selecting a different model', async ({ page }) => {
-  let release!: () => void
-  const hold = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  await page.route('**/models/soldier/*.glb*', async (route) => {
-    await hold
-    await route.abort()
-  })
-  await page.goto(extraPath)
-  await expect(page.locator('#viewer-status')).toContainText('読み込み中')
-  await page.locator('#viewer-role').selectOption('slime')
-  await expectModel(page, 'slime', 'idle')
-  release()
-  await page.waitForTimeout(200)
-  await expectModel(page, 'slime', 'idle')
-  await expect(page.locator('#viewer-retry')).toBeHidden()
-})
-
 test('viewer loops attack and shows the same held ally death as gameplay', async ({ page }) => {
   await page.goto(extraPath)
   await page.locator('#viewer-motion').selectOption('attack')
@@ -566,20 +464,18 @@ test('viewer loops attack and shows the same held ally death as gameplay', async
   await page.screenshot({ path: 'test-results/viewer-ally-death.png' })
 })
 
-test('campaign models are not fetched on the still title but start downloading on the launch screen', async ({
-  page
-}) => {
-  // The animated title demo downloads its own battle (tower-title-attract-e2e); the still title fetches nothing.
+test('the still title and the launch screen never fetch character models', async ({ page }) => {
+  // Every figure is a procedural sprite stack; no unit model is ever downloaded.
   await page.emulateMedia({ reducedMotion: 'reduce' })
   const modelRequests: string[] = []
   page.on('request', (request) => {
-    if (/\.(glb|gltf)(\?|$)/.test(request.url())) modelRequests.push(request.url())
+    if (/\/models\/|\/(?:archer|soldier|mage|title)\/.*\.(png|json)(\?|$)/.test(request.url())) modelRequests.push(request.url())
   })
   await page.goto(towerPath)
   await expect(page.locator('#title-screen')).toBeVisible()
   await page.waitForTimeout(1500)
-  expect(modelRequests).toEqual([])
   await page.locator('#title-new').click()
   await expect(page.locator('#launch')).toBeVisible()
-  await expect.poll(() => modelRequests.length, { timeout: 15_000 }).toBeGreaterThan(0)
+  await page.waitForTimeout(3000)
+  expect(modelRequests).toEqual([])
 })

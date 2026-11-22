@@ -211,26 +211,27 @@
 
 .title-character {
   position: absolute;
-  width: 65%;
+  width: 40%;
   max-width: none;
-  top: 12%;
+  top: 30%;
+  image-rendering: pixelated;
   transform: translateX(-50%);
   filter: drop-shadow(0 6px 10px #10271c99);
 }
 
 .title-archer {
-  left: 23%;
+  left: 24%;
 }
 
 .title-mage {
   left: 76%;
-  top: 15%;
+  top: 31%;
 }
 
 .title-soldier {
-  width: 99%;
-  left: 48%;
-  top: -3%;
+  width: 50%;
+  left: 50%;
+  top: 33%;
 }
 
 .title-screen[data-attract='running'] .title-atmosphere {

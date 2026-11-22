@@ -19,7 +19,7 @@ for (const viewport of [
     await expect(page).toHaveTitle('MoQ Games')
     await expect(page.getByRole('heading', { name: 'キャッスルナイツ', exact: true })).toBeVisible()
     await expect(page.getByRole('article')).toHaveCount(9)
-    await expect(page.getByRole('link', { name: '3Dモデルビューワー', exact: true })).toBeInViewport({ ratio: 1 })
+    await expect(page.getByRole('link', { name: 'キャラクタービューワー', exact: true })).toBeInViewport({ ratio: 1 })
     await expect(page.getByRole('link', { name: 'ゲームをプレイ: デスガイヤ' })).toHaveAttribute(
       'href',
       './examples/games/ember-grid/index.html'
@@ -183,7 +183,7 @@ test('all four cards are reachable in tab order', async ({ page }) => {
   await page.goto(root)
   await page.getByRole('link', { name: 'MoQ Games ホーム' }).focus()
   await page.keyboard.press('Tab')
-  await expect(page.getByRole('link', { name: '3Dモデルビューワー', exact: true })).toBeFocused()
+  await expect(page.getByRole('link', { name: 'キャラクタービューワー', exact: true })).toBeFocused()
   for (const title of ['キャッスルナイツ', 'デスガイヤ', 'うんこ大惨事', 'ウサギ・イヤ・ラビット']) {
     await page.keyboard.press('Tab')
     await expect(page.getByRole('link', { name: `ゲームをプレイ: ${title}`, exact: true })).toBeFocused()

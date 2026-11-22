@@ -43,7 +43,7 @@ test('snow, desert and volcanic terrain retain their colors without Canvas2D fil
       await page.locator('#title-continue').click()
       await expect(page.locator('#campaign-loading')).toBeHidden({ timeout: 180_000 })
       await expect.poll(() => page.evaluate(() => (window as any).towerDefenseDiagnostics().battlefield.backgroundSource))
-        .toBe(`approved-map:field:${biome}:2:4:projected`)
+        .toBe(`stack-stage:field:${biome}:2:4`)
       const field = page.locator('#field')
       const box = (await field.boundingBox())!
       // Sample open ground, clear of the gate, HUD, and any animated models.
@@ -86,7 +86,7 @@ test('compact battlefield fits every supported viewport without scrolling', asyn
             return (
               state.environment.active &&
               // The projected background is rebuilt asynchronously after each resize.
-              state.battlefield.backgroundSource === 'approved-map:field:meadow:2:4:projected' &&
+              state.battlefield.backgroundSource === 'stack-stage:field:meadow:2:4' &&
               Math.abs(field.right - field.left - (innerWidth - 24)) < 1 &&
               Math.abs(
                 state.modelRendering.presentation.aspect - state.displayGeometry.scaleX / state.displayGeometry.scaleY
@@ -98,7 +98,7 @@ test('compact battlefield fits every supported viewport without scrolling', asyn
       const mapState = await page.evaluate(() => (window as any).towerDefenseDiagnostics())
       expect(mapState.newCampaignLayoutRevision).toBe(4)
       expect(mapState.battlefield).toMatchObject({ layoutRevision: 4, width: 1280, height: 920 })
-      expect(mapState.battlefield.backgroundSource).toBe('approved-map:field:meadow:2:4:projected')
+      expect(mapState.battlefield.backgroundSource).toBe('stack-stage:field:meadow:2:4')
       expect(mapState.environment.error).toBeUndefined()
       const geometry = await page.evaluate(() => {
         const map = document.getElementById('map-scroll')!
@@ -476,7 +476,7 @@ test('recomposed roads retain equal horizontal and vertical widths at every scre
         page.evaluate(() => {
           const state = (window as any).towerDefenseDiagnostics()
           return (
-            state.battlefield.backgroundSource === 'approved-map:field:meadow:2:4:projected' &&
+            state.battlefield.backgroundSource === 'stack-stage:field:meadow:2:4' &&
             Math.abs(state.modelRendering.presentation.aspect - (innerWidth - 24) / 1280) < 0.00001
           )
         })
@@ -531,7 +531,7 @@ test('proportional real models, picking, HP text and preview rings reflow withou
   await page.screenshot({ path: test.info().outputPath('expanded-field-placement-range.png') })
   await page.mouse.up()
   const label = page.locator('.unit-health.player[data-unit-type="soldier"]')
-  await expect(label).toHaveAttribute('data-art-source', 'gltf-mesh')
+  await expect(label).toHaveAttribute('data-art-source', 'sprite-stack')
   const rawSave = await page.evaluate(() => localStorage.getItem('tower-jev-v3'))
   for (const viewport of [
     { width: 2048, height: 1173 },

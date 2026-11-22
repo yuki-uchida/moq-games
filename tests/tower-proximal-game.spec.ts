@@ -102,7 +102,7 @@ for (const role of ['wolf', 'brute', 'ogre'] as const) {
           lastFrame = d.gpu.frames
           Object.assign(review.errors, d.modelRendering.errors)
           for (const u of d.modelRendering.units) {
-            if (u.type !== role || !u.visible || u.meshes <= 0) continue
+            if (u.type !== role || !u.visible || u.slices <= 0) continue
             if (!review.motions.includes(u.motion)) review.motions.push(u.motion)
             const sample = { frame: lastFrame, simulationTime: d.simulationTime, motion: u.motion, seconds: u.seconds }
             if (review.samples.length < 1200) review.samples.push(sample)
@@ -131,7 +131,7 @@ for (const role of ['wolf', 'brute', 'ogre'] as const) {
             (role) =>
               (window as any)
                 .towerDefenseDiagnostics()
-                .modelRendering.units.some((u: any) => u.type === role && u.visible && u.meshes > 0),
+                .modelRendering.units.some((u: any) => u.type === role && u.visible && u.slices > 0),
             role
           ),
         { timeout: 300000 }
