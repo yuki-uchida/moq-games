@@ -8,8 +8,8 @@ const files = [
   resolve(root, 'node_modules/three/LICENSE'),
   resolve(root, 'node_modules/vite/LICENSE.md'),
   resolve(root, '.generated/moqt-sdk/THIRD-PARTY-NOTICES.txt'),
-  resolve(root, 'licenses/moq-wasm-0.1.0-notices.txt'),
-  resolve(root, 'licenses/vite-8.3.4-license.md')
+  resolve(root, 'licenses/moq-wasm-0.8.0-notices.txt'),
+  resolve(root, 'licenses/vite-8.3.8-license.md')
 ]
 const notices = await Promise.all(
   files.map(async (path) => `${path.slice(root.length + 1)}\n${await readFile(path, 'utf8')}`)
