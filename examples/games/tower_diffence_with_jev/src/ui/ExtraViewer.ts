@@ -1,11 +1,9 @@
-import { ModelEnvironmentLighting } from '../rendering/ModelEnvironmentLighting'
 import './extra-viewer.css'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { UNIT_MODEL_CATALOG } from '../rendering/models/catalog'
 import type { UnitType } from '../game/model'
-import type { ModelMotion } from '../rendering/ModelUnitVisual'
-import { ModelViewerSession, viewerMotions, viewerRoleLabel, viewerRoles } from './ModelViewerSession'
+import type { StackMotion } from '../rendering/stack/StackDesign'
+import { StackViewerSession, viewerMotions, viewerRoleLabel, viewerRoles } from './StackViewerSession'
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(`viewer-${id}`)! as T
 const role = element<HTMLSelectElement>('role')
@@ -21,12 +19,12 @@ const speed = element<HTMLSelectElement>('speed')
 /** Recreated on BFCache restore; pagehide releases GPU, loaders, listeners and clock. */
 function mount() {
   const listeners = new AbortController()
-  const session = new ModelViewerSession()
+  const session = new StackViewerSession()
   let renderer: THREE.WebGLRenderer
   try {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
   } catch {
-    status.textContent = '3D表示を開始できませんでした。WebGLが使えるブラウザーで開いてください。'
+    status.textContent = '表示を開始できませんでした。WebGLが使えるブラウザーで開いてください。'
     role.disabled = motion.disabled = true
     session.dispose()
     return () => listeners.abort()
@@ -34,7 +32,6 @@ function mount() {
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2))
   renderer.outputColorSpace = THREE.SRGBColorSpace
   const scene = new THREE.Scene()
-  const modelEnvironment = new ModelEnvironmentLighting(scene)
   scene.add(session.root)
   scene.add(new THREE.HemisphereLight(0xffffff, 0x52785e, 2.5))
   const key = new THREE.DirectionalLight(0xfff4db, 3)
@@ -79,7 +76,7 @@ function mount() {
   function fitCamera() {
     // SkinnedMesh updates bindMatrixInverse here, before CPU bounds inspect the pose.
     scene.updateMatrixWorld(true)
-    const bounds = new THREE.Box3().setFromObject(session.root)
+    const bounds = session.bounds()
     if (bounds.isEmpty()) return
     const center = bounds.getCenter(new THREE.Vector3())
     const radius = Math.max(24, bounds.getSize(new THREE.Vector3()).length() / 2)
@@ -109,27 +106,25 @@ function mount() {
       session.state === 'error'
         ? session.error
         : ready
-          ? '3Dモデル · ' + viewerRoleLabel(session.role!)
-          : '3Dモデルを読み込み中…'
+          ? 'スプライトスタック · ' + viewerRoleLabel(session.role!)
+          : '準備中…'
     if (status.textContent !== message) status.textContent = message
     if (status.dataset.state !== session.state) status.dataset.state = session.state
   }
   function selectMotion() {
     fitted = false
     lastTime = undefined
-    session.select(role.value as UnitType, motion.value as ModelMotion)
+    session.select(role.value as UnitType, motion.value as StackMotion)
     updateUI()
   }
   function selectRole() {
-    const definition = UNIT_MODEL_CATALOG[role.value as UnitType]
-    const available = definition ? viewerMotions(definition) : []
+    const available = viewerMotions(role.value as UnitType)
     const previous = motion.value
     motion.replaceChildren(...available.map((value) => new Option(value, value)))
-    motion.value = available.includes(previous as ModelMotion) ? previous : (available[0] ?? '')
+    motion.value = available.includes(previous as StackMotion) ? previous : (available[0] ?? '')
     motion.disabled = !available.length
     const missing = []
-    if (!available.includes('death')) missing.push('death は未収録（本編ではフェード）')
-    else if (!definition?.clips.death) missing.push('death は本編と同じ横倒れ動作')
+    if (!available.includes('death')) missing.push('敵は倒れると本編ではディザで消えます')
     if (role.value === 'healer') missing.push('回復動作は heal')
     element('missing').textContent = missing.join(' · ')
     selectMotion()
@@ -161,7 +156,7 @@ function mount() {
   on(canvas, 'webglcontextlost', (event) => {
     event.preventDefault()
     session.pause()
-    status.textContent = '3D表示が中断されました。ページを再読み込みしてください。'
+    status.textContent = '表示が中断されました。ページを再読み込みしてください。'
     cancelAnimationFrame(frameRequest)
     play.disabled = restart.disabled = timeline.disabled = true
   })
@@ -199,7 +194,6 @@ function mount() {
     if (session.state === 'ready' && !fitted) fitCamera()
     updateUI()
     controls.update()
-    modelEnvironment.ensure(renderer)
     renderer.render(scene, camera)
     renderCount++
     frameRequest = requestAnimationFrame(frame)
@@ -215,7 +209,6 @@ function mount() {
       distance: camera.position.distanceTo(controls.target)
     },
     renderer: { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles },
-    modelEnvironment: modelEnvironment.diagnostics(),
     disposed
   })
   Object.assign(window, { __extraViewerDiagnostics: diagnostics })
@@ -228,7 +221,6 @@ function mount() {
     controls.dispose()
     session.dispose()
     scene.clear()
-    modelEnvironment.dispose()
     renderer.dispose()
   }
 }

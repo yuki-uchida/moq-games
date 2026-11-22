@@ -12,8 +12,8 @@ import {
 import { distanceToRoadUnion } from '../game/BattlefieldRoutes'
 import { overlapsScenery } from '../game/FieldScenery'
 import { CommanderPresentation, type CommanderView } from './CommanderPresentation'
-import { RuntimeAtlasCache } from './RuntimeAtlasCache'
-import { loadRuntimeWholeFrameAtlas, type WholeFrameAtlas } from './WholeFrameAtlas'
+import { StackVisual } from './stack/StackVisual'
+import { commander } from './stack/designs/commander'
 
 export function commanderAnchor(
   fieldId: FieldId,
@@ -42,25 +42,10 @@ export function commanderAnchor(
 }
 
 export class CommanderVisual {
-  private readonly group = new THREE.Group()
-  private readonly body = new THREE.Mesh(
-    new THREE.PlaneGeometry(128, 112),
-    new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide })
-  )
-  private readonly shadow = new THREE.Mesh(
-    new THREE.CircleGeometry(1, 24),
-    new THREE.MeshBasicMaterial({
-      color: 0x17291e,
-      transparent: true,
-      opacity: 0.22,
-      depthWrite: false,
-      side: THREE.DoubleSide
-    })
-  )
+  private readonly figure = new StackVisual(commander, 0.4)
   private readonly bubble = document.createElement('div')
   private readonly nameLabel = document.createElement('div')
   private readonly presentation = new CommanderPresentation()
-  private readonly clips: { idle: string; order: string }
   private disposed = false
   private lastView?: CommanderView
   private renderedMotion: 'idle' | 'attack' | null = null
@@ -70,12 +55,10 @@ export class CommanderVisual {
   diagnostics() {
     return {
       ...this.lastView,
-      visible: this.group.visible,
+      visible: this.figure.root.visible,
       nameVisible: !this.nameLabel.hidden,
       nameZIndex: this.nameLabel.style.zIndex,
-      bodyPosition: this.body.position.toArray(),
-      bodyScale: this.body.scale.toArray(),
-      bodyRotation: this.body.rotation.toArray(),
+      renderer: 'sprite-stack',
       renderedMotion: this.renderedMotion,
       renderedFrameIndex: this.renderedFrameIndex,
       clipReadiness: { ...this.clipReadiness },
@@ -87,23 +70,13 @@ export class CommanderVisual {
   constructor(
     private readonly host: HTMLElement,
     private readonly scene: THREE.Scene,
-    base: URL,
-    private readonly cache = new RuntimeAtlasCache(loadRuntimeWholeFrameAtlas, 4 * 1024 * 1024)
+    _base?: URL
   ) {
-    this.clips = {
-      idle: new URL('commander/monster_commander-idle-e.json', base).href,
-      order: new URL('commander/monster_commander-order-e.json', base).href
-    }
-    this.group.name = 'jev-commander'
-    this.group.visible = false
+    this.figure.root.name = 'jev-commander'
+    this.figure.root.userData.presentationOnly = true
+    this.figure.setPresentation(1.5, 1)
     this.bubble.hidden = true
-    this.group.userData.presentationOnly = true
-    this.body.name = 'jev-commander-body'
-    this.body.scale.y = -1
-    this.shadow.scale.set(18, 7, 1)
-    this.shadow.position.z = -0.1
-    this.group.add(this.shadow, this.body)
-    scene.add(this.group)
+    scene.add(this.figure.root)
     this.bubble.className = 'commander-order'
     this.bubble.setAttribute('aria-live', 'polite')
     this.bubble.setAttribute('aria-label', 'Jev指揮官の直近の指示')
@@ -143,10 +116,7 @@ export class CommanderVisual {
 
   render(state: Readonly<GameState>, jevMode: boolean): void {
     if (this.disposed) return
-    this.cache.beginFrame()
-    const idle = jevMode ? this.validAtlas(this.clips.idle, 'idle') : undefined
-    const order = jevMode ? this.validAtlas(this.clips.order, 'attack') : undefined
-    if (jevMode) this.clipReadiness = { idle: !!idle, order: !!order }
+    if (jevMode) this.clipReadiness = { idle: true, order: true }
     this.renderedMotion = null
     this.renderedFrameIndex = null
     const view = this.presentation.view(state, jevMode, state.commanderOrder)
@@ -155,52 +125,41 @@ export class CommanderVisual {
     this.bubble.dataset.attribution = view.attribution
     this.bubble.style.color = adjusted ? '#ffc078' : '#fff3cf'
     this.bubble.setAttribute('aria-label', adjusted ? 'Jevの選択と異なる出撃指示' : 'Jev指揮官の直近の指示')
-    this.group.visible = false
+    this.figure.root.visible = false
     this.nameLabel.hidden = true
     this.bubble.hidden = false
     if (!view.visible) {
       this.bubble.hidden = true
-      this.cache.endFrame()
       return
     }
     const anchor = commanderAnchor(state.fieldId, state.battlefieldVersion, state.layoutRevision)
-    const atlas = view.motion === 'order' ? (order ?? idle) : idle
-    this.group.position.set(anchor.x, anchor.y, (anchor.y - 24) / 10)
-    this.group.visible = !!atlas
-    this.nameLabel.hidden = !atlas
+    const ordering = view.motion === 'order'
+    this.figure.setPosition(anchor.x, anchor.y)
+    // The marshal watches the road from beside the enemy entrance, facing the battlefield.
+    this.figure.sample({
+      motion: ordering ? 'attack' : 'idle',
+      seconds: ordering ? view.elapsedMs / 1000 : state.time,
+      time: state.time,
+      facingX: 1,
+      facingY: 0.6,
+      boss: false
+    })
+    this.nameLabel.hidden = false
     this.nameLabel.style.left = `${anchor.x}px`
     this.nameLabel.style.top = `${anchor.y + 10}px`
-    if (atlas) {
-      this.body.position.set(atlas.anchorOffset.x, atlas.anchorOffset.y, 0)
-      const sample = atlas.sample(view.motion === 'order' && order ? view.elapsedMs : state.time * 1000)
-      this.body.material.map = sample.texture
-      this.renderedMotion = atlas === order ? 'attack' : 'idle'
-      this.renderedFrameIndex = sample.frame.index
-    }
-    const failed = this.cache.error(this.clips.idle) || this.cache.error(this.clips.order)
+    this.renderedMotion = ordering ? 'attack' : 'idle'
+    this.renderedFrameIndex = ordering ? Math.floor(view.elapsedMs / (1000 / 12)) : 0
     this.bubble.dataset.gestureSource = view.gestureSource ?? ''
     this.bubble.dataset.supportStatus = view.support?.status ?? ''
     this.bubble.dataset.supportTargetId = String(view.support?.targetId ?? '')
     this.bubble.dataset.supportEffect = view.support?.effect ?? ''
-    this.bubble.dataset.asset = failed ? 'error' : atlas ? 'ready' : 'loading'
+    this.bubble.dataset.asset = 'ready'
     this.bubble.style.left = `${Math.min(fieldFor(state).width - 214, anchor.x + 28)}px`
     this.bubble.style.top = `${Math.max(8, anchor.y - (view.gestureSource === 'support' ? 136 : 84))}px`
     const text = view.text
     this.bubble.hidden = !text
     if (this.bubble.textContent !== text) this.bubble.textContent = text
-    this.bubble.title = failed ? '指揮官画像の読み込みに失敗しました' : atlas ? '' : '指揮官画像を読み込み中'
-    this.cache.endFrame()
-  }
-
-  private validAtlas(url: string, motion: 'idle' | 'attack'): WholeFrameAtlas | undefined {
-    const atlas = this.cache.get(url)
-    return atlas?.manifest.character === 'monster_commander' &&
-      atlas.manifest.direction === 'e' &&
-      atlas.manifest.motion === motion &&
-      atlas.manifest.events.length === 0 &&
-      atlas.manifest.loop === (motion === 'idle')
-      ? atlas
-      : undefined
+    this.bubble.title = ''
   }
 
   dispose(): void {
@@ -209,12 +168,7 @@ export class CommanderVisual {
     this.renderedMotion = null
     this.renderedFrameIndex = null
     this.clipReadiness = { idle: false, order: false }
-    this.cache.dispose()
-    this.scene.remove(this.group)
-    this.body.geometry.dispose()
-    this.body.material.dispose()
-    this.shadow.geometry.dispose()
-    this.shadow.material.dispose()
+    this.figure.dispose()
     this.bubble.remove()
     this.nameLabel.remove()
   }

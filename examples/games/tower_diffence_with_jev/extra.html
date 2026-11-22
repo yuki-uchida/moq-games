@@ -3,17 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>3Dモデルビューワー · MoQ Games</title>
+    <title>キャラクタービューワー · MoQ Games</title>
   </head>
   <body>
     <header class="extra-header">
-      <a href="../../../index.html">← ゲーム一覧</a><span>MoQ Games / 3Dモデルビューワー</span>
+      <a href="../../../index.html">← ゲーム一覧</a><span>MoQ Games / キャラクタービューワー</span>
     </header>
     <main class="extra-layout">
       <section class="extra-intro">
-        <h1>3Dモデルビューワー</h1>
-        <p>3D model viewer</p>
-        <p class="extra-note">本編と同じ3Dモデルと動作を確認できます。</p>
+        <h1>キャラクタービューワー</h1>
+        <p>Sprite stack character viewer</p>
+        <p class="extra-note">本編と同じスプライトスタックのキャラクターと動作を確認できます。</p>
       </section>
       <section class="extra-controls" aria-label="Model selection">
         <label>Character<select id="viewer-role"></select></label>
@@ -21,13 +21,13 @@
         <button id="viewer-reset">Reset camera</button>
         <button id="viewer-retry" hidden>Retry</button>
       </section>
-      <section class="extra-stage" aria-label="3D model preview">
+      <section class="extra-stage" aria-label="Character preview">
         <canvas
           id="viewer-canvas"
           tabindex="0"
-          aria-label="3D model. Drag to rotate, scroll or pinch to zoom. Arrow keys rotate; plus and minus zoom."
+          aria-label="Character. Drag to rotate, scroll or pinch to zoom. Arrow keys rotate; plus and minus zoom."
         ></canvas>
-        <p id="viewer-status" role="status">3Dモデルを読み込み中…</p>
+        <p id="viewer-status" role="status">準備中…</p>
       </section>
       <p class="extra-note">ドラッグで回転 · スクロール／ピンチで拡大 · 矢印キーで回転 · ＋／−で拡大縮小</p>
       <section class="extra-transport" aria-label="Playback">

@@ -66,7 +66,8 @@ import {
 import { RuleBasedAI, JevAI } from './ai/AIController'
 import { GameRenderer } from './rendering/GameRenderer'
 import { battlefieldPresentation } from './rendering/BattlefieldPresentation'
-import { UNIT_MODEL_CATALOG } from './rendering/models/catalog'
+import { STACK_DESIGNS } from './rendering/stack/designs'
+import { stackPortrait } from './rendering/stack/StackPortrait'
 import type { ArtMode } from './rendering/BulkArtSwitch'
 import { AssetStatusNotice } from './rendering/AssetStatusNotice'
 import { loadEnvironmentArtBundle, type EnvironmentArtBundle } from './rendering/EnvironmentArt'
@@ -82,7 +83,7 @@ import {
   type UnitTrialType,
   type UnitTrials
 } from './rendering/UnitArtTrial'
-import { authoredRosterClips, authoredPortrait } from './rendering/AuthoredRoster'
+import { authoredRosterClips } from './rendering/AuthoredRoster'
 import {
   freshRunFromProfile,
   resumeProgress,
@@ -219,9 +220,8 @@ const trialEnabled = Object.fromEntries(
   ])
 ) as Record<UnitTrialType, boolean>
 function displayPortrait(type: UnitType): string | undefined {
-  return ALL_TRIAL_TYPES.some((role) => role === type) && trialEnabled[type as UnitTrialType]
-    ? trialArts[type as UnitTrialType].portrait
-    : authoredPortrait(type, artBase)
+  // Portraits are painted from each figure's own sprite stack.
+  return stackPortrait(STACK_DESIGNS[type]) || undefined
 }
 const emblems = {
   cleared:
@@ -283,7 +283,7 @@ paintTitleLandscape($<HTMLCanvasElement>('title-landscape'))
 initializeFortificationIcons()
 $<HTMLInputElement>('relay').value = getPrimaryRelayUrl(DEFAULT_LOCAL_RELAY_A_URL)
 const renderer = new GameRenderer($('field'), {
-  models: useModelRenderer ? UNIT_MODEL_CATALOG : undefined,
+  models: useModelRenderer ? STACK_DESIGNS : undefined,
   clips: { ...authoredRosterClips(artBase), ...dragonBreathBodyClips(artBase) },
   commanderBase: artBase,
   environmentTrial: environmentTrialEnabled,
@@ -645,7 +645,7 @@ const launchDialog = $<HTMLDialogElement>('launch')
 const titleDialog = $<HTMLDialogElement>('title-screen')
 // Self-playing battle behind the title: its own engine and renderer, never this page's game.
 const titleAttract = new TitleAttract(titleDialog, artBase, () => ({
-  models: UNIT_MODEL_CATALOG,
+  models: STACK_DESIGNS,
   clips: { ...authoredRosterClips(artBase), ...dragonBreathBodyClips(artBase) },
   deathClips: authoredDeathClips(artBase),
   effectClips: authoredEffectClips(artBase),

@@ -452,9 +452,9 @@ jobs:
             await import('../../tests/tower-meshopt-equivalence.spec')
           } else if (process.env.BENCHMARK_SCENARIO === 'extra') {
             await import('../../tests/tower-title-e2e.spec')
-            await import('../../tests/tower-real3d-game.spec')
+            await import('../../tests/tower-sprite-stack-game.spec')
           } else {
-            await import('../../tests/tower-real3d-game.spec')
+            await import('../../tests/tower-sprite-stack-game.spec')
           }
 
           if (process.env.BENCHMARK_SCENARIO === 'extra') {
