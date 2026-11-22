@@ -28,6 +28,8 @@ export const ogre: StackDesign = {
       rope: '#deb054',
       wood: '#7d4922',
       woodDark: '#4d2b12',
+      clubStone: '#8f98a6',
+      clubStoneDark: '#4b5364',
       nail: '#e6eef5',
       foot: '#7d452c'
     },
@@ -83,7 +85,8 @@ export const ogre: StackDesign = {
 
       const club = kit.part('weapon', 'armR', [-1, -12, 1])
       club.box([-1, -1, -2], [1, 1, 5], 'woodDark')
-      club.fill([-4, -4, 5], [4, 4, 17], 'wood', (x, y, z) => Math.hypot(x, y) <= 1.6 + (z - 5) * 0.19)
+      club.fill([-4, -4, 5], [4, 4, 17], 'clubStone', (x, y, z) => Math.hypot(x, y) <= 1.6 + (z - 5) * 0.19)
+      club.box([-2, -2, 6], [1, 1, 9], 'clubStoneDark').box([-1, 2, 11], [1, 3, 14], 'clubStoneDark')
       for (const [x, y, z] of [
         [3, 0, 12],
         [-4, 1, 14],

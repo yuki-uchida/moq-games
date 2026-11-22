@@ -10,8 +10,8 @@ export const ranger: StackDesign = {
   type: 'ranger',
   voxel: 2,
   walkDistance: 30,
-  portraitCrop: 0.62,
-  portraitYaw: 0.42,
+  portraitCrop: 0.55,
+  portraitYaw: -0.45,
   shadow: [8, 6],
   emitter: { part: 'weapon', at: [0, 1, 12] },
   blueprint: {

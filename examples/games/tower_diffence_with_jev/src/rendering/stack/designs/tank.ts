@@ -10,8 +10,8 @@ export const tank: StackDesign = {
   type: 'tank',
   voxel: 2,
   walkDistance: 26,
-  portraitCrop: 0.62,
-  portraitYaw: -0.38,
+  portraitCrop: 0.52,
+  portraitYaw: -0.14,
   shadow: [10, 8],
   blueprint: {
     id: 'tank',
@@ -58,8 +58,8 @@ export const tank: StackDesign = {
         .box([-4, 5, 4], [3, 6, 4], 'gold')
         .box([-3, 3, 4], [2, 4, 4], 'visor')
         .box([-1, 1, 4], [0, 4, 4], 'visor')
-        .set(-2, 4, 4, '*eyeGlow')
-        .set(1, 4, 4, '*eyeGlow')
+        .box([-3, 3, 4], [-2, 4, 4], '*eyeGlow')
+        .box([1, 3, 4], [2, 4, 4], '*eyeGlow')
         .box([-1, 9, -3], [0, 11, 2], 'gold')
       // Broad sculpted overhanging cobalt-and-gold pauldrons + chest tabard (contrasts strongly on frost snow!).
       for (const x of [-8, 5])

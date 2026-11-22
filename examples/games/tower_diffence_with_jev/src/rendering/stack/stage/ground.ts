@@ -56,14 +56,14 @@ export const BIOMES: Record<FieldId, Biome> = {
     roadEdge: '#856542',
     roadOutline: '#4a3521',
     pebble: '#d1b58a',
-    slow: '#7e6043',
-    slowLight: '#917152',
-    slowBorder: '#57412d',
-    slowAccent: '#634b34',
+    slow: '#6b4c31',
+    slowLight: '#8a6743',
+    slowBorder: '#4a3524',
+    slowAccent: '#3f2a19',
     flowers: ['#f7eec8', '#f0c446', '#eb84a6'],
-    slotEdge: '#7cb368',
-    slotFill: '#4a7d43',
-    slotShadow: '#2e542b'
+    slotEdge: '#9ed18b',
+    slotFill: '#639f55',
+    slotShadow: '#2f5a2c'
   },
   desert: {
     noiseSeed: 389,
@@ -80,14 +80,14 @@ export const BIOMES: Record<FieldId, Biome> = {
     roadEdge: '#734f32',
     roadOutline: '#452d1b',
     pebble: '#cfa97a',
-    slow: '#855a30',
-    slowLight: '#9c6c3d',
+    slow: '#8a5c2f',
+    slowLight: '#bd9058',
     slowBorder: '#5c3c1e',
     slowAccent: '#6b4724',
     flowers: ['#739149', '#b88542'],
-    slotEdge: '#9e7340',
-    slotFill: '#ba945c',
-    slotShadow: '#7d5b32',
+    slotEdge: '#e7c795',
+    slotFill: '#c9a069',
+    slotShadow: '#7a5530',
     accentA: '#ad8652',
     accentB: '#916e40'
   },
@@ -111,9 +111,9 @@ export const BIOMES: Record<FieldId, Biome> = {
     slowBorder: '#315d78',
     slowAccent: '#d4f1ff',
     flowers: ['#8ccbe3', '#e1f0fa'],
-    slotEdge: '#7b9cb5',
-    slotFill: '#b3c8d9',
-    slotShadow: '#6b889e',
+    slotEdge: '#e2f1fa',
+    slotFill: '#aec8da',
+    slotShadow: '#66849b',
     accentA: '#5b9ab8',
     accentB: '#7ab8d4',
     accentC: '#d6f2ff',
@@ -134,14 +134,14 @@ export const BIOMES: Record<FieldId, Biome> = {
     roadEdge: '#877882',
     roadOutline: '#211b20',
     pebble: '#9c8d96',
-    slow: '#302938',
-    slowLight: '#42394c',
-    slowBorder: '#1f1a24',
-    slowAccent: '#e8682c',
+    slow: '#241c28',
+    slowLight: '#40334a',
+    slowBorder: '#120e17',
+    slowAccent: '#ff7a2e',
     flowers: ['#5e5059', '#4f434b'],
-    slotEdge: '#806d87',
-    slotFill: '#403647',
-    slotShadow: '#201a24',
+    slotEdge: '#9d8aa8',
+    slotFill: '#584960',
+    slotShadow: '#241d2b',
     // Molten magma pools & glowing branching fissures with 2-tier warm bounce glow.
     accentA: '#ffe570',
     accentB: '#ff6e24',
@@ -286,11 +286,15 @@ export function scenicPools(field: ResolvedBattlefield, aspect = 1): LandmarkPoo
   const queryRoad = roadQuery(paths, halfRoad + 56)
   const pools: LandmarkPool[] = []
   const ends = [field.entrance, field.gate]
-  for (let attempt = 0; attempt < 400 && pools.length < 4; attempt++) {
+  const volcanic = field.id === 'volcanic'
+  // Volcanic fields keep one hero lava lake plus two smaller vents instead of four equal basins.
+  const maxPools = volcanic ? 3 : 4
+  for (let attempt = 0; attempt < 400 && pools.length < maxPools; attempt++) {
     const bx = 56 + hash(attempt, 1, seed + 201) * (field.width - 112)
     const by = 48 + hash(attempt, 2, seed + 202) * (field.height - 96)
-    const rx = 24 + hash(attempt, 3, seed + 203) * 14
-    const ry = 16 + hash(attempt, 4, seed + 204) * 10
+    const hero = pools.length === 0
+    const rx = volcanic ? (hero ? 38 + hash(attempt, 3, seed + 203) * 14 : 14 + hash(attempt, 3, seed + 203) * 8) : 24 + hash(attempt, 3, seed + 203) * 14
+    const ry = volcanic ? (hero ? 24 + hash(attempt, 4, seed + 204) * 10 : 10 + hash(attempt, 4, seed + 204) * 5) : 16 + hash(attempt, 4, seed + 204) * 10
     const maxR = Math.max(rx, ry)
     if (queryRoad(bx, by).dist < halfRoad + maxR + 8) continue
     if (field.slots.some((s) => Math.hypot(s.x - bx, s.y - by) < maxR + 16)) continue
@@ -481,7 +485,14 @@ export function paintGround(field: ResolvedBattlefield, aspect: number): GroundP
                 hex = crack < 0.036 ? biome.slowAccent : sNoise > 0.5 ? biome.slowLight : biome.slow
               } else if (field.id === 'volcanic') {
                 const crack = Math.abs(noise(i, j, 4.5, seed + 93) - 0.5)
-                hex = crack < 0.032 ? biome.slowAccent : sNoise > 0.54 ? biome.slowLight : biome.slow
+                hex =
+                  crack < 0.026
+                    ? biome.slowAccent
+                    : crack < 0.06
+                      ? biome.accentHalo2!
+                      : sNoise > 0.54
+                        ? biome.slowLight
+                        : biome.slow
               } else if (field.id === 'desert') {
                 const swirl = Math.sin(sd * 0.48 + noise(i, j, 6, seed + 95) * 4)
                 hex = swirl > 0.52 ? biome.slowLight : swirl < -0.52 ? biome.slowAccent : biome.slow
@@ -504,7 +515,9 @@ export function paintGround(field: ResolvedBattlefield, aspect: number): GroundP
           if (large < 0.26 && med > 0.42) hex = biome.accentA!
         } else if (field.id === 'frost') {
           const drift = noise(i * 0.55, j * 1.35, 18, seed + 29)
-          if (drift > 0.76) hex = biome.tuftLight
+          // Two-step drift edge: a mid snow tone keeps the white patch from looking cut out.
+          if (drift > 0.8) hex = biome.tuftLight
+          else if (drift > 0.72) hex = biome.edgeLight
           for (const pool of pools) {
             const dx = wx - pool.x
             const dy = wy - pool.y
@@ -575,23 +588,25 @@ export function paintGround(field: ResolvedBattlefield, aspect: number): GroundP
           hex = ov
         }
 
-        // Natural pixel-art beveled stone/turf deployment plinths at field.slots (zero debug dots!).
+        // Raised stone/turf deployment plinths with a full bevelled rim, four corner stones and
+        // a bright top face, so empty build slots read as interactive pads rather than ground stains.
         for (let s = 0; s < slots.length; s++) {
           const sx = wx - slots[s].x
           const sy = wy - slots[s].y
-          if (Math.abs(sx) > 17 || Math.abs(sy) > 15) continue
+          if (Math.abs(sx) > 18 || Math.abs(sy) > 16) continue
           const ax = Math.abs(sx)
           const ay = Math.abs(sy)
           const bevel = ax + ay
-          if (ax <= 13.5 && ay <= 11.5 && bevel <= 20.5) {
-            const onBorder = ax > 10.5 || ay > 8.5 || bevel > 17.5
-            if (onBorder) {
-              // Beveled NW catchlight vs SE grounded shadow on the 4 chamfered corners.
-              const cornerOnly = ax > 5.5 || ay > 4.5
-              if (cornerOnly) hex = sx + sy < 0 ? biome.slotEdge : biome.slotShadow
-            } else if (bayer > -0.1) {
-              hex = biome.slotFill
-            }
+          const lit = sx + sy < 0
+          if (ax <= 14.2 && ay <= 12.2 && bevel <= 21.8) {
+            if (ax > 13.1 || ay > 11.1 || bevel > 20.4) hex = biome.slotShadow
+            else if (ax > 11.2 || ay > 9.2 || bevel > 18.2)
+              hex = lit ? biome.slotEdge : biome.slotShadow
+            else if (ax > 9.6 || ay > 8.0 || bevel > 16.1) hex = lit ? biome.slotEdge : biome.slotFill
+            else hex = biome.slotFill
+            // Rounded corner stones anchor the pad even against busy grass or ash.
+            if ((ax === 10 || ax === 11) && (ay === 8 || ay === 9)) hex = biome.slotEdge
+            if (ax === 12 && ay === 9) hex = biome.slotShadow
           }
         }
 
@@ -600,8 +615,10 @@ export function paintGround(field: ResolvedBattlefield, aspect: number): GroundP
           hex = isNW ? biome.edgeShadow : biome.edgeLight
         }
 
-        const edgeDistance = Math.min(i, j, width - 1 - i, height - 1 - j) / 2.2
-        if (edgeDistance < 6) shade *= 0.86 + edgeDistance * 0.022
+        // Stepped pixel-art edge falloff (two hard steps) instead of a smooth gradient.
+        const edgeDistance = Math.min(i, j, width - 1 - i, height - 1 - j)
+        if (edgeDistance < 4) shade *= 0.87
+        else if (edgeDistance < 8) shade *= 0.94
       }
 
       const [r, g, b] = color(hex)

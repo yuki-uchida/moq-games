@@ -70,5 +70,12 @@ export const bat: StackDesign = {
       }
     }
   },
-  pose: (input) => flyerPose(input, { hover: 18, flap: 0.78, rate: 3.2 })
+  pose: (input) => {
+    const pose = flyerPose(input, { hover: 18, flap: 0.78, rate: 3.2 })
+    // Sweep both membranes partly toward the camera and keep a raised base angle so the side
+    // views show a diagonal wing rather than an edge-on sliver.
+    pose.wingL = { ...pose.wingL, rz: (pose.wingL?.rz ?? 0) - 0.4, ry: -0.42 }
+    pose.wingR = { ...pose.wingR, rz: (pose.wingR?.rz ?? 0) + 0.4, ry: 0.42 }
+    return pose
+  }
 }

@@ -171,7 +171,9 @@ export function stageLayout(field: ResolvedBattlefield): { kind: PropKind; x: nu
       y: y + (hash(i++, seed) - 0.5) * 16
     }
     const minSpace = allowClose ? 28 : kind === 'tree' ? 40 : 34
-    if (clear(point, kind, kind === 'tree' ? 28 : 20, kind === 'tree' ? 22 : 12, minSpace)) {
+    // Keep tall canopies further off the lane so marching units and their bars never disappear
+    // behind a foreground tree crown.
+    if (clear(point, kind, kind === 'tree' ? 36 : 22, kind === 'tree' ? 22 : 12, minSpace)) {
       placed.push({ kind, ...point, scale: 1 })
     }
   }
@@ -423,36 +425,38 @@ export class StackStage {
     const surface = field.slowSurface
     const theme = PLAQUE_THEME[field.id]
     const canvas = document.createElement('canvas')
-    canvas.width = 116
-    canvas.height = 34
+    canvas.width = 168
+    canvas.height = 50
     const c = canvas.getContext('2d')
     if (!c) return
     c.imageSmoothingEnabled = false
     // Stepped pixel-art double frame with corner rivets (no smooth rounded vector corners).
     c.fillStyle = '#141012'
-    c.fillRect(2, 0, 112, 34)
-    c.fillRect(0, 2, 116, 30)
+    c.fillRect(3, 0, 162, 50)
+    c.fillRect(0, 3, 168, 44)
     c.fillStyle = theme.border
-    c.fillRect(2, 2, 112, 30)
+    c.fillRect(3, 3, 162, 44)
     c.fillStyle = theme.bg
-    c.fillRect(4, 4, 108, 26)
+    c.fillRect(6, 6, 156, 38)
     c.fillStyle = theme.inner
-    c.fillRect(6, 6, 104, 22)
+    c.fillRect(9, 9, 150, 32)
     // 4 pixel corner rivets.
     c.fillStyle = theme.border
-    c.fillRect(6, 6, 3, 3)
-    c.fillRect(107, 6, 3, 3)
-    c.fillRect(6, 25, 3, 3)
-    c.fillRect(107, 25, 3, 3)
+    c.fillRect(9, 9, 4, 4)
+    c.fillRect(155, 9, 4, 4)
+    c.fillRect(9, 37, 4, 4)
+    c.fillRect(155, 37, 4, 4)
     const pct = Math.max(5, Math.round((1 - surface.speedFactor) * 100))
     const labelText = `移動 -${pct}%`
-    // Crisp high-contrast label.
-    c.fillStyle = '#141012'
-    c.font = 'bold 18px "Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", sans-serif'
+    // Crisp high-contrast label: 30 px type on a 168 px plaque stays legible at the in-game
+    // downscale instead of turning into noise at field size.
+    c.font = 'bold 30px "Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", sans-serif'
     c.textAlign = 'center'
-    c.fillText(labelText, 59, 24)
+    c.fillStyle = '#141012'
+    c.fillText(labelText, 85, 35)
+    c.fillText(labelText, 84, 34)
     c.fillStyle = theme.text
-    c.fillText(labelText, 58, 23)
+    c.fillText(labelText, 84, 33)
 
     const texture = new THREE.CanvasTexture(canvas)
     texture.magFilter = texture.minFilter = THREE.NearestFilter
@@ -460,7 +464,7 @@ export class StackStage {
     texture.colorSpace = THREE.SRGBColorSpace
     texture.name = 'stack-stage:slow-label'
     this.label ??= new THREE.Mesh(
-      new THREE.PlaneGeometry(58, 17),
+      new THREE.PlaneGeometry(84, 25),
       new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, toneMapped: false })
     )
     this.label.material.map?.dispose()
@@ -472,8 +476,8 @@ export class StackStage {
     const ahead = pointOnPath(field.path, mid + 12)
     const dir = direction(center, ahead)
     // Place the roadside signpost plaque cleanly on the inward side of the slow zone (never jammed against the bottom border).
-    let ox = -dir.y * 26
-    let oy = dir.x * 26
+    let ox = -dir.y * 36
+    let oy = dir.x * 36
     if (center.y > field.height - 90 && oy > 0) {
       ox = -ox
       oy = -oy

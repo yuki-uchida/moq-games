@@ -8,13 +8,15 @@ export const dragon: StackDesign = {
   type: 'dragon',
   voxel: 2,
   walkDistance: 34,
-  portraitCrop: 0.72,
-  portraitYaw: -0.52,
+  portraitCrop: 0.5,
+  portraitYaw: -0.16,
   portraitSquash: 0.48,
+  portraitFocus: -0.6,
   portraitPose: {
-    wingL: { rz: 0.16, ry: -0.55 },
-    wingR: { rz: -0.16, ry: 0.55 },
-    jaw: { rx: 0.35 }
+    // Fold the membranes behind the shoulders so the horned head owns the portrait badge.
+    wingL: { rz: 0.12, ry: -1.15 },
+    wingR: { rz: -0.12, ry: 1.15 },
+    jaw: { rx: 0.3 }
   },
   shadow: [12, 13],
   emitter: { part: 'jaw', at: [0, 1, 6] },
@@ -126,8 +128,8 @@ export const dragon: StackDesign = {
       neck: { rx: -0.1 },
       head: { rx: 0.14 + 0.05 * Math.sin(input.time * 1.4) },
       jaw: { rx: 0.12 },
-      wingL: { rz: 0.2 + beat * 0.18, ry: -0.22 },
-      wingR: { rz: -0.2 - beat * 0.18, ry: 0.22 },
+      wingL: { rz: 0.32 + beat * 0.2, ry: -0.5 },
+      wingR: { rz: -0.32 - beat * 0.2, ry: 0.5 },
       tail: { ry: 0.3 * Math.sin(input.time * 1.7 + input.seed * 3) }
     }
     if (input.motion === 'walk') {
@@ -167,8 +169,8 @@ export const dragon: StackDesign = {
           [end, 0.12]
         ])
       }
-      pose.wingL = { rz: 0.32 + 0.42 * rear + Math.sin(ms * 0.02) * 0.15, ry: -0.28 }
-      pose.wingR = { rz: -0.32 - 0.42 * rear - Math.sin(ms * 0.02) * 0.15, ry: 0.28 }
+      pose.wingL = { rz: 0.4 + 0.42 * rear + Math.sin(ms * 0.02) * 0.15, ry: -0.5 }
+      pose.wingR = { rz: -0.4 - 0.42 * rear - Math.sin(ms * 0.02) * 0.15, ry: 0.5 }
       pose.legFL = { rx: -0.65 * rear }
       pose.legFR = { rx: -0.65 * rear }
     }

@@ -35,6 +35,10 @@ export interface StackDesign {
   readonly portraitYaw?: number
   readonly portraitSquash?: number
   readonly portraitPose?: StackPose
+  /** Bust window width as a multiple of its height (default 1 = square, 2 = wide group shot). */
+  readonly portraitAspect?: number
+  /** Horizontal focus inside the bust bounds: -1 = left edge, 0 = centre, 1 = right edge. */
+  readonly portraitFocus?: number
   pose(input: StackMotionInput): StackPose
 }
 
