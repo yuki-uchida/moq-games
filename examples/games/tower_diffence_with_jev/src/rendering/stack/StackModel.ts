@@ -124,14 +124,15 @@ function packSheetsToTexture(sheets: readonly SliceSheet[]): {
       const dstRow = (f * h + sy) * atlasWidth * 4
       const srcRow = sy * stripW * 4
       data.set(sheet.pixels.subarray(srcRow, srcRow + stripW * 4), dstRow)
-      // Shadow union footprint in column `count`.
+      // Shadow grounded footprint in column `count` (r = 255 core, 160 soft rim).
       const shadowBase = dstRow + stripW * 4
       for (let sx = 0; sx < w; sx++) {
-        if (sheet.shadow[sy * w + sx] >= 128) {
+        const sv = sheet.shadow[sy * w + sx]
+        if (sv >= 128) {
           const o = shadowBase + sx * 4
-          data[o] = 255
-          data[o + 1] = 255
-          data[o + 2] = 255
+          data[o] = sv
+          data[o + 1] = sv
+          data[o + 2] = sv
           data[o + 3] = 255
         }
       }

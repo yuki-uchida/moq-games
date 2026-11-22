@@ -55,13 +55,12 @@ export function partPoint(
   return new THREE.Vector3(...at).applyMatrix4(new THREE.Matrix4().fromArray(matrices, index * 16))
 }
 
-// ---------- SpriteCook True 2D Slice-Stacking Shader (Body + 1px Crisp Outline) ----------
+// ---------- SpriteCook True 2D Slice-Stacking Shader (Body + 1px Exterior Outline + Internal Depth Creases) ----------
 
 const stackVertexShader = /* glsl */ `
 uniform vec4 uArtBounds; // (minX, minY, width, height) in integer art pixels around ground pivot (0, 0)
 varying vec2 vArtPx;
 void main() {
-  // PlaneGeometry(1, 1) has position.xy in [-0.5, +0.5], where +y is DOWN on the board.
   vec2 uv01 = position.xy + vec2(0.5);
   vArtPx = uArtBounds.xy + uv01 * uArtBounds.zw;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
@@ -92,13 +91,13 @@ float bayer4(vec2 p) {
   return (4.0 * bayer2(mod(q, 2.0)) + bayer2(mod(floor(q / 2.0), 2.0)) + 0.5) / 16.0;
 }
 
+// Returns vec4(rgb, zIndex + 1.0) on hit, or vec4(0.0) on miss.
 vec4 sampleStack(vec2 u, float c, float s, float maxR) {
   if (abs(u.x) > maxR) return vec4(0.0);
   float halfY = maxR * uSquash;
-  float minLift = (uBaseLift + 0.0) * uSpacing;
+  float minLift = uBaseLift * uSpacing;
   float maxLift = (uBaseLift + float(uSlices - 1)) * uSpacing;
   if (u.y + maxLift < -halfY || u.y + minLift > halfY) return vec4(0.0);
-  // Compute tight slice range [zBot, zTop] that can overlap pixel u.
   int zTop = int(floor((halfY - u.y) / max(0.001, uSpacing) - uBaseLift + 1.0));
   int zBot = int(floor((-halfY - u.y) / max(0.001, uSpacing) - uBaseLift));
   if (zTop >= uSlices) zTop = uSlices - 1;
@@ -113,21 +112,23 @@ vec4 sampleStack(vec2 u, float c, float s, float maxR) {
     if (sp.x >= 0.0 && sp.x < uSliceSize.x && sp.y >= 0.0 && sp.y < uSliceSize.y) {
       vec2 texPx = vec2(float(z) * uSliceSize.x + sp.x + 0.5, uFrame * uSliceSize.y + sp.y + 0.5);
       vec4 col = texture2D(map, texPx / uAtlasSize);
-      if (col.a > 0.5) return col;
+      if (col.a > 0.5) return vec4(col.rgb, float(z) + 1.0);
     }
   }
   return vec4(0.0);
 }
 
+vec3 inkFor(vec3 base) {
+  return mix(vec3(0.063, 0.055, 0.11), base * vec3(0.22, 0.20, 0.26), 0.42);
+}
+
 void main() {
-  // Snap every fragment to an exact integer art-pixel coordinate.
   vec2 p = floor(vArtPx);
   float fc = cos(uFall);
   float fs = sin(uFall);
   vec2 u = abs(uFall) > 0.0001 ? vec2(p.x * fc + p.y * fs, -p.x * fs + p.y * fc) : p;
   float maxR = length(uSliceSize) * 0.5 + 1.5;
   float halfY = maxR * uSquash;
-  // Early-out background pixels outside the stack + 1px outline envelope before any slice loop.
   if (abs(u.x) > maxR + 1.5) discard;
   float topY = -halfY - (uBaseLift + float(uSlices - 1)) * uSpacing - 2.0;
   float botY = halfY - uBaseLift * uSpacing + 2.0;
@@ -135,28 +136,34 @@ void main() {
 
   float c = cos(uTurn);
   float s = sin(uTurn);
+  vec2 duY = abs(uFall) > 0.0001 ? vec2(fs, fc) : vec2(0.0, 1.0);
+  vec2 duX = abs(uFall) > 0.0001 ? vec2(fc, -fs) : vec2(1.0, 0.0);
+
   vec4 hit = sampleStack(u, c, s, maxR);
   vec3 rgb;
   if (hit.a > 0.5) {
     rgb = hit.rgb;
+    // Subtle internal height-step crease separates overlapping parts (hats, shields, arms) without speckle.
+    float zH = hit.a;
+    vec4 nUp = sampleStack(u - duY, c, s, maxR);
+    vec4 nL = sampleStack(u - duX, c, s, maxR);
+    if ((nUp.a > 0.5 && nUp.a - zH >= 5.0) || (nL.a > 0.5 && nL.a - zH >= 5.0)) {
+      rgb = mix(rgb, inkFor(rgb), 0.48);
+    }
   } else {
-    // Crisp 1-art-px dark outline ONCE around the finished stack silhouette (zero internal speckle).
-    vec2 duY = abs(uFall) > 0.0001 ? vec2(fs, fc) : vec2(0.0, 1.0);
-    vec2 duX = abs(uFall) > 0.0001 ? vec2(fc, -fs) : vec2(1.0, 0.0);
+    // Crisp 1-art-px dark outline ONCE around the finished stack silhouette.
     vec4 n = sampleStack(u - duY, c, s, maxR);
     if (n.a <= 0.5) n = sampleStack(u + duY, c, s, maxR);
     if (n.a <= 0.5) n = sampleStack(u - duX, c, s, maxR);
     if (n.a <= 0.5) n = sampleStack(u + duX, c, s, maxR);
     if (n.a <= 0.5) discard;
-    // Tinted rich dark pixel-art ink matching SpriteCook's crisp silhouette outlines.
-    rgb = mix(vec3(0.07, 0.06, 0.12), n.rgb * vec3(0.24, 0.22, 0.28), 0.45);
+    rgb = inkFor(n.rgb);
   }
-  // Fades and ghost previews dither instead of alpha-blending so stacks keep exact ground-Y depth order.
   if (uOpacity < 0.999 && bayer4(gl_FragCoord.xy) >= uOpacity) discard;
   gl_FragColor = vec4(mix(rgb * uTint, uFlashColor, uFlash), 1.0);
 }`
 
-// ---------- Crisp Stepped Pixel-Art Contact Shadow Shader ----------
+// ---------- Crisp 2-Tone Stepped Pixel-Art Contact Shadow Shader ----------
 
 const shadowFragmentShader = /* glsl */ `
 precision highp float;
@@ -182,8 +189,10 @@ void main() {
   if (sp.x < 0.0 || sp.x >= uSliceSize.x || sp.y < 0.0 || sp.y >= uSliceSize.y) discard;
   vec2 texPx = vec2(uShadowColumn * uSliceSize.x + sp.x + 0.5, uFrame * uSliceSize.y + sp.y + 0.5);
   vec4 mask = texture2D(map, texPx / uAtlasSize);
-  if (mask.a < 0.5) discard;
-  gl_FragColor = vec4(0.085, 0.11, 0.15, 0.36 * uOpacity);
+  if (mask.a < 0.4) discard;
+  // Core footprint (mask.r > 0.85) is darker than soft 1px rim (mask.r ~ 0.63).
+  float alpha = mask.r > 0.85 ? 0.36 : 0.20;
+  gl_FragColor = vec4(0.085, 0.078, 0.155, alpha * uOpacity);
 }`
 
 export interface StackMaterialUniforms {
@@ -257,7 +266,7 @@ export function createStackMaterial(
   return material as THREE.ShaderMaterial & { uniforms: StackMaterialUniforms }
 }
 
-/** Crisp stepped pixel-art contact shadow matching the rotated, squashed stack footprint. */
+/** Crisp 2-tone stepped pixel-art contact shadow matching the compact grounded body footprint. */
 export function createStackShadowMaterial(
   atlas: StackFrameAtlas,
   bounds: THREE.Vector4

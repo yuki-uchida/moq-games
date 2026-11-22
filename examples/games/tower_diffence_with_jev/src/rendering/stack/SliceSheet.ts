@@ -36,7 +36,7 @@ export interface SliceSheet {
   readonly baseLift: number
   /** Horizontal strip RGBA bytes: `(width * count) x height x 4`. */
   readonly pixels: Uint8ClampedArray
-  /** Union ground-projection mask (`width x height`, 255 where any slice is opaque, else 0). */
+  /** Compact grounded contact-shadow footprint mask (`width x height`, 255 = core, 160 = rim, 0 = empty). */
   readonly shadow: Uint8Array
 }
 
@@ -46,20 +46,20 @@ export interface RenderedStack {
   /** Ground pivot in output pixel coordinates (center X, ground Y). */
   readonly originX: number
   readonly originY: number
-  /** Body + optional 1-art-px dark outline RGBA bytes. */
+  /** Body + optional 1-art-px exterior outline & internal depth-step crease lines. */
   readonly pixels: Uint8ClampedArray
-  /** Crisp stepped pixel-art contact shadow RGBA bytes (same dimensions as `pixels`). */
+  /** Crisp 2-tone stepped pixel-art contact shadow RGBA bytes (same dimensions as `pixels`). */
   readonly shadow: Uint8ClampedArray
 }
 
 export interface DrawStackOptions {
   /** Rotation in radians; 0 draws the slices facing down (+y) as authored in the sheet. */
   readonly turn?: number
-  /** Vertical squash factor (1 = straight down, 0.75 = lower camera). */
+  /** Vertical squash factor (1 = straight down, 0.75 = lower camera, 0.48 = portrait bust). */
   readonly squash?: number
   /** Screen/art pixels between consecutive slices (`round(z * spacing)`). */
   readonly spacing?: number
-  /** Apply a crisp 1-art-px dark outline ONCE around the finished stack silhouette. */
+  /** Apply a crisp 1-art-px dark outline ONCE around the finished stack + subtle internal creases. */
   readonly outline?: boolean
   /** Generate the crisp stepped pixel-art ground shadow mask. */
   readonly shadow?: boolean
@@ -82,18 +82,33 @@ function hexRgb(hex: string): [number, number, number] {
  */
 export function outlineColorFor(r: number, g: number, b: number): [number, number, number] {
   return [
-    clamp255(18 * 0.55 + r * 0.24 * 0.45),
-    clamp255(16 * 0.55 + g * 0.22 * 0.45),
-    clamp255(30 * 0.55 + b * 0.28 * 0.45)
+    clamp255(16 * 0.58 + r * 0.22 * 0.42),
+    clamp255(14 * 0.58 + g * 0.2 * 0.42),
+    clamp255(28 * 0.58 + b * 0.26 * 0.42)
+  ]
+}
+
+/** Internal depth-step crease ink: subtler than exterior outline so parts separate cleanly without clutter. */
+function creaseColorFor(r: number, g: number, b: number): [number, number, number] {
+  const [or, og, ob] = outlineColorFor(r, g, b)
+  return [
+    clamp255(r * 0.52 + or * 0.48),
+    clamp255(g * 0.52 + og * 0.48),
+    clamp255(b * 0.52 + ob * 0.48)
   ]
 }
 
 /**
- * SpriteCook-style slice shading:
- * - Uncovered top surfaces keep their vivid flat fill color (plus a crisp subtle highlight lift).
- * - Covered side bands darken cleanly toward the ground (`shade = 0.28`, hue-shifted slightly cool)
- *   with ZERO random salt-and-pepper noise.
- * - Glowing palette entries (`*...`) stay at full unshaded brightness.
+ * Commercial pixel-art quantized 3-tone directional ramp shading:
+ * - Eliminates continuous per-slice gradients and white washout (+6 lift removed).
+ * - Uses a unified top-left light direction (-X, +Y, +Z) with crisp discrete ramp bands
+ *   and cool hue-shifted shadows so every sprite reads like hand-shaded 16-bit pixel art.
+ *
+ * `tone`:
+ *   0 = lit top / highlight edge (pure vivid color or subtle warm top rim)
+ *   1 = midtone (sunlit side or flat top)
+ *   2 = shadow (away-facing side / lower body)
+ *   3 = deep shadow / overhang AO
  */
 export function shadeSliceColor(
   r: number,
@@ -103,17 +118,40 @@ export function shadeSliceColor(
   z: number,
   height: number,
   glow: boolean,
-  shade = 0.28
+  shade = 0.28,
+  lightBias = 0,
+  occluded = false
 ): [number, number, number] {
   if (glow) return [r, g, b]
+  if (shade <= 0) return [r, g, b]
+
+  // Quantize into 4 clean discrete pixel-art ramp levels instead of a smooth vertical gradient.
+  let band: 0 | 1 | 2 | 3
   if (topExposed) {
-    // Clean, vivid flat top fill with slight warm highlight so roofs/shoulders pop.
-    return [clamp255(r * 1.05 + 6), clamp255(g * 1.05 + 5), clamp255(b * 1.03 + 2)]
+    if (occluded) band = 2
+    else band = lightBias > 0.2 ? 0 : 1
+  } else {
+    const hNorm = height > 1 ? z / (height - 1) : 1
+    if (hNorm < 0.22) band = 3
+    else if (occluded) band = 2
+    else if (lightBias > 0.1 && hNorm >= 0.34) band = 1
+    else band = 2
   }
-  const hNorm = height > 1 ? z / (height - 1) : 1
-  const k = Math.max(0.45, 1 - shade * (1 - hNorm) - shade * 0.36)
-  // Subtle cool shadow shift (richer retro pixel-art shading than gray multiplication).
-  return [clamp255(r * (k * 0.96)), clamp255(g * (k * 0.98)), clamp255(b * Math.min(1, k * 1.06 + 0.02))]
+
+  switch (band) {
+    case 0:
+      // Crisp warm sunlit rim without desaturating into white.
+      return [clamp255(r * 1.09 + 4), clamp255(g * 1.07 + 2), clamp255(b * 1.02)]
+    case 1:
+      // Pure vivid base color (preserves authored palette saturation cleanly).
+      return [r, g, b]
+    case 2:
+      // 1st shadow step: cool hue-shifted shade (richer saturation, slight indigo shift).
+      return [clamp255(r * 0.8), clamp255(g * 0.81), clamp255(b * 0.89 + 3)]
+    case 3:
+      // Deep shadow / lower grounded AO step.
+      return [clamp255(r * 0.62), clamp255(g * 0.64), clamp255(b * 0.75 + 5)]
+  }
 }
 
 /**
@@ -121,7 +159,7 @@ export function shadeSliceColor(
  *
  * Uses watertight inverse-mapped voxelization per part so rotated arms/weapons/wings never
  * splinter into floating tilted cards or leave 1-voxel pinholes; every layer is a clean flat
- * horizontal slice, facing DOWN (`+y`) in slice space.
+ * horizontal slice, facing DOWN (`+y`) in slice space, shaded with quantized directional pixel-art ramps.
  */
 export function bakePoseSliceSheet(
   model: BakeableModel,
@@ -136,7 +174,6 @@ export function bakePoseSliceSheet(
 ): SliceSheet {
   const shade = options.shade ?? 0.28
 
-  // First pass: compute world AABB of each part and overall grid bounds.
   interface PartBox {
     index: number
     x0: number
@@ -190,9 +227,7 @@ export function bakePoseSliceSheet(
           if (wz < z0) z0 = wz
           if (wz > z1) z1 = wz
         }
-    // Invert affine 3x4 matrix analytically.
-    const det =
-      m0 * (m5 * m10 - m6 * m9) - m4 * (m1 * m10 - m2 * m9) + m8 * (m1 * m6 - m2 * m5)
+    const det = m0 * (m5 * m10 - m6 * m9) - m4 * (m1 * m10 - m2 * m9) + m8 * (m1 * m6 - m2 * m5)
     if (Math.abs(det) < 1e-8) continue
     const id = 1 / det
     const inv = new Float64Array(12)
@@ -237,7 +272,6 @@ export function bakePoseSliceSheet(
     }
   }
 
-  // Symmetric around pivot (0, 0) so rotating any slice stays centered on the ground point.
   const halfX = Math.max(Math.abs(gMinX), Math.abs(gMaxX) + 1)
   const halfZ = Math.max(Math.abs(gMinZ), Math.abs(gMaxZ) + 1)
   const width = options.width ?? Math.max(2, halfX * 2)
@@ -248,7 +282,6 @@ export function bakePoseSliceSheet(
   const rawCount = Math.max(1, gMaxY - baseLift + 1)
   const count = Math.min(MAX_STACK_SLICES, options.count ?? rawCount)
 
-  // Color-index volume: vol[layer * width * height + sy * width + sx] = palette index (0 = empty).
   const layerSize = width * height
   const vol = new Uint16Array(count * layerSize)
 
@@ -279,7 +312,7 @@ export function bakePoseSliceSheet(
       }
     }
 
-    // Forward-stamp 1-voxel glowing accents (eyes, gems, embers) so oblique rotations never drop them.
+    // Forward-stamp glowing accents (eyes, gems, embers) so oblique rotations never drop them.
     const o = box.index * 16
     for (const [vx, vy, vz, color] of voxels.entries()) {
       if (!model.palette.glow.has(color)) continue
@@ -297,14 +330,15 @@ export function bakePoseSliceSheet(
     }
   }
 
-  // Pack horizontal strip + SpriteCook column shading + union ground shadow mask.
+  // Pack horizontal strip with quantized directional top-left shading + compact grounded shadow mask.
   const stripWidth = width * count
   const pixels = new Uint8ClampedArray(stripWidth * height * 4)
-  const shadow = new Uint8Array(layerSize)
+  const colCounts = new Uint8Array(layerSize)
   const paletteRgb = model.palette.colors.map(hexRgb)
 
-  // Scan top-down per column so we know immediately whether a cell is top-exposed or side-band.
-  const covered = new Uint8Array(layerSize)
+  const hasAt = (z: number, sx: number, sy: number) =>
+    z >= 0 && z < count && sx >= 0 && sx < width && sy >= 0 && sy < height && vol[z * layerSize + sy * width + sx] !== 0
+
   for (let z = count - 1; z >= 0; z--) {
     const layerOff = z * layerSize
     const sliceX0 = z * width
@@ -314,9 +348,19 @@ export function bakePoseSliceSheet(
         const idx = rowBase + sx
         const color = vol[layerOff + idx]
         if (!color) continue
-        const topExposed = covered[idx] === 0
-        covered[idx] = 1
-        shadow[idx] = 255
+        colCounts[idx]++
+
+        const topExposed = !hasAt(z + 1, sx, sy)
+        const openLeft = !hasAt(z, sx - 1, sy) ? 1 : 0
+        const openRight = !hasAt(z, sx + 1, sy) ? 1 : 0
+        const openBack = !hasAt(z, sx, sy - 1) ? 1 : 0
+        const openFront = !hasAt(z, sx, sy + 1) ? 1 : 0
+        // Overhang AO: only cast by voxels sticking out into open air above this surface (never interior voxels).
+        const occluded = topExposed
+          ? hasAt(z + 2, sx, sy) || hasAt(z + 3, sx, sy) || hasAt(z + 1, sx - 1, sy - 1)
+          : openFront === 1 && hasAt(z + 1, sx, sy + 1)
+        const lightBias = (openLeft - openRight) * 0.42 + (openFront * 0.35 - openBack * 0.35)
+
         const [r0, g0, b0] = paletteRgb[color]
         const [r, g, b] = shadeSliceColor(
           r0,
@@ -326,7 +370,9 @@ export function bakePoseSliceSheet(
           z,
           count,
           model.palette.glow.has(color),
-          shade
+          shade,
+          lightBias,
+          occluded
         )
         const dst = (sy * stripWidth + (sliceX0 + sx)) * 4
         pixels[dst] = r
@@ -337,12 +383,40 @@ export function bakePoseSliceSheet(
     }
   }
 
+  // Build compact grounded contact-shadow footprint from columns with solid vertical mass (>= 3 voxels,
+  // or >= 2 for short sprites like slimes/bats) so protruding thin swords/staffs don't cast antenna shadows!
+  const minColMass = count >= 12 ? 3 : 2
+  const shadow = new Uint8Array(layerSize)
+  for (let sy = 0; sy < height; sy++) {
+    for (let sx = 0; sx < width; sx++) {
+      const idx = sy * width + sx
+      if (colCounts[idx] >= minColMass) shadow[idx] = 255
+    }
+  }
+  // Soft 1px outer shadow rim around the solid core (encoded as 160 vs core 255 for 2-tone pixel shadow).
+  const core = new Uint8Array(shadow)
+  for (let sy = 0; sy < height; sy++) {
+    for (let sx = 0; sx < width; sx++) {
+      const idx = sy * width + sx
+      if (core[idx] >= 200) continue
+      if (
+        (sx > 0 && core[idx - 1] >= 200) ||
+        (sx + 1 < width && core[idx + 1] >= 200) ||
+        (sy > 0 && core[idx - width] >= 200) ||
+        (sy + 1 < height && core[idx + width] >= 200)
+      ) {
+        shadow[idx] = 160
+      }
+    }
+  }
+
   return { width, height, count, cx, cy, baseLift, pixels, shadow }
 }
 
 /**
  * Software implementation of SpriteCook's exact `draw_stack` algorithm on an integer pixel grid,
- * with optional post-stack 1-art-px dark outline and crisp pixel-art stepped contact shadow.
+ * with optional post-stack 1-art-px exterior outline, subtle internal height-step crease lines,
+ * and crisp 2-tone pixel-art stepped contact shadow.
  */
 export function drawStackPixels(sheet: SliceSheet, options: DrawStackOptions = {}): RenderedStack {
   const turn = options.turn ?? 0
@@ -358,7 +432,6 @@ export function drawStackPixels(sheet: SliceSheet, options: DrawStackOptions = {
   const c = Math.cos(turn)
   const s = Math.sin(turn)
 
-  // Compute tight integer pixel bounds for all rotated + squashed + lifted slice corners.
   let minX = Infinity,
     maxX = -Infinity,
     minY = Infinity,
@@ -388,7 +461,9 @@ export function drawStackPixels(sheet: SliceSheet, options: DrawStackOptions = {
 
   const pad = outline ? 2 : 1
   if (fall) {
-    const radius = Math.ceil(Math.hypot(Math.max(Math.abs(minX), Math.abs(maxX)), Math.max(Math.abs(minY), Math.abs(maxY))))
+    const radius = Math.ceil(
+      Math.hypot(Math.max(Math.abs(minX), Math.abs(maxX)), Math.max(Math.abs(minY), Math.abs(maxY)))
+    )
     minX = -radius
     maxX = radius
     minY = -radius
@@ -404,6 +479,7 @@ export function drawStackPixels(sheet: SliceSheet, options: DrawStackOptions = {
   const originY = -iy0
 
   const body = new Uint8ClampedArray(outW * outH * 4)
+  const hitZ = new Int16Array(outW * outH).fill(-1)
   const shadowOut = new Uint8ClampedArray(outW * outH * 4)
   const fc = Math.cos(fall)
   const fs = Math.sin(fall)
@@ -430,6 +506,7 @@ export function drawStackPixels(sheet: SliceSheet, options: DrawStackOptions = {
           body[dst + 1] = sheet.pixels[src + 1]
           body[dst + 2] = sheet.pixels[src + 2]
           body[dst + 3] = 255
+          hitZ[oy * outW + ox] = z
           break
         }
       }
@@ -440,24 +517,54 @@ export function drawStackPixels(sheet: SliceSheet, options: DrawStackOptions = {
         const ly = -rx * s + ry * c
         const sx = Math.floor(lx + cx + 0.5)
         const sy = Math.floor(ly + cy + 0.5)
-        if (sx >= 0 && sx < w && sy >= 0 && sy < h && sheet.shadow[sy * w + sx] >= 128) {
-          const dst = (oy * outW + ox) * 4
-          shadowOut[dst] = 0x16
-          shadowOut[dst + 1] = 0x1d
-          shadowOut[dst + 2] = 0x26
-          shadowOut[dst + 3] = 92
+        if (sx >= 0 && sx < w && sy >= 0 && sy < h) {
+          const sv = sheet.shadow[sy * w + sx]
+          if (sv >= 128) {
+            const dst = (oy * outW + ox) * 4
+            shadowOut[dst] = 0x16
+            shadowOut[dst + 1] = 0x14
+            shadowOut[dst + 2] = 0x28
+            shadowOut[dst + 3] = sv >= 200 ? 96 : 52
+          }
         }
       }
     }
   }
 
-  // Crisp 1-art-px outline ONCE around the finished stack silhouette (zero internal lines).
+  // Exterior 1-art-px dark outline ONCE around finished silhouette + subtle internal depth-step creases.
   if (outline) {
     const outlined = new Uint8ClampedArray(body)
     for (let oy = 0; oy < outH; oy++) {
       for (let ox = 0; ox < outW; ox++) {
-        const i = (oy * outW + ox) * 4
-        if (body[i + 3] >= 128) continue
+        const idx = oy * outW + ox
+        const i = idx * 4
+        const zHere = hitZ[idx]
+        if (zHere >= 0) {
+          // Subtle internal contour where a part overlaps another by >= 5 slices (hat brim, shield, arm).
+          let stepUp = false
+          for (const [dx, dy] of [
+            [0, -1],
+            [0, 1],
+            [-1, 0],
+            [1, 0]
+          ]) {
+            const nx = ox + dx,
+              ny = oy + dy
+            if (nx < 0 || nx >= outW || ny < 0 || ny >= outH) continue
+            const nz = hitZ[ny * outW + nx]
+            if (nz >= 0 && nz - zHere >= 5) {
+              stepUp = true
+              break
+            }
+          }
+          if (stepUp) {
+            const [cr, cg, cb] = creaseColorFor(body[i], body[i + 1], body[i + 2])
+            outlined[i] = cr
+            outlined[i + 1] = cg
+            outlined[i + 2] = cb
+          }
+          continue
+        }
         let nr = 0,
           ng = 0,
           nb = 0,

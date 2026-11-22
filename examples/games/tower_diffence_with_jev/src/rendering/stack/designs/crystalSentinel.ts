@@ -1,26 +1,27 @@
 import { bipedPose, TAU, type StackDesign } from '../StackDesign'
 
 /**
- * 水晶の番兵 — a construct of grey keystone blocks bound by violet crystal veins: a crystal
- * spire grows from its shoulders, one glowing eye-gem sits in a featureless face plate, and
- * three loose shards orbit its head. Its fists are crystal clusters.
+ * 水晶の番兵 — an obsidian-slate construct on the unified voxel=2 grid bound by glowing neon-violet
+ * crystal veins, towering amethyst shoulder spires, a blazing cyclops eye-gem and orbiting shards.
  */
 export const crystalSentinel: StackDesign = {
   type: 'crystalSentinel',
-  voxel: 2.1,
+  voxel: 2,
   walkDistance: 26,
-  shadow: [10, 8],
+  portraitCrop: 0.68,
+  portraitYaw: -0.35,
+  shadow: [11, 9],
   blueprint: {
     id: 'crystalSentinel',
     colors: {
-      stone: '#7a7b94',
-      stoneDark: '#4d4d66',
-      stoneLight: '#aeb0cc',
-      crystal: '#9661f2',
-      crystalLight: '#dbbfff',
-      crystalDark: '#5b31a8',
-      '*gem': '#f8edff',
-      '*vein': '#c98aff'
+      stone: '#525670',
+      stoneDark: '#2f3247',
+      stoneLight: '#858bad',
+      crystal: '#9657f5',
+      crystalLight: '#e0c7ff',
+      crystalDark: '#5426a3',
+      '*gem': '#ffffff',
+      '*vein': '#cf8cff'
     },
     build(kit) {
       const hips = kit.part('hips', undefined, [0, 6, 0])
@@ -34,45 +35,48 @@ export const crystalSentinel: StackDesign = {
       }
       const torso = kit.part('torso', 'hips', [0, 1.5, 0])
       torso
-        .box([-6, 0, -4], [5, 9, 4], 'stone')
-        .box([-6, 9, -4], [5, 9, 4], 'stoneLight')
-        .box([-4, 0, -3], [3, 0, 3], 'stoneDark')
-      torso.box([-1, 1, 5], [0, 8, 5], '*vein').box([-5, 4, 5], [4, 4, 5], '*vein')
+        .box([-7, 0, -5], [6, 10, 5], 'stone')
+        .box([-7, 10, -5], [6, 10, 5], 'stoneLight')
+        .box([-5, 0, -4], [4, 0, 4], 'stoneDark')
+      torso.box([-1, 1, 6], [0, 9, 6], '*vein').box([-6, 5, 6], [5, 5, 6], '*vein')
       for (const [x, z, h] of [
-        [-5, -2, 6],
-        [3, -3, 8],
-        [-1, -3, 10],
-        [4, 1, 5]
+        [-6, -2, 7],
+        [4, -3, 9],
+        [-1, -4, 11],
+        [5, 1, 6]
       ])
-        torso.cylinder(x + 0.5, z + 0.5, 10, 10 + h, 1.7, 0.4, 'crystal')
-      torso.paint((x, y, z) => (y > 12 && x < 0 ? 'crystalLight' : y > 10 && z < -3 ? 'crystalDark' : undefined))
-      const head = kit.part('head', 'torso', [0, 10, 0.5])
+        torso.cylinder(x + 0.5, z + 0.5, 11, 11 + h, 1.9, 0.45, 'crystal')
+      torso.paint((x, y, z) => (y > 13 && x < 0 ? 'crystalLight' : y > 11 && z < -3 ? 'crystalDark' : undefined))
+
+      const head = kit.part('head', 'torso', [0, 11, 0.5])
       head
-        .box([-3, 0, -3], [2, 6, 3], 'stone')
-        .box([-3, 6, -3], [2, 6, 3], 'stoneLight')
-        .box([-2, 2, 4], [1, 4, 4], 'stoneDark')
-      head.box([-1, 3, 5], [0, 4, 5], '*gem')
-      const shards = kit.part('shards', 'head', [0, 4, 0])
+        .box([-4, 0, -4], [3, 7, 4], 'stone')
+        .box([-4, 7, -4], [3, 7, 4], 'stoneLight')
+        .box([-3, 2, 5], [2, 5, 5], 'stoneDark')
+      head.box([-1, 3, 5], [0, 4, 6], '*gem')
+
+      const shards = kit.part('shards', 'head', [0, 4.5, 0])
       for (let i = 0; i < 3; i++) {
         const a = (i / 3) * TAU
-        const x = Math.sin(a) * 7,
-          z = Math.cos(a) * 7
-        shards.segment([x, -1, z], [x, 2.5, z], 1.1, i === 1 ? 'crystalLight' : 'crystal', 0.3)
+        const x = Math.sin(a) * 7.5
+        const z = Math.cos(a) * 7.5
+        shards.segment([x, -1, z], [x, 3, z], 1.2, i === 1 ? 'crystalLight' : 'crystal', 0.35)
       }
+
       for (const [name, x] of [
-        ['armL', 7.5],
-        ['armR', -7.5]
+        ['armL', 8.5],
+        ['armR', -8.5]
       ] as const) {
-        const arm = kit.part(name, 'torso', [x, 8, 0])
+        const arm = kit.part(name, 'torso', [x, 9, 0])
         arm.box([-1, -6, -1], [1, 1, 1], 'stone').box([-1, -3, -1], [1, -3, 1], '*vein')
-        arm.ellipsoid([0, -8.5, 0.5], [2.4, 2.6, 2.6], 'crystal')
-        arm.cylinder(0.5, 0.5, -12, -9, 1.2, 0.3, 'crystalLight')
+        arm.ellipsoid([0, -9.5, 0.5], [2.7, 2.9, 2.9], 'crystal')
+        arm.cylinder(0.5, 0.5, -13.5, -10, 1.4, 0.35, 'crystalLight')
       }
     }
   },
   pose: (input) => {
     const pose = bipedPose(input, { attack: 'smash', stride: 0.35, bob: 0.5, heavy: true, armSpread: 0.25 })
-    pose.shards = { ry: input.time * 1.4 + input.seed * TAU, y: Math.sin(input.time * 2 + input.seed) * 0.8 }
+    pose.shards = { ry: input.time * 1.4 + input.seed * TAU, y: Math.sin(input.time * 2 + input.seed) * 0.9 }
     return pose
   }
 }

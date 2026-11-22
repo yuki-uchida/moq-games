@@ -2,33 +2,37 @@ import { bipedPose, type StackDesign } from '../StackDesign'
 import { human } from './common'
 
 /**
- * 森の射手 — a forest archer in a deep leaf-green hood and short cape, a leaf clasp at the
- * throat, a tall pale-wood longbow and a quiver of fletched arrows on the back.
+ * 森の射手 — a woodland ranger-archer in a vivid sea-teal tunic and cream-gold scarf
+ * (pops cleanly off meadow grass!), pointed teal hood, crimson-fletched quiver on the back,
+ * and a tall pale-wood recurve bow held high above the shoulder with clear daylight behind the string.
  */
 export const archer: StackDesign = {
   type: 'archer',
   voxel: 2,
   walkDistance: 30,
+  portraitCrop: 0.62,
+  portraitYaw: -0.3,
   shadow: [7, 6],
-  emitter: { part: 'offhand', at: [0, 0, 0] },
+  emitter: { part: 'offhand', at: [0, 3, 2] },
   blueprint: {
     id: 'archer',
     colors: {
       skin: '#ffc89e',
-      eye: '#182419',
+      eye: '#162426',
       shine: '#ffffff',
-      cheek: '#eb8674',
-      hood: '#2c7a3b',
-      hoodDark: '#1d5428',
-      tunic: '#57b848',
-      leaf: '#b8f056',
-      leather: '#8c552b',
-      boot: '#52301a',
-      wood: '#e8bc66',
-      string: '#fff7e0',
-      quiver: '#6e3f1e',
-      fletch: '#fff3c4',
-      hair: '#d97b29'
+      cheek: '#f08274',
+      hood: '#1a7a72',
+      hoodDark: '#104f4d',
+      tunic: '#2aa697',
+      scarf: '#fff0c2',
+      gold: '#f2be38',
+      leather: '#8a5228',
+      boot: '#4f2d18',
+      wood: '#f0c46c',
+      string: '#fff9e6',
+      quiver: '#73401c',
+      fletch: '#e84338',
+      hair: '#d97824'
     },
     build(kit) {
       const b = human(kit, {
@@ -36,34 +40,46 @@ export const archer: StackDesign = {
         eye: 'eye',
         shine: 'shine',
         cheek: 'cheek',
+        brow: 'hair',
         legs: 'leather',
         boots: 'boot',
         torso: 'tunic',
+        torsoTrim: 'gold',
         belt: 'leather',
         sleeve: 'tunic',
         hands: 'leather'
       })
-      // Hood: a shell over the head, open in front, with a drooping point at the back.
-      b.head.paint((x, y, z) => (y >= 7 && z < 2 ? 'hair' : undefined))
-      b.head.fill([-6, 2, -6], [5, 11, 5], 'hood', (x, y, z) => {
-        const d = Math.hypot(x / 5.2, (y - 4.6) / 5.3, z / 5)
-        return d <= 1 && d > 0.78 && !(z > 1.5 && y < 7.5)
+      // Pointed hood pulled back slightly so brow, hair fringe, and bright eyes read cleanly.
+      b.head.paint((x, y, z) => (y >= 7 && z < 3 ? 'hair' : undefined))
+      b.head.fill([-6, 2, -6], [5, 11, 4], 'hood', (x, y, z) => {
+        const d = Math.hypot(x / 5.4, (y - 5.0) / 5.5, (z + 0.8) / 5.2)
+        return d <= 1 && d > 0.76 && !(z > 0.5 && y < 8.2)
       })
-      b.head.segment([0, 8, -4], [0, 4, -7], 1.4, 'hoodDark', 0.6)
-      // Short cape and leaf clasp.
-      const cape = kit.part('cape', 'torso', [0, 6, -2.5])
-      cape.box([-4, -6, -1], [3, 0, -1], 'hood').box([-4, -6, -1], [3, -6, -1], 'hoodDark')
-      b.torso.box([-1, 5, 3], [0, 6, 3], 'leaf')
-      // Quiver on the back with fletchings.
-      b.torso.box([1, 1, -4], [2, 7, -3], 'quiver').box([1, 8, -4], [2, 9, -3], 'fletch').set(1, 10, -4, 'fletch')
-      // Longbow in the left hand: chunky 2px limbs so diagonals stay solid when turning.
-      const bow = kit.part('offhand', 'armL', [-0.5, b.hand, 0.5])
-      for (let z = -9; z <= 9; z++) {
-        const y = Math.round(2.6 * (z / 9) ** 2)
-        bow.box([-1, y, z], [0, y + 1, z], Math.abs(z) < 2 ? 'leather' : 'wood')
+      b.head.segment([0, 9, -4], [0, 5, -8], 1.7, 'hoodDark', 0.7)
+      // Flowing woodland cape + bright cream-gold scarf clasp.
+      const cape = kit.part('cape', 'torso', [0, 6, -3.5])
+      cape.box([-4, -7, -1], [3, 0, 0], 'hood').box([-4, -7, -1], [3, -7, 0], 'gold')
+      b.torso.box([-3, 5, 3], [2, 6, 4], 'scarf').box([-1, 5, 4], [0, 6, 4], 'gold')
+      // Quiver with bright crimson arrow fletchings jutting above shoulder.
+      b.torso
+        .box([1, 1, -5], [3, 7, -3], 'quiver')
+        .box([1, 8, -5], [3, 10, -4], 'fletch')
+        .box([2, 10, -5], [2, 11, -5], 'scarf')
+      // Tall recurve bow held upright in left fist with clear gap between grip and torso.
+      const bow = kit.part('offhand', 'armL', [1, b.hand + 1, 2])
+      for (let y = -7; y <= 10; y++) {
+        const z = 3 - Math.round(2.8 * (y / 10) ** 2)
+        bow.box([-1, y, z], [0, y, z + 1], Math.abs(y) < 2 ? 'leather' : 'wood')
       }
-      bow.box([0, 3, -8], [0, 3, 8], 'string')
+      bow.box([0, -6, 0], [0, 9, 0], 'string')
     }
   },
-  pose: (input) => bipedPose(input, { attack: 'bow', stride: 0.55 })
+  pose: (input) => {
+    const pose = bipedPose(input, { attack: 'bow', stride: 0.55 })
+    if (input.motion === 'idle') {
+      pose.armL = { ...pose.armL, rx: -0.45, rz: 0.25 }
+      pose.offhand = { rx: 0.45 }
+    }
+    return pose
+  }
 }

@@ -2,32 +2,35 @@ import { bipedPose, type StackDesign } from '../StackDesign'
 import { human } from './common'
 
 /**
- * いたずらゴブリン — a scrawny prankster with huge drooping ears, a patched burlap hood, a
- * toothy grin, a stolen bent kitchen knife and a lumpy loot sack on the back.
+ * いたずらゴブリン — a hunched, wide-eared prankster in dark plum-crimson patched rags so it
+ * separates cleanly from meadow grass and never blends into allied archers or soldiers.
  */
 export const goblin: StackDesign = {
   type: 'goblin',
   voxel: 2,
   walkDistance: 28,
+  portraitCrop: 0.74,
+  portraitYaw: -0.32,
   shadow: [7, 6],
   blueprint: {
     id: 'goblin',
     colors: {
-      skin: '#88c942',
-      skinDark: '#5c9428',
-      eye: '#ffe838',
-      pupil: '#1c1208',
+      skin: '#7ebf3d',
+      skinDark: '#4f8522',
+      '*eye': '#ffb824',
+      pupil: '#1c0f08',
       tooth: '#fffbf0',
-      mouth: '#3b1e14',
-      hood: '#9e703c',
-      patch: '#e04838',
-      patch2: '#3c78bf',
-      rags: '#6b4928',
-      sack: '#d9b56c',
-      rope: '#694420',
-      knife: '#e2ebf2',
-      handle: '#593319',
-      foot: '#5c9428'
+      mouth: '#3d151c',
+      hood: '#632842',
+      hoodDark: '#3f1729',
+      patch: '#e04234',
+      patch2: '#f2b838',
+      rags: '#4a2134',
+      sack: '#d4a657',
+      rope: '#5c381c',
+      knife: '#e4edf5',
+      handle: '#4d2b18',
+      foot: '#45751e'
     },
     build(kit) {
       const b = human(
@@ -42,43 +45,47 @@ export const goblin: StackDesign = {
           sleeve: 'skin',
           hands: 'skin'
         },
-        { legs: 4, torsoHalf: 3, torsoHeight: 6, headRadius: 4.6, armLength: 7 }
+        { legs: 3, torsoHalf: 3, torsoDepth: 3, torsoHeight: 5, headRadius: 4.5, armLength: 6, coveredSides: true }
       )
-      // Wide grin, yellow eyes with pinprick pupils.
-      for (const x of [-3, -2, 1, 2]) b.head.face(x, 4, 'eye').face(x, 3, 'eye')
+      // Menacing glowing amber eyes + wide toothy grin + big hooked nose.
+      for (const x of [-3, -2, 1, 2]) b.head.face(x, 4, '*eye').face(x, 3, '*eye')
       b.head.face(-2, 3, 'pupil').face(1, 3, 'pupil')
       for (const x of [-3, -2, -1, 0, 1, 2]) b.head.face(x, 1, 'mouth')
       b.head.face(-2, 1, 'tooth').face(1, 1, 'tooth')
-      b.head.box([-1, 2, 5], [0, 3, 5], 'skinDark')
-      // Big drooping ears.
+      b.head.box([-1, 2, 5], [0, 3, 6], 'skinDark')
+      // Enormous pointed goblin ears jutting far beyond head width.
       for (const side of [-1, 1]) {
-        const x0 = side < 0 ? -5 : 4
-        b.head.segment([x0 + 0.5, 4.5, 0], [x0 + side * 6 + 0.5, 3, -2], 1.3, 'skin', 0.5)
-        b.head.segment([x0 + side * 1 + 0.5, 4.5, 0.5], [x0 + side * 5 + 0.5, 3.2, -1.2], 0.6, 'skinDark')
+        const x0 = side < 0 ? -4.5 : 3.5
+        b.head.segment([x0, 4.5, 0], [x0 + side * 7.5, 5.2, -1.5], 1.5, 'skin', 0.6)
+        b.head.segment([x0 + side * 1, 4.3, 0.8], [x0 + side * 6, 4.8, -0.8], 0.7, 'skinDark')
       }
-      // Patched hood over the crown.
+      // Dark plum-burgundy patched hood swept back so the face and giant ears dominate.
       b.head.fill(
-        [-6, 5, -6],
-        [5, 10, 5],
+        [-5, 5, -6],
+        [4, 10, 4],
         'hood',
-        (x, y, z) => Math.hypot(x / 4.9, (y - 5) / 4.8, z / 4.7) <= 1 && !(z > 2.5 && y < 6.5)
+        (x, y, z) => Math.hypot(x / 4.7, (y - 5.2) / 4.5, (z + 0.6) / 4.6) <= 1 && !(z > 1.8 && y < 7.2)
       )
-      b.head.box([1, 8, 2], [2, 8, 3], 'patch').box([-3, 7, -4], [-2, 8, -4], 'patch2')
-      b.head.segment([0, 9, -3], [0, 8, -7], 1, 'hood', 0.4)
-      // Loot sack on the back.
+      b.head.box([1, 8, 1], [2, 8, 2], 'patch').box([-3, 7, -4], [-2, 8, -4], 'patch2')
+      b.head.segment([0, 9, -3], [0, 7.5, -8], 1.2, 'hoodDark', 0.5)
+      // Bulging loot sack on the back.
       b.torso
-        .ellipsoid([0, 5, -5], [3.4, 3.6, 2.6], 'sack')
+        .ellipsoid([0, 4.5, -5.5], [3.6, 3.8, 2.8], 'sack')
         .box([-1, 8, -5], [0, 8, -4], 'rope')
-        .box([-3, 3, -3], [2, 3, -3], 'rope')
-      b.hips.box([-3, -2, -2], [2, 0, 2], 'rags')
-      // Bent knife.
+        .box([-3, 2, -4], [2, 2, -4], 'rope')
+      b.hips.box([-3, -2, -3], [2, 0, 3], 'rags')
+      // Curved bent dagger gripped solidly in the hand.
       const knife = kit.part('weapon', 'armR', [0, b.hand, 0])
-      knife.box([0, 0, -1], [0, 0, 1], 'handle').box([0, 0, 2], [0, 1, 5], 'knife').box([0, 1, 6], [0, 1, 7], 'knife')
+      knife
+        .box([0, 0, -1], [1, 1, 1], 'handle')
+        .box([0, 0, 2], [1, 1, 5], 'knife')
+        .box([0, 1, 5], [1, 2, 8], 'knife')
     }
   },
   pose: (input) => {
-    const pose = bipedPose(input, { attack: 'stab', stride: 0.7, bob: 1.1 })
-    pose.torso = { ...pose.torso, rx: (pose.torso?.rx ?? 0) + 0.16 }
+    const pose = bipedPose(input, { attack: 'stab', stride: 0.75, bob: 1.2 })
+    pose.torso = { ...pose.torso, rx: (pose.torso?.rx ?? 0) + 0.28 }
+    pose.head = { ...pose.head, rx: (pose.head?.rx ?? 0) - 0.18 }
     return pose
   }
 }

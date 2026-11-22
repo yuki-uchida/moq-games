@@ -2,32 +2,35 @@ import { bipedPose, type StackDesign } from '../StackDesign'
 import { human } from './common'
 
 /**
- * 霜の術師 — a frost caster bundled in a glacier-blue long coat with a thick white fur hood,
- * mittens, and a staff of pale birch holding a floating six-pointed ice crystal.
+ * 霜の術師 — a frost mage in a deep sapphire fur-trimmed parka hood framing a crisp expressive
+ * face (no beard-like chin fur!), pale-blue mittens, and a birch staff crowned by a glowing ice star.
+ * Uses the dedicated low-crouched `frostCast` thrust pose.
  */
 export const frost: StackDesign = {
   type: 'frost',
   voxel: 2,
   walkDistance: 27,
+  portraitCrop: 0.62,
+  portraitYaw: -0.28,
   shadow: [8, 6],
   emitter: { part: 'weapon', at: [0.5, 1.5, 15.5] },
   blueprint: {
     id: 'frost',
     colors: {
       skin: '#ffe0cf',
-      eye: '#172d42',
+      eye: '#12263b',
       shine: '#ffffff',
       cheek: '#f598aa',
-      coat: '#2596d4',
-      coatDark: '#16669e',
-      fur: '#f5faff',
-      furShade: '#c2d8ed',
+      coat: '#1e7fc4',
+      coatDark: '#124f87',
+      fur: '#f2f8ff',
+      furShade: '#b8d4ed',
       mitten: '#6de6f5',
-      boot: '#23425e',
+      boot: '#1d3954',
       birch: '#f2ece0',
       knot: '#786858',
-      hair: '#d9f0ff',
-      '*ice': '#9ef5ff',
+      hair: '#a6d9fa',
+      '*ice': '#8cf2ff',
       '*iceCore': '#ffffff'
     },
     build(kit) {
@@ -38,39 +41,41 @@ export const frost: StackDesign = {
           eye: 'eye',
           shine: 'shine',
           cheek: 'cheek',
+          brow: 'coatDark',
           legs: 'coatDark',
           boots: 'boot',
           torso: 'coat',
           torsoTrim: 'fur',
           belt: 'coatDark',
-          sleeve: 'coat',
+          sleeve: 'coatDark',
           hands: 'mitten'
         },
-        { robe: true, legs: 5 }
+        { robe: true, legs: 5, headRadius: 4.8, eyeRow: 3, coveredSides: true }
       )
-      b.head.paint((x, y, z) => (y >= 6 && z < 2 ? 'hair' : undefined))
-      // Fur-lined hood: a coat-coloured shell with a white fur ring framing the face.
-      b.head.fill([-7, 1, -7], [6, 11, 6], 'coat', (x, y, z) => {
-        const d = Math.hypot(x / 5.4, (y - 4.8) / 5.6, z / 5.2)
-        return d <= 1 && d > 0.8 && !(z > 2 && y < 8)
+      b.head.paint((x, y, z) => (y >= 7 && z < 3 ? 'hair' : undefined))
+      // Deep sapphire hood framing the face cleanly (open across chin/face so eyes pop!).
+      b.head.fill([-7, 2, -7], [6, 12, 5], 'coat', (x, y, z) => {
+        const d = Math.hypot(x / 5.8, (y - 5.2) / 5.8, (z + 0.6) / 5.6)
+        return d <= 1 && d > 0.78 && !(z > 1.2 && y < 8.4)
       })
-      b.head.fill([-7, 0, 1], [6, 10, 6], 'fur', (x, y, z) => {
-        const ring = Math.hypot(x / 5.4, (y - 4.6) / 5.4)
-        return z > 1.6 && z < 4.2 && ring <= 1.05 && ring > 0.72
+      // Fur trim only along the upper-side hood arch (leaves chin & face crisp, not a white beard!).
+      b.head.fill([-7, 3, 1], [6, 11, 5], 'fur', (x, y, z) => {
+        const ring = Math.hypot(x / 5.7, (y - 5.0) / 5.6)
+        return z > 1.5 && z < 3.6 && ring <= 1.04 && ring > 0.78 && y >= 3.2
       })
-      // Fur collar and hem trim.
-      b.torso.fill([-6, 5, -4], [5, 7, 4], 'fur', (x, y, z) => Math.hypot(x / 4.6, z / 3.2) <= 1.1)
-      b.hips.paint((x, y, z) => (y === -3 ? ((x + z) % 3 ? 'fur' : 'furShade') : undefined))
-      b.torso.box([-1, 1, 3], [0, 4, 3], 'fur')
-      // Birch staff: chunky 2px shaft with a bold floating snow crystal.
-      const staff = kit.part('weapon', 'armR', [0, b.hand, 0])
+      // Fur shoulder collar & vertical coat trim.
+      b.torso.fill([-6, 5, -4], [5, 7, 4], 'fur', (x, y, z) => Math.hypot(x / 4.8, z / 3.8) <= 1.1)
+      b.hips.paint((x, y, z) => (y === -4 ? ((x + z) % 3 ? 'fur' : 'furShade') : undefined))
+      b.torso.box([-1, 1, 4], [0, 4, 4], 'fur')
+      // Chunky 2px birch staff with a glowing six-pointed ice crystal.
+      const staff = kit.part('weapon', 'armR', [0, b.hand, 1])
       staff.box([0, 0, -3], [1, 1, 13], 'birch').set(0, 1, 4, 'knot').set(1, 1, 9, 'knot')
       for (let i = 0; i < 6; i++) {
         const a = (i / 6) * Math.PI * 2
-        staff.segment([0.5, 1.5, 15.5], [0.5 + Math.sin(a) * 3, 1.5, 15.5 + Math.cos(a) * 3], 0.6, '*ice')
+        staff.segment([0.5, 1.5, 15.5], [0.5 + Math.sin(a) * 3.2, 1.5, 15.5 + Math.cos(a) * 3.2], 0.7, '*ice')
       }
-      staff.segment([0.5, -0.5, 15.5], [0.5, 3.5, 15.5], 0.6, '*ice').set(0, 1, 15, '*iceCore')
+      staff.segment([0.5, -0.5, 15.5], [0.5, 3.5, 15.5], 0.7, '*ice').set(0, 1, 15, '*iceCore')
     }
   },
-  pose: (input) => bipedPose(input, { attack: 'cast', stride: 0.4, bob: 0.6 })
+  pose: (input) => bipedPose(input, { attack: 'frostCast', stride: 0.4, bob: 0.6 })
 }

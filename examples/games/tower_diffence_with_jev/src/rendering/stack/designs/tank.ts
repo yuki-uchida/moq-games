@@ -2,29 +2,33 @@ import { bipedPose, type StackDesign } from '../StackDesign'
 import { human } from './common'
 
 /**
- * 盾の騎士 — a broad knight in blued plate with a bucket helm and a T visor, a tall kite
- * shield bearing the order's tower, and a flanged mace.
+ * 盾の騎士 — a broad, imposing bulwark knight in blued steel plate and royal cobalt pauldrons
+ * (reads cleanly even against white snow!), a bucket helm with glowing heroic eyes inside a
+ * deep dark T-visor, a towering tower-emblem kite shield, and a gold-trimmed flanged mace.
  */
 export const tank: StackDesign = {
   type: 'tank',
   voxel: 2,
   walkDistance: 26,
-  shadow: [9, 7],
+  portraitCrop: 0.62,
+  portraitYaw: -0.38,
+  shadow: [10, 8],
   blueprint: {
     id: 'tank',
     colors: {
-      plate: '#b8c8de',
-      plateDark: '#697b99',
-      plateLight: '#e6effa',
-      visor: '#141a29',
-      gold: '#f5be36',
-      cloth: '#2359b8',
-      shield: '#1e58c7',
-      shieldRim: '#dce6f5',
+      plate: '#9eb6d6',
+      plateDark: '#4f6485',
+      plateLight: '#dce8f8',
+      visor: '#101524',
+      '*eyeGlow': '#ffe67a',
+      gold: '#f7c234',
+      cloth: '#1d54bd',
+      shield: '#194fb8',
+      shieldRim: '#d9e6f7',
       emblem: '#fff9eb',
-      mace: '#7a8a9e',
+      mace: '#697a91',
       grip: '#693f1f',
-      boot: '#3c485e'
+      boot: '#334059'
     },
     build(kit) {
       const b = human(
@@ -35,29 +39,36 @@ export const tank: StackDesign = {
           legs: 'plateDark',
           boots: 'boot',
           torso: 'plate',
-          torsoTrim: 'plateDark',
+          torsoTrim: 'cloth',
           belt: 'cloth',
-          sleeve: 'plate',
-          hands: 'plateDark'
+          sleeve: 'plateDark',
+          hands: 'plate'
         },
-        { torsoHalf: 5, torsoDepth: 3, legs: 5, headRadius: 4.2, armLength: 7 }
+        { torsoHalf: 6, torsoDepth: 4, legs: 5, headRadius: 4.5, armLength: 7, coveredSides: true }
       )
-      // Bucket helm replaces the round head.
+      // Sculpted bucket helm with gold brow crest and glowing eyes inside dark T-visor.
       b.head.paint(() => 0)
       b.head
-        .box([-4, 0, -4], [3, 7, 3], 'plate')
-        .box([-4, 8, -3], [3, 8, 2], 'plateLight')
-        .box([-4, 0, -4], [3, 0, 3], 'plateDark')
-        .box([-3, 4, 4], [2, 4, 4], 'visor')
+        .box([-4, 0, -4], [3, 8, 4], 'plate')
+        .box([-4, 8, -3], [3, 9, 3], 'plateLight')
+        .box([-4, 0, -4], [3, 0, 4], 'plateDark')
+        .box([-4, 5, 4], [3, 6, 4], 'gold')
+        .box([-3, 3, 4], [2, 4, 4], 'visor')
         .box([-1, 1, 4], [0, 4, 4], 'visor')
-        .box([-1, 9, -2], [0, 10, 1], 'gold')
-      // Pauldrons and a cloth tabard.
-      for (const x of [-7, 4]) b.torso.box([x, 5, -3], [x + 2, 7, 3], 'plateLight')
-      b.torso.box([-2, 0, 4], [1, 5, 4], 'cloth').box([-1, 2, 5], [0, 3, 5], 'gold')
-      b.hips.box([-2, -3, 4], [1, 1, 4], 'cloth')
-      // Kite shield on the left arm: a vertical slab facing forward.
-      const shield = kit.part('offhand', 'armL', [1, -3, 2.5])
-      const halfWidth = (y: number) => (y > 1 ? 4.6 : 4.6 * Math.max(0, (y + 9) / 10))
+        .set(-2, 4, 4, '*eyeGlow')
+        .set(1, 4, 4, '*eyeGlow')
+        .box([-1, 9, -3], [0, 11, 2], 'gold')
+      // Broad cobalt-and-gold pauldrons + tabard (contrasts strongly on frost snow!).
+      for (const x of [-8, 5])
+        b.torso.box([x, 4, -4], [x + 2, 7, 4], 'cloth').box([x, 7, -3], [x + 2, 7, 3], 'gold')
+      b.torso.box([-2, 0, 4], [1, 6, 5], 'cloth').box([-1, 2, 5], [0, 4, 5], 'gold')
+      b.hips.box([-2, -3, 4], [1, 1, 5], 'cloth')
+      // Short armored cape on back.
+      const cape = kit.part('cape', 'torso', [0, 6, -4.5])
+      cape.box([-5, -7, -1], [4, 0, 0], 'cloth').box([-5, -7, -1], [4, -7, 0], 'gold')
+      // Towering kite shield held snug against left forearm.
+      const shield = kit.part('offhand', 'armL', [0.5, -3, 2])
+      const halfWidth = (y: number) => (y > 1 ? 4.8 : 4.8 * Math.max(0, (y + 9) / 10))
       shield.fill([-5, -9, 0], [5, 6, 1], 'shield', (x, y, z) => Math.abs(x - 0.5) <= halfWidth(y) && z < 2)
       shield.paint((x, y) => (Math.abs(x + 0.5 - 0.5) > halfWidth(y + 0.5) - 1.3 || y >= 5 ? 'shieldRim' : undefined))
       for (const [x0, y0, x1, y1] of [
@@ -67,14 +78,14 @@ export const tank: StackDesign = {
         [0, 4, 0, 4]
       ])
         shield.box([x0, y0, 2], [x1, y1, 2], 'emblem')
-      // Flanged mace.
-      const mace = kit.part('weapon', 'armR', [0, b.hand, 0])
+      // Chunky flanged mace anchored in right fist.
+      const mace = kit.part('weapon', 'armR', [0, b.hand, 1])
       mace
-        .box([0, 0, -1], [0, 0, 6], 'grip')
-        .box([-1, -1, 7], [1, 1, 10], 'mace')
-        .box([-2, 0, 8], [2, 0, 9], 'mace')
-        .box([0, -2, 8], [0, 2, 9], 'mace')
-        .set(0, 0, 11, 'gold')
+        .box([0, 0, -1], [1, 1, 6], 'grip')
+        .box([-1, -1, 7], [2, 2, 10], 'mace')
+        .box([-2, 0, 8], [3, 1, 9], 'gold')
+        .box([0, -2, 8], [1, 3, 9], 'gold')
+        .box([0, 0, 11], [1, 1, 11], 'gold')
     }
   },
   pose: (input) => bipedPose(input, { attack: 'bash', stride: 0.42, bob: 0.6, heavy: true, armSpread: 0.2 })

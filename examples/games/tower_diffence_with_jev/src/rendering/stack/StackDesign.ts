@@ -30,9 +30,10 @@ export interface StackDesign {
   readonly shadow: readonly [number, number]
   /** Projectile origin: a part and a cell offset in that part. */
   readonly emitter?: { readonly part: string; readonly at: readonly [number, number, number] }
-  /** UI bust framing: fraction of the figure height from the top, and the figure's turn. */
+  /** UI bust framing: fraction of the figure height from the top, turn angle, and camera squash. */
   readonly portraitCrop?: number
   readonly portraitYaw?: number
+  readonly portraitSquash?: number
   pose(input: StackMotionInput): StackPose
 }
 
@@ -81,6 +82,8 @@ export type BipedAttack =
   | 'bow'
   | 'crossbow'
   | 'cast'
+  | 'bloom'
+  | 'frostCast'
   | 'smash'
   | 'sweep'
   | 'punch'
@@ -436,63 +439,60 @@ function bipedAttack(input: StackMotionInput, attack: BipedAttack, pose: StackPo
       break
     }
     case 'cast': {
-      // Staff hand rises, then thrusts toward the target as the spell leaves on the cue.
+      // Mage: pulls staff far back over shoulder, then sweeps forward across the body on cue.
       const lift = strike(ms, [
-        [0, 0],
-        [wind, -2.6],
-        [cue * 0.92, -2.5],
-        [cue, -1.35],
-        [after, -1.2],
-        [end, 0]
+        [0, -0.3],
+        [wind, -2.8],
+        [cue * 0.9, -2.6],
+        [cue, -1.1],
+        [after, -0.9],
+        [end, -0.3]
       ])
-      pose.armR = { rx: lift, rz: -0.12 }
+      pose.armR = { rx: lift, rz: -0.35, ry: strike(ms, [[0, 0], [wind, -0.5], [cue, 0.5], [end, 0]]) }
       pose.armL = {
-        rx: track(ms, [
-          [0, 0],
-          [wind, -1.1],
-          [cue, -1.4],
-          [after, -0.9],
-          [end, 0]
-        ]),
-        rz: 0.5
+        rx: track(ms, [[0, 0], [wind, -0.6], [cue, -1.6], [after, -1.2], [end, 0]]),
+        rz: 0.65
       }
       pose.torso = {
-        rx: track(ms, [
-          [0, 0],
-          [wind, -0.18],
-          [cue, 0.16],
-          [end, 0]
-        ]),
-        ry: track(ms, [
-          [0, 0],
-          [wind, 0.2],
-          [cue, -0.1],
-          [end, 0]
-        ])
+        rx: track(ms, [[0, 0], [wind, -0.25], [cue, 0.24], [end, 0]]),
+        ry: strike(ms, [[0, 0], [wind, 0.55], [cue, -0.45], [end, 0]])
       }
-      pose.head = {
-        rx: track(ms, [
-          [0, 0],
-          [wind, -0.2],
-          [cue, 0.1],
-          [end, 0]
-        ])
-      }
-      pose.hips = {
-        y: track(ms, [
-          [0, 0],
-          [wind, 0.8],
-          [cue, -0.3],
-          [end, 0]
-        ])
-      }
-      pose.cape = {
-        rx: track(ms, [
-          [0, 0.1],
-          [cue, 0.6],
-          [end, 0.1]
-        ])
-      }
+      pose.head = { rx: track(ms, [[0, 0], [wind, -0.22], [cue, 0.14], [end, 0]]) }
+      pose.hips = { y: track(ms, [[0, 0], [wind, 1.2], [cue, -0.5], [end, 0]]), z: track(ms, [[0, 0], [cue, 1.8], [end, 0]]) }
+      pose.cape = { rx: track(ms, [[0, 0.1], [cue, 0.7], [end, 0.1]]) }
+      break
+    }
+    case 'bloom': {
+      // Healer: opens both arms wide and raises the blossom staff high beside the face on cue.
+      const open = strike(ms, [
+        [0, 0],
+        [wind, 0.5],
+        [cue, 1],
+        [after, 0.85],
+        [end, 0]
+      ])
+      pose.armR = { rx: -2.4 * open, rz: -0.75 * open - 0.15 }
+      pose.armL = { rx: -1.8 * open, rz: 0.95 * open + 0.2 }
+      pose.torso = { rx: -0.22 * open, ry: 0.12 * Math.sin(open * Math.PI) }
+      pose.head = { rx: -0.28 * open }
+      pose.hips = { y: 1.8 * open }
+      break
+    }
+    case 'frostCast': {
+      // Frost caster: drops into a low crouched stance and thrusts the ice staff straight forward low.
+      const thrust = strike(ms, [
+        [0, 0],
+        [wind, -0.4],
+        [cue, 1],
+        [after, 0.8],
+        [end, 0]
+      ])
+      pose.armR = { rx: -1.35 * Math.max(0, thrust) - 0.3, z: 3.2 * thrust, rz: -0.05 }
+      pose.weapon = { rx: 1.25 * Math.max(0, thrust) }
+      pose.armL = { rx: 0.65 * Math.max(0, thrust), rz: 0.6 * Math.max(0, thrust) + 0.15 }
+      pose.torso = { rx: 0.32 * Math.max(0, thrust), ry: -0.4 * Math.max(0, thrust) }
+      pose.head = { rx: -0.15 * Math.max(0, thrust) }
+      pose.hips = { y: -1.6 * Math.max(0, thrust), z: 2.2 * Math.max(0, thrust) }
       break
     }
     case 'smash': {

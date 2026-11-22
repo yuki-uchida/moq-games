@@ -3,6 +3,9 @@ import { poseMatrices, type StackPose } from './StackRig'
 import { bakePoseSliceSheet, drawStackPixels, MAX_STACK_PARTS, STACK_SPACING, STACK_SQUASH } from './SliceSheet'
 import { stackModel } from './StackVisual'
 
+/** Lower portrait camera squash so faces and busts read heroically instead of looking down at hats. */
+export const PORTRAIT_SQUASH = 0.48
+
 export interface StackPaintOptions {
   /** Figure turn in radians; 0 faces the viewer (+y down), negative turns toward viewer's right. */
   readonly yaw?: number
@@ -33,8 +36,8 @@ export function stackSplats(design: StackDesign, options: Omit<StackPaintOptions
     ? bakePoseSliceSheet(model, poseMatrices(model, options.pose, new Float32Array(MAX_STACK_PARTS * 16)))
     : model.restSheet
   const rendered = drawStackPixels(sheet, {
-    turn: options.yaw ?? -0.52,
-    squash: options.squash ?? STACK_SQUASH,
+    turn: options.yaw ?? design.portraitYaw ?? -0.35,
+    squash: options.squash ?? design.portraitSquash ?? PORTRAIT_SQUASH,
     spacing: options.spacing ?? STACK_SPACING,
     outline: true,
     shadow: false
@@ -55,8 +58,9 @@ export function stackSplats(design: StackDesign, options: Omit<StackPaintOptions
 }
 
 /**
- * Render a SpriteCook sprite stack onto a 2D canvas with crisp nearest-neighbor integer-like scaling,
- * 1-art-px dark outline around the finished stack, and optional stepped pixel shadow.
+ * Render a SpriteCook sprite stack onto a 2D canvas with crisp nearest-neighbor scaling,
+ * framing strictly by the cropped bust bounds so every portrait has consistent face scale
+ * and fits cleanly inside circular UI badges without clipping wings or horns.
  */
 export function paintStack(context: CanvasRenderingContext2D, design: StackDesign, options: StackPaintOptions): void {
   const model = stackModel(design)
@@ -64,66 +68,80 @@ export function paintStack(context: CanvasRenderingContext2D, design: StackDesig
     ? bakePoseSliceSheet(model, poseMatrices(model, options.pose, new Float32Array(MAX_STACK_PARTS * 16)))
     : model.restSheet
   const rendered = drawStackPixels(sheet, {
-    turn: options.yaw ?? -0.52,
-    squash: options.squash ?? STACK_SQUASH,
+    turn: options.yaw ?? design.portraitYaw ?? -0.35,
+    squash: options.squash ?? design.portraitSquash ?? PORTRAIT_SQUASH,
     spacing: options.spacing ?? STACK_SPACING,
     outline: true,
     shadow: options.shadow ?? true
   })
 
-  // Measure tight opaque bounds (body + outline) so portraits frame the character cleanly.
-  let minX = rendered.width,
-    maxX = -1,
-    minY = rendered.height,
-    maxY = -1
+  // First find vertical span of opaque pixels to determine the bust crop window.
+  let topY = rendered.height,
+    botY = -1
   for (let y = 0; y < rendered.height; y++) {
     for (let x = 0; x < rendered.width; x++) {
-      const i = (y * rendered.width + x) * 4
-      if (rendered.pixels[i + 3] >= 128) {
-        if (x < minX) minX = x
-        if (x > maxX) maxX = x
-        if (y < minY) minY = y
-        if (y > maxY) maxY = y
+      if (rendered.pixels[(y * rendered.width + x) * 4 + 3] >= 128) {
+        if (y < topY) topY = y
+        if (y > botY) botY = y
       }
     }
   }
-  if (maxX < minX || maxY < minY) return
+  if (botY < topY) return
 
   const crop = options.crop ?? 1
-  const fullW = maxX - minX + 1
-  const fullH = maxY - minY + 1
-  const croppedH = Math.max(1, Math.ceil(fullH * crop))
+  const fullH = botY - topY + 1
+  const cropBottom = Math.min(botY, topY + Math.max(1, Math.ceil(fullH * crop)) - 1)
+
+  // Measure horizontal bounds strictly inside the cropped bust window so wide legs/weapons don't shrink faces!
+  let minX = rendered.width,
+    maxX = -1
+  for (let y = topY; y <= cropBottom; y++) {
+    for (let x = 0; x < rendered.width; x++) {
+      if (rendered.pixels[(y * rendered.width + x) * 4 + 3] >= 128) {
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+      }
+    }
+  }
+  if (maxX < minX) return
+
+  const cropW = maxX - minX + 1
+  const cropH = cropBottom - topY + 1
   const padding = options.padding ?? 0.08
   const usable = options.size * (1 - padding * 2)
-  const scale = Math.max(1, Math.floor(usable / Math.max(fullW, croppedH)))
-  const ox = Math.floor((options.size - fullW * scale) / 2)
-  const oy =
-    crop < 1
-      ? Math.floor(options.size * padding)
-      : Math.floor((options.size - croppedH * scale) / 2)
+  // Inscribe inside circular UI badges cleanly while maximizing integer pixel scale for wide winged figures.
+  const circleDiameter = options.size * (1 - padding * 1.45)
+  const rawScale = Math.min(usable / Math.max(cropW, cropH), circleDiameter / Math.hypot(cropW, cropH))
+  const scale = rawScale >= 2 ? Math.floor(rawScale) : Math.max(1, rawScale)
+  const ox = Math.floor((options.size - cropW * scale) / 2)
+  const oy = Math.floor((options.size - cropH * scale) / 2)
 
-  // Draw crisp stepped shadow first (only when full-body framing is active).
+  // Draw crisp stepped shadow when framing the full body (e.g. title screen heroes).
   if (options.shadow !== false && crop >= 0.99) {
     for (let y = 0; y < rendered.height; y++) {
       for (let x = 0; x < rendered.width; x++) {
         const i = (y * rendered.width + x) * 4
         if (rendered.shadow[i + 3] < 16) continue
-        const dx = ox + (x - minX) * scale
-        const dy = oy + (y - minY) * scale
+        const dx = Math.floor(ox + (x - minX) * scale)
+        const dy = Math.floor(oy + (y - topY) * scale)
         if (dy >= options.size || dy + scale < 0) continue
         context.fillStyle = `rgba(${rendered.shadow[i]},${rendered.shadow[i + 1]},${rendered.shadow[i + 2]},${(rendered.shadow[i + 3] / 255).toFixed(3)})`
-        context.fillRect(dx, dy, scale, scale)
+        context.fillRect(dx, dy, Math.ceil(scale), Math.ceil(scale))
       }
     }
   }
 
-  // Draw crisp body + 1-art-px outline pixels.
-  for (let y = minY; y < minY + croppedH && y <= maxY; y++) {
+  for (let y = topY; y <= cropBottom; y++) {
     for (let x = minX; x <= maxX; x++) {
       const i = (y * rendered.width + x) * 4
       if (rendered.pixels[i + 3] < 128) continue
       context.fillStyle = `rgb(${rendered.pixels[i]},${rendered.pixels[i + 1]},${rendered.pixels[i + 2]})`
-      context.fillRect(ox + (x - minX) * scale, oy + (y - minY) * scale, scale, scale)
+      context.fillRect(
+        Math.floor(ox + (x - minX) * scale),
+        Math.floor(oy + (y - topY) * scale),
+        Math.ceil(scale),
+        Math.ceil(scale)
+      )
     }
   }
 }
@@ -146,8 +164,15 @@ export function stackPortrait(design: StackDesign | undefined, size = 128, full?
       context,
       design,
       full
-        ? { size, crop: 1, yaw: full.yaw, padding: 0.04, shadow: true }
-        : { size, crop: design.portraitCrop ?? 0.72, yaw: design.portraitYaw ?? -0.3, padding: 0.05, shadow: false }
+        ? { size, crop: 1, yaw: full.yaw, squash: STACK_SQUASH, padding: 0.04, shadow: true }
+        : {
+            size,
+            crop: design.portraitCrop ?? 0.64,
+            yaw: design.portraitYaw ?? -0.32,
+            squash: design.portraitSquash ?? PORTRAIT_SQUASH,
+            padding: 0.08,
+            shadow: false
+          }
     )
     url = canvas.toDataURL('image/png')
   }
