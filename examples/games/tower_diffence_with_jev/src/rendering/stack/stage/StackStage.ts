@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { CONFIG, pointOnPath, type Point } from '../../../game/model'
+import { CONFIG, pointOnPath, type FieldId, type Point } from '../../../game/model'
 import { distanceToRoadUnion, type ResolvedBattlefield } from '../../../game/BattlefieldRoutes'
 import { fieldScenery, type SceneryItem } from '../../../game/FieldScenery'
 import { modelGroundDepth } from '../../BoardCamera'
@@ -42,12 +42,12 @@ function makeNearestTexture(pixels: Uint8ClampedArray, width: number, height: nu
 /**
  * SpriteCook Pitfall #5:
  * Static stacks (trees, rocks, castle, monster den) are drawn ONCE at load time into a crisp
- * outlined + shadowed plain sprite, avoiding per-frame slice loops across dozens of props.
+ * outlined + southeast-shadowed plain sprite, avoiding per-frame slice loops across dozens of props.
  */
-function bakeStaticSprite(design: StackDesign, turn: number): BakedStaticSprite {
+function bakeStaticSprite(design: StackDesign, turn: number, shadowShift: readonly [number, number]): BakedStaticSprite {
   // Quantize static turn to 16 steps so identical prop orientations share one baked texture.
   const step = ((Math.round((turn / (Math.PI * 2)) * 16) % 16) + 16) % 16
-  const key = `${design.blueprint.id}:${step}`
+  const key = `${design.blueprint.id}:${step}:${shadowShift[0]}x${shadowShift[1]}`
   const cached = staticSpriteCache.get(key)
   if (cached) return cached
 
@@ -59,7 +59,7 @@ function bakeStaticSprite(design: StackDesign, turn: number): BakedStaticSprite 
     spacing: STACK_SPACING,
     outline: true,
     shadow: true,
-    shadowOffset: [2, 2]
+    shadowOffset: shadowShift
   })
   const entry: BakedStaticSprite = {
     body: makeNearestTexture(rendered.pixels, rendered.width, rendered.height, `static-stack:${key}`),
@@ -82,6 +82,7 @@ interface PlacedStatic {
   readonly y: number
   readonly scale: number
   readonly facing: Point
+  readonly shadowShift: readonly [number, number]
   readonly seed: number
   readonly sways: boolean
   sprite: BakedStaticSprite
@@ -92,48 +93,98 @@ function hash(i: number, seed: number): number {
   h = Math.imul(h ^ (h >>> 15), 2246822519)
   return ((h ^ (h >>> 13)) >>> 0) / 4294967295
 }
+
 const direction = (a: Point, b: Point): Point => {
   const length = Math.hypot(b.x - a.x, b.y - a.y) || 1
   return { x: (b.x - a.x) / length, y: (b.y - a.y) / length }
 }
 
-/** Where scenery goes: the field's own blockers, or a decorated rim around an open board. */
+/** Snap fortress orientation to clean cardinal/orthographic direction so castle walls stay razor-crisp. */
+function snapCardinal(dir: Point): Point {
+  if (Math.abs(dir.x) >= Math.abs(dir.y)) return { x: dir.x >= 0 ? 1 : -1, y: 0 }
+  return { x: 0, y: dir.y >= 0 ? 1 : -1 }
+}
+
+/**
+ * Where scenery goes:
+ * - Fixed `scale: 1` for unified 1:1 art-pixel density (size variety comes from authored designs)
+ * - Staggered perimeter framing kept strictly inside viewport (`y <= field.height - 26`) so bottom trees never clip
+ * - Low non-blocking interior accents (stumps, mushrooms, bones, ice crystals, lava vents) in genuine dead zones
+ *   strictly clear of roads, deployment slots, entrance, and gate.
+ */
 export function stageLayout(field: ResolvedBattlefield): { kind: PropKind; x: number; y: number; scale: number }[] {
   const scenery = fieldScenery(field.id, field.version, field.layoutRevision)
   const kindOf = (item: SceneryItem): PropKind =>
     item.kind === 'tree' || item.kind === 'cactus' ? 'tree' : item.kind === 'rock' ? 'rock' : 'small'
-  if (scenery.length) return scenery.map((item) => ({ kind: kindOf(item), x: item.x, y: item.y, scale: item.scale }))
+  if (scenery.length) return scenery.map((item) => ({ kind: kindOf(item), x: item.x, y: item.y, scale: 1 }))
+
   const placed: { kind: PropKind; x: number; y: number; scale: number }[] = []
-  const seed = field.id.length * 977 + field.layoutRevision
+  const seed = field.id.length * 977 + field.layoutRevision * 19
   const keep = [field.entrance, field.gate]
-  const clear = (point: Point, radius: number) =>
-    point.x > 6 &&
-    point.x < field.width - 6 &&
-    point.y > 10 &&
-    point.y < field.height - 4 &&
-    distanceToRoadUnion(field, point) > CONFIG.roadWidth / 2 + radius &&
-    keep.every((k) => Math.hypot(k.x - point.x, k.y - point.y) > 150) &&
-    field.slots.every((slot) => Math.hypot(slot.x - point.x, slot.y - point.y) > 40 + radius) &&
-    placed.every((other) => Math.hypot(other.x - point.x, other.y - point.y) > 34)
+  const slowMid = pointOnPath(field.path, (field.slowSurface.startProgress + field.slowSurface.endProgress) / 2)
+  const clear = (point: Point, kind: PropKind, roadPad: number, slotPad: number, spacing: number) =>
+    point.x >= 24 &&
+    point.x <= field.width - 24 &&
+    point.y >= (kind === 'tree' ? 62 : 28) &&
+    point.y <= field.height - 26 &&
+    Math.hypot(slowMid.x - point.x, slowMid.y - point.y) > 64 &&
+    distanceToRoadUnion(field, point) > CONFIG.roadWidth / 2 + roadPad &&
+    keep.every((k) => Math.hypot(k.x - point.x, k.y - point.y) > 158) &&
+    field.slots.every((slot) => Math.hypot(slot.x - point.x, slot.y - point.y) > 42 + slotPad) &&
+    placed.every((other) => Math.hypot(other.x - point.x, other.y - point.y) > spacing)
+
   let i = 0
-  const band = (x: number, y: number) => {
+  const band = (x: number, y: number, preferTree: boolean) => {
     const roll = hash(i++, seed)
-    const kind: PropKind = roll < 0.55 ? 'tree' : roll < 0.78 ? 'rock' : 'small'
-    const point = { x: x + (hash(i++, seed) - 0.5) * 24, y: y + (hash(i++, seed) - 0.5) * 18 }
-    if (clear(point, kind === 'tree' ? 26 : 18)) placed.push({ kind, ...point, scale: 0.8 + hash(i++, seed) * 0.3 })
+    const allowTree = preferTree && y >= 58
+    const kind: PropKind = allowTree
+      ? roll < 0.65
+        ? 'tree'
+        : roll < 0.84
+          ? 'rock'
+          : 'small'
+      : roll < 0.22
+        ? 'accent'
+        : roll < 0.64
+          ? 'small'
+          : 'rock'
+    const point = {
+      x: x + (hash(i++, seed) - 0.5) * 20,
+      y: y + (hash(i++, seed) - 0.5) * 14
+    }
+    if (clear(point, kind, kind === 'tree' ? 28 : 20, kind === 'tree' ? 22 : 12, kind === 'tree' ? 38 : 34)) {
+      placed.push({ kind, ...point, scale: 1 })
+    }
   }
-  for (let x = 24; x < field.width; x += 38) {
-    band(x, 26)
-    band(x, field.height - 14)
+
+  // Top border uses low rocks/bushes above y=58 (zero clipped crowns!) and tall hero trees along sides/bottom.
+  for (let x = 28; x < field.width - 20; x += 40) {
+    band(x, 34, false)
+    band(x + 18, 66, true)
+    band(x, field.height - 30, true)
   }
-  for (let y = 70; y < field.height - 40; y += 40) {
-    band(18, y)
-    band(field.width - 18, y)
+  for (let y = 78; y < field.height - 54; y += 44) {
+    band(28, y, true)
+    band(field.width - 28, y, true)
+  }
+  // Low non-blocking scenic accents nestled inside interior dead-zone pockets (clear of road & slots).
+  for (let y = 104; y < field.height - 76; y += 68) {
+    for (let x = 92; x < field.width - 92; x += 88) {
+      if (hash(i++, seed) > 0.48) continue
+      band(x, y, false)
+    }
   }
   return placed.sort((a, b) => a.y - b.y)
 }
 
-/** Sprite-stacked battlefield: crisp pixel ground, pre-baked static scenery, monster den and knights' castle. */
+const PLAQUE_THEME: Record<FieldId, { bg: string; inner: string; border: string; text: string }> = {
+  meadow: { bg: '#3b2919', inner: '#543c26', border: '#c4a46c', text: '#fff5d6' },
+  desert: { bg: '#4a2e1a', inner: '#694326', border: '#e0b977', text: '#fff4d9' },
+  frost: { bg: '#223547', inner: '#334d66', border: '#9dc9e0', text: '#eef9ff' },
+  volcanic: { bg: '#261d29', inner: '#3b2d3e', border: '#d9814a', text: '#ffedd6' }
+}
+
+/** Sprite-stacked battlefield: crisp 1:1 pixel ground, hero-scale scenery, monster den and knights' castle. */
 export class StackStage {
   readonly ground: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>
   private props: PlacedStatic[] = []
@@ -221,10 +272,11 @@ export class StackStage {
     facing: Point,
     seed: number,
     scale = 1,
-    name?: string
+    name?: string,
+    shadowShift: readonly [number, number] = [3, 3]
   ): PlacedStatic {
     const turn = Math.atan2(facing.y / STACK_SQUASH, facing.x * this.aspect) - Math.PI / 2
-    const sprite = bakeStaticSprite(design, turn)
+    const sprite = bakeStaticSprite(design, turn, shadowShift)
     const body = new THREE.Mesh(
       quadGeometry,
       new THREE.MeshBasicMaterial({
@@ -257,13 +309,17 @@ export class StackStage {
     root.add(shadow, body)
     this.scene.add(root)
 
-    const sways = design.blueprint.id === 'oak' || design.blueprint.id.includes('pine')
-    return { design, root, body, shadow, x, y, scale, facing, seed: (seed * 0.137) % 1, sways, sprite }
+    const sways =
+      design.blueprint.id === 'oak' ||
+      design.blueprint.id === 'oak-young' ||
+      design.blueprint.id === 'desert-palm' ||
+      design.blueprint.id.includes('pine')
+    return { design, root, body, shadow, x, y, scale, facing, shadowShift, seed: (seed * 0.137) % 1, sways, sprite }
   }
 
   private layoutPlaced(placed: PlacedStatic, xOffset = 0, swayX = 0): void {
     const turn = Math.atan2(placed.facing.y / STACK_SQUASH, placed.facing.x * this.aspect) - Math.PI / 2
-    const sprite = bakeStaticSprite(placed.design, turn)
+    const sprite = bakeStaticSprite(placed.design, turn, placed.shadowShift)
     if (sprite !== placed.sprite) {
       placed.sprite = sprite
       placed.body.material.map = sprite.body
@@ -275,9 +331,6 @@ export class StackStage {
     const snapY = Math.round(placed.y / artPxY) * artPxY
     const w = sprite.width * artPxX
     const h = sprite.height * artPxY
-    // PlaneGeometry is centered; align (originX, originY) to (snapX, snapY).
-    // Remember scaleY(-1) on the board canvas means world +Y is down, while texture row 0 is at local +Y
-    // (flipped bottom-up in makeNearestTexture), so local Y = -1 is flipped to match top-down pixel rows.
     const cx = (sprite.width * 0.5 - sprite.originX) * artPxX
     const cy = (sprite.height * 0.5 - sprite.originY) * artPxY
 
@@ -293,6 +346,7 @@ export class StackStage {
     stageLayout(field).forEach((spot, index) => {
       const options = kinds[spot.kind]
       const design = options[index % options.length]
+      const shift: readonly [number, number] = spot.kind === 'tree' ? [4, 4] : [3, 3]
       this.props.push(
         this.createPlaced(
           design,
@@ -300,7 +354,9 @@ export class StackStage {
           spot.y,
           { x: Math.sin(index * 2.3), y: Math.cos(index * 2.3) },
           index,
-          spot.scale
+          1,
+          undefined,
+          shift
         )
       )
     })
@@ -308,14 +364,16 @@ export class StackStage {
       first = direction(entry, field.path[1] ?? entry)
     const inside = (p: Point, mx: number, my: number) => ({
       x: Math.max(mx, Math.min(field.width - mx, p.x)),
-      y: Math.max(my, Math.min(field.height - 12, p.y))
+      y: Math.max(my, Math.min(field.height - 26, p.y))
     })
-    const den = inside({ x: entry.x - first.x * 10, y: entry.y - first.y * 10 }, 52, 46)
-    this.den = this.createPlaced(denDesign(field.id), den.x, den.y, first, 0.5, 1, `stack-den:${field.id}`)
+    const den = inside({ x: entry.x - first.x * 10, y: entry.y - first.y * 10 }, 56, 52)
+    this.den = this.createPlaced(denDesign(field.id), den.x, den.y, snapCardinal(first), 0.5, 1, `stack-den:${field.id}`, [4, 4])
+
     const gate = field.gate,
       last = direction(field.path[field.path.length - 2] ?? gate, gate)
-    this.castleAt = inside({ x: gate.x + last.x * 58, y: gate.y + last.y * 58 }, 70, 70)
-    this.castleFacing = { x: -last.x, y: -last.y }
+    this.castleAt = inside({ x: gate.x + last.x * 62, y: gate.y + last.y * 62 }, 76, 76)
+    // Lock castle to clean cardinal orientation facing the incoming road (eliminates jagged diagonal edges).
+    this.castleFacing = snapCardinal({ x: -last.x, y: -last.y })
     this.castles = ([0, 1, 2] as const).map((tier) =>
       this.createPlaced(
         castleDesign(field.id, tier),
@@ -324,45 +382,75 @@ export class StackStage {
         this.castleFacing,
         0.2,
         1,
-        `stack-castle-${tier}`
+        `stack-castle-${tier}`,
+        [5, 5]
       )
     )
     this.applyPresentation()
   }
 
-  /** The slow stretch keeps its readable speed label on the road. */
+  /** Crisp pixel-art wooden/stone road signpost plaque beside the slow stretch (keeps speed info readable without modern UI pills). */
   private paintSlowLabel(field: ResolvedBattlefield): void {
     if (typeof document === 'undefined') return
     const surface = field.slowSurface
+    const theme = PLAQUE_THEME[field.id]
     const canvas = document.createElement('canvas')
-    canvas.width = 124
-    canvas.height = 36
+    canvas.width = 116
+    canvas.height = 34
     const c = canvas.getContext('2d')
     if (!c) return
-    c.fillStyle = '#182420ee'
-    c.strokeStyle = '#d7c08a'
-    c.lineWidth = 2
-    c.beginPath()
-    c.roundRect(2, 2, 120, 32, 6)
-    c.fill()
-    c.stroke()
-    c.fillStyle = '#fff4d0'
-    c.font = 'bold 20px "Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", sans-serif'
+    c.imageSmoothingEnabled = false
+    // Stepped pixel-art double frame with corner rivets (no smooth rounded vector corners).
+    c.fillStyle = '#141012'
+    c.fillRect(2, 0, 112, 34)
+    c.fillRect(0, 2, 116, 30)
+    c.fillStyle = theme.border
+    c.fillRect(2, 2, 112, 30)
+    c.fillStyle = theme.bg
+    c.fillRect(4, 4, 108, 26)
+    c.fillStyle = theme.inner
+    c.fillRect(6, 6, 104, 22)
+    // 4 pixel corner rivets.
+    c.fillStyle = theme.border
+    c.fillRect(6, 6, 3, 3)
+    c.fillRect(107, 6, 3, 3)
+    c.fillRect(6, 25, 3, 3)
+    c.fillRect(107, 25, 3, 3)
+    // Crisp high-contrast label.
+    c.fillStyle = '#141012'
+    c.font = 'bold 18px "Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", sans-serif'
     c.textAlign = 'center'
-    c.fillText(`地上 ${Math.round(surface.speedFactor * 100)}%`, 62, 26)
+    c.fillText(`地上 ${Math.round(surface.speedFactor * 100)}%`, 59, 24)
+    c.fillStyle = theme.text
+    c.fillText(`地上 ${Math.round(surface.speedFactor * 100)}%`, 58, 23)
+
     const texture = new THREE.CanvasTexture(canvas)
+    texture.magFilter = texture.minFilter = THREE.NearestFilter
+    texture.generateMipmaps = false
     texture.colorSpace = THREE.SRGBColorSpace
     texture.name = 'stack-stage:slow-label'
     this.label ??= new THREE.Mesh(
-      new THREE.PlaneGeometry(62, 18),
+      new THREE.PlaneGeometry(58, 17),
       new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, toneMapped: false })
     )
     this.label.material.map?.dispose()
     this.label.material.map = texture
     this.label.material.needsUpdate = true
     this.label.name = 'stack-stage-slow-label'
-    const center = pointOnPath(field.path, (surface.startProgress + surface.endProgress) / 2)
-    this.label.position.set(center.x, center.y, -19)
+    const mid = (surface.startProgress + surface.endProgress) / 2
+    const center = pointOnPath(field.path, mid)
+    const ahead = pointOnPath(field.path, mid + 12)
+    const dir = direction(center, ahead)
+    // Place the roadside signpost plaque cleanly on the inward side of the slow zone (never jammed against the bottom border).
+    let ox = -dir.y * 26
+    let oy = dir.x * 26
+    if (center.y > field.height - 90 && oy > 0) {
+      ox = -ox
+      oy = -oy
+    }
+    const lx = Math.max(48, Math.min(field.width - 48, center.x + ox))
+    const ly = Math.max(24, Math.min(field.height - 24, center.y + oy))
+    this.label.position.set(lx, ly, -18.5)
     this.label.scale.set(1 / this.aspect, -1, 1)
     this.scene.add(this.label)
   }
