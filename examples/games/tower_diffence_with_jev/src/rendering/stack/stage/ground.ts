@@ -94,19 +94,44 @@ function slowPoints(field: ResolvedBattlefield): Point[] {
   return points
 }
 
-/** Distance from a display-space point to display-space polylines. */
-function polylineDistance(paths: readonly Point[][], x: number, y: number): number {
-  let best = Infinity
+/**
+ * Distance from a display-space point to display-space polylines, capped at `reach`.
+ * Segments are bucketed once so each ground pixel only tests the few nearby segments.
+ */
+function roadDistance(paths: readonly Point[][], reach: number): (x: number, y: number) => number {
+  const size = 32
+  const buckets = new Map<number, number[][]>()
+  const key = (bx: number, by: number) => (bx + 64) * 4096 + by + 64
   for (const path of paths)
     for (let k = 1; k < path.length; k++) {
       const a = path[k - 1],
         b = path[k]
-      const dx = b.x - a.x,
-        dy = b.y - a.y
-      const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1)))
-      best = Math.min(best, Math.hypot(x - a.x - dx * t, y - a.y - dy * t))
+      const segment = [a.x, a.y, b.x, b.y]
+      for (
+        let bx = Math.floor((Math.min(a.x, b.x) - reach) / size);
+        bx <= Math.floor((Math.max(a.x, b.x) + reach) / size);
+        bx++
+      )
+        for (
+          let by = Math.floor((Math.min(a.y, b.y) - reach) / size);
+          by <= Math.floor((Math.max(a.y, b.y) + reach) / size);
+          by++
+        ) {
+          const list = buckets.get(key(bx, by)) ?? []
+          list.push(segment)
+          buckets.set(key(bx, by), list)
+        }
     }
-  return best
+  return (x, y) => {
+    let best = reach
+    for (const [ax, ay, bx, by] of buckets.get(key(Math.floor(x / size), Math.floor(y / size))) ?? []) {
+      const dx = bx - ax,
+        dy = by - ay
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)))
+      best = Math.min(best, Math.hypot(x - ax - dx * t, y - ay - dy * t))
+    }
+    return best
+  }
 }
 
 /** Painted road width in display units: equal across and along at every screen aspect. */
@@ -132,6 +157,7 @@ export function paintGround(field: ResolvedBattlefield, aspect: number): GroundP
   const half = (ROAD_PAINT_WIDTH / 2) * Math.min(1, aspect)
   const paths = allRoadPaths(field).map((path) => path.map((p) => ({ x: p.x * aspect, y: p.y })))
   const slow = slowPoints(field).map((p) => ({ x: p.x * aspect, y: p.y }))
+  const distance = roadDistance(paths, half + 40)
   const seed = field.id.length * 31 + field.layoutRevision * 7
   const rgb = (hex: string) => [
     parseInt(hex.slice(1, 3), 16),
@@ -140,39 +166,57 @@ export function paintGround(field: ResolvedBattlefield, aspect: number): GroundP
   ]
   const cache = new Map<string, number[]>()
   const color = (hex: string) => cache.get(hex) ?? (cache.set(hex, rgb(hex)), cache.get(hex)!)
+  const rim = Math.max(1.5, half * 0.16)
+  // Grass is decided once per 2x2 pixel block (4 board units); only road pixels need full detail.
+  const coarseWidth = (width >> 1) + 1
+  const grass: { hex: string; accent?: string; glow: boolean; shade: number }[] = []
+  for (let cj = 0; cj <= height >> 1; cj++)
+    for (let ci = 0; ci < coarseWidth; ci++) {
+      const large = noise(ci, cj, 14, seed),
+        small = noise(ci, cj, 4, seed + 3)
+      const v = large * 0.65 + small * 0.35
+      const cell: { hex: string; accent?: string; glow: boolean; shade: number } = {
+        hex: biome.ground[v < 0.38 ? 3 : v < 0.52 ? 0 : v < 0.66 ? 1 : 2],
+        glow: !!biome.glow && Math.abs(noise(ci, cj, 18, seed + 13) - 0.5) < 0.012,
+        shade: 1
+      }
+      // Flowers and pebbles gather in patches instead of scattering evenly.
+      const rate = noise(ci, cj, 7, seed + 21) > 0.68 ? biome.accentRate * 5 : biome.accentRate * 0.15
+      if (hash(ci, cj, seed + 1) < rate)
+        cell.accent = biome.accents[Math.floor(noise(ci, cj, 5, seed + 2) * biome.accents.length * 0.999)]
+      else if (hash(ci, cj, seed + 6) < 0.05 && small > 0.5) cell.shade = 0.88
+      if (field.id === 'desert' && Math.sin(ci * 0.35 + noise(ci, cj, 20, seed) * 6 + cj * 0.12) > 0.93)
+        cell.shade = 0.94
+      grass.push(cell)
+    }
+  const grassColor = (ci: number, cj: number, d: number): [string, number] => {
+    const cell = grass[cj * coarseWidth + ci]
+    let hex = cell.accent && d > half + 16 ? cell.accent : cell.hex
+    if (cell.glow && d > half + 20) hex = biome.glow!
+    return [hex, cell.shade]
+  }
   for (let j = 0; j < height; j++)
     for (let i = 0; i < width; i++) {
+      const ci = i >> 1,
+        cj = j >> 1
       const point = { x: (i + 0.5) * GROUND_CELL, y: (j + 0.5) * GROUND_CELL }
-      const d = polylineDistance(paths, point.x, point.y)
+      const d = distance(point.x, point.y)
       let hex: string
       let shade = 1
-      const rim = Math.max(1.5, half * 0.16)
       if (d <= half + rim) {
-        const n = noise(i * 0.5, j * 0.5, 3, seed + 5)
+        const n = noise(ci, cj, 3, seed + 5)
         hex = biome.road[n < 0.35 ? 2 : n > 0.7 ? 1 : 0]
         // A worn rim just outside the walkable width.
         if (d > half) hex = biome.roadEdge
-        else if (hash(i >> 1, j >> 1, seed + 9) > 0.965) hex = biome.pebble
-        if (slow.some((p) => Math.hypot(p.x - point.x, p.y - point.y) < half * 0.82 - 2)) {
-          hex = noise(i * 0.5, j * 0.5, 2, seed + 11) > 0.55 ? biome.slowLight : biome.slow
-        }
+        else if (hash(ci, cj, seed + 9) > 0.965) hex = biome.pebble
+        if (
+          d <= half &&
+          slow.some((p) => Math.abs(p.x - point.x) < half && Math.hypot(p.x - point.x, p.y - point.y) < half * 0.82 - 2)
+        )
+          hex = noise(ci, cj, 2, seed + 11) > 0.55 ? biome.slowLight : biome.slow
       } else {
-        const large = noise(i * 0.5, j * 0.5, 14, seed),
-          small = noise(i * 0.5, j * 0.5, 4, seed + 3)
-        const v = large * 0.65 + small * 0.35
-        hex = biome.ground[v < 0.38 ? 3 : v < 0.52 ? 0 : v < 0.66 ? 1 : 2]
+        ;[hex, shade] = grassColor(ci, cj, d)
         if (d < half + rim + GROUND_CELL * 1.5) hex = biome.edge
-        else {
-          // Flowers and pebbles gather in patches instead of scattering evenly.
-          const patch = noise(i * 0.5, j * 0.5, 7, seed + 21)
-          const rate = patch > 0.68 ? biome.accentRate * 5 : biome.accentRate * 0.15
-          if (d > half + 16 && hash(i >> 1, j >> 1, seed + 1) < rate)
-            hex = biome.accents[Math.floor(noise(i * 0.5, j * 0.5, 5, seed + 2) * biome.accents.length * 0.999)]
-          else if (hash(i >> 1, j >> 1, seed + 6) < 0.05 && small > 0.5) shade = 0.88
-        }
-        if (field.id === 'desert' && Math.sin(i * 0.175 + noise(i * 0.5, j * 0.5, 20, seed) * 6 + j * 0.06) > 0.93) shade = 0.94
-        // Thin glowing fissures follow noise contours.
-        if (biome.glow && d > half + 20 && Math.abs(noise(i * 0.5, j * 0.5, 18, seed + 13) - 0.5) < 0.012) hex = biome.glow
         // Soft darkening toward the board edges frames the field.
         const edgeDistance = Math.min(i, j, width - 1 - i, height - 1 - j) / 2
         if (edgeDistance < 6) shade *= 0.86 + edgeDistance * 0.023

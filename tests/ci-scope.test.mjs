@@ -364,7 +364,7 @@ test('Chromium jobs run on the Ubuntu image the pinned Playwright supports', () 
   assert.match(job, pinned)
 })
 
-test('Pages keeps headless real-mesh coverage and uses benchmark OpenGL only on Linux CI', () => {
+test('Pages keeps headless sprite-stack and model coverage and uses benchmark OpenGL only on Linux CI', () => {
   const source = readFileSync(new URL('../playwright.pages.config.ts', import.meta.url), 'utf8')
     .replace(/^import .*\n/m, '')
     .replace('export default defineConfig(', 'defineConfig(')
@@ -399,7 +399,7 @@ test('Pages keeps headless real-mesh coverage and uses benchmark OpenGL only on 
           ? glArgs
           : ['--use-gl=angle', platform === 'win32' ? '--use-angle=d3d11-warp' : '--use-angle=swiftshader']
       )
-      for (const name of ['tower-model-review', 'tower-real3d-game', 'tower-meshopt-equivalence'])
+      for (const name of ['tower-model-review', 'tower-sprite-stack-game', 'tower-meshopt-equivalence'])
         assert.ok(config.testMatch.test(`${name}.spec.ts`))
     }
   }

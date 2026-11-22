@@ -28,7 +28,13 @@ function tower(p: VoxelPart, cx: number, cz: number, height: number, radius: num
  * towers under order-blue cones, a gatehouse with an oak door and banners. Damage knocks off
  * merlons and a tower top, opens cracks and leaves rubble and embers.
  */
+const designs = new Map<string, StackDesign>()
+const once = (key: string, make: () => StackDesign) => designs.get(key) ?? (designs.set(key, make()), designs.get(key)!)
+
 export function castleDesign(fieldId: FieldId, tier: 0 | 1 | 2): StackDesign {
+  return once(`castle:${fieldId}:${tier}`, () => buildCastle(fieldId, tier))
+}
+function buildCastle(fieldId: FieldId, tier: 0 | 1 | 2): StackDesign {
   const damage = [1, 0.5, 0][tier]
   return {
     type: `prop:castle-${fieldId}-${tier}`,
@@ -131,6 +137,9 @@ export function castleDesign(fieldId: FieldId, tier: 0 | 1 | 2): StackDesign {
 
 /** The monster den at the road's entrance: a rocky mound around a dark mouth with glowing eyes. */
 export function denDesign(fieldId: FieldId): StackDesign {
+  return once(`den:${fieldId}`, () => buildDen(fieldId))
+}
+function buildDen(fieldId: FieldId): StackDesign {
   const crystal = { meadow: '#a07ad8', desert: '#e0a24a', frost: '#7ac8e8', volcanic: '#ff7a3c' }[fieldId]
   return {
     type: `prop:den-${fieldId}`,

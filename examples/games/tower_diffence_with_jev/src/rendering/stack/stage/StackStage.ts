@@ -76,6 +76,7 @@ export class StackStage {
   private aspect = 1
   private presentation = 1
   private key = ''
+  private repaint?: ReturnType<typeof setTimeout>
   private label?: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>
 
   constructor(private readonly scene: THREE.Scene) {
@@ -89,16 +90,44 @@ export class StackStage {
   }
 
   build(field: ResolvedBattlefield, aspect: number, presentation: number): void {
-    const key = `${field.id}:${field.version}:${field.layoutRevision}:${aspect.toFixed(5)}`
+    const key = `${field.id}:${field.version}:${field.layoutRevision}`
     this.presentation = presentation
     if (key === this.key) {
+      if (Math.abs(aspect - this.aspect) > 1e-5) {
+        // A resize only reflows the figures; the display-space ground repaints at most once per window.
+        this.aspect = aspect
+        if (this.label) this.label.scale.x = 1 / aspect
+        if (this.repaint === undefined) {
+          // A settled board repaints at once; further resizes inside the window coalesce.
+          this.paint(field)
+          this.repaint = setTimeout(() => (this.repaint = undefined), 160)
+        } else {
+          clearTimeout(this.repaint)
+          // Diagnostics read the ground as stale until the repaint for this aspect lands.
+          const map = this.ground.material.map
+          if (map && !map.name.endsWith(':stale')) map.name += ':stale'
+          this.repaint = setTimeout(() => {
+            this.repaint = undefined
+            if (this.field === field && this.key === key) this.paint(field)
+          }, 160)
+        }
+      }
       this.applyPresentation()
       return
     }
+    clearTimeout(this.repaint)
+    this.repaint = undefined
     this.key = key
     this.field = field
     this.aspect = aspect
-    const pixels = paintGround(field, aspect)
+    this.paint(field)
+    this.clearFigures()
+    this.paintSlowLabel(field)
+    this.placeFigures(field)
+  }
+
+  private paint(field: ResolvedBattlefield): void {
+    const pixels = paintGround(field, this.aspect)
     // Rows are stored bottom-up so the board plane shows row 0 at the top, like a canvas texture.
     const rows = new Uint8Array(pixels.data.length)
     const stride = pixels.width * 4
@@ -117,8 +146,9 @@ export class StackStage {
     this.ground.geometry.dispose()
     this.ground.geometry = new THREE.PlaneGeometry(field.width, field.height)
     this.ground.position.set(field.width / 2, field.height / 2, -20)
-    this.clearFigures()
-    this.paintSlowLabel(field)
+  }
+
+  private placeFigures(field: ResolvedBattlefield): void {
     const kinds = BIOME_PROPS[field.id]
     stageLayout(field).forEach((spot, index) => {
       const options = kinds[spot.kind]
@@ -256,6 +286,7 @@ export class StackStage {
   }
 
   dispose(): void {
+    clearTimeout(this.repaint)
     this.clearFigures()
     this.scene.remove(this.ground)
     if (this.label) {
