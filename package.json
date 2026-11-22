@@ -56,7 +56,7 @@
   },
   "dependencies": {
     "@moq-games/moqt-client": "file:.generated/moqt-sdk",
-    "moq-wasm": "https://github.com/nttcom/moq-wasm/releases/download/sdk-v0.1.0/moq-wasm-0.1.0.tgz",
+    "moq-wasm": "https://github.com/nttcom/moq-wasm/releases/download/js-sdk-v0.8.0/moq-wasm-0.8.0.tgz",
     "three": "0.180.0"
   },
   "devDependencies": {
