@@ -8,17 +8,17 @@ export const dragon: StackDesign = {
   type: 'dragon',
   voxel: 2,
   walkDistance: 34,
-  portraitCrop: 0.64,
-  portraitYaw: -0.28,
+  portraitCrop: 0.56,
+  portraitYaw: -0.24,
   portraitSquash: 0.48,
-  portraitFocus: -0.6,
+  portraitFocus: -0.35,
   portraitPose: {
-    // Fold the membranes behind the shoulders and turn the head to camera so one eye, both
+    // Tuck the membranes completely behind the neck and turn the face to camera: one eye,
     // horn roots and the long snout stay readable inside the circular badge.
-    wingL: { rz: 0.12, ry: -1.15 },
-    wingR: { rz: -0.12, ry: 1.15 },
-    neck: { ry: 0.28 },
-    head: { ry: 0.55, rx: -0.04 },
+    wingL: { rz: 0.2, ry: -1.4 },
+    wingR: { rz: -0.2, ry: 1.4 },
+    neck: { ry: 0.32 },
+    head: { ry: 0.7, rx: -0.04 },
     jaw: { rx: 0.3 }
   },
   shadow: [12, 13],

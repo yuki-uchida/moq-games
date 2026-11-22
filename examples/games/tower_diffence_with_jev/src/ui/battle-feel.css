@@ -713,17 +713,22 @@
 }
 .unit-health i {
   position: relative;
-  width: 40px;
-  height: 8px;
+  width: 44px;
+  height: 7px;
   margin: 0 auto;
-  border: 2px solid #f1f7e6;
-  border-radius: 5px;
-  background: #16261f;
-  box-shadow: 0 1px 3px #0009;
+  border: 1px solid #e8f3dc;
+  border-radius: 0;
+  background: #0c1512;
+  box-shadow:
+    0 0 0 1px #060a08,
+    0 1px 2px #000a;
 }
 .unit-health.ai i {
-  border-color: #2a1511;
-  box-shadow: 0 1px 3px #000a, 0 0 0 1px #ffb4a233;
+  border-color: #f0b09c;
+  background: #170d0a;
+  box-shadow:
+    0 0 0 1px #060a08,
+    0 1px 2px #000c;
 }
 .unit-health i::before {
   content: '';
@@ -735,15 +740,17 @@
 }
 .unit-health b {
   position: relative;
-  border-radius: 3px;
-  background: linear-gradient(#ffffff55, #ffffff00 60%), var(--health);
+  height: 100%;
+  border-radius: 0;
+  background: var(--health);
   transition: width 0.12s ease-out;
 }
 .unit-health.ai b {
-  background: linear-gradient(#ffffff44, #ffffff00 60%), linear-gradient(90deg, #ff9a4a, #e5402f);
+  background: linear-gradient(90deg, #ff9a4a, #e5402f);
 }
 .unit-health.ai.full:not(.boss) {
-  opacity: 0.5;
+  /* Keep the frame and fill readable over foliage; drop only the glow, not the whole bar. */
+  opacity: 0.82;
 }
 .unit-health.ai::before {
   content: '';
@@ -757,8 +764,8 @@
 }
 .unit-health.boss i {
   width: 62px;
-  height: 10px;
-  border-radius: 6px;
+  height: 9px;
+  border-radius: 0;
 }
 .unit-health.boss::before {
   content: 'BOSS';
