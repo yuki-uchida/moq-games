@@ -170,9 +170,11 @@ export class StackVisual {
     this.shadow.visible = visible
   }
 
-  /** World-space height of the sprite's top edge above the unit's feet. */
+  /** World-space height of the sprite's visible top edge above the unit's feet. */
   headroom(): number {
-    return (this.artBounds.y + this.artBounds.w) * this.cell() * this.presentation
+    // The conservative artBounds include empty space for rotated poses; the drawn top is the
+    // half footprint height plus the baked base lift.
+    return (Math.max(0, this.atlas.sliceHeight * 0.5 + this.atlas.baseLift)) * this.cell() * this.presentation
   }
 
   /** Optional interactive camera override (used by EXTRA viewer to orbit turn & squash). */
@@ -218,8 +220,9 @@ export class StackVisual {
     this.material.uniforms.uSpacing.value = this.spacing
     this.material.uniforms.uFall.value = this.fall
 
-    this.shadowMaterial.uniforms.uTurn.value = turn
-    this.shadowMaterial.uniforms.uSquash.value = squash
+    // Flying sprites use a screen-aligned ellipse so the shadow never rotates beside the body.
+    this.shadowMaterial.uniforms.uTurn.value = this.model.simpleShadow ? 0 : turn
+    this.shadowMaterial.uniforms.uSquash.value = this.model.simpleShadow ? 1 : squash
   }
 
   private updateMatrices(): void {
