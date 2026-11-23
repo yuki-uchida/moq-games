@@ -47,6 +47,11 @@ export const crystalSentinel: StackDesign = {
       ])
         torso.cylinder(x + 0.5, z + 0.5, 11, 11 + h, 1.9, 0.45, 'crystal')
       torso.paint((x, y, z) => (y > 13 && x < 0 ? 'crystalLight' : y > 11 && z < -3 ? 'crystalDark' : undefined))
+      // Deep shoulder spires push the side silhouette away from a flat stone slab.
+      for (const z of [-5.5, 5]) {
+        torso.cylinder(0.5, z, 7, 13, 1.7, 0.55, 'crystal')
+        torso.cylinder(0.5, z, 13, 15, 0.9, 0.3, 'crystalLight')
+      }
 
       const head = kit.part('head', 'torso', [0, 11, 0.5])
       head
@@ -54,6 +59,8 @@ export const crystalSentinel: StackDesign = {
         .box([-4, 7, -4], [3, 7, 4], 'stoneLight')
         .box([-3, 2, 5], [2, 5, 5], 'stoneDark')
       head.box([-1, 3, 5], [0, 4, 6], '*gem')
+      // Profile gem so the cyclops face still reads from the side.
+      head.box([-5, 3, 0], [-4, 4, 2], '*gem').box([4, 3, 0], [5, 4, 2], '*vein')
 
       const shards = kit.part('shards', 'head', [0, 4.5, 0])
       for (let i = 0; i < 3; i++) {

@@ -107,6 +107,11 @@ function buildCastle(fieldId: FieldId, tier: 0 | 1 | 2): StackDesign {
         for (let z = -13; z <= 10; z += 2) {
           p.box([-16, 12, z], [-16, 13, z], 'stoneLight').box([15, 12, z], [15, 13, z], 'stoneLight')
         }
+        // West-face masonry courses break up the large flat lit wall seen from the road.
+        p.paint((x, y, z) =>
+          x === -16 && y >= 2 && y <= 11 && (y === 4 || y === 8 || z % 5 === 0) ? 'stoneDark' : undefined
+        )
+        p.paint((x, y) => (x === -8 && (y === 12 || y === 20) ? 'stoneDark' : undefined))
 
         // Tall central royal keep with horizontal masonry, battlements, arched windows & 2-tone gabled roof.
         p.box([-8, 0, -9], [7, 24, 3], 'stone')

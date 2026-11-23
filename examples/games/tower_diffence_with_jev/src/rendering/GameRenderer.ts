@@ -1139,6 +1139,7 @@ export class GameRenderer {
   private refreshBackground(): void {
     // Ground, scenery, the monster den and the castle are one sprite-stacked stage.
     this.stage.build(this.field, this.modelPresentationAspect, this.modelPresentationScale)
+    this.stage.hideSlowLabel()
     this.background = this.stage.ground
   }
 

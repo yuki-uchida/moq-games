@@ -12,6 +12,7 @@ export const cannon: StackDesign = {
   walkDistance: 26,
   portraitCrop: 0.54,
   portraitYaw: -0.35,
+  portraitFocus: -0.5,
   shadow: [11, 8],
   emitter: { part: 'barrel', at: [0, 0, 11] },
   blueprint: {

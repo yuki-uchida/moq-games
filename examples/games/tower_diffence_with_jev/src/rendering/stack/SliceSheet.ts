@@ -397,7 +397,9 @@ export function bakePoseSliceSheet(
 
   // Build compact grounded contact-shadow footprint from columns with solid vertical mass (>= 3 voxels,
   // or >= 2 for short sprites like slimes/bats) + 1px morphological gap close so notched wings cast solid shadows.
-  const minColMass = count >= 12 ? 3 : 2
+  // Three voxels of vertical mass removes detached wing-tip specks from flying shadows while
+  // keeping the body and wing roots joined.
+  const minColMass = 3
   const shadow = new Uint8Array(layerSize)
   for (let sy = 0; sy < height; sy++) {
     for (let sx = 0; sx < width; sx++) {

@@ -123,7 +123,9 @@ export function paintStack(context: CanvasRenderingContext2D, design: StackDesig
   const rawScale = bust
     ? usable / windowW
     : Math.min(usable / Math.max(cropW, cropH), circleDiameter / Math.hypot(cropW, cropH))
-  const scale = rawScale >= 2 ? Math.floor(rawScale * 2) / 2 : Math.max(1, rawScale)
+  // Integer texels keep each portrait internally uniform; the 1..6 clamp keeps neighbouring
+  // badges within roughly two density steps of each other.
+  const scale = Math.max(1, Math.min(6, Math.floor(rawScale)))
   const ox = Math.floor((options.size - windowW * scale) / 2)
   const oy = Math.floor((options.size - cropH * scale) / 2)
 

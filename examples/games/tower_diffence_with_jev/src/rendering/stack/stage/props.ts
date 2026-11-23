@@ -375,9 +375,12 @@ const snowPine = prop(
     }
     p.paint((x, y, z) => {
       if (y < 6) return undefined
-      // One solid snow cap per tier plus a single shaded rim; no alternating 1-px stripes.
-      if (!p.has(x, y + 1, z)) return x >= 3 && z < 0 ? 'snowShade' : 'snow'
-      if ((y - 6) % 5 === 0) return 'needleDark'
+      // Snow loads the upper third of the crown in solid blocks; lower tiers keep sparse
+      // windward clumps instead of white/green zebra stripes.
+      if (!p.has(x, y + 1, z)) {
+        if (y >= 17) return x >= 3 && z < 0 ? 'snowShade' : 'snow'
+        return x <= -2 && y % 4 === 0 ? 'snow' : 'needle'
+      }
       return undefined
     })
   },
@@ -395,8 +398,10 @@ const snowPineWide = prop(
     }
     p.paint((x, y, z) => {
       if (y < 4) return undefined
-      if (!p.has(x, y + 1, z)) return x >= 3 && z < 0 ? 'snowShade' : 'snow'
-      if ((y - 4) % 4 === 0) return 'needleDark'
+      if (!p.has(x, y + 1, z)) {
+        if (y >= 13) return x >= 3 && z < 0 ? 'snowShade' : 'snow'
+        return x <= -2 && y % 4 === 0 ? 'snow' : 'needleDark'
+      }
       return undefined
     })
   },
@@ -410,7 +415,11 @@ const snowPineYoung = prop(
     p.cylinder(0.5, 0.5, 0, 5, 1.4, 1.1, 'bark')
     for (let tier = 0; tier < 3; tier++)
       p.cylinder(0.5, 0.5, 4 + tier * 5, 10 + tier * 5, 6.2 - tier * 1.5, 0.9, 'needle')
-    p.paint((x, y, z) => (y >= 4 && !p.has(x, y + 1, z) ? (x > 1 ? 'snowShade' : 'snow') : undefined))
+    p.paint((x, y, z) => {
+      if (y < 4 || p.has(x, y + 1, z)) return undefined
+      if (y >= 10) return x > 2 && z < 0 ? 'snowShade' : 'snow'
+      return x <= -2 && y % 4 === 0 ? 'snow' : 'needle'
+    })
   },
   { shadow: [8, 6], sway: 0.01 }
 )

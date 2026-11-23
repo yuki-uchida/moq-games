@@ -140,8 +140,8 @@ export const dragon: StackDesign = {
       neck: { rx: -0.1 },
       head: { rx: 0.14 + 0.05 * Math.sin(input.time * 1.4) },
       jaw: { rx: 0.12 },
-      wingL: { rz: 0.32 + beat * 0.2, ry: -0.5 },
-      wingR: { rz: -0.32 - beat * 0.2, ry: 0.5 },
+      wingL: { rz: 0.32 + beat * 0.2, ry: -0.5, rx: -0.35 },
+      wingR: { rz: -0.32 - beat * 0.2, ry: 0.5, rx: -0.35 },
       tail: { ry: 0.3 * Math.sin(input.time * 1.7 + input.seed * 3) }
     }
     if (input.motion === 'walk') {
@@ -181,8 +181,8 @@ export const dragon: StackDesign = {
           [end, 0.12]
         ])
       }
-      pose.wingL = { rz: 0.4 + 0.42 * rear + Math.sin(ms * 0.02) * 0.15, ry: -0.5 }
-      pose.wingR = { rz: -0.4 - 0.42 * rear - Math.sin(ms * 0.02) * 0.15, ry: 0.5 }
+      pose.wingL = { rz: 0.4 + 0.42 * rear + Math.sin(ms * 0.02) * 0.15, ry: -0.5, rx: -0.35 }
+      pose.wingR = { rz: -0.4 - 0.42 * rear - Math.sin(ms * 0.02) * 0.15, ry: 0.5, rx: -0.35 }
       pose.legFL = { rx: -0.65 * rear }
       pose.legFR = { rx: -0.65 * rear }
     }
