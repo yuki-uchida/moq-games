@@ -87,6 +87,8 @@ export const brute: StackDesign = {
   pose: (input) => {
     const pose = bipedPose(input, { attack: 'smash', stride: 0.35, bob: 1.0, heavy: true, armSpread: 0.16 })
     pose.torso = { ...pose.torso, rx: (pose.torso?.rx ?? 0) + 0.14 }
+    // Keep the stone face (and its ember eyes) toward the camera through the smash lean.
+    pose.head = { ...pose.head, rx: (pose.head?.rx ?? 0) - 0.42 }
     return pose
   }
 }

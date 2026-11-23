@@ -343,8 +343,8 @@ function buildDen(fieldId: FieldId): StackDesign {
         }
 
         // Tall arch: the mouth must fit a unit (roughly 0.8x its height) so spawns read as coming out of it.
-        p.fill([-10, 0, 2], [10, 17, 15], 'void', (x, y, z) => Math.hypot(x / 8.6, y / 16.5) <= 1 && z > 3)
-        p.paint((x, y, z) => (Math.hypot(x / 8.6, (y - 0.5) / 16.5) <= 1 && z > 6 ? 0 : undefined))
+        p.fill([-10, 0, 2], [10, 20, 15], 'void', (x, y, z) => Math.hypot(x / 8.8, y / 19.5) <= 1 && z > 3)
+        p.paint((x, y, z) => (Math.hypot(x / 8.8, (y - 0.5) / 19.5) <= 1 && z > 6 ? 0 : undefined))
         p.fill([-9, 0, 2], [9, 14, 6], 'void', (x, y, z) => Math.hypot(x / 7.8, y / 15.0) <= 1)
         const fangColor = fieldId === 'frost' ? 'accent' : fieldId === 'volcanic' ? 'rockLight' : 'rockDark'
         p.box([-5, 9, 8], [-4, 11, 9], fangColor)
