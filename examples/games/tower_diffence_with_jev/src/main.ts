@@ -52,6 +52,7 @@ import {
   isAirborneEnemy,
   FIELDS,
   fieldFor,
+  pointOnPath,
   stageRules,
   actionLabel,
   type AllyType,
@@ -237,7 +238,7 @@ $('app').innerHTML = `${titleScreenMarkup(artBase)}
 <section class="battle-panel" aria-label="戦場">
 <span id="phase" class="sr-only" role="status"></span>
 <div class="map-heading"><span><b id="field-name"></b><small id="time">00:00</small></span><div class="stage-label">Stage <span id="stage">01</span><span id="stage-goal" class="stage-goal" hidden></span></div><span class="sr-only">地図をドラッグ・スクロールして移動</span></div>
-<div class="map-shell"><div id="map-scroll" tabindex="0" aria-label="戦場を移動。矢印キーで移動、Homeで入口、Endで拠点。Shiftと矢印キーで配置位置を選び、Enterで配置・移動"><div id="map-world"><div id="field"><div id="base-health" class="base-health"><progress id="player-bar" max="${CONFIG.baseHp}" value="${CONFIG.baseHp}" aria-label="拠点の残り体力" aria-describedby="player-hp"></progress><span id="player-hp" class="sr-only">100 / 100</span></div></div></div></div></div>
+<div class="map-shell"><div id="map-scroll" tabindex="0" aria-label="戦場を移動。矢印キーで移動、Homeで入口、Endで拠点。Shiftと矢印キーで配置位置を選び、Enterで配置・移動"><div id="map-world"><div id="field"><div id="base-health" class="base-health"><progress id="player-bar" max="${CONFIG.baseHp}" value="${CONFIG.baseHp}" aria-label="拠点の残り体力" aria-describedby="player-hp"></progress><span id="player-hp" class="sr-only">100 / 100</span></div><div id="slow-label" role="note" hidden></div></div></div></div></div>
 <p id="feedback" class="sr-only" role="status" aria-live="polite">ステージを選ぼう。</p>
 </section>
 <div class="battle-footer"><nav class="field-controls" aria-label="戦場の操作">
@@ -779,7 +780,26 @@ function updateField() {
   $('field-name').textContent = field.name
   const base = field.path.at(-1)!
   $('base-health').style.left = `${base.x}px`
-  $('base-health').style.top = `${base.y + 78}px`
+  $('base-health').style.top = `${base.y + 34}px`
+  // Crisp DOM plaque for the slow stretch (canvas text would be resampled by the fit transform).
+  const slowLabel = $('slow-label'),
+    slow = field.slowSurface
+  if (slow && field.layoutRevision >= 4) {
+    const mid = (slow.startProgress + slow.endProgress) / 2
+    const center = pointOnPath(field.path, mid),
+      ahead = pointOnPath(field.path, mid + 14)
+    const len = Math.hypot(ahead.x - center.x, ahead.y - center.y) || 1
+    let ox = (-(ahead.y - center.y) / len) * 38,
+      oy = ((ahead.x - center.x) / len) * 38
+    if (center.y > field.height - 100 && oy > 0) {
+      ox = -ox
+      oy = -oy
+    }
+    slowLabel.hidden = false
+    slowLabel.style.left = `${center.x + ox}px`
+    slowLabel.style.top = `${center.y + oy}px`
+    slowLabel.textContent = `移動 -${Math.max(5, Math.round((1 - slow.speedFactor) * 100))}%`
+  } else slowLabel.hidden = true
   resizeBattlefield()
 }
 function resizeBattlefield() {

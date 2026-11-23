@@ -173,7 +173,7 @@ export function stageLayout(field: ResolvedBattlefield): { kind: PropKind; x: nu
     const minSpace = allowClose ? 28 : kind === 'tree' ? 40 : 34
     // Keep tall canopies further off the lane so marching units and their bars never disappear
     // behind a foreground tree crown.
-    if (clear(point, kind, kind === 'tree' ? 36 : 22, kind === 'tree' ? 22 : 12, minSpace)) {
+    if (clear(point, kind, kind === 'tree' ? 36 : 22, kind === 'tree' ? 26 : 24, minSpace)) {
       placed.push({ kind, ...point, scale: 1 })
     }
   }
@@ -487,6 +487,11 @@ export class StackStage {
     this.label.position.set(lx, ly, -18.5)
     this.label.scale.set(1 / this.aspect, -1, 1)
     this.scene.add(this.label)
+  }
+
+  /** The in-game HUD draws a crisp DOM plaque instead of this baked canvas text. */
+  hideSlowLabel(): void {
+    if (this.label) this.label.visible = false
   }
 
   private applyPresentation(): void {

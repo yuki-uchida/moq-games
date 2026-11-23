@@ -122,11 +122,11 @@ export const BIOMES: Record<FieldId, Biome> = {
   volcanic: {
     noiseSeed: 991,
     noiseScale: 21,
-    ground: ['#342d3a', '#3d3544', '#2d2732', '#473e4f'],
-    tuft: '#231e28',
-    tuftLight: '#5a4f63',
-    edgeShadow: '#18131d',
-    edgeLight: '#6b5c6e',
+    ground: ['#3d3544', '#463d4e', '#352e3c', '#504659'],
+    tuft: '#2a2431',
+    tuftLight: '#655a70',
+    edgeShadow: '#1d1722',
+    edgeLight: '#75657a',
     // Cracked dark basalt pavers with pale-ash curb highlight & faint ember seams.
     road: ['#63565f', '#72636d', '#544951'],
     roadCenter: '#80717a',

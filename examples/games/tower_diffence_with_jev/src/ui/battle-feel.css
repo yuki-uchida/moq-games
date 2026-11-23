@@ -714,7 +714,8 @@
 .unit-health i {
   position: relative;
   width: 44px;
-  height: 7px;
+  height: 8px;
+  padding: 1px 0;
   margin: 0 auto;
   border: 1px solid #e8f3dc;
   border-radius: 0;
@@ -746,7 +747,7 @@
   transition: width 0.12s ease-out;
 }
 .unit-health.ai b {
-  background: linear-gradient(90deg, #ff9a4a, #e5402f);
+  background: linear-gradient(#ff8a66 0 2px, #d63a2c 2px 100%);
 }
 .unit-health.ai.full:not(.boss) {
   /* Keep the frame and fill readable over foliage; drop only the glow, not the whole bar. */
@@ -799,7 +800,7 @@
   opacity: 0.55;
 }
 .base-health {
-  opacity: 0.8;
+  opacity: 1;
 }
 
 /* ---------- Start-button feel ---------- */
