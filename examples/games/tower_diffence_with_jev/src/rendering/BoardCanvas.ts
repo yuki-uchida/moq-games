@@ -1,6 +1,8 @@
 export function orientBoardCanvas(canvas: HTMLCanvasElement): void {
   canvas.style.transform = 'scaleY(-1)'
-  canvas.style.imageRendering = 'pixelated'
+  // The board renders into a supersampled buffer; smooth filtering on the final fit avoids
+  // uneven nearest-neighbour pixel widths at fractional viewport scales.
+  canvas.style.imageRendering = 'auto'
 }
 
 export function drawBoardCanvas(

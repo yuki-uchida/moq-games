@@ -352,10 +352,10 @@ export function bakePoseSliceSheet(
 
         const topExposed = !hasAt(z + 1, sx, sy)
         // Broad 2-voxel macro-normal bias (prevents 1px checkerboard noise on curved ellipsoids & helmets!).
-        const openLeft2 = !hasAt(z, sx - 2, sy) ? 1 : 0
-        const openRight2 = !hasAt(z, sx + 2, sy) ? 1 : 0
-        const openBack2 = !hasAt(z, sx, sy - 2) ? 1 : 0
-        const openFront2 = !hasAt(z, sx, sy + 2) ? 1 : 0
+        const openLeft2 = !hasAt(z, sx - 3, sy) ? 1 : 0
+        const openRight2 = !hasAt(z, sx + 3, sy) ? 1 : 0
+        const openBack2 = !hasAt(z, sx, sy - 3) ? 1 : 0
+        const openFront2 = !hasAt(z, sx, sy + 3) ? 1 : 0
         const openFront = !hasAt(z, sx, sy + 1) ? 1 : 0
         const occluded = topExposed
           ? hasAt(z + 2, sx, sy) || hasAt(z + 3, sx, sy)
@@ -413,6 +413,19 @@ export function bakePoseSliceSheet(
       const hBridge = rawCore[idx - 1] >= 200 && rawCore[idx + 1] >= 200
       const vBridge = rawCore[idx - width] >= 200 && rawCore[idx + width] >= 200
       if (hBridge || vBridge) shadow[idx] = 255
+    }
+  }
+  // Small flying sprites (bats) leave 2px notches between wing fingers; close those too so the
+  // contact shadow reads as one solid shape instead of broken glyph fragments.
+  if (count < 12) {
+    const wide = new Uint8Array(shadow)
+    for (let sy = 2; sy < height - 2; sy++) {
+      for (let sx = 2; sx < width - 2; sx++) {
+        const idx = sy * width + sx
+        if (wide[idx] >= 200) continue
+        if (wide[idx - 2] >= 200 && wide[idx + 2] >= 200) shadow[idx] = 255
+        else if (wide[idx - width * 2] >= 200 && wide[idx + width * 2] >= 200) shadow[idx] = 255
+      }
     }
   }
   // Soft 1px outer shadow rim around the solid core (encoded as 160 vs core 255 for 2-tone pixel shadow).
