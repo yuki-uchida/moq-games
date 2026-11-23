@@ -2662,7 +2662,8 @@ export class GameRenderer {
           )
       }
       // Nudge queued enemies' bars apart so a stack of attackers never merges into one unreadable line.
-      const staggerY = unit.owner === 'ai' ? (unit.id % 2) * 6 : 0
+      const staggerY =
+        unit.owner === 'ai' ? ((unit.id + Math.floor(unit.x / 12) + Math.floor(unit.y / 12)) % 3) * 7 : 0
       // Centre over the visible sprite and clear its measured top edge, not a fixed guess.
       const headroom = this.models?.headroom(unit.id)
       label.style.left = `${x}px`

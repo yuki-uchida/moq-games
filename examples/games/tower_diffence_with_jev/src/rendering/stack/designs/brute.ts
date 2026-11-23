@@ -66,6 +66,9 @@ export const brute: StackDesign = {
       // Blazing 2x2 amber-gold eyes deep under the overhanging stone brow.
       head.box([-3, 0, 4], [-2, 1, 4], '*eye').box([1, 0, 4], [2, 1, 4], '*eye')
       head.set(-2, 1, 4, '*eyeCore').set(1, 1, 4, '*eyeCore')
+      // Profile eyes + neck crack keep the front/side readable.
+      head.set(-5, 0, 2, '*eye').set(4, 0, 2, '*eye')
+      head.box([-3, -3, 0], [2, -2, 2], 'crack')
 
       for (const [name, x] of [
         ['armL', 9],
