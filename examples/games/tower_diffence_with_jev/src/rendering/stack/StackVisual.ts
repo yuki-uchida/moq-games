@@ -19,6 +19,7 @@ export function stackModel(design: StackDesign): StackModel {
   let model = models.get(design)
   if (!model) {
     model = buildStackModel(design.blueprint)
+    model.softShade = design.softShade === true
     models.set(design, model)
   }
   return model

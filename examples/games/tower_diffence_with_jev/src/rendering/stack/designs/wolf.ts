@@ -35,17 +35,17 @@ export const wolf: StackDesign = {
     build(kit) {
       const body = kit.part('body', undefined, [0, 8, 0])
       // Broader muscular shoulders & chest so front & back views never collapse into a narrow bar.
-      body.fill([-7, -3, -8], [6, 4, 7], 'mid', (x, y, z) => Math.hypot(x / 6.0, (y - 0.5) / 4.1, z / 8.2) <= 1)
+      body.fill([-8, -3, -8], [7, 4, 7], 'mid', (x, y, z) => Math.hypot(x / 6.6, (y - 0.5) / 4.1, z / 8.2) <= 1)
       body.paint((x, y) => (y >= 2 ? 'top' : y <= -2 ? 'under' : undefined))
       // Thick silver mane ruff framing the broad shoulders.
-      body.fill([-7, -3, 2], [6, 5, 8], 'ruff', (x, y, z) => Math.hypot(x / 5.8, (y - 1) / 4.5, (z - 5) / 3.2) <= 1)
+      body.fill([-8, -3, 2], [7, 5, 8], 'ruff', (x, y, z) => Math.hypot(x / 6.8, (y - 1) / 4.5, (z - 5) / 3.2) <= 1)
       body.paint((x, y, z) => (z > 2 && y <= -1 && Math.abs(x) > 2 ? 'ruffShade' : undefined))
 
       const head = kit.part('head', 'body', [0, 3.5, 8])
-      head.fill([-5, -3, -3], [4, 4, 4], 'mid', (x, y, z) => Math.hypot(x / 4.2, y / 3.4, (z - 0.5) / 3.6) <= 1)
+      head.fill([-6, -3, -3], [5, 4, 4], 'mid', (x, y, z) => Math.hypot(x / 5.0, y / 3.6, (z - 0.5) / 3.6) <= 1)
       head.paint((x, y) => (y >= 2 ? 'top' : undefined))
-      // Cheek fur tufts for unmistakable wolf width.
-      head.box([-5, -2, -1], [-4, 0, 2], 'ruff').box([3, -2, -1], [4, 0, 2], 'ruff')
+      // Cheek fur tufts for unmistakable wolf width from the front and back.
+      head.box([-6, -2, -1], [-5, 0, 2], 'ruff').box([4, -2, -1], [5, 0, 2], 'ruff')
       // Long wolf snout & black nose.
       head.box([-2, -2, 3], [1, 1, 8], 'mid').box([-2, 1, 3], [1, 1, 7], 'top').box([-1, 0, 8], [0, 1, 8], 'nose')
       // Bold blazing amber eyes visible from front and 3/4 profile.
@@ -76,7 +76,9 @@ export const wolf: StackDesign = {
 
       const tail = kit.part('tail', 'body', [0, 2, -7.5])
       // Carry the tail back and slightly down so front/back views never read as a vertical antenna.
-      tail.segment([0, 0, 0], [0, 0.5, -8.5], 2.1, 'top', 1.6).segment([0, 0.5, -8.5], [0, -0.5, -11], 1.5, 'tip', 0.7)
+      tail
+        .segment([0, 0, 0], [1.5, 0.5, -8.5], 2.1, 'top', 1.6)
+        .segment([1.5, 0.5, -8.5], [2.5, -0.5, -11], 1.5, 'tip', 0.7)
     }
   },
   pose: (input) => quadrupedPose(input, { stride: 0.85, bob: 1.1, lunge: 6.5 })

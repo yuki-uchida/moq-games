@@ -10,6 +10,7 @@ export const wraith: StackDesign = {
   walkDistance: 30,
   portraitCrop: 0.56,
   portraitYaw: -0.32,
+  softShade: true,
   shadow: [7, 6],
   emitter: { part: 'armR', at: [0, -10, 1] },
   blueprint: {

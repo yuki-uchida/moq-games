@@ -12,6 +12,7 @@ export const paladin: StackDesign = {
   walkDistance: 27,
   portraitCrop: 0.62,
   portraitYaw: -0.32,
+  softShade: true,
   shadow: [9, 7],
   blueprint: {
     id: 'paladin',

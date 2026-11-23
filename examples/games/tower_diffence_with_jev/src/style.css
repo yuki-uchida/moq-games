@@ -2105,13 +2105,13 @@ dialog::backdrop {
   background: #0c1512;
 }
 .base-health progress::-webkit-progress-value {
-  background: #a7d384;
+  background: #b9e79c;
 }
 .base-health progress[data-health='low']::-webkit-progress-value {
   background: #f18b73;
 }
 .base-health progress::-moz-progress-bar {
-  background: #a7d384;
+  background: #b9e79c;
 }
 .range-legend {
   left: 12px;

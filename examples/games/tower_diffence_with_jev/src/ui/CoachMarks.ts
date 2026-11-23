@@ -197,7 +197,9 @@ export class CoachMarks {
     }
     set(this.ring, `left:${px(cx)};top:${px(cy)};width:${px(size)};height:${px(size)}`)
     this.ring.hidden = step === 'drag'
-    this.pointer.hidden = step === 'drag'
+    // The skill button already carries its own long-press hint; the bouncing pointer would sit
+    // on that text, so keep the ring and bubble only for this step.
+    this.pointer.hidden = step === 'drag' || step === 'skills'
     set(this.pointer, `left:${px(cx)};top:${px(below ? rect.bottom + 6 : rect.top - 38)};rotate:${below ? '-20deg' : '160deg'}`)
     const trayTop = step === 'drag' ? document.getElementById('unit-tray')?.getBoundingClientRect().top : undefined
     const bubbleTop = trayTop !== undefined ? trayTop - 52 : below ? rect.bottom + 44 : rect.top - 84

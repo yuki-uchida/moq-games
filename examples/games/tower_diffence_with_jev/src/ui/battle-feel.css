@@ -736,7 +736,7 @@
   position: absolute;
   inset: 0 auto 0 0;
   width: calc(var(--hp) * 100%);
-  background: #fffbe8;
+  background: #ffffff24;
   transition: width 0.3s ease-out 0.3s;
 }
 .unit-health b {
@@ -750,8 +750,7 @@
   background: linear-gradient(#ff8a66 0 2px, #d63a2c 2px 100%);
 }
 .unit-health.ai.full:not(.boss) {
-  /* Keep the frame and fill readable over foliage; drop only the glow, not the whole bar. */
-  opacity: 0.82;
+  opacity: 1;
 }
 .unit-health.ai::before {
   content: '';

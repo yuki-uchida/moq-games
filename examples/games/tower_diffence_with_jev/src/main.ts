@@ -778,9 +778,16 @@ function updateField() {
     engine.state.layoutRevision === undefined ? 1 : engine.state.layoutRevision
   )
   $('field-name').textContent = field.name
-  const base = field.path.at(-1)!
-  $('base-health').style.left = `${base.x}px`
-  $('base-health').style.top = `${base.y + 34}px`
+  const gate = field.path.at(-1)!,
+    previous = field.path[field.path.length - 2] ?? gate,
+    gateDirection = Math.hypot(gate.x - previous.x, gate.y - previous.y) || 1,
+    castle = {
+      x: Math.max(76, Math.min(field.width - 76, gate.x + ((gate.x - previous.x) / gateDirection) * 62)),
+      y: Math.max(76, Math.min(field.height - 76, gate.y + ((gate.y - previous.y) / gateDirection) * 62))
+    }
+  // The bar belongs to the castle sprite (62 units beyond the gate), not the path endpoint.
+  $('base-health').style.left = `${castle.x}px`
+  $('base-health').style.top = `${castle.y + 34}px`
   // Crisp DOM plaque for the slow stretch (canvas text would be resampled by the fit transform).
   const slowLabel = $('slow-label'),
     slow = field.slowSurface

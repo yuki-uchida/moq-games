@@ -39,6 +39,8 @@ export interface StackDesign {
   readonly portraitAspect?: number
   /** Horizontal focus inside the bust bounds: -1 = left edge, 0 = centre, 1 = right edge. */
   readonly portraitFocus?: number
+  /** Damp per-voxel light/AO dither for ornate surfaces that otherwise read as checkerboard noise. */
+  readonly softShade?: boolean
   pose(input: StackMotionInput): StackPose
 }
 

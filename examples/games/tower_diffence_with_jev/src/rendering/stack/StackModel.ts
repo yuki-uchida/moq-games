@@ -52,6 +52,8 @@ export interface StackModel {
   readonly sliceCount: number
   /** Rest-pose SpriteCook horizontal slice sheet (ground slice on left, facing +y down). */
   readonly restSheet: SliceSheet
+  /** Damp the per-voxel light dither for this design (see StackDesign.softShade). */
+  softShade?: boolean
   dispose(): void
 }
 
