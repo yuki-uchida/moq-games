@@ -52,14 +52,17 @@ export const tank: StackDesign = {
       // Sculpted bucket helm with gold brow crest and glowing eyes inside dark T-visor.
       b.head.paint(() => 0)
       b.head
-        .box([-4, 0, -4], [3, 8, 4], 'plate')
+        .box([-4, 0, -3], [3, 8, 3], 'plate')
         .box([-4, 8, -3], [3, 9, 3], 'plateLight')
-        .box([-4, 0, -4], [3, 0, 4], 'plateDark')
-        .box([-4, 5, 4], [3, 6, 4], 'gold')
-        .box([-3, 3, 4], [2, 4, 4], 'visor')
-        .box([-1, 1, 4], [0, 4, 4], 'visor')
-        .box([-3, 3, 4], [-2, 4, 4], '*eyeGlow')
-        .box([1, 3, 4], [2, 4, 4], '*eyeGlow')
+        .box([-4, 0, -3], [3, 0, 3], 'plateDark')
+        .box([-4, 5, 3], [3, 6, 3], 'gold')
+        // Side visor slits and ear guards keep the profile from reading as a plain box.
+        .box([-4, 3, 0], [-4, 4, 1], 'visor')
+        .box([3, 3, 0], [3, 4, 1], 'visor')
+        .box([-3, 3, 3], [2, 4, 3], 'visor')
+        .box([-1, 1, 3], [0, 4, 3], 'visor')
+        .box([-3, 3, 3], [-2, 4, 3], '*eyeGlow')
+        .box([1, 3, 3], [2, 4, 3], '*eyeGlow')
         .box([-1, 9, -3], [0, 11, 2], 'gold')
       // Broad sculpted overhanging cobalt-and-gold pauldrons + chest tabard (contrasts strongly on frost snow!).
       for (const x of [-8, 5])

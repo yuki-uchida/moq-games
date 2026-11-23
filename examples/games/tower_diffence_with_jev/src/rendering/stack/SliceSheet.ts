@@ -373,7 +373,7 @@ export function bakePoseSliceSheet(
             : 0
           : sideOpen === 2 || depthOpen === 2
             ? 0
-            : (openLeft2 - openRight2) * 0.42 + (openFront2 * 0.42 - openBack2 * 0.35)) * (softShade ? 0.3 : 1)
+            : (openLeft2 - openRight2) * 0.42 + (openFront2 * 0.42 - openBack2 * 0.35)) * (softShade ? 0 : 1)
 
         const [r0, g0, b0] = paletteRgb[color]
         const [r, g, b] = shadeSliceColor(
@@ -384,7 +384,7 @@ export function bakePoseSliceSheet(
           z,
           count,
           model.palette.glow.has(color),
-          shade,
+          softShade ? 0 : shade,
           lightBias,
           occluded
         )

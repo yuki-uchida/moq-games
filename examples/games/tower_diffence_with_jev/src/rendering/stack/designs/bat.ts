@@ -75,8 +75,8 @@ export const bat: StackDesign = {
     // Sweep both membranes partly toward the camera and keep a raised base angle so the side
     // views show a diagonal wing rather than an edge-on sliver.
     // Stagger the two wings in depth so the profile keeps a wing silhouette and a gap to the body.
-    pose.wingL = { ...pose.wingL, rz: (pose.wingL?.rz ?? 0) - 0.4, ry: -0.42, rx: -0.5, z: 3 }
-    pose.wingR = { ...pose.wingR, rz: (pose.wingR?.rz ?? 0) + 0.4, ry: 0.42, rx: -0.5, z: -3 }
+    pose.wingL = { ...pose.wingL, rz: (pose.wingL?.rz ?? 0) - 0.4, ry: -0.42, rx: -0.5, z: 6 }
+    pose.wingR = { ...pose.wingR, rz: (pose.wingR?.rz ?? 0) + 0.4, ry: 0.42, rx: -0.5, z: -6 }
     return pose
   }
 }

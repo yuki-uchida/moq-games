@@ -167,19 +167,21 @@ export function stageLayout(field: ResolvedBattlefield): { kind: PropKind; x: nu
           ? 'small'
           : 'rock'
     const point = {
-      x: x + (hash(i++, seed) - 0.5) * 24,
-      y: y + (hash(i++, seed) - 0.5) * 16
+      x: x + (hash(i++, seed) - 0.5) * 30,
+      y: y + (hash(i++, seed) - 0.5) * 22
     }
     const minSpace = allowClose ? 28 : kind === 'tree' ? 40 : 34
     // Keep tall canopies further off the lane so marching units and their bars never disappear
     // behind a foreground tree crown.
-    if (clear(point, kind, kind === 'tree' ? 36 : 22, kind === 'tree' ? 26 : 24, minSpace)) {
+    if (clear(point, kind, kind === 'tree' ? 36 : 22, kind === 'tree' ? 58 : 24, minSpace)) {
       placed.push({ kind, ...point, scale: 1 })
     }
   }
 
   // Organic grove/cluster composition along the perimeter (clusters of 2-4 separated by open clearings!).
   for (let x = 28; x < field.width - 20; x += 34) {
+    // Leave real clearings between clusters instead of an evenly spaced border row.
+    if (hash(x, seed + 71) < 0.32) continue
     const topWave = Math.sin(x * 0.017 + seed * 0.13) + Math.cos(x * 0.008 + seed * 0.31) * 0.5
     if (topWave > -0.15) {
       band(x, 34, false, true)
@@ -192,6 +194,7 @@ export function stageLayout(field: ResolvedBattlefield): { kind: PropKind; x: nu
     }
   }
   for (let y = 78; y < field.height - 54; y += 38) {
+    if (hash(y, seed + 73) < 0.3) continue
     const leftWave = Math.sin(y * 0.022 + seed * 0.27)
     if (leftWave > -0.25) band(28, y, true, true)
     const rightWave = Math.sin(y * 0.021 + seed * 0.61 + 1.4)
