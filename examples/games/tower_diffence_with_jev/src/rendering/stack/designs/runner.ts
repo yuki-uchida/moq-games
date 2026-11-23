@@ -9,8 +9,9 @@ export const runner: StackDesign = {
   type: 'runner',
   voxel: 2,
   walkDistance: 34,
-  portraitCrop: 0.6,
-  portraitYaw: -0.35,
+  portraitCrop: 0.62,
+  portraitYaw: -0.22,
+  portraitFocusY: 0.06,
   shadow: [7, 6],
   blueprint: {
     id: 'runner',

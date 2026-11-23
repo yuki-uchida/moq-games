@@ -9,8 +9,9 @@ export const mage: StackDesign = {
   type: 'mage',
   voxel: 2,
   walkDistance: 28,
-  portraitCrop: 0.62,
-  portraitYaw: -0.28,
+  portraitCrop: 0.64,
+  portraitYaw: -0.2,
+  portraitFocusY: 0.08,
   shadow: [8, 6],
   emitter: { part: 'weapon', at: [0.5, 1.5, 15.5] },
   blueprint: {

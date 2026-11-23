@@ -63,7 +63,7 @@ export function human(kit: StackKit, c: HumanColors, shape: HumanShape = {}): Hu
   const th = shape.torsoHeight ?? 7
   const half = shape.torsoHalf ?? 4
   const depth = shape.torsoDepth ?? 3
-  const hr = shape.headRadius ?? 4.7
+  const hr = shape.headRadius ?? 4.8
   const arm = shape.armLength ?? 7
 
   const hips = kit.part('hips', undefined, [0, legs, 0])
@@ -125,28 +125,23 @@ export function human(kit: StackKit, c: HumanColors, shape: HumanShape = {}): Hu
   const head = kit.part('head', 'torso', [0, th, 0.5])
   head.ellipsoid([0, hr, 0], [hr, hr + 0.3, hr], c.skin)
 
-  // Expressive front face: tall eyes with catchlight, brow accent, cheeks, and side-profile eye wrap.
+  // Expressive front face: crisp 2x2 eyes with top-left catchlight, brow accent, soft cheeks, and clean ears.
   const eyeRow = shape.eyeRow ?? Math.round(hr * 0.62)
   for (const x of [-3, -2, 1, 2]) {
     head.face(x, eyeRow, c.eye).face(x, eyeRow + 1, c.eye)
   }
-  if (c.shine) head.face(-2, eyeRow + 1, c.shine).face(2, eyeRow + 1, c.shine)
+  if (c.shine) head.face(-3, eyeRow + 1, c.shine).face(1, eyeRow + 1, c.shine)
   if (c.brow) {
     for (const x of [-3, -2, 1, 2]) head.face(x, eyeRow + 2, c.brow)
   }
   if (c.cheek) {
     head.face(-4, eyeRow - 1, c.cheek).face(3, eyeRow - 1, c.cheek)
-    head.face(-1, Math.max(1, eyeRow - 1), c.cheek).face(0, Math.max(1, eyeRow - 1), c.cheek)
   }
-  // Wrap a 1-voxel eye hint onto +/-x profile edges and add small ears so side views read clearly.
+  // Clean sculpted ears on the sides of the head (zero extra side eyeballs or protruding temple blocks!).
   const earX = Math.floor(hr)
   if (!shape.coveredSides) {
-    head.set(earX, eyeRow, 2, c.eye).set(-earX - 1, eyeRow, 2, c.eye)
     head.set(earX, eyeRow, -1, c.skin).set(-earX - 1, eyeRow, -1, c.skin)
-    // A short skin column and cheek keep the profile readable instead of a hair block.
-    head.box([earX - 1, eyeRow - 1, 0], [earX, eyeRow + 1, 3], c.skin)
-    head.box([-earX - 1, eyeRow - 1, 0], [-earX, eyeRow + 1, 3], c.skin)
-    head.set(earX, eyeRow + 1, 1, c.eye).set(-earX - 1, eyeRow + 1, 1, c.eye)
+    head.set(earX, eyeRow - 1, -1, c.skin).set(-earX - 1, eyeRow - 1, -1, c.skin)
   }
 
   const parts: Partial<HumanParts> = { hips, torso, head }

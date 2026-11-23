@@ -64,11 +64,11 @@ export const soldier: StackDesign = {
       head.ellipsoid([0, 7.2, -0.8], [5.4, 1.0, 5.2], 'steelDark')
       head.ellipsoid([0, 7.8, -0.8], [4.9, 3.2, 4.8], 'steel')
       head.box([-1, 10, -4], [0, 12, 3], 'crest').box([-1, 12, -3], [0, 13, 1], 'crest')
-      // Bold eyes + catchlight + brow + side wrap + cheeks.
+      // Bold eyes + consistent top-left catchlights + brow + cheeks + sculpted ears.
       for (const x of [-3, -2, 1, 2]) head.face(x, 3, 'eye').face(x, 4, 'eye').face(x, 5, 'hair')
-      head.face(-2, 4, 'shine').face(2, 4, 'shine')
+      head.face(-3, 4, 'shine').face(1, 4, 'shine')
       head.face(-4, 2, 'cheek').face(3, 2, 'cheek')
-      head.set(4, 3, 2, 'eye').set(-5, 3, 2, 'eye')
+      head.box([-5, 2, -1], [-5, 3, 0], 'skin').box([4, 2, -1], [4, 3, 0], 'skin')
 
       for (const [name, x] of [
         ['armL', 5],

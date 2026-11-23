@@ -8,10 +8,11 @@ export const dragon: StackDesign = {
   type: 'dragon',
   voxel: 2,
   walkDistance: 34,
-  portraitCrop: 0.56,
-  portraitYaw: -0.24,
+  portraitCrop: 0.54,
+  portraitYaw: -0.26,
   portraitSquash: 0.48,
-  portraitFocus: -0.35,
+  portraitFocus: -0.32,
+  portraitFocusY: 0.04,
   portraitPose: {
     // Tuck the membranes completely behind the neck and turn the face to camera: one eye,
     // horn roots and the long snout stay readable inside the circular badge.
@@ -108,9 +109,9 @@ export const dragon: StackDesign = {
           // Require a real chord so the trailing scallops never leave isolated 1-cell pixels.
           return leadZ - trailZ >= 1.4 && z <= leadZ && z >= trailZ && y >= arch - 0.85 && y <= arch + 0.75
         })
-        // Dark membrane root separates the wing from the crimson torso in side/back views.
+        // Subtle dark wing-joint crease separates the wing root from the torso without a harsh patch.
         wing.paint((x, y, z) =>
-          Math.abs(x) <= 4
+          Math.abs(x) <= 2
             ? 'wingDark'
             : z > -1.5 && Math.abs(x) > 3 && Math.abs(x) < 11
               ? 'wingLight'
