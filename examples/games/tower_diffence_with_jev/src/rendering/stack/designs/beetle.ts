@@ -8,9 +8,10 @@ export const beetle: StackDesign = {
   type: 'beetle',
   voxel: 2,
   walkDistance: 24,
-  portraitCrop: 0.7,
-  portraitYaw: -0.75,
-  portraitFocus: 0.2,
+  portraitCrop: 0.92,
+  portraitYaw: -0.62,
+  portraitFocus: 0.08,
+  portraitFocusY: 0.08,
   portraitSquash: 0.48,
   shadow: [10, 10],
   blueprint: {
@@ -41,6 +42,8 @@ export const beetle: StackDesign = {
         (y === 5 || y === 4) && (z === -4 || z === 0 || z === 4) && (x === -3 || x === 2) ? 'rivet' : undefined
       )
       body.paint((x, y, z) => (y >= 5 && x <= -3 && z > -2 ? 'shellLight' : undefined))
+      // Golden front carapace collar separating pronotum from the armored elytra.
+      body.paint((x, y, z) => (z === 5 && y >= 2 && y <= 5 && Math.abs(x + 0.5) <= 4.5 ? 'rivet' : undefined))
 
       const head = kit.part('head', 'body', [0, 2, 6])
       head.fill([-4, -2, -1], [3, 3, 4], 'shellDark', (x, y, z) => Math.hypot(x / 3.6, y / 2.8, (z - 1) / 2.6) <= 1)

@@ -10,8 +10,10 @@ export const ranger: StackDesign = {
   type: 'ranger',
   voxel: 2,
   walkDistance: 30,
-  portraitCrop: 0.55,
-  portraitYaw: -0.45,
+  portraitCrop: 0.62,
+  portraitYaw: -0.32,
+  portraitFocus: 0.14,
+  portraitFocusY: 0.08,
   shadow: [8, 6],
   emitter: { part: 'weapon', at: [0, 1, 12] },
   blueprint: {
@@ -61,12 +63,12 @@ export const ranger: StackDesign = {
       b.head.fill([-8, 8, -9], [7, 8, 5], 'hat', (x, y, z) => Math.hypot(x / 7.2, (z + 1.4) / 6.2) <= 1)
       b.head.fill([-5, 9, -6], [4, 11, 3], 'hat', (x, y, z) => Math.hypot(x / 4.4, (z + 1.4) / 4.2) <= 1 - (y - 9) * 0.12)
       b.head.fill([-5, 9, -6], [4, 9, 3], 'hatBand', (x, y, z) => Math.hypot(x / 4.4, (z + 1.4) / 4.2) <= 1)
-      b.head.segment([3, 10, -1], [5, 13, -8], 0.9, 'feather').box([5, 12, -9], [5, 13, -8], 'featherTip')
+      b.head.segment([3.2, 9.5, -0.5], [7.2, 11.2, -4.5], 0.85, 'feather').box([7, 11, -5], [7, 11, -4], 'featherTip')
       // Coat skirt + leather bandolier.
       b.hips.box([-4, -3, -3], [3, -1, 3], 'coat')
       b.torso.paint((x, y, z) => (x === y - 4 && z >= 3 ? 'leather' : undefined))
-      // Prominent perched hawk on the left shoulder so it reads clearly in portraits & battlefield!
-      const hawk = kit.part('hawk', 'torso', [6.2, 8.2, 1.4])
+      // Prominent perched hawk set slightly out on the left shoulder so face & hawk both read clearly.
+      const hawk = kit.part('hawk', 'torso', [6.8, 7.6, 0.8])
       hawk
         .ellipsoid([0, 2.2, 0], [2.2, 2.6, 2.5], 'hawk')
         .ellipsoid([0, 2.8, 1.6], [1.7, 1.8, 1.3], 'hawkLight')

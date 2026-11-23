@@ -79,14 +79,14 @@ function hexRgb(hex: string): [number, number, number] {
 }
 
 /**
- * Crisp tinted dark ink derived from a neighboring pixel color, matching SpriteCook's
- * dark pixel-art silhouette outlines without harsh flat pure-black lines.
+ * Crisp hue-harmonized dark ink derived from a neighboring pixel color: keeps 100% silhouette
+ * clarity while warming gold/peach/red borders and deepening cool steel/indigo edges.
  */
 export function outlineColorFor(r: number, g: number, b: number): [number, number, number] {
   return [
-    clamp255(16 * 0.58 + r * 0.22 * 0.42),
-    clamp255(14 * 0.58 + g * 0.2 * 0.42),
-    clamp255(28 * 0.58 + b * 0.26 * 0.42)
+    clamp255(18 * 0.48 + r * 0.28 * 0.52),
+    clamp255(14 * 0.48 + g * 0.24 * 0.52),
+    clamp255(30 * 0.48 + b * 0.30 * 0.52)
   ]
 }
 
@@ -94,23 +94,18 @@ export function outlineColorFor(r: number, g: number, b: number): [number, numbe
 function creaseColorFor(r: number, g: number, b: number): [number, number, number] {
   const [or, og, ob] = outlineColorFor(r, g, b)
   return [
-    clamp255(r * 0.68 + or * 0.32),
-    clamp255(g * 0.68 + og * 0.32),
-    clamp255(b * 0.68 + ob * 0.32)
+    clamp255(r * 0.70 + or * 0.30),
+    clamp255(g * 0.70 + og * 0.30),
+    clamp255(b * 0.70 + ob * 0.30)
   ]
 }
 
 /**
- * Commercial pixel-art quantized 3-tone directional ramp shading:
- * - Eliminates continuous per-slice gradients and white washout (+6 lift removed).
- * - Uses a unified top-left light direction (-X, +Y, +Z) with crisp discrete ramp bands
- *   and cool hue-shifted shadows so every sprite reads like hand-shaded 16-bit pixel art.
- *
- * `tone`:
- *   0 = lit top / highlight edge (pure vivid color or subtle warm top rim)
- *   1 = midtone (sunlit side or flat top)
- *   2 = shadow (away-facing side / lower body)
- *   3 = deep shadow / overhang AO
+ * Commercial 16-bit pixel-art hue-shifted 4-level directional ramp shading:
+ * - Warm tones (skin, gold, crimson, wood): highlights shift warm cream-gold, shadows shift rich
+ *   rose-terracotta/plum-ruby instead of turning muddy olive or grey.
+ * - Greens (slime, goblin, foliage): highlights shift sunlit chartreuse, shadows shift emerald-teal.
+ * - Cool tones (steel, sapphire, purple, stone): highlights shift sky-white, shadows shift deep indigo.
  */
 export function shadeSliceColor(
   r: number,
@@ -136,24 +131,29 @@ export function shadeSliceColor(
     const hNorm = height > 1 ? z / (height - 1) : 1
     if (hNorm < 0.22) band = 3
     else if (occluded) band = 2
-    else if (lightBias > 0.1 && hNorm >= 0.34) band = 1
+    else if (lightBias > 0.1 && hNorm >= 0.32) band = 1
     else band = 2
   }
 
-  switch (band) {
-    case 0:
-      // Crisp warm sunlit rim without desaturating into white.
-      return [clamp255(r * 1.09 + 4), clamp255(g * 1.07 + 2), clamp255(b * 1.02)]
-    case 1:
-      // Pure vivid base color (preserves authored palette saturation cleanly).
-      return [r, g, b]
-    case 2:
-      // 1st shadow step: cool hue-shifted shade (richer saturation, slight indigo shift).
-      return [clamp255(r * 0.8), clamp255(g * 0.81), clamp255(b * 0.89 + 3)]
-    case 3:
-      // Deep shadow / lower grounded AO step.
-      return [clamp255(r * 0.62), clamp255(g * 0.64), clamp255(b * 0.75 + 5)]
+  if (band === 1) return [r, g, b]
+
+  const isWarm = r > b + 28 && r >= g - 8
+  const isGreen = !isWarm && g >= r + 14 && g >= b + 10
+
+  if (band === 0) {
+    if (isWarm) return [clamp255(r * 1.08 + 7), clamp255(g * 1.08 + 5), clamp255(b * 1.02 + 2)]
+    if (isGreen) return [clamp255(r * 1.10 + 6), clamp255(g * 1.08 + 5), clamp255(b * 0.98 + 1)]
+    return [clamp255(r * 1.06 + 6), clamp255(g * 1.07 + 7), clamp255(b * 1.09 + 8)]
   }
+  if (band === 2) {
+    if (isWarm) return [clamp255(r * 0.84), clamp255(g * 0.74), clamp255(b * 0.79 + 5)]
+    if (isGreen) return [clamp255(r * 0.72), clamp255(g * 0.83), clamp255(b * 0.92 + 6)]
+    return [clamp255(r * 0.76), clamp255(g * 0.80), clamp255(b * 0.90 + 5)]
+  }
+  // band === 3: deep grounded shadow / AO
+  if (isWarm) return [clamp255(r * 0.65), clamp255(g * 0.54), clamp255(b * 0.64 + 8)]
+  if (isGreen) return [clamp255(r * 0.52), clamp255(g * 0.65), clamp255(b * 0.80 + 8)]
+  return [clamp255(r * 0.56), clamp255(g * 0.61), clamp255(b * 0.76 + 7)]
 }
 
 /**
@@ -363,18 +363,26 @@ export function bakePoseSliceSheet(
         const occluded = !softShade && topExposed
           ? hasAt(z + 2, sx, sy) || hasAt(z + 3, sx, sy)
           : !softShade && openFront === 1 && hasAt(z + 1, sx, sy + 1)
-        // Ambiguous two-sided normals happen on thin shells; forcing them neutral removes the
-        // checkerboard shimmer on curved ogre/wraith/paladin surfaces.
         const sideOpen = openLeft2 + openRight2,
           depthOpen = openFront2 + openBack2
-        // On tops, use broad NW spatial crown test so highlights form clean solid bands rather than 1px stipple.
-        const lightBias = (topExposed
-          ? z >= count * 0.48 && (sx - cx) + (sy - cy) * 0.45 < -1.5
-            ? 0.4
-            : 0
-          : sideOpen === 2 || depthOpen === 2
-            ? 0
-            : (openLeft2 - openRight2) * 0.42 + (openFront2 * 0.42 - openBack2 * 0.35)) * (softShade ? 0 : 1)
+        // Soft-shaded curved bodies (ogre, paladin, wraith) use pure smooth spatial volumetric shading:
+        // zero 1px checkerboard shimmer while preserving rich 3-tone 16-bit sculptural volume!
+        const nx = (sx - cx) / Math.max(3, cx)
+        const ny = (sy - cy) / Math.max(3, cy)
+        const smoothBias = -nx * 0.45 + ny * 0.35
+        const lightBias = softShade
+          ? topExposed
+            ? z >= count * 0.5 && nx + ny * 0.4 < -0.18
+              ? 0.35
+              : 0
+            : smoothBias
+          : topExposed
+            ? z >= count * 0.48 && (sx - cx) + (sy - cy) * 0.45 < -1.5
+              ? 0.4
+              : 0
+            : sideOpen === 2 || depthOpen === 2
+              ? 0
+              : (openLeft2 - openRight2) * 0.42 + (openFront2 * 0.42 - openBack2 * 0.35)
 
         const [r0, g0, b0] = paletteRgb[color]
         const [r, g, b] = shadeSliceColor(
@@ -385,7 +393,7 @@ export function bakePoseSliceSheet(
           z,
           count,
           model.palette.glow.has(color),
-          softShade ? 0 : shade,
+          shade,
           lightBias,
           occluded
         )

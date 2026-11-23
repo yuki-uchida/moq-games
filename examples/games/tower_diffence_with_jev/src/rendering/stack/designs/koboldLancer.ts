@@ -9,8 +9,9 @@ export const koboldLancer: StackDesign = {
   type: 'koboldLancer',
   voxel: 2,
   walkDistance: 28,
-  portraitCrop: 0.58,
-  portraitYaw: -0.4,
+  portraitCrop: 0.64,
+  portraitYaw: -0.42,
+  portraitFocusY: 0.08,
   shadow: [7, 6],
   blueprint: {
     id: 'koboldLancer',

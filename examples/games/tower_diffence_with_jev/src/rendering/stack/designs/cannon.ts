@@ -10,9 +10,10 @@ export const cannon: StackDesign = {
   type: 'cannon',
   voxel: 2,
   walkDistance: 26,
-  portraitCrop: 0.54,
-  portraitYaw: -0.35,
-  portraitFocus: -0.5,
+  portraitCrop: 0.6,
+  portraitYaw: -0.22,
+  portraitFocus: -0.28,
+  portraitFocusY: 0.08,
   shadow: [11, 8],
   emitter: { part: 'barrel', at: [0, 0, 11] },
   blueprint: {

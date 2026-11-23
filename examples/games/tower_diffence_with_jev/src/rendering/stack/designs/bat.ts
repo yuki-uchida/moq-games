@@ -9,12 +9,13 @@ export const bat: StackDesign = {
   type: 'bat',
   voxel: 2,
   walkDistance: 40,
-  portraitCrop: 0.7,
-  portraitYaw: -0.35,
+  portraitCrop: 0.9,
+  portraitYaw: -0.22,
+  portraitFocusY: 0.06,
   portraitSquash: 0.48,
   portraitPose: {
-    wingL: { rz: 0.78, ry: -0.68 },
-    wingR: { rz: -0.78, ry: 0.68 }
+    wingL: { rz: 0.28, ry: -0.32, rx: -0.15 },
+    wingR: { rz: -0.28, ry: 0.32, rx: -0.15 }
   },
   simpleShadow: true,
   shadow: [7, 6],
@@ -37,19 +38,18 @@ export const bat: StackDesign = {
       body.ellipsoid([0, 0, 0], [4.5, 4.4, 4.6], 'fur')
       body.ellipsoid([0, -0.8, 2.0], [2.7, 2.6, 2.4], 'tummy')
       for (const [x, ex] of [
-        [-3.5, -3],
+        [-4, -3],
         [2, 1]
       ] as const) {
-        body.box([Math.floor(x), 3, -1], [Math.floor(x) + 1, 8, 1], 'furDark')
-        body.box([Math.floor(x), 4, 1], [Math.floor(x) + 1, 7, 1], 'ear')
+        body.box([x, 3, -1], [x + 1, 8, 1], 'furDark')
+        body.box([x, 4, 1], [x + 1, 7, 1], 'ear')
+        body.set(x < 0 ? x : x + 1, 9, 0, 'furDark')
         body.face(ex, 1, '*eye').face(ex + 1, 1, '*eye').face(ex, 2, '*eye').face(ex + 1, 2, '*eye')
       }
       body.face(-2, 1, 'pupil').face(1, 1, 'pupil')
+      body.face(-1, 0, 'furDark').face(0, 0, 'furDark')
       body.face(-2, -1, 'fang').face(1, -1, 'fang')
       body.box([-1, -5, -1], [0, -4, 0], 'furDark')
-      // Protruding muzzle and side eye so the profile keeps a face.
-      body.box([-2, 0, 4], [1, 2, 6], 'fur')
-      body.set(-4, 1, 1, '*eye').set(4, 1, 1, '*eye')
 
       for (const [name, side] of [
         ['wingL', 1],

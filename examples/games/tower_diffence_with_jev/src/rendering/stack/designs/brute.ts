@@ -9,8 +9,9 @@ export const brute: StackDesign = {
   type: 'brute',
   voxel: 2,
   walkDistance: 26,
-  portraitCrop: 0.56,
-  portraitYaw: -0.32,
+  portraitCrop: 0.68,
+  portraitYaw: -0.3,
+  portraitFocusY: 0.14,
   shadow: [12, 10],
   blueprint: {
     id: 'brute',
@@ -66,8 +67,6 @@ export const brute: StackDesign = {
       // Blazing 2x2 amber-gold eyes on the frontmost face plane so they survive the brow and cracks.
       head.box([-4, 0, 5], [-2, 1, 5], '*eye').box([1, 0, 5], [3, 1, 5], '*eye')
       head.set(-3, 1, 5, '*eyeCore').set(2, 1, 5, '*eyeCore')
-      // Profile eyes sit on the head's side wall (2x2 so they read at 1x) with a dark neck seam.
-      head.box([-5, 0, 1], [-5, 1, 2], '*eye').box([4, 0, 1], [4, 1, 2], '*eye')
       head.box([-4, -2, 0], [3, -2, 3], 'crack')
 
       for (const [name, x] of [

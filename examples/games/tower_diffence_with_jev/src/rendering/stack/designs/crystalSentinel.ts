@@ -8,9 +8,9 @@ export const crystalSentinel: StackDesign = {
   type: 'crystalSentinel',
   voxel: 2,
   walkDistance: 26,
-  portraitCrop: 0.56,
-  portraitYaw: -0.32,
-  portraitFocusY: 0.3,
+  portraitCrop: 0.66,
+  portraitYaw: -0.34,
+  portraitFocusY: 0.14,
   shadow: [11, 9],
   blueprint: {
     id: 'crystalSentinel',
@@ -62,8 +62,6 @@ export const crystalSentinel: StackDesign = {
       // Narrow neck step keeps the profile from reading as one continuous slab.
       torso.box([-3, 9, -2], [2, 11, 2], 'stoneDark')
       head.box([-1, 3, 5], [0, 4, 6], '*gem')
-      // Profile gem so the cyclops face still reads from the side.
-      head.box([-5, 3, 0], [-4, 4, 2], '*gem').box([4, 3, 0], [5, 4, 2], '*vein')
       // Dark jaw/neck cut separates the head silhouette from the shoulder slab.
       head.box([-3, -1, 1], [2, 0, 3], 'stoneDark')
 

@@ -119,7 +119,7 @@ export function paintStack(context: CanvasRenderingContext2D, design: StackDesig
   // circular badge edge-to-edge (no floating body with empty corners), while full-body framing
   // keeps the whole silhouette inscribed in the circle.
   const bust = crop < 0.99
-  const padding = options.padding ?? (bust ? 0.02 : 0.06)
+  const padding = options.padding ?? (bust ? 0.06 : 0.07)
   const usable = options.size * (1 - padding * 2)
   const circleDiameter = options.size * (1 - padding * 1.15)
   const windowW = bust ? Math.max(1, Math.round(cropH * (design.portraitAspect ?? 1))) : cropW
@@ -127,7 +127,7 @@ export function paintStack(context: CanvasRenderingContext2D, design: StackDesig
   const focus = Math.max(-1, Math.min(1, design.portraitFocus ?? 0))
   const originX = bust ? minX + Math.round((slack * (focus + 1)) / 2) : minX
   const rawScale = bust
-    ? usable / windowW
+    ? Math.min(usable / windowW, usable / cropH)
     : Math.min(usable / Math.max(cropW, cropH), circleDiameter / Math.hypot(cropW, cropH))
   // Integer texels keep each portrait internally uniform; the 1..6 clamp keeps neighbouring
   // badges within roughly two density steps of each other.
@@ -191,7 +191,7 @@ export function stackPortrait(design: StackDesign | undefined, size = 128, full?
             crop: design.portraitCrop ?? 0.64,
             yaw: design.portraitYaw ?? -0.32,
             squash: design.portraitSquash ?? PORTRAIT_SQUASH,
-            padding: 0.02,
+            padding: 0.06,
             shadow: false
           }
     )

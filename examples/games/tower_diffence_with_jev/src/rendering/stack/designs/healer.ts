@@ -10,8 +10,9 @@ export const healer: StackDesign = {
   type: 'healer',
   voxel: 2,
   walkDistance: 28,
-  portraitCrop: 0.62,
-  portraitYaw: -0.25,
+  portraitCrop: 0.64,
+  portraitYaw: -0.18,
+  portraitFocusY: 0.08,
   shadow: [8, 6],
   emitter: { part: 'weapon', at: [0.5, 2, 14.5] },
   blueprint: {

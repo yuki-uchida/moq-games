@@ -119,7 +119,7 @@ vec4 sampleStack(vec2 u, float c, float s, float maxR) {
 }
 
 vec3 inkFor(vec3 base) {
-  return mix(vec3(0.063, 0.055, 0.11), base * vec3(0.22, 0.20, 0.26), 0.42);
+  return mix(vec3(0.071, 0.055, 0.118), base * vec3(0.28, 0.24, 0.30), 0.52);
 }
 
 void main() {

@@ -9,8 +9,10 @@ export const clockworkPatchling: StackDesign = {
   type: 'clockworkPatchling',
   voxel: 2,
   walkDistance: 22,
-  portraitCrop: 0.62,
-  portraitYaw: 0.06,
+  portraitCrop: 0.78,
+  portraitYaw: -0.45,
+  portraitFocus: -0.06,
+  portraitFocusY: 0.06,
   shadow: [8, 7],
   blueprint: {
     id: 'clockworkPatchling',
@@ -55,9 +57,10 @@ export const clockworkPatchling: StackDesign = {
                 ? 'patchC'
                 : undefined
       )
-      // Riveted iron & brass clockwork chest window so it reads immediately as mechanical, not a potato.
-      torso.box([-3, 2, 5], [2, 5, 6], 'iron').box([-2, 3, 6], [1, 4, 6], 'brass')
-      torso.set(-1, 4, 6, 'brassLight').set(0, 3, 6, 'brassDark')
+      // Riveted iron & brass clockwork chest window with toothed gear so it reads immediately as mechanical.
+      torso.box([-3, 2, 5], [2, 6, 6], 'iron').box([-2, 3, 6], [1, 5, 6], 'brass')
+      torso.set(-2, 5, 6, 'brassLight').set(1, 5, 6, 'brassLight').set(-1, 4, 6, 'iron').set(0, 4, 6, 'iron')
+      torso.set(-2, 3, 6, 'brassDark').set(1, 3, 6, 'brassDark')
       // Crisp patchwork seams.
       torso.paint((x, y, z) =>
         x === 0 && z > 4 && y >= 7 && y % 2 === 0
@@ -70,7 +73,8 @@ export const clockworkPatchling: StackDesign = {
       torso.box([-4, 9, 4], [-2, 11, 5], 'button').box([-3, 10, 5], [-3, 10, 5], '*eyeGlow')
       torso.box([1, 9, 4], [3, 11, 5], 'buttonRim').box([2, 10, 5], [2, 10, 5], '*eyeCyan')
       torso.face(-2, 7, 'stitch').face(-1, 6, 'stitch').face(0, 6, 'stitch').face(1, 6, 'stitch').face(2, 7, 'stitch')
-      // Top brass crown bolt.
+      // Iron collar & gleaming brass crown bolt.
+      torso.box([-2, 13, -2], [1, 14, 1], 'iron')
       torso.box([-1, 14, -1], [0, 15, 0], 'brassDark').box([-3, 16, -1], [2, 17, 0], 'brass')
 
       // Prominent oversized double-loop brass wind-up key in the back.

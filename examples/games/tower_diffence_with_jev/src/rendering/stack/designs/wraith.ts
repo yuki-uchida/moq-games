@@ -8,8 +8,9 @@ export const wraith: StackDesign = {
   type: 'wraith',
   voxel: 2,
   walkDistance: 30,
-  portraitCrop: 0.56,
-  portraitYaw: -0.32,
+  portraitCrop: 0.62,
+  portraitYaw: -0.1,
+  portraitFocusY: 0.08,
   softShade: true,
   shadow: [7, 6],
   emitter: { part: 'armR', at: [0, -10, 1] },
@@ -28,21 +29,41 @@ export const wraith: StackDesign = {
     },
     build(kit) {
       const body = kit.part('body', undefined, [0, 4, 0])
-      for (let y = 0; y <= 16; y++) {
-        const r = 3.2 + (16 - y) * 0.25 - (y > 13 ? (y - 13) * 0.65 : 0)
-        body.fill([-7, y, -7], [6, y, 6], y < 4 ? 'shroudDark' : 'shroud', (x, yy, z) => {
+      // Tapered tattered spectral shroud below the shoulders.
+      for (let y = 0; y <= 10; y++) {
+        const r = 3.5 + (10 - y) * 0.34
+        body.fill([-8, y, -8], [7, y, 7], y < 4 ? 'shroudDark' : 'shroud', (x, yy, z) => {
           const tatter = y < 4 && Math.sin(Math.atan2(x, z) * 5 + y * 0.7) > 0.35 - y * 0.25
           return Math.hypot(x, z * 0.92) <= r && !tatter
         })
       }
-      // Deep shadow cowl opening with bold 2x2 glowing phantom eyes visible at 1x scale.
+      // Flared spectral shoulder mantle separates the hood from the robe silhouette from every angle.
+      body.fill([-7, 8, -6], [6, 10, 6], 'shroudDark', (x, y, z) => {
+        const r = 5.6 - (y - 8) * 0.4
+        return Math.hypot(x / r, z / (r * 0.88)) <= 1
+      })
+      body.paint((x, y, z) => (y === 8 && Math.hypot(x + 0.5, z + 0.5) > 4.4 ? 'shroudPale' : undefined))
+      // Sculpted overhanging gothic hood framing a deep recessed shadow cavity.
+      body.fill([-6, 10, -6], [5, 18, 5], 'shroud', (x, y, z) => {
+        const taper = y > 15 ? 1 - (y - 15) * 0.28 : 1
+        const d = Math.hypot(x / (5.0 * taper), (y - 12.6) / 5.4, (z + 0.8) / (5.0 * taper))
+        const recess = z > 1.0 && y >= 10.2 && y <= 15.2 && Math.abs(x) < 3.8
+        const frontCut = y >= 15 && z > 2.4 - (y - 15) * 0.8
+        return d <= 1 && !recess && !frontCut
+      })
+      // Recessed dark void interior inside the hood with crisp pale cowl rim.
+      body.fill([-4, 10, 0], [3, 14, 2], 'void', (x, y, z) => Math.hypot(x / 3.8, (y - 12.0) / 2.6) <= 1 && z >= 0)
       body.paint((x, y, z) =>
-        Math.hypot((x + 0.5) / 3.3, (y + 0.5 - 12.5) / 2.8) <= 1 && z >= 1 ? 'void' : undefined
+        y >= 10 && y <= 15 && z >= 2 && z <= 4 && Math.abs(x + 0.5) >= 3.5 && Math.abs(x + 0.5) <= 4.7
+          ? 'shroudPale'
+          : y === 15 && z >= 1 && z <= 2 && Math.abs(x + 0.5) <= 3.8
+            ? 'shroudPale'
+            : undefined
       )
-      body.box([-3, 12, 3], [-2, 13, 4], '*eye').box([1, 12, 3], [2, 13, 4], '*eye')
-      // Pale spectral cowl rim & shoulder shawl edge.
-      body.paint((x, y, z) => (y >= 16 || (y === 9 && z > 1) ? 'shroudPale' : undefined))
-      body.segment([0, 16, -1], [0, 13.5, -7], 1.5, 'shroudDark', 0.5)
+      // Two sharply separated glowing cyan phantom eyes floating visibly inside the shadow cowl.
+      body.box([-3, 11, 3], [-2, 12, 4], '*eye').box([1, 11, 3], [2, 12, 4], '*eye')
+      // Swept pointed hood tail in the back so side & rear silhouettes read unmistakably as a reaper hood.
+      body.segment([0, 16.5, -2], [0, 13.5, -8.5], 2.0, 'shroudDark', 0.65)
 
       for (const [name, x] of [
         ['armL', 5],

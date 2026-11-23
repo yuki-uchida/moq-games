@@ -10,8 +10,9 @@ export const paladin: StackDesign = {
   type: 'paladin',
   voxel: 2,
   walkDistance: 27,
-  portraitCrop: 0.62,
+  portraitCrop: 0.64,
   portraitYaw: -0.32,
+  portraitFocusY: 0.1,
   softShade: true,
   shadow: [9, 7],
   blueprint: {
@@ -61,10 +62,9 @@ export const paladin: StackDesign = {
       })
       // Rear helmet plate: dark gold shell, no skin-coloured "face" from behind.
       b.head.paint((x, y, z) => (z <= -4 && y >= 1 ? 'goldDark' : y >= 9 && Math.abs(x) < 3 ? 'gold' : undefined))
-      // Side profile: exposed cheek and one eye inside the open helm.
-      b.head.box([-6, 3, 0], [-5, 5, 2], 'skin').box([4, 3, 0], [5, 5, 2], 'skin')
-      b.head.box([-6, 2, 1], [-5, 3, 2], 'plateShade').box([4, 2, 1], [5, 3, 2], 'plateShade')
-      b.head.set(-6, 4, 2, 'eye').set(5, 4, 2, 'eye')
+      // Sculpted helmet cheek-guards tucked cleanly behind the open face.
+      b.head.box([-5, 2, -1], [-5, 5, 1], 'plateShade').box([4, 2, -1], [4, 5, 1], 'plateShade')
+      b.head.box([-5, 2, 0], [-5, 2, 2], 'gold').box([4, 2, 0], [4, 2, 2], 'gold')
       b.head.box([-4, 8, 3], [3, 9, 4], 'gold')
       b.head.box([-1, 10, -3], [0, 11, 2], 'gold')
       for (const side of [-1, 1]) {

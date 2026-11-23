@@ -10,9 +10,9 @@ export const archer: StackDesign = {
   type: 'archer',
   voxel: 2,
   walkDistance: 30,
-  portraitCrop: 0.62,
-  portraitYaw: -0.3,
-  portraitFocusY: 0.35,
+  portraitCrop: 0.64,
+  portraitYaw: -0.22,
+  portraitFocusY: 0.1,
   shadow: [7, 6],
   emitter: { part: 'offhand', at: [0, 3, 2] },
   blueprint: {

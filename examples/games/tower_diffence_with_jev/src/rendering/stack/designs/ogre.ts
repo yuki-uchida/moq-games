@@ -9,8 +9,9 @@ export const ogre: StackDesign = {
   type: 'ogre',
   voxel: 2,
   walkDistance: 28,
-  portraitCrop: 0.42,
-  portraitYaw: -0.2,
+  portraitCrop: 0.56,
+  portraitYaw: -0.26,
+  portraitFocusY: 0.12,
   softShade: true,
   shadow: [12, 10],
   blueprint: {
@@ -61,9 +62,13 @@ export const ogre: StackDesign = {
         (x, y, z) => Math.hypot(x / 6.2, (y - 4.8) / 5.8, (z - 2.2) / 5.8) <= 1 && z > 3
       )
       torso.box([-1, 4, 8], [0, 5, 8], 'skinDark')
-      // Broad scapula shadow gives the back a readable plane instead of flat skin.
+      // Broad scapula shadow + diagonal rope harness give chest and back clear warrior structure.
       torso.paint((x, y, z) =>
-        z <= -4 && y >= 8 && y <= 12 && Math.abs(x) > 3 ? 'skinDark' : undefined
+        Math.abs(x - (y - 6)) <= 1 && y >= 2 && y <= 11 && (z >= 5 || z <= -4)
+          ? 'rope'
+          : z <= -4 && y >= 8 && y <= 12 && Math.abs(x) > 3
+            ? 'skinDark'
+            : undefined
       )
 
       const head = kit.part('head', 'torso', [0, 11.5, 2.0])
@@ -76,9 +81,12 @@ export const ogre: StackDesign = {
       head.set(-3, 4, 6, 'pupil').set(2, 4, 6, 'pupil')
       head.box([-1, 3, 6], [0, 4, 7], 'skinDark')
       head.box([-4, 1, 6], [-3, 3, 7], 'tusk').box([2, 1, 6], [3, 3, 7], 'tusk')
-      // Side ears & topknot.
+      // Side ears & compact red-tied warrior topknot.
       head.box([-7, 4, -1], [-6, 6, 1], 'skinDark').box([5, 4, -1], [6, 6, 1], 'skinDark')
-      head.box([-1, 9, -2], [0, 12, 0], 'hair').box([-2, 12, -3], [1, 13, 0], 'hair')
+      head
+        .box([-2, 9, -2], [1, 9, 0], 'patch')
+        .box([-2, 10, -3], [1, 11, 0], 'hair')
+        .box([-1, 11, -4], [0, 11, -2], 'hair')
 
       for (const [name, x] of [
         ['armL', 10],
