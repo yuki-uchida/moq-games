@@ -10,6 +10,7 @@ export const crystalSentinel: StackDesign = {
   walkDistance: 26,
   portraitCrop: 0.56,
   portraitYaw: -0.32,
+  portraitFocusY: 0.3,
   shadow: [11, 9],
   blueprint: {
     id: 'crystalSentinel',

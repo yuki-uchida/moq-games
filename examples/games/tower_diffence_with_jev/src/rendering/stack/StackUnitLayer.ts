@@ -254,6 +254,10 @@ export class StackUnitLayer {
   motion(id: number): StackMotion | undefined {
     return this.actors.get(id)?.visual.motion
   }
+  /** Current sprite top above the unit's feet, for HUD label placement. */
+  headroom(id: number): number | undefined {
+    return this.actors.get(id)?.visual.headroom()
+  }
   /** Projectile origin in board units from the caster's emitter part, also for a fallen caster. */
   emitter(attack: Readonly<CombatAttack>, at = attack.releaseAt): Point | undefined {
     const design = this.roster[attack.type]

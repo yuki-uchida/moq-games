@@ -92,7 +92,13 @@ export function paintStack(context: CanvasRenderingContext2D, design: StackDesig
 
   const crop = options.crop ?? 1
   const fullH = botY - topY + 1
-  const cropBottom = Math.min(botY, topY + Math.max(1, Math.ceil(fullH * crop)) - 1)
+  const cropBottom0 = Math.min(botY, topY + Math.max(1, Math.ceil(fullH * crop)) - 1)
+  const cropH0 = cropBottom0 - topY + 1
+  const shift =
+    crop < 0.99 ? Math.round((design.portraitFocusY ?? 0) * cropH0 * 0.4) : 0
+  const cropTop = Math.max(0, Math.min(botY - cropH0 + 1, topY + shift))
+  const cropBottom = cropTop + cropH0 - 1
+  topY = cropTop
 
   // Measure horizontal bounds strictly inside the cropped bust window so wide legs/weapons don't shrink faces!
   let minX = rendered.width,

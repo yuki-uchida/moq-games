@@ -170,6 +170,11 @@ export class StackVisual {
     this.shadow.visible = visible
   }
 
+  /** World-space height of the sprite's top edge above the unit's feet. */
+  headroom(): number {
+    return (this.artBounds.y + this.artBounds.w) * this.cell() * this.presentation
+  }
+
   /** Optional interactive camera override (used by EXTRA viewer to orbit turn & squash). */
   setViewOverride(turn?: number, squash?: number): void {
     if (turn === undefined || squash === undefined) {

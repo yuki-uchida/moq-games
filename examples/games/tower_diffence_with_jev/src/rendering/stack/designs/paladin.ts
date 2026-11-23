@@ -74,6 +74,8 @@ export const paladin: StackDesign = {
       }
       // Royal blue & gold chest tabard + flowing cape (breaks cleanly off white snow!).
       b.torso.box([-2, 0, 4], [1, 5, 4], 'tabard').box([-1, 2, 5], [0, 3, 5], 'gold')
+      // Dark collar separates the helm from the white pauldrons in the rear view.
+      b.torso.box([-4, 7, -4], [3, 8, -2], 'plateShade')
       for (const x of [-7, 4]) b.torso.box([x, 5, -3], [x + 2, 7, 3], 'gold')
       b.hips.box([-3, -3, 4], [2, 1, 4], 'tabard').box([-3, -3, 4], [2, -3, 4], 'gold')
       const cape = kit.part('cape', 'torso', [0, 6, -3.5])
