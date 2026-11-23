@@ -11,6 +11,7 @@ export const ogre: StackDesign = {
   walkDistance: 28,
   portraitCrop: 0.5,
   portraitYaw: -0.26,
+  softShade: true,
   shadow: [12, 10],
   blueprint: {
     id: 'ogre',

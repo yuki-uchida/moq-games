@@ -57,7 +57,7 @@ test('snow, desert and volcanic terrain retain their colors without Canvas2D fil
     const [red, green, blue] = fallback
     if (biome === 'desert') expect(red - blue, biome).toBeGreaterThan(10)
     else if (biome === 'volcanic')
-      expect(0.2126 * red + 0.7152 * green + 0.0722 * blue, biome).toBeLessThan(90)
+      expect(0.2126 * red + 0.7152 * green + 0.0722 * blue, biome).toBeLessThan(100)
     else expect(blue - red, biome).toBeGreaterThan(0)
     for (const [channel, value] of fallback.entries())
       expect(Math.abs(value - native[channel]), biome).toBeLessThanOrEqual(2)

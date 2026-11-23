@@ -111,7 +111,12 @@ function buildCastle(fieldId: FieldId, tier: 0 | 1 | 2): StackDesign {
         p.paint((x, y, z) =>
           x === -16 && y >= 2 && y <= 11 && (y === 4 || y === 8 || z % 5 === 0) ? 'stoneDark' : undefined
         )
-        p.paint((x, y) => (x === -8 && (y === 12 || y === 20) ? 'stoneDark' : undefined))
+        // Stone courses across every west-facing wall (keep, towers, curtain) so no facade is a
+        // featureless bright rectangle from the road.
+        p.paint((x, y, z) =>
+          x <= -6 && y >= 2 && y <= 24 && (y % 4 === 0 || z % 6 === 0) ? 'stoneDark' : undefined
+        )
+        p.box([-9, 13, 1], [-9, 16, 3], 'window').set(-9, 14, 2, '*torch')
 
         // Tall central royal keep with horizontal masonry, battlements, arched windows & 2-tone gabled roof.
         p.box([-8, 0, -9], [7, 24, 3], 'stone')

@@ -139,7 +139,7 @@ export const BIOMES: Record<FieldId, Biome> = {
     slowBorder: '#120e17',
     slowAccent: '#ff7a2e',
     flowers: ['#5e5059', '#4f434b'],
-    slotEdge: '#9d8aa8',
+    slotEdge: '#d9a06b',
     slotFill: '#584960',
     slotShadow: '#241d2b',
     // Molten magma pools & glowing branching fissures with 2-tier warm bounce glow.
@@ -629,10 +629,10 @@ export function paintGround(field: ResolvedBattlefield, aspect: number): GroundP
           hex = isNW ? biome.edgeShadow : biome.edgeLight
         }
 
-        // Stepped pixel-art edge falloff (two hard steps) instead of a smooth gradient.
+        // Stepped, dithered edge falloff (no rectangular frame band).
         const edgeDistance = Math.min(i, j, width - 1 - i, height - 1 - j)
-        if (edgeDistance < 4) shade *= 0.87
-        else if (edgeDistance < 8) shade *= 0.94
+        if (edgeDistance < 3) shade *= 0.9
+        else if (edgeDistance < 7 && ((i + j) & 1) === 0) shade *= 0.95
       }
 
       const [r, g, b] = color(hex)

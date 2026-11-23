@@ -61,6 +61,8 @@ export const crystalSentinel: StackDesign = {
       head.box([-1, 3, 5], [0, 4, 6], '*gem')
       // Profile gem so the cyclops face still reads from the side.
       head.box([-5, 3, 0], [-4, 4, 2], '*gem').box([4, 3, 0], [5, 4, 2], '*vein')
+      // Dark jaw/neck cut separates the head silhouette from the shoulder slab.
+      head.box([-3, -1, 1], [2, 0, 4], 'stoneDark')
 
       const shards = kit.part('shards', 'head', [0, 4.5, 0])
       for (let i = 0; i < 3; i++) {
@@ -83,6 +85,9 @@ export const crystalSentinel: StackDesign = {
   },
   pose: (input) => {
     const pose = bipedPose(input, { attack: 'smash', stride: 0.35, bob: 0.5, heavy: true, armSpread: 0.25 })
+    // Stagger the fists in depth so the side view separates them from the slab torso.
+    pose.armL = { ...pose.armL, z: 3.5 }
+    pose.armR = { ...pose.armR, z: -3 }
     pose.shards = { ry: input.time * 1.4 + input.seed * TAU, y: Math.sin(input.time * 2 + input.seed) * 0.9 }
     return pose
   }

@@ -48,7 +48,9 @@ export const koboldLancer: StackDesign = {
       // Glowing amber canine eyes + prominent protruding snout so profile never resembles human runner.
       for (const x of [-3, -2, 1, 2]) b.head.face(x, 3, '*eye').face(x, 4, '*eye')
       b.head.face(-2, 3, 'pupil').face(1, 3, 'pupil')
-      b.head.box([-2, 1, 3], [1, 3, 8], 'furLight').box([-1, 3, 7], [0, 3, 8], 'nose')
+      // Wider front-facing eyes and a low nose tip so the pot-helmet face reads head-on.
+      b.head.face(-3, 3, '*eye').face(-3, 4, '*eye').face(2, 3, '*eye').face(2, 4, '*eye')
+      b.head.box([-2, 1, 3], [1, 3, 8], 'furLight').box([-1, 1, 7], [0, 2, 8], 'nose')
       // Big pointed canine ears sticking out above & beside the pot helmet.
       b.head.box([-5, 6, -1], [-3, 10, 0], 'fur').box([2, 6, -1], [4, 10, 0], 'fur')
       b.head.fill([-5, 6, -5], [4, 9, 4], 'pot', (x, y, z) => Math.hypot(x / 4.7, (y - 6) / 3.4, z / 4.5) <= 1)

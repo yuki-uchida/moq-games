@@ -18,6 +18,7 @@ export interface BakeableModel {
   readonly parts: readonly BakeablePart[]
   readonly voxels: readonly VoxelPart[]
   readonly palette: PaletteBook
+  readonly softShade?: boolean
 }
 
 /**
@@ -357,21 +358,22 @@ export function bakePoseSliceSheet(
         const openBack2 = !hasAt(z, sx, sy - 3) ? 1 : 0
         const openFront2 = !hasAt(z, sx, sy + 3) ? 1 : 0
         const openFront = !hasAt(z, sx, sy + 1) ? 1 : 0
-        const occluded = topExposed
+        const softShade = model.softShade === true
+        const occluded = !softShade && topExposed
           ? hasAt(z + 2, sx, sy) || hasAt(z + 3, sx, sy)
-          : openFront === 1 && hasAt(z + 1, sx, sy + 1)
+          : !softShade && openFront === 1 && hasAt(z + 1, sx, sy + 1)
         // Ambiguous two-sided normals happen on thin shells; forcing them neutral removes the
         // checkerboard shimmer on curved ogre/wraith/paladin surfaces.
         const sideOpen = openLeft2 + openRight2,
           depthOpen = openFront2 + openBack2
         // On tops, use broad NW spatial crown test so highlights form clean solid bands rather than 1px stipple.
-        const lightBias = topExposed
+        const lightBias = (topExposed
           ? z >= count * 0.48 && (sx - cx) + (sy - cy) * 0.45 < -1.5
             ? 0.4
             : 0
           : sideOpen === 2 || depthOpen === 2
             ? 0
-            : (openLeft2 - openRight2) * 0.42 + (openFront2 * 0.42 - openBack2 * 0.35)
+            : (openLeft2 - openRight2) * 0.42 + (openFront2 * 0.42 - openBack2 * 0.35)) * (softShade ? 0.3 : 1)
 
         const [r0, g0, b0] = paletteRgb[color]
         const [r, g, b] = shadeSliceColor(
