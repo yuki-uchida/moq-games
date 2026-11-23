@@ -104,5 +104,10 @@ export const tank: StackDesign = {
         .box([0, 0, 11], [1, 1, 11], 'gold')
     }
   },
-  pose: (input) => bipedPose(input, { attack: 'bash', stride: 0.42, bob: 0.6, heavy: true, armSpread: 0.2 })
+  pose: (input) => {
+    const pose = bipedPose(input, { attack: 'bash', stride: 0.42, bob: 0.6, heavy: true, armSpread: 0.2 })
+    // Swing the flanged mace out from the shield side so the rear view still shows the weapon.
+    pose.weapon = { ...pose.weapon, ry: -0.5 }
+    return pose
+  }
 }
