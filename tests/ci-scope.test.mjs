@@ -399,7 +399,7 @@ test('Pages keeps headless sprite-stack and model coverage and uses benchmark Op
           ? glArgs
           : ['--use-gl=angle', platform === 'win32' ? '--use-angle=d3d11-warp' : '--use-angle=swiftshader']
       )
-      for (const name of ['tower-model-review', 'tower-sprite-stack-game', 'tower-meshopt-equivalence'])
+      for (const name of ['tower-model-review', 'tower-sprite-stack-game', 'tower-sidecar-e2e'])
         assert.ok(config.testMatch.test(`${name}.spec.ts`))
     }
   }
