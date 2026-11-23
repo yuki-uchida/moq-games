@@ -2668,12 +2668,14 @@ export class GameRenderer {
         Math.max(18, unit.y + sepY - (headroom ?? (authored ? 70 * bodyScale(unit) : 58)) - 4 - lift)
       let staggerY = 0
       if (unit.owner === 'ai') {
-        for (const step of [0, 7, 14, 21]) {
-          const candidate = barTop(step)
-          if (!placedBars.some((bar) => Math.abs(bar.x - x) < 40 && Math.abs(bar.y - candidate) < 9)) {
-            staggerY = step
+        // Six 7px rows: crowded lanes stack past four attackers, and a fallback must still clear.
+        for (let step = 0; step < 6; step++) {
+          const candidate = barTop(step * 7)
+          if (!placedBars.some((bar) => Math.abs(bar.x - x) < 52 && Math.abs(bar.y - candidate) < 9)) {
+            staggerY = step * 7
             break
           }
+          staggerY = step * 7
         }
       }
       const labelTop = barTop(staggerY)

@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { createBoardCamera } from '../rendering/BoardCamera'
+import { COMPACT_BOARD_TOP_BLEED, configureBoardCamera, createBoardCamera } from '../rendering/BoardCamera'
 import { orientBoardCanvas } from '../rendering/BoardCanvas'
 import { ATTACK_PROFILES } from '../game/AttackProfiles'
 import { STACK_DESIGNS } from '../rendering/stack/designs'
@@ -61,10 +61,13 @@ if (params.has('stage')) {
   const field = getField(id, version, layout)
   const aspect = Number(params.get('aspect') ?? 1.116)
   const scene = new THREE.Scene()
+  // Mirror the in-game canvas: layout 3+ reserves a top bleed so tall landmarks sit fully on screen.
+  const topBleed = layout >= 3 ? COMPACT_BOARD_TOP_BLEED : 0
   const camera = createBoardCamera(field)
+  configureBoardCamera(camera, field, topBleed)
   const renderer = new THREE.WebGLRenderer({ antialias: false })
   renderer.setPixelRatio(1)
-  renderer.setSize(Math.round(field.width * aspect), field.height)
+  renderer.setSize(Math.round(field.width * aspect), field.height + topBleed)
   renderer.outputColorSpace = THREE.SRGBColorSpace
   orientBoardCanvas(renderer.domElement)
   document.querySelector('#stage')!.append(renderer.domElement)

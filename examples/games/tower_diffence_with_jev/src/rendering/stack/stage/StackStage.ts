@@ -402,7 +402,7 @@ export class StackStage {
     // Keep the whole cave on the board. The volcanic silhouette carries a taller lava crown.
     const denLift = field.id === 'volcanic' ? 58 : 52
     const denPoint = inside({ x: entry.x - first.x * 10, y: entry.y - first.y * 10 }, 56, denLift)
-    this.den = this.createPlaced(denDesign(field.id), denPoint.x, denPoint.y, snapCardinal(first), 0.5, 0.94, `stack-den:${field.id}`, [4, 4])
+    this.den = this.createPlaced(denDesign(field.id), denPoint.x, denPoint.y, snapCardinal(first), 0.5, 1.25, `stack-den:${field.id}`, [4, 4])
 
     const gate = field.gate,
       last = direction(field.path[field.path.length - 2] ?? gate, gate)
@@ -453,7 +453,7 @@ export class StackStage {
     c.fillRect(9, 37, 4, 4)
     c.fillRect(155, 37, 4, 4)
     const pct = Math.max(5, Math.round((1 - surface.speedFactor) * 100))
-    const labelText = `移勁E-${pct}%`
+    const labelText = `移動 -${pct}%`
     // Crisp high-contrast label: 30 px type on a 168 px plaque stays legible at the in-game
     // downscale instead of turning into noise at field size.
     c.font = 'bold 30px "Noto Sans CJK JP", "Hiragino Kaku Gothic ProN", sans-serif'
