@@ -138,12 +138,10 @@ test('compact battlefield fits every supported viewport without scrolling', asyn
       expect(geometry.bottom).toBeLessThanOrEqual(geometry.height - 16 + 1)
       const aspect = ((geometry.right - geometry.left) / 1280) / ((geometry.bottom - geometry.top) / 920)
       expect(mapState.modelRendering.presentation.scale).toBeCloseTo(1 + 0.5 * Math.min(1, aspect), 5)
-      expect(mapState.displayGeometry.backingWidth).toBe(
-        1280 * Math.min(await page.evaluate(() => devicePixelRatio), 2)
-      )
-      expect(mapState.displayGeometry.backingHeight).toBe(
-        (920 + COMPACT_BOARD_TOP_BLEED) * Math.min(await page.evaluate(() => devicePixelRatio), 2)
-      )
+      // The board renders into a 2x supersampled buffer (capped at 3 for high-DPI screens).
+      const renderRatio = Math.min((await page.evaluate(() => devicePixelRatio)) * 2, 3)
+      expect(mapState.displayGeometry.backingWidth).toBe(1280 * renderRatio)
+      expect(mapState.displayGeometry.backingHeight).toBe((920 + COMPACT_BOARD_TOP_BLEED) * renderRatio)
       expect(geometry.right - geometry.left).toBeCloseTo(viewport.width - 24, 0)
       expect(geometry.bottom - geometry.top).toBeCloseTo(viewport.height - geometry.expectedTop - 16, 0)
       expect(mapState.modelRendering.presentation.aspect).toBeCloseTo(

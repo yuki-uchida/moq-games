@@ -735,7 +735,9 @@ export class GameRenderer {
       }
     }
     this.renderer.setSize(this.field.width, this.field.height, false)
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, authored.pixelRatio ?? 2))
+    // Supersample the board so the fractional viewport fit resamples a 2x buffer with smooth
+    // filtering instead of producing alternating 2/3-px nearest-neighbour runs.
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio * 2, authored.pixelRatio ?? 3))
     orientBoardCanvas(this.renderer.domElement)
     this.renderer.domElement.setAttribute(
       'aria-label',
