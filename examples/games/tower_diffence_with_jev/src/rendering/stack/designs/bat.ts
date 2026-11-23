@@ -9,8 +9,8 @@ export const bat: StackDesign = {
   type: 'bat',
   voxel: 2,
   walkDistance: 40,
-  portraitCrop: 0.88,
-  portraitYaw: -0.26,
+  portraitCrop: 0.7,
+  portraitYaw: -0.35,
   portraitSquash: 0.48,
   portraitPose: {
     wingL: { rz: 0.78, ry: -0.68 },
@@ -47,6 +47,9 @@ export const bat: StackDesign = {
       body.face(-2, 1, 'pupil').face(1, 1, 'pupil')
       body.face(-2, -1, 'fang').face(1, -1, 'fang')
       body.box([-1, -5, -1], [0, -4, 0], 'furDark')
+      // Protruding muzzle and side eye so the profile keeps a face.
+      body.box([-2, 0, 4], [1, 2, 6], 'fur')
+      body.set(-4, 1, 1, '*eye').set(4, 1, 1, '*eye')
 
       for (const [name, side] of [
         ['wingL', 1],
@@ -77,8 +80,9 @@ export const bat: StackDesign = {
     // views show a diagonal wing rather than an edge-on sliver.
     // Stagger the two wings in depth so the profile keeps a wing silhouette and a gap to the body.
     // Symmetric base angle: the flap itself is mirrored, so no constant twist is added.
-    pose.wingL = { ...pose.wingL, ry: -0.42, rx: -0.5, z: 2, y: -2 }
-    pose.wingR = { ...pose.wingR, ry: 0.42, rx: -0.5, z: -2, y: -2 }
+    // Opposite base roll opens a V from the side while keeping both roots on the shoulder.
+    pose.wingL = { ...pose.wingL, rz: (pose.wingL?.rz ?? 0) - 0.35, ry: -0.42, rx: -0.5, z: 2, y: -2 }
+    pose.wingR = { ...pose.wingR, rz: (pose.wingR?.rz ?? 0) + 0.35, ry: 0.42, rx: -0.5, z: -2, y: -2 }
     return pose
   }
 }

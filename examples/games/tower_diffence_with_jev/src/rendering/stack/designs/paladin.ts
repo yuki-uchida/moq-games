@@ -59,6 +59,8 @@ export const paladin: StackDesign = {
           (z > 0.8 && y < 8.2 && Math.abs(x) < 4.2) || (Math.abs(x) >= 4.4 && z > -1 && y < 7.5)
         return d <= 1 && d > 0.78 && !openFace
       })
+      // Rear helmet plate: dark gold shell, no skin-coloured "face" from behind.
+      b.head.paint((x, y, z) => (z <= -4 && y >= 1 ? 'goldDark' : y >= 9 && Math.abs(x) < 3 ? 'gold' : undefined))
       // Side profile: exposed cheek and one eye inside the open helm.
       b.head.box([-6, 3, 0], [-5, 5, 2], 'skin').box([4, 3, 0], [5, 5, 2], 'skin')
       b.head.box([-6, 2, 1], [-5, 3, 2], 'plateShade').box([4, 2, 1], [5, 3, 2], 'plateShade')

@@ -172,9 +172,12 @@ export class StackVisual {
 
   /** World-space height of the sprite's visible top edge above the unit's feet. */
   headroom(): number {
-    // The conservative artBounds include empty space for rotated poses; the drawn top is the
-    // half footprint height plus the baked base lift.
-    return (Math.max(0, this.atlas.sliceHeight * 0.5 + this.atlas.baseLift)) * this.cell() * this.presentation
+    // Stacked top slice lift plus the projected half-depth of the top footprint.
+    const topLift =
+      (this.atlas.baseLift + Math.max(0, this.atlas.sliceCount - 1)) * STACK_SPACING
+    // Only part of the depth lift projects above the head; the calibrated 0.35 leaves the bar
+    // 3-4 px above the helmet without floating into the scenery.
+    return (Math.max(0, topLift * 0.35 + this.atlas.sliceHeight * 0.5 * STACK_SQUASH)) * this.cell() * this.presentation
   }
 
   /** Optional interactive camera override (used by EXTRA viewer to orbit turn & squash). */

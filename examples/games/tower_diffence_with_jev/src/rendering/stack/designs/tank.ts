@@ -10,8 +10,8 @@ export const tank: StackDesign = {
   type: 'tank',
   voxel: 2,
   walkDistance: 26,
-  portraitCrop: 0.52,
-  portraitYaw: -0.14,
+  portraitCrop: 0.45,
+  portraitYaw: -0.1,
   shadow: [10, 8],
   blueprint: {
     id: 'tank',
@@ -82,7 +82,9 @@ export const tank: StackDesign = {
       // Towering kite shield held snug against left forearm.
       const shield = kit.part('offhand', 'armL', [0.5, -3, 4])
       const halfWidth = (y: number) => (y > 1 ? 4.8 : 4.8 * Math.max(0, (y + 9) / 10))
-      shield.fill([-5, -9, 0], [5, 6, 1], 'shield', (x, y, z) => Math.abs(x - 0.5) <= halfWidth(y) && z < 2)
+      shield.fill([-5, -9, 0], [5, 6, 3], 'shield', (x, y, z) => Math.abs(x - 0.5) <= halfWidth(y) && z < 4)
+      // Thick dark rim so the shield keeps a readable edge in profile.
+      shield.paint((x, y, z) => (z === 3 && Math.abs(x - 0.5) > halfWidth(y) - 1.2 ? 'shieldRim' : undefined))
       shield.paint((x, y) => (Math.abs(x + 0.5 - 0.5) > halfWidth(y + 0.5) - 1.3 || y >= 5 ? 'shieldRim' : undefined))
       for (const [x0, y0, x1, y1] of [
         [-1, -3, 0, 2],
