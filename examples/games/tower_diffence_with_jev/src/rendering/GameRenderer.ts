@@ -2461,12 +2461,15 @@ export class GameRenderer {
       if (!active.has(id) || s.units.some((unit) => unit.id === id && unit.owner === 'ai' && unit.hp <= 0))
         this.removeUnitVisual(id, visual)
     const placedBars: { x: number; y: number }[] = []
-    // The board is scaled to fit the viewport, so spacing constants must be converted from CSS
-    // pixels: a 12px row pitch covers only ~8px on a compact 0.69x board and would still touch.
-    const hostWidth = this.renderer.domElement.clientWidth
-    const pxPerUnit = hostWidth > 0 ? hostWidth / this.field.width : 1
-    const barGapX = 54 / pxPerUnit
-    const barPitch = 13 / pxPerUnit
+    // The board maps field units to the host's layout box on each axis independently; a compact
+    // viewport scales both, so spacing must be converted per axis instead of assuming 1:1.
+    const hostWidth = this.host.clientWidth || this.field.width
+    const hostHeight = this.host.clientHeight || this.field.height
+    const unitX = this.field.width / hostWidth
+    const unitY = this.field.height / hostHeight
+    const barGapX = 54 * unitX
+    const barPitch = 13 * unitY
+    const barMargin = 8 * unitY
     for (const unit of s.units) {
       if (unit.owner === 'ai' && unit.hp <= 0) continue
       let visual = this.units.get(unit.id)
@@ -2670,7 +2673,7 @@ export class GameRenderer {
       }
       // Stack crowded attackers' bars onto distinct rows so two bars never read as one long line.
       const headroom = this.models?.headroom(unit.id)
-      const barBase = unit.y + sepY - (headroom ?? (authored ? 70 * bodyScale(unit) : 58)) - 8 / pxPerUnit
+      const barBase = unit.y + sepY - (headroom ?? (authored ? 70 * bodyScale(unit) : 58)) - barMargin
       let staggerY = 0
       let shiftX = 0
       if (unit.owner === 'ai') {
@@ -2692,7 +2695,10 @@ export class GameRenderer {
           const row = Math.max(6, barBase)
           for (const side of [1, -1, 2, -2, 3]) {
             const dx = side * (barGapX + 2)
-            if (!placedBars.some((bar) => Math.abs(bar.x - (x + dx)) < barGapX && Math.abs(bar.y - row) < barPitch)) {
+            const nextX = x + dx
+            // Never push a plate off the board: a candidate must keep the whole bar on screen.
+            if (nextX < 26 * unitX || nextX > this.field.width - 26 * unitX) continue
+            if (!placedBars.some((bar) => Math.abs(bar.x - nextX) < barGapX && Math.abs(bar.y - row) < barPitch)) {
               shiftX = dx
               break
             }
