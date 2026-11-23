@@ -63,23 +63,24 @@ export const brute: StackDesign = {
       const head = kit.part('head', 'torso', [0, 9, 5.5])
       head.box([-4, -2, -1], [3, 2, 4], 'stone').box([-5, 2, -1], [4, 4, 5], 'stoneDark')
       head.box([-4, -1, 3], [3, 1, 4], 'crack')
-      // Blazing 2x2 amber-gold eyes deep under the overhanging stone brow.
-      head.box([-3, 0, 4], [-2, 1, 4], '*eye').box([1, 0, 4], [2, 1, 4], '*eye')
-      head.set(-2, 1, 4, '*eyeCore').set(1, 1, 4, '*eyeCore')
-      // Profile eyes + neck crack keep the front/side readable.
-      head.set(-5, 0, 2, '*eye').set(4, 0, 2, '*eye')
-      head.box([-3, -3, 0], [2, -2, 2], 'crack')
+      // Blazing 2x2 amber-gold eyes on the frontmost face plane so they survive the brow and cracks.
+      head.box([-4, 0, 5], [-2, 1, 5], '*eye').box([1, 0, 5], [3, 1, 5], '*eye')
+      head.set(-3, 1, 5, '*eyeCore').set(2, 1, 5, '*eyeCore')
+      // Profile eyes sit on the head's side wall (2x2 so they read at 1x) with a dark neck seam.
+      head.box([-5, 0, 1], [-5, 1, 2], '*eye').box([4, 0, 1], [4, 1, 2], '*eye')
+      head.box([-4, -2, 0], [3, -2, 3], 'crack')
 
       for (const [name, x] of [
         ['armL', 9],
         ['armR', -9]
       ] as const) {
-        const arm = kit.part(name, 'torso', [x, 11, 0])
+        const arm = kit.part(name, 'torso', [x, 11, 1.6])
         const s = x > 0 ? 1 : -1
-        arm.box([-2, -7, -2], [1, 0, 2], 'stoneDark')
+        // Dark shoulder seam + forward-set arms keep the near arm distinct from the torso in profile.
+        arm.box([-2, -7, -3], [1, 0, 2], 'stoneDark')
         arm
-          .box([-3 + (s > 0 ? 1 : 0), -14, -3], [3 + (s > 0 ? 1 : 0), -8, 3], 'stone')
-          .box([-3 + (s > 0 ? 1 : 0), -14, 3], [3 + (s > 0 ? 1 : 0), -9, 3], 'stoneLight')
+          .box([-3 + (s > 0 ? 1 : 0), -14, -2], [3 + (s > 0 ? 1 : 0), -8, 4], 'stone')
+          .box([-3 + (s > 0 ? 1 : 0), -14, 4], [3 + (s > 0 ? 1 : 0), -9, 4], 'stoneLight')
       }
     }
   },

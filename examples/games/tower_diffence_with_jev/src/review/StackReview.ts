@@ -120,6 +120,47 @@ const actors = rows.flatMap(({ type, motion }, row) =>
   })
 )
 const start = performance.now()
+// `?bars` overlays the in-game nameplate on the same 4x3 grid, so a review can compare
+// headroom per facing and pose instead of guessing from gameplay stills.
+const showBars = params.has('bars')
+const barNodes: { element: HTMLDivElement; visual: StackVisual; x: number; y: number }[] = []
+if (showBars) {
+  const stage = document.querySelector('#stage')!
+  rows.forEach((_, row) => {
+    for (let column = 0; column < facings; column++) {
+      const element = document.createElement('div')
+      Object.assign(element.style, {
+        position: 'absolute',
+        width: '44px',
+        height: '6px',
+        borderRadius: '0',
+        background: '#b8e79b',
+        outline: '1px solid #0a100d',
+        transform: 'translateX(-50%)',
+        pointerEvents: 'none'
+      })
+      stage.append(element)
+      barNodes.push({
+        element,
+        visual: actors[row * facings + column].visual,
+        x: cellW * (column + 0.5),
+        y: cellH * (row + 0.78)
+      })
+    }
+  })
+}
+function placeBars(): void {
+  if (!showBars) return
+  const rect = renderer.domElement.getBoundingClientRect()
+  const point = new THREE.Vector3()
+  for (const { element, visual, x, y } of barNodes) {
+    const measured = visual.headroom()
+    element.dataset.headroom = measured.toFixed(1)
+    point.set(x, y + measured + 26, 0).project(camera)
+    element.style.left = `${rect.left + window.scrollX + (point.x * 0.5 + 0.5) * width}px`
+    element.style.top = `${rect.top + window.scrollY + (-point.y * 0.5 + 0.5) * height - 14}px`
+  }
+}
 function frame() {
   const now = (performance.now() - start) / 1000
   for (const actor of actors) {
@@ -151,6 +192,7 @@ function frame() {
     })
   }
   renderer.render(scene, camera)
+  placeBars()
   if (!still) requestAnimationFrame(frame)
   else document.body.dataset.ready = 'true'
 }

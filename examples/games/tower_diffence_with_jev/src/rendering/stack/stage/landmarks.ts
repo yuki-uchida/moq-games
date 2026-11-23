@@ -342,9 +342,10 @@ function buildDen(fieldId: FieldId): StackDesign {
             p.segment([x, 5, z], [x + lean * h, 5 + h, z], 1.7, '*crystalGlow', 0.4)
         }
 
-        p.fill([-8, 0, 2], [8, 12, 15], 'void', (x, y, z) => Math.hypot(x / 7.2, y / 10.5) <= 1 && z > 3)
-        p.paint((x, y, z) => (Math.hypot(x / 7.2, (y - 0.5) / 10.5) <= 1 && z > 6 ? 0 : undefined))
-        p.fill([-7, 0, 2], [7, 10, 6], 'void', (x, y, z) => Math.hypot(x / 6.6, y / 9.5) <= 1)
+        // Tall arch: the mouth must fit a unit (roughly 0.8x its height) so spawns read as coming out of it.
+        p.fill([-10, 0, 2], [10, 17, 15], 'void', (x, y, z) => Math.hypot(x / 8.6, y / 16.5) <= 1 && z > 3)
+        p.paint((x, y, z) => (Math.hypot(x / 8.6, (y - 0.5) / 16.5) <= 1 && z > 6 ? 0 : undefined))
+        p.fill([-9, 0, 2], [9, 14, 6], 'void', (x, y, z) => Math.hypot(x / 7.8, y / 15.0) <= 1)
         const fangColor = fieldId === 'frost' ? 'accent' : fieldId === 'volcanic' ? 'rockLight' : 'rockDark'
         p.box([-5, 9, 8], [-4, 11, 9], fangColor)
           .box([0, 10, 8], [1, 12, 9], fangColor)

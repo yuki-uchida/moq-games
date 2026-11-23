@@ -10,8 +10,9 @@ export const tank: StackDesign = {
   type: 'tank',
   voxel: 2,
   walkDistance: 26,
-  portraitCrop: 0.45,
-  portraitYaw: -0.1,
+  portraitCrop: 0.72,
+  portraitYaw: -0.35,
+  portraitAspect: 1.45,
   shadow: [10, 8],
   blueprint: {
     id: 'tank',

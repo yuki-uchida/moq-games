@@ -2460,6 +2460,7 @@ export class GameRenderer {
     for (const [id, visual] of this.units)
       if (!active.has(id) || s.units.some((unit) => unit.id === id && unit.owner === 'ai' && unit.hp <= 0))
         this.removeUnitVisual(id, visual)
+    const placedBars: { x: number; y: number }[] = []
     for (const unit of s.units) {
       if (unit.owner === 'ai' && unit.hp <= 0) continue
       let visual = this.units.get(unit.id)
@@ -2661,16 +2662,24 @@ export class GameRenderer {
               : `${DEFINITIONS[unit.type].name}を選択または移動`
           )
       }
-      // Nudge queued enemies' bars apart so a stack of attackers never merges into one unreadable line.
-      const staggerY =
-        unit.owner === 'ai' ? ((unit.id + Math.floor(unit.x / 12) + Math.floor(unit.y / 12)) % 3) * 7 : 0
-      // Centre over the visible sprite and clear its measured top edge, not a fixed guess.
+      // Stack crowded attackers' bars onto distinct rows so two bars never read as one long line.
       const headroom = this.models?.headroom(unit.id)
+      const barTop = (lift: number) =>
+        Math.max(18, unit.y + sepY - (headroom ?? (authored ? 70 * bodyScale(unit) : 58)) - 4 - lift)
+      let staggerY = 0
+      if (unit.owner === 'ai') {
+        for (const step of [0, 7, 14, 21]) {
+          const candidate = barTop(step)
+          if (!placedBars.some((bar) => Math.abs(bar.x - x) < 40 && Math.abs(bar.y - candidate) < 9)) {
+            staggerY = step
+            break
+          }
+        }
+      }
+      const labelTop = barTop(staggerY)
+      placedBars.push({ x, y: labelTop })
       label.style.left = `${x}px`
-      label.style.top = `${Math.max(
-        18,
-        unit.y + sepY - (headroom ?? (authored ? 70 * bodyScale(unit) : 58)) - 4 - staggerY
-      )}px`
+      label.style.top = `${labelTop}px`
       if (health.hp !== unit.hp) {
         health.hp = unit.hp
         label.querySelector('span')!.textContent =
