@@ -11,7 +11,7 @@ on:
         required: true
         type: choice
         default: normal-game
-        options: [normal-game, meshopt, extra, concurrency, disk-cache]
+        options: [normal-game, extra, concurrency, disk-cache]
       channel:
         description: Headless Chromium distribution
         required: true
@@ -51,7 +51,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
-          assert(['normal-game', 'meshopt', 'extra', 'concurrency', 'disk-cache'].includes(process.env.BENCHMARK_SCENARIO));
+          assert(['normal-game', 'extra', 'concurrency', 'disk-cache'].includes(process.env.BENCHMARK_SCENARIO));
           assert(['shell', 'chromium'].includes(process.env.BENCHMARK_CHANNEL));
           assert(['dedicated', 'shared'].includes(process.env.BENCHMARK_BROWSER_MODE));
           assert(process.env.BENCHMARK_BROWSER_MODE !== 'shared' || process.env.BENCHMARK_SCENARIO === 'concurrency' && process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl');
@@ -182,7 +182,7 @@ jobs:
           const scenario = process.env.BENCHMARK_SCENARIO
           const channel = process.env.BENCHMARK_CHANNEL
           if (!['swiftshader', 'gl', 'vulkan'].includes(backend ?? '')) throw new Error('Unknown backend')
-          if (!['normal-game', 'meshopt', 'extra', 'concurrency', 'disk-cache'].includes(scenario ?? '')) throw new Error('Unknown scenario')
+          if (!['normal-game', 'extra', 'concurrency', 'disk-cache'].includes(scenario ?? '')) throw new Error('Unknown scenario')
           if (!['shell', 'chromium'].includes(channel ?? '')) throw new Error('Unknown channel')
           const browserMode = process.env.BENCHMARK_BROWSER_MODE
           if (!['dedicated', 'shared'].includes(browserMode ?? '')) throw new Error('Unknown browser mode')
@@ -203,8 +203,6 @@ jobs:
             workers,
             grep: ['concurrency', 'disk-cache'].includes(scenario ?? '')
               ? /(?:normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation|same-session Title, Continue and New game retain the completed campaign preparation|advancing prepares the next stage before releasing the result screen)$/
-              : scenario === 'meshopt'
-              ? /meshopt source equivalence /
               : scenario === 'extra'
                 ? /EXTRA (?:exposes every runtime role\/action and never requests sheets, audio or game services|loop boundary repeats the start pose while the interior visibly moves|shares the weak model IBL once across model switches and releases it on pagehide)$/
                 : /normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation$/,
@@ -448,9 +446,7 @@ jobs:
           import { test, expect } from '@playwright/test'
           import { appendFileSync, writeFileSync } from 'node:fs'
 
-          if (process.env.BENCHMARK_SCENARIO === 'meshopt') {
-            await import('../../tests/tower-meshopt-equivalence.spec')
-          } else if (process.env.BENCHMARK_SCENARIO === 'extra') {
+          if (process.env.BENCHMARK_SCENARIO === 'extra') {
             await import('../../tests/tower-title-e2e.spec')
             await import('../../tests/tower-sprite-stack-game.spec')
           } else {
@@ -572,11 +568,9 @@ jobs:
           const specs = suites => suites.flatMap(suite => [...suite.specs, ...specs(suite.suites ?? [])]);
           const selected = specs(report.suites);
           const scenario = process.env.BENCHMARK_SCENARIO;
-          assert(['normal-game', 'meshopt', 'extra', 'concurrency', 'disk-cache'].includes(scenario));
+          assert(['normal-game', 'extra', 'concurrency', 'disk-cache'].includes(scenario));
           const expected = ['concurrency', 'disk-cache'].includes(scenario)
             ? ["normal game uses lazy real meshes, ignores legacy art flags and restores a saved mesh formation","same-session Title, Continue and New game retain the completed campaign preparation","advancing prepares the next stage before releasing the result screen"]
-            : scenario === 'meshopt'
-            ? ['soldier walk', 'slime walk', 'mage attack', 'tank walk', 'dragon breath'].map(name => `${name} preserves source poses and rendered appearance`)
             : scenario === 'extra'
               ? [
                   'EXTRA exposes every runtime role/action and never requests sheets, audio or game services',
@@ -636,7 +630,7 @@ jobs:
           const backend = process.env.BENCHMARK_BACKEND;
           const scenario = process.env.BENCHMARK_SCENARIO;
           const channel = process.env.BENCHMARK_CHANNEL;
-          assert(['normal-game', 'meshopt', 'extra', 'concurrency', 'disk-cache'].includes(scenario));
+          assert(['normal-game', 'extra', 'concurrency', 'disk-cache'].includes(scenario));
           assert(['shell', 'chromium'].includes(channel));
           assert(['dedicated', 'shared'].includes(process.env.BENCHMARK_BROWSER_MODE));
           assert(process.env.BENCHMARK_BROWSER_MODE !== 'shared' || process.env.BENCHMARK_SCENARIO === 'concurrency' && process.env.BENCHMARK_CHANNEL === 'chromium' && process.env.BENCHMARK_BACKEND === 'gl');

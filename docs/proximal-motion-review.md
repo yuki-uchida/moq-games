@@ -79,17 +79,16 @@ The build decodes every meshopt sidecar and checks its scene, rig, materials, cl
 
 The build job preserves the validated derivative SHA256/size in `.build/model-sidecar-digests.json` as a separate CI artifact (outside the public Pages output). The deploy job restores that artifact before publishing and runs `node scripts/verify-published-motions.mjs <page_url> <verified_digest_file>`. It compares all 36 actual decoded public sidecars with these independent expected digests, as well as retaining the three-file committed source repair audit. A self-reported source stamp, valid header and gzip CRC alone cannot pass: the tests also alter the payload while retaining all three. Bounded retries allow brief Pages/CDN propagation; a remaining mismatch fails the job.
 
-`tower-meshopt-equivalence.spec.ts` compares source/fallback and meshopt rendering at five fixed phases for soldier walk, slime walk, mage attack, tank walk and dragon breath (300×200 native canvas, normalized RGB RMSE below 0.01). Both cameras fit pose zero so load latency cannot change framing. Actual playback resumes the ordinary clock and is recorded separately. These are sampled visual checks, not a claim that every camera angle or every possible animation time was visually reviewed.
+The former `tower-meshopt-equivalence.spec.ts` compared source/fallback and meshopt rendering at five fixed phases for soldier walk, slime walk, mage attack, tank walk and dragon breath (300×200 native canvas, normalized RGB RMSE below 0.01). Both cameras fit pose zero so load latency could not change framing, and actual playback resumed the ordinary clock and was recorded separately. The game and its EXTRA viewer moved to sprite stacks, so that viewer no longer loads GLB models; the equivalence test targeted the removed GLB viewer and was retired. The build-time sidecar verification and `tests/tower-sidecar-e2e.spec.ts` against `model-review.html` continue to cover the remaining GLB review path.
 
+Historical local visual review of the preserved source and meshopt candidate (300×200 canvas, phases 0/0.2/0.4/0.6/0.8 and sampled recorded-playback tail frames):
 
-Local visual review of the preserved source and meshopt candidate (300×200 canvas, phases 0/0.2/0.4/0.6/0.8 and sampled recorded-playback tail frames):
+| Case          | Maximum normalized RGB RMSE | Observed comparison                                                                                               |
+| ------------- | --------------------------: | ----------------------------------------------------------------------------------------------------------------- |
+| dragon breath |                    0.002037 | Rear-up, jaw/head, wings and claws match the source. This preview checks the actor, not the battle breath effect. |
+| mage attack   |                    0.002842 | Turn, staff grip, hat and garment remain attached and match the source poses.                                     |
+| slime walk    |                    0.002332 | Squash/stretch, bob, eyes and curled tip remain continuous and match the source.                                  |
+| soldier walk  |                    0.003042 | Alternating legs, leaf/helmet, sword and shield remain aligned with the source.                                   |
+| tank walk     |                    0.002960 | Short foot steps and the held shield match the source; subtle source amplitude is unchanged.                      |
 
-| Case | Maximum normalized RGB RMSE | Observed comparison |
-| --- | ---: | --- |
-| dragon breath | 0.002037 | Rear-up, jaw/head, wings and claws match the source. This preview checks the actor, not the battle breath effect. |
-| mage attack | 0.002842 | Turn, staff grip, hat and garment remain attached and match the source poses. |
-| slime walk | 0.002332 | Squash/stretch, bob, eyes and curled tip remain continuous and match the source. |
-| soldier walk | 0.003042 | Alternating legs, leaf/helmet, sword and shield remain aligned with the source. |
-| tank walk | 0.002960 | Short foot steps and the held shield match the source; subtle source amplitude is unchanged. |
-
-These five comparison passes do not establish every direction, camera or unobserved time. The exact-track/rig checks cover all emitted sidecars; the visual gate covers the named samples. Originals and motion timing are unchanged. Local comparison sheets, metrics and source/meshopt playback are retained under ignored `local-assets/meshopt-review/`; CI attaches the raw frames, metrics and videos to its browser report.
+These five comparison passes did not establish every direction, camera or unobserved time. The exact-track/rig checks still cover all emitted sidecars. Originals and motion timing are unchanged. Local comparison sheets, metrics and source/meshopt playback remain under ignored `local-assets/meshopt-review/` as historical evidence; the retired test's frames, metrics and videos are no longer attached to browser reports.
