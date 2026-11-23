@@ -2461,6 +2461,12 @@ export class GameRenderer {
       if (!active.has(id) || s.units.some((unit) => unit.id === id && unit.owner === 'ai' && unit.hp <= 0))
         this.removeUnitVisual(id, visual)
     const placedBars: { x: number; y: number }[] = []
+    // The board is scaled to fit the viewport, so spacing constants must be converted from CSS
+    // pixels: a 12px row pitch covers only ~8px on a compact 0.69x board and would still touch.
+    const hostWidth = this.renderer.domElement.clientWidth
+    const pxPerUnit = hostWidth > 0 ? hostWidth / this.field.width : 1
+    const barGapX = 54 / pxPerUnit
+    const barPitch = 13 / pxPerUnit
     for (const unit of s.units) {
       if (unit.owner === 'ai' && unit.hp <= 0) continue
       let visual = this.units.get(unit.id)
@@ -2664,23 +2670,38 @@ export class GameRenderer {
       }
       // Stack crowded attackers' bars onto distinct rows so two bars never read as one long line.
       const headroom = this.models?.headroom(unit.id)
-      const barBase = unit.y + sepY - (headroom ?? (authored ? 70 * bodyScale(unit) : 58)) - 8
+      const barBase = unit.y + sepY - (headroom ?? (authored ? 70 * bodyScale(unit) : 58)) - 8 / pxPerUnit
       let staggerY = 0
+      let shiftX = 0
       if (unit.owner === 'ai') {
-        // 12px rows (bar + outline is 10px, so 12 keeps a 2px seam). Rows climb above the head;
-        // at the lane's top edge one 6px row below the head is allowed while it still clears it.
-        for (const lift of [0, 12, 24, 36, 48, 60, -6]) {
-          const candidate = Math.max(18, barBase - lift)
-          if (lift > 0 && barBase - lift < 18) continue
-          if (!placedBars.some((bar) => Math.abs(bar.x - x) < 64 && Math.abs(bar.y - candidate) < 12)) {
+        // Rows climb above the head in CSS-pixel steps; at the lane's top edge they stop at y=6.
+        let placed = false
+        for (let step = 0; step < 6; step++) {
+          const lift = step * barPitch
+          if (step > 0 && barBase - lift < 6) break
+          const candidate = Math.max(6, barBase - lift)
+          if (!placedBars.some((bar) => Math.abs(bar.x - x) < barGapX && Math.abs(bar.y - candidate) < barPitch)) {
             staggerY = lift
+            placed = true
             break
           }
         }
+        // No row left (a whole wave at the lane's top edge): fan the extra bars sideways instead of
+        // letting them collapse onto a neighbour and read as one long strip.
+        if (!placed) {
+          const row = Math.max(6, barBase)
+          for (const side of [1, -1, 2, -2, 3]) {
+            const dx = side * (barGapX + 2)
+            if (!placedBars.some((bar) => Math.abs(bar.x - (x + dx)) < barGapX && Math.abs(bar.y - row) < barPitch)) {
+              shiftX = dx
+              break
+            }
+          }
+        }
       }
-      const labelTop = Math.max(18, barBase - staggerY)
-      placedBars.push({ x, y: labelTop })
-      label.style.left = `${x}px`
+      const labelTop = Math.max(6, barBase - staggerY)
+      placedBars.push({ x: x + shiftX, y: labelTop })
+      label.style.left = `${x + shiftX}px`
       label.style.top = `${labelTop}px`
       if (health.hp !== unit.hp) {
         health.hp = unit.hp

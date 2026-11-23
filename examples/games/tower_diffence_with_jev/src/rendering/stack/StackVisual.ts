@@ -179,7 +179,11 @@ export class StackVisual {
     if (tops) {
       const buckets = tops.length
       const bucket = ((Math.round((this.turn / (Math.PI * 2)) * buckets) % buckets) + buckets) % buckets
-      return Math.max(0, tops[bucket]) * this.cell() * this.presentation
+      // Neighbouring buckets bound the true silhouette: rounding the turn must never let the
+      // plate dip below the sprite's top edge.
+      let top = tops[bucket]
+      for (const offset of [-1, 1]) top = Math.max(top, tops[(bucket + offset + buckets) % buckets])
+      return Math.max(0, top) * this.cell() * this.presentation
     }
     const height = this.atlas.frameHeights[this.frame] ?? this.atlas.sliceHeight * 0.5
     return Math.max(0, height) * this.cell() * this.presentation
