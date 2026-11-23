@@ -404,8 +404,8 @@ export class StackStage {
 
     const gate = field.gate,
       last = direction(field.path[field.path.length - 2] ?? gate, gate)
-    // The gatehouse protrudes ~16 units; 34 keeps its mouth on the road end instead of a side wall.
-    this.castleAt = inside({ x: gate.x + last.x * 34, y: gate.y + last.y * 34 }, 76, 76)
+    // The gatehouse protrudes ~16 units; 22 lets its mouth meet the road end instead of a side wall.
+    this.castleAt = inside({ x: gate.x + last.x * 22, y: gate.y + last.y * 22 }, 76, 76)
     // Lock castle to clean cardinal orientation facing the incoming road (eliminates jagged diagonal edges).
     this.castleFacing = snapCardinal({ x: -last.x, y: -last.y })
     this.castles = ([0, 1, 2] as const).map((tier) =>

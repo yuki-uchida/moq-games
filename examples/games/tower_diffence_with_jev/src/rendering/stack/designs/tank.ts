@@ -80,7 +80,7 @@ export const tank: StackDesign = {
         .box([-1, -6, -2], [0, -2, -2], 'emblem')
         .box([-2, -3, -2], [1, -2, -2], 'emblem')
       // Towering kite shield held snug against left forearm.
-      const shield = kit.part('offhand', 'armL', [0.5, -3, 2])
+      const shield = kit.part('offhand', 'armL', [0.5, -3, 4])
       const halfWidth = (y: number) => (y > 1 ? 4.8 : 4.8 * Math.max(0, (y + 9) / 10))
       shield.fill([-5, -9, 0], [5, 6, 1], 'shield', (x, y, z) => Math.abs(x - 0.5) <= halfWidth(y) && z < 2)
       shield.paint((x, y) => (Math.abs(x + 0.5 - 0.5) > halfWidth(y + 0.5) - 1.3 || y >= 5 ? 'shieldRim' : undefined))

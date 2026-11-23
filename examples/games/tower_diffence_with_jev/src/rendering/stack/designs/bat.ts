@@ -77,8 +77,8 @@ export const bat: StackDesign = {
     // views show a diagonal wing rather than an edge-on sliver.
     // Stagger the two wings in depth so the profile keeps a wing silhouette and a gap to the body.
     // Symmetric base angle: the flap itself is mirrored, so no constant twist is added.
-    pose.wingL = { ...pose.wingL, ry: -0.42, rx: -0.5, z: 8, y: -2 }
-    pose.wingR = { ...pose.wingR, ry: 0.42, rx: -0.5, z: -8, y: -2 }
+    pose.wingL = { ...pose.wingL, ry: -0.42, rx: -0.5, z: 2, y: -2 }
+    pose.wingR = { ...pose.wingR, ry: 0.42, rx: -0.5, z: -2, y: -2 }
     return pose
   }
 }

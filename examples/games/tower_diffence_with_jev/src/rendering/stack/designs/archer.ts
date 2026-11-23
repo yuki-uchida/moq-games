@@ -12,6 +12,7 @@ export const archer: StackDesign = {
   walkDistance: 30,
   portraitCrop: 0.62,
   portraitYaw: -0.3,
+  portraitFocusY: 0.35,
   shadow: [7, 6],
   emitter: { part: 'offhand', at: [0, 3, 2] },
   blueprint: {
