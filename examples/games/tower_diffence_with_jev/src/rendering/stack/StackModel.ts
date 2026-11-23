@@ -81,6 +81,8 @@ export interface StackFrameAtlas {
   readonly texture: THREE.DataTexture
   readonly bands: Readonly<Record<StackMotion, StackMotionBand>>
   readonly sheets: readonly SliceSheet[]
+  /** Topmost opaque row per frame, measured on the unified slice sheets. */
+  readonly frameTops: readonly number[]
   dispose(): void
 }
 
@@ -340,6 +342,16 @@ export function buildStackFrameAtlas(design: StackDesign, model: StackModel): St
     return bakePoseSliceSheet(model, m, { width: maxW, height: maxH, count: sliceCount, minY: minLift })
   })
 
+  const frameTops = sheets.map((sheet) => {
+    let top = sheet.height
+    for (let y = 0; y < sheet.height; y++)
+      for (let x = 0; x < sheet.width * sheet.count; x++)
+        if (sheet.pixels[(y * sheet.width * sheet.count + x) * 4 + 3] >= 128) {
+          if (y < top) top = y
+          break
+        }
+    return top
+  })
   const { texture, atlasWidth, atlasHeight } = packSheetsToTexture(sheets)
   texture.name = `stack-atlas:${design.blueprint.id}`
 
@@ -363,6 +375,7 @@ export function buildStackFrameAtlas(design: StackDesign, model: StackModel): St
     cx: Math.floor(maxW / 2),
     cy: Math.floor(maxH / 2),
     frameCount: sheets.length,
+    frameTops,
     atlasWidth,
     atlasHeight,
     texture,
