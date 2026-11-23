@@ -2664,21 +2664,21 @@ export class GameRenderer {
       }
       // Stack crowded attackers' bars onto distinct rows so two bars never read as one long line.
       const headroom = this.models?.headroom(unit.id)
-      const barTop = (lift: number) =>
-        Math.max(18, unit.y + sepY - (headroom ?? (authored ? 70 * bodyScale(unit) : 58)) - 4 - lift)
+      const barBase = unit.y + sepY - (headroom ?? (authored ? 70 * bodyScale(unit) : 58)) - 4
       let staggerY = 0
       if (unit.owner === 'ai') {
-        // Six 7px rows: crowded lanes stack past four attackers, and a fallback must still clear.
-        for (let step = 0; step < 6; step++) {
-          const candidate = barTop(step * 7)
+        // Rows run upward first; at the lane's top edge they flip below the head instead of all
+        // collapsing onto the `Math.max(18, …)` clamp, which merged neighbours into one long line.
+        for (const lift of [0, 7, 14, 21, 28, 35, -9, -18]) {
+          const candidate = barBase - lift
+          if (lift > 0 && candidate < 18) continue
           if (!placedBars.some((bar) => Math.abs(bar.x - x) < 52 && Math.abs(bar.y - candidate) < 9)) {
-            staggerY = step * 7
+            staggerY = lift
             break
           }
-          staggerY = step * 7
         }
       }
-      const labelTop = barTop(staggerY)
+      const labelTop = Math.max(18, barBase - staggerY)
       placedBars.push({ x, y: labelTop })
       label.style.left = `${x}px`
       label.style.top = `${labelTop}px`

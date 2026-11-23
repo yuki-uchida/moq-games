@@ -104,6 +104,8 @@ export const paladin: StackDesign = {
   pose: (input) => {
     const pose = bipedPose(input, { attack: 'smash', stride: 0.45, bob: 0.6, heavy: true, armSpread: 0.2, ready: -0.5 })
     pose.halo = { y: 0.6 * Math.sin(input.time * 1.6 + input.seed * 4), rz: input.time * 0.4 }
+    // Swing the hammer head out from behind the torso so the rear view still reads as a weapon.
+    pose.weapon = { ...pose.weapon, ry: -0.38 }
     return pose
   }
 }
