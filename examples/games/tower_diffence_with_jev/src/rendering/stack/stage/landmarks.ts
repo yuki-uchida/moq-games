@@ -172,6 +172,9 @@ function buildCastle(fieldId: FieldId, tier: 0 | 1 | 2): StackDesign {
         tower(p, -15.5, 9.5, 16, 4.0, false)
         tower(p, 15, 9.5, 16, 4.0, tier === 0)
 
+        p.paint((x, y, z) =>
+          x <= -6 && y >= 2 && y <= 24 && (y % 4 === 0 || z % 6 === 0) ? 'stoneDark' : undefined
+        )
         p.paint((x, y, z) => (y === 0 && (Math.abs(x) >= 15 || z <= -12) ? 'moss' : undefined))
 
         if (tier <= 1) {

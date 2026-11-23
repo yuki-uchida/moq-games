@@ -78,8 +78,9 @@ export const crystalSentinel: StackDesign = {
       ] as const) {
         const arm = kit.part(name, 'torso', [x, 9, 0])
         arm.box([-1, -6, -1], [1, 1, 1], 'stone').box([-1, -3, -1], [1, -3, 1], '*vein')
-        arm.ellipsoid([0, -9.5, 0.5], [2.7, 2.9, 2.9], 'crystal')
-        arm.cylinder(0.5, 0.5, -13.5, -10, 1.4, 0.35, 'crystalLight')
+        // Fists sit at hip height with a dark gap to the torso in profile.
+        arm.ellipsoid([0, -5.5, 0.5], [2.7, 2.9, 2.9], 'crystal')
+        arm.cylinder(0.5, 0.5, -9, -5.5, 1.4, 0.35, 'crystalLight')
       }
     }
   },

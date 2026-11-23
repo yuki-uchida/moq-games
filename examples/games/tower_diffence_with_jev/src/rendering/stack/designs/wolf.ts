@@ -53,8 +53,8 @@ export const wolf: StackDesign = {
       head.set(-3, 1, 4, 'pupil').set(2, 1, 4, 'pupil')
       // Tall pointed wolf ears.
       for (const [x, innerX] of [
-        [-4, -3],
-        [2, 2]
+        [-5, -4],
+        [4, 4]
       ] as const) {
         head.box([x, 4, -2], [x + 1, 7, 0], 'ear').set(x, 8, -1, 'top')
         head.box([innerX, 4, 0], [innerX, 6, 0], 'earInner')
@@ -77,8 +77,8 @@ export const wolf: StackDesign = {
       const tail = kit.part('tail', 'body', [0, 2, -7.5])
       // Carry the tail back and slightly down so front/back views never read as a vertical antenna.
       tail
-        .segment([0, 0, 0], [1.5, 0.5, -8.5], 2.1, 'top', 1.6)
-        .segment([1.5, 0.5, -8.5], [2.5, -0.5, -11], 1.5, 'tip', 0.7)
+        .segment([0, 0, 0], [3, -1.5, -8.5], 2.1, 'top', 1.6)
+        .segment([3, -1.5, -8.5], [4, -3, -11], 1.5, 'tip', 0.7)
     }
   },
   pose: (input) => quadrupedPose(input, { stride: 0.85, bob: 1.1, lunge: 6.5 })
