@@ -122,6 +122,7 @@ export class StackVisual {
   private fall = 0
   private presentation = 1
   private aspect = 1
+  private frame = 0
   readonly seed: number
   motion?: StackMotion
   seconds = 0
@@ -172,12 +173,11 @@ export class StackVisual {
 
   /** World-space height of the sprite's visible top edge above the unit's feet. */
   headroom(): number {
-    // Stacked top slice lift plus the projected half-depth of the top footprint.
-    const topLift =
-      (this.atlas.baseLift + Math.max(0, this.atlas.sliceCount - 1)) * STACK_SPACING
-    // Only part of the depth lift projects above the head; the calibrated 0.35 leaves the bar
-    // 3-4 px above the helmet without floating into the scenery.
-    return (Math.max(0, topLift * 0.35 + this.atlas.sliceHeight * 0.5 * STACK_SQUASH)) * this.cell() * this.presentation
+    // Measure the drawn frame's topmost opaque row; the sheet is centred on the feet.
+    const top = this.atlas.frameTops[this.frame] ?? 0
+    // The sheet origin sits a few art pixels below the projected crown; the offset clears the
+    // helmet outline while still following each frame's opaque top.
+    return Math.max(0, this.atlas.sliceHeight * 0.5 - top + 9) * this.cell() * this.presentation
   }
 
   /** Optional interactive camera override (used by EXTRA viewer to orbit turn & squash). */
@@ -295,6 +295,7 @@ export class StackVisual {
     })
     this.lastPose = pose
     const frame = this.frameIndexFor(sample)
+    this.frame = frame
     this.material.uniforms.uFrame.value = frame
     this.shadowMaterial.uniforms.uFrame.value = frame
     this.updateUniforms()
