@@ -9,8 +9,8 @@ export const clockworkPatchling: StackDesign = {
   type: 'clockworkPatchling',
   voxel: 2,
   walkDistance: 22,
-  portraitCrop: 0.6,
-  portraitYaw: -0.34,
+  portraitCrop: 0.45,
+  portraitYaw: -0.3,
   shadow: [8, 7],
   blueprint: {
     id: 'clockworkPatchling',

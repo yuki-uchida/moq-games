@@ -444,6 +444,36 @@ export function bakePoseSliceSheet(
       for (let sx = 0; sx < width; sx++)
         if (((sx - cx) / rx) ** 2 + ((sy - cy) / ry) ** 2 <= 1) shadow[sy * width + sx] = 255
   }
+  if (!model.simpleShadow) {
+    // Keep only the largest connected contact shadow; detached weapon-tip dots read as ground dirt.
+    const seen = new Uint8Array(layerSize)
+    let best: number[] = []
+    for (let sy = 0; sy < height; sy++) {
+      for (let sx = 0; sx < width; sx++) {
+        const start = sy * width + sx
+        if (shadow[start] < 200 || seen[start]) continue
+        const component: number[] = []
+        const queue = [start]
+        seen[start] = 1
+        while (queue.length) {
+          const idx = queue.pop()!
+          component.push(idx)
+          const x = idx % width,
+            y = (idx - x) / width
+          for (const next of [x > 0 ? idx - 1 : -1, x < width - 1 ? idx + 1 : -1, y > 0 ? idx - width : -1, y < height - 1 ? idx + width : -1]) {
+            if (next < 0 || seen[next] || shadow[next] < 200) continue
+            seen[next] = 1
+            queue.push(next)
+          }
+        }
+        if (component.length > best.length) best = component
+      }
+    }
+    if (best.length) {
+      shadow.fill(0)
+      for (const idx of best) shadow[idx] = 255
+    }
+  }
   // Soft 1px outer shadow rim around the solid core (encoded as 160 vs core 255 for 2-tone pixel shadow).
   const core = new Uint8Array(shadow)
   for (let sy = 0; sy < height; sy++) {

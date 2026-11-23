@@ -9,8 +9,8 @@ export const ogre: StackDesign = {
   type: 'ogre',
   voxel: 2,
   walkDistance: 28,
-  portraitCrop: 0.5,
-  portraitYaw: -0.26,
+  portraitCrop: 0.42,
+  portraitYaw: -0.2,
   softShade: true,
   shadow: [12, 10],
   blueprint: {

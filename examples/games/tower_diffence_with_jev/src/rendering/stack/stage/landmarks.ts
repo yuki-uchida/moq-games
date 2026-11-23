@@ -177,6 +177,11 @@ function buildCastle(fieldId: FieldId, tier: 0 | 1 | 2): StackDesign {
         p.paint((x, y, z) =>
           x <= -6 && y >= 2 && y <= 24 && (y % 4 === 0 || z % 6 === 0) ? 'stoneDark' : undefined
         )
+        // Dark side gate where the road meets the west wall, with a stone lintel and threshold.
+        p.box([-16, 0, 0], [-16, 7, 4], 'void')
+        p.box([-16, 8, -1], [-16, 8, 5], 'stoneLight')
+        p.box([-18, 0, 0], [-16, 0, 4], 'stoneDark')
+        p.box([-18, 1, 0], [-18, 4, 0], 'stoneLight').box([-18, 1, 4], [-18, 4, 4], 'stoneLight')
         p.paint((x, y, z) => (y === 0 && (Math.abs(x) >= 15 || z <= -12) ? 'moss' : undefined))
 
         if (tier <= 1) {
