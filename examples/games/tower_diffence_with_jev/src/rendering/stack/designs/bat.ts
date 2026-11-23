@@ -81,8 +81,8 @@ export const bat: StackDesign = {
     // Stagger the two wings in depth so the profile keeps a wing silhouette and a gap to the body.
     // Symmetric base angle: the flap itself is mirrored, so no constant twist is added.
     // Opposite base roll opens a V from the side while keeping both roots on the shoulder.
-    pose.wingL = { ...pose.wingL, rz: (pose.wingL?.rz ?? 0) - 0.35, ry: -0.42, rx: -0.5, z: 2, y: -2 }
-    pose.wingR = { ...pose.wingR, rz: (pose.wingR?.rz ?? 0) + 0.35, ry: 0.42, rx: -0.5, z: -2, y: -2 }
+    pose.wingL = { ...pose.wingL, rz: (pose.wingL?.rz ?? 0) - 0.35, ry: -0.42, rx: -0.85, z: 2, y: -2 }
+    pose.wingR = { ...pose.wingR, rz: (pose.wingR?.rz ?? 0) + 0.35, ry: 0.42, rx: -0.85, z: -2, y: -2 }
     return pose
   }
 }

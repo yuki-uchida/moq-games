@@ -400,7 +400,7 @@ export class StackStage {
       y: Math.max(my, Math.min(field.height - 26, p.y))
     })
     const den = inside({ x: entry.x - first.x * 10, y: entry.y - first.y * 10 }, 56, 52)
-    this.den = this.createPlaced(denDesign(field.id), den.x, den.y, snapCardinal(first), 0.5, 1, `stack-den:${field.id}`, [4, 4])
+    this.den = this.createPlaced(denDesign(field.id), den.x, den.y, snapCardinal(first), 0.5, 1.35, `stack-den:${field.id}`, [4, 4])
 
     const gate = field.gate,
       last = direction(field.path[field.path.length - 2] ?? gate, gate)
@@ -415,7 +415,7 @@ export class StackStage {
         this.castleAt.y,
         this.castleFacing,
         0.2,
-        1,
+        1.5,
         `stack-castle-${tier}`,
         [5, 5]
       )
