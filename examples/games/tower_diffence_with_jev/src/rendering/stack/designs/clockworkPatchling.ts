@@ -9,8 +9,8 @@ export const clockworkPatchling: StackDesign = {
   type: 'clockworkPatchling',
   voxel: 2,
   walkDistance: 22,
-  portraitCrop: 0.45,
-  portraitYaw: -0.3,
+  portraitCrop: 0.62,
+  portraitYaw: 0.06,
   shadow: [8, 7],
   blueprint: {
     id: 'clockworkPatchling',
@@ -45,13 +45,15 @@ export const clockworkPatchling: StackDesign = {
       const torso = kit.part('torso', 'hips', [0, 1, 0])
       torso.fill([-7, 0, -6], [6, 14, 6], 'cloth', (x, y, z) => Math.hypot(x / 6.3, (y - 6.8) / 7.2, z / 5.7) <= 1)
       torso.paint((x, y, z) =>
-        x > 1 && y > 8 && z > 0
-          ? 'patchA'
-          : x < -2 && y < 6 && z > -1
-            ? 'patchB'
-            : y > 10 && z < -1
-              ? 'patchC'
-              : undefined
+        z < -3 && y > 1 && y < 13
+          ? 'clothDark'
+          : x > 1 && y > 8 && z > 0
+            ? 'patchA'
+            : x < -2 && y < 6 && z > -1
+              ? 'patchB'
+              : y > 10 && z < -1
+                ? 'patchC'
+                : undefined
       )
       // Riveted iron & brass clockwork chest window so it reads immediately as mechanical, not a potato.
       torso.box([-3, 2, 5], [2, 5, 6], 'iron').box([-2, 3, 6], [1, 4, 6], 'brass')
@@ -92,7 +94,10 @@ export const clockworkPatchling: StackDesign = {
       ] as const) {
         const arm = kit.part(name, 'torso', [x, 8.5, 0])
         arm.box([-1, -5, -1], [0, 0, 1], 'iron')
-        arm.box([-2, -9, -2], [1, -6, 2], 'brass').box([-2, -9, -2], [1, -8, 2], 'brassDark')
+        arm
+          .box([-2, -9, -2], [1, -6, 2], 'brass')
+          // Dark rim keeps the mallet fist from melting into the gold torso in back and side views.
+          .paint((_x, cy, cz) => (cy <= -6 && (cy === -9 || cz === -2 || cz === 2) ? 'brassDark' : undefined))
       }
     }
   },

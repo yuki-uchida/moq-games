@@ -6,6 +6,7 @@ import {
   MAX_STACK_SLICES,
   shadeSliceColor,
   STACK_SPACING,
+  STACK_SQUASH,
   type SliceSheet
 } from './SliceSheet'
 import type { StackDesign, StackMotion } from './StackDesign'
@@ -84,6 +85,12 @@ export interface StackFrameAtlas {
   readonly sheets: readonly SliceSheet[]
   /** Projected opaque top (art px above the feet) per frame, including the stack lift. */
   readonly frameHeights: readonly number[]
+  /**
+   * Projected opaque top per frame per 16 turn buckets. The sheet row is measured flat, so a
+   * rotated slice projects its far edge higher on screen; this pre-computed ring keeps a nameplate
+   * gap constant for every facing instead of letting it drift by up to a dozen pixels.
+   */
+  readonly frameTops: readonly Float64Array[]
   dispose(): void
 }
 
@@ -359,6 +366,50 @@ export function buildStackFrameAtlas(design: StackDesign, model: StackModel): St
     }
     return top
   })
+  // Per-turn projected top: the flat sheet row understates a rotated slice by (1 - cos) * depth,
+  // which is what made the nameplate gap drift between facings. Support each slice's boundary
+  // pixels in 16 directions so the bar can sit at one fixed gap above the true silhouette.
+  const turnBuckets = 16
+  const turnSin = new Float64Array(turnBuckets)
+  const turnCos = new Float64Array(turnBuckets)
+  for (let b = 0; b < turnBuckets; b++) {
+    const turn = (b / turnBuckets) * Math.PI * 2
+    turnSin[b] = Math.sin(turn)
+    turnCos[b] = Math.cos(turn)
+  }
+  const frameTops = sheets.map((sheet) => {
+    const tops = new Float64Array(turnBuckets)
+    const stride = sheet.width * sheet.count
+    for (let slice = 0; slice < sheet.count; slice++) {
+      const lift = (sheet.baseLift + slice) * STACK_SPACING
+      const base = slice * sheet.width
+      for (let y = 0; y < sheet.height; y++) {
+        for (let x = 0; x < sheet.width; x++) {
+          const index = y * stride + base + x
+          if (sheet.pixels[index * 4 + 3] < 128) continue
+          // Interior pixels can never own the silhouette, so only the boundary is supported.
+          if (
+            x > 0 &&
+            x + 1 < sheet.width &&
+            y > 0 &&
+            y + 1 < sheet.height &&
+            sheet.pixels[(index - 1) * 4 + 3] >= 128 &&
+            sheet.pixels[(index + 1) * 4 + 3] >= 128 &&
+            sheet.pixels[(index - stride) * 4 + 3] >= 128 &&
+            sheet.pixels[(index + stride) * 4 + 3] >= 128
+          )
+            continue
+          const localX = x - sheet.cx
+          const localY = y - sheet.cy
+          for (let b = 0; b < turnBuckets; b++) {
+            const top = lift - (turnSin[b] * localX + turnCos[b] * localY) * STACK_SQUASH
+            if (top > tops[b]) tops[b] = top
+          }
+        }
+      }
+    }
+    return tops
+  })
   const { texture, atlasWidth, atlasHeight } = packSheetsToTexture(sheets)
   texture.name = `stack-atlas:${design.blueprint.id}`
 
@@ -383,6 +434,7 @@ export function buildStackFrameAtlas(design: StackDesign, model: StackModel): St
     cy: Math.floor(maxH / 2),
     frameCount: sheets.length,
     frameHeights,
+    frameTops,
     atlasWidth,
     atlasHeight,
     texture,
