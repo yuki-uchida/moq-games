@@ -139,9 +139,9 @@ export const BIOMES: Record<FieldId, Biome> = {
     slowBorder: '#120e17',
     slowAccent: '#ff7a2e',
     flowers: ['#5e5059', '#4f434b'],
-    slotEdge: '#d9a06b',
-    slotFill: '#584960',
-    slotShadow: '#241d2b',
+    slotEdge: '#ffc07a',
+    slotFill: '#6f5b78',
+    slotShadow: '#1a1420',
     // Molten magma pools & glowing branching fissures with 2-tier warm bounce glow.
     accentA: '#ffe570',
     accentB: '#ff6e24',
@@ -504,16 +504,27 @@ export function paintGround(field: ResolvedBattlefield, aspect: number): GroundP
                         ? biome.slowBorder
                         : biome.slow
               } else {
+                // Repeated sunken hoof/foot prints read as churned mud rather than a plank bridge.
                 const rut = Math.abs(Math.abs(hit.dist) - half * 0.36) < 2.4
-                hex = rut ? biome.slowAccent : sNoise > 0.5 ? biome.slowLight : biome.slow
+                const print = Math.floor(hit.along / 11) % 3 === 0 && Math.abs(across) < half * 0.46
+                hex = rut
+                  ? biome.slowAccent
+                  : print
+                    ? biome.slowBorder
+                    : sNoise > 0.5
+                      ? biome.slowLight
+                      : biome.slow
               }
             }
           }
         }
       } else {
-        // Biome-unique Bayer-dithered quantized terrain elevation bands.
-        const large = noise(i, j, biome.noiseScale, seed)
-        const med = noise(i, j, biome.noiseScale * 0.38, seed + 3)
+        // Biome-unique quantized terrain bands. Desert reads at 2x2 texels so its patches stay
+        // flat shapes instead of 1-px checker noise next to 3-px sprites.
+        const ni = field.id === 'desert' ? i & ~1 : i,
+          nj = field.id === 'desert' ? j & ~1 : j
+        const large = noise(ni, nj, biome.noiseScale, seed)
+        const med = noise(ni, nj, biome.noiseScale * 0.38, seed + 3)
         const v = large * 0.74 + med * 0.26 + bayer * 0.08
         hex = biome.ground[v < 0.34 ? 3 : v < 0.54 ? 0 : v < 0.73 ? 1 : 2]
 

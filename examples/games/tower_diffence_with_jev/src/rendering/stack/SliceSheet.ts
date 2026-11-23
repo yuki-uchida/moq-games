@@ -19,6 +19,7 @@ export interface BakeableModel {
   readonly voxels: readonly VoxelPart[]
   readonly palette: PaletteBook
   readonly softShade?: boolean
+  readonly simpleShadow?: boolean
 }
 
 /**
@@ -431,6 +432,17 @@ export function bakePoseSliceSheet(
         else if (wide[idx - width * 2] >= 200 && wide[idx + width * 2] >= 200) shadow[idx] = 255
       }
     }
+  }
+  if (model.simpleShadow) {
+    // Flying sprites get one readable contact ellipse instead of fragmented wing-tip specks.
+    shadow.fill(0)
+    const cx = width / 2,
+      cy = height - 3,
+      rx = Math.max(4, width * 0.3),
+      ry = Math.max(2, height * 0.1)
+    for (let sy = 0; sy < height; sy++)
+      for (let sx = 0; sx < width; sx++)
+        if (((sx - cx) / rx) ** 2 + ((sy - cy) / ry) ** 2 <= 1) shadow[sy * width + sx] = 255
   }
   // Soft 1px outer shadow rim around the solid core (encoded as 160 vs core 255 for 2-tone pixel shadow).
   const core = new Uint8Array(shadow)

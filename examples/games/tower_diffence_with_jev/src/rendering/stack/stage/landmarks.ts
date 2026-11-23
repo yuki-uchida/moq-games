@@ -162,8 +162,10 @@ function buildCastle(fieldId: FieldId, tier: 0 | 1 | 2): StackDesign {
         }
         // Tall independent flagpole & fluttering royal banner atop the keep.
         if (tier >= 1) {
-          p.box([0, 38, -3], [0, 45, -3], 'iron')
-          p.box([1, 41, -3], [6, 44, -3], 'banner').box([1, 41, -3], [6, 41, -3], 'bannerTrim')
+          // Flag cloth faces the incoming road (+z) instead of reading as a bare pole edge-on.
+          p.box([0, 38, 2], [0, 45, 2], 'iron')
+          p.box([1, 41, 2], [6, 44, 2], 'banner').box([1, 41, 2], [6, 41, 2], 'bannerTrim')
+          p.box([3, 42, 3], [4, 43, 3], 'bannerTrim')
         }
 
         // Four well-spaced corner towers (slightly shorter than keep so roof silhouettes never clutter!).

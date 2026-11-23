@@ -61,6 +61,10 @@ export const ogre: StackDesign = {
         (x, y, z) => Math.hypot(x / 6.2, (y - 4.8) / 5.8, (z - 2.2) / 5.8) <= 1 && z > 3
       )
       torso.box([-1, 4, 8], [0, 5, 8], 'skinDark')
+      // Broad scapula shadow gives the back a readable plane instead of flat skin.
+      torso.paint((x, y, z) =>
+        z <= -4 && y >= 8 && y <= 12 && Math.abs(x) > 3 ? 'skinDark' : undefined
+      )
 
       const head = kit.part('head', 'torso', [0, 11.5, 2.0])
       // Larger expressive ogre head & jaw so glowing eyes and twin ivory tusks dominate front & 3/4 views.

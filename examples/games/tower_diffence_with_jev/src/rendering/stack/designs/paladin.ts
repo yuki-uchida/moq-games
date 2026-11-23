@@ -55,10 +55,13 @@ export const paladin: StackDesign = {
       // Open-faced winged helm exposing full brow & eyes cleanly (brow lifted to y=8).
       b.head.fill([-6, 1, -6], [5, 11, 5], 'plate', (x, y, z) => {
         const d = Math.hypot(x / 5.4, (y - 5.4) / 5.4, (z + 0.6) / 5.2)
-        return d <= 1 && d > 0.78 && !(z > 0.8 && y < 8.2 && Math.abs(x) < 4.2)
+        const openFace =
+          (z > 0.8 && y < 8.2 && Math.abs(x) < 4.2) || (Math.abs(x) >= 4.4 && z > -1 && y < 7.5)
+        return d <= 1 && d > 0.78 && !openFace
       })
       // Side profile: exposed cheek and one eye inside the open helm.
       b.head.box([-6, 3, 0], [-5, 5, 2], 'skin').box([4, 3, 0], [5, 5, 2], 'skin')
+      b.head.box([-6, 2, 1], [-5, 3, 2], 'plateShade').box([4, 2, 1], [5, 3, 2], 'plateShade')
       b.head.set(-6, 4, 2, 'eye').set(5, 4, 2, 'eye')
       b.head.box([-4, 8, 3], [3, 9, 4], 'gold')
       b.head.box([-1, 10, -3], [0, 11, 2], 'gold')

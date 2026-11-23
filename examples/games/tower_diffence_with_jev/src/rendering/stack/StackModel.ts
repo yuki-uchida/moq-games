@@ -54,6 +54,8 @@ export interface StackModel {
   readonly restSheet: SliceSheet
   /** Damp the per-voxel light dither for this design (see StackDesign.softShade). */
   softShade?: boolean
+  /** Use a single ellipse contact shadow (see StackDesign.simpleShadow). */
+  simpleShadow?: boolean
   dispose(): void
 }
 

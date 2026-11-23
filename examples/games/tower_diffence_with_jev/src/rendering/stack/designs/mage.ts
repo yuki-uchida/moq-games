@@ -28,6 +28,7 @@ export const mage: StackDesign = {
       hatBand: '#ffd93b',
       hair: '#ffefc2',
       hairShade: '#d9bd84',
+      hairDark: '#b0844a',
       hairLight: '#fffbe2',
       shoe: '#2d1c47',
       wood: '#995c2e',
@@ -68,7 +69,15 @@ export const mage: StackDesign = {
       b.head.box([-4, 0, -5], [3, 5, -4], 'hair')
       // Shade the flat rear hair slab so the back view keeps three hair tones too.
       b.head.paint((x, y, z) =>
-        z <= -4 && y >= 0 ? (y < 2 ? 'hairShade' : x % 3 === 0 ? 'hairLight' : 'hair') : undefined
+        z <= -4 && y >= 0
+          ? y < 2
+            ? 'hairDark'
+            : y < 4
+              ? 'hairShade'
+              : x % 3 === 0
+                ? 'hairLight'
+                : 'hair'
+          : undefined
       )
       // Wide brim raised at y=8 and shifted slightly back (-z) so eyes & cheeks are NEVER covered!
       b.head.fill([-8, 8, -9], [7, 8, 5], 'hat', (x, y, z) => Math.hypot(x / 7.6, (z + 1.5) / 6.8) <= 1)

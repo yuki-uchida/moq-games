@@ -782,8 +782,8 @@ function updateField() {
     previous = field.path[field.path.length - 2] ?? gate,
     gateDirection = Math.hypot(gate.x - previous.x, gate.y - previous.y) || 1,
     castle = {
-      x: Math.max(76, Math.min(field.width - 76, gate.x + ((gate.x - previous.x) / gateDirection) * 62)),
-      y: Math.max(76, Math.min(field.height - 76, gate.y + ((gate.y - previous.y) / gateDirection) * 62))
+      x: Math.max(76, Math.min(field.width - 76, gate.x + ((gate.x - previous.x) / gateDirection) * 34)),
+      y: Math.max(76, Math.min(field.height - 76, gate.y + ((gate.y - previous.y) / gateDirection) * 34))
     }
   // The bar belongs to the castle sprite (62 units beyond the gate), not the path endpoint.
   $('base-health').style.left = `${castle.x}px`

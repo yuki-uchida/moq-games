@@ -143,6 +143,10 @@ export function human(kit: StackKit, c: HumanColors, shape: HumanShape = {}): Hu
   if (!shape.coveredSides) {
     head.set(earX, eyeRow, 2, c.eye).set(-earX - 1, eyeRow, 2, c.eye)
     head.set(earX, eyeRow, -1, c.skin).set(-earX - 1, eyeRow, -1, c.skin)
+    // A short skin column and cheek keep the profile readable instead of a hair block.
+    head.box([earX - 1, eyeRow - 1, 0], [earX, eyeRow + 1, 3], c.skin)
+    head.box([-earX - 1, eyeRow - 1, 0], [-earX, eyeRow + 1, 3], c.skin)
+    head.set(earX, eyeRow + 1, 1, c.eye).set(-earX - 1, eyeRow + 1, 1, c.eye)
   }
 
   const parts: Partial<HumanParts> = { hips, torso, head }

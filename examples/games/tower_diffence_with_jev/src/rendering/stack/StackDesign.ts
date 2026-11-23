@@ -41,6 +41,8 @@ export interface StackDesign {
   readonly portraitFocus?: number
   /** Damp per-voxel light/AO dither for ornate surfaces that otherwise read as checkerboard noise. */
   readonly softShade?: boolean
+  /** Replace the silhouette-derived contact shadow with one clean ellipse (flying sprites). */
+  readonly simpleShadow?: boolean
   pose(input: StackMotionInput): StackPose
 }
 

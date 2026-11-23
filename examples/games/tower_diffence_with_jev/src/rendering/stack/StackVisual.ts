@@ -20,6 +20,7 @@ export function stackModel(design: StackDesign): StackModel {
   if (!model) {
     model = buildStackModel(design.blueprint)
     model.softShade = design.softShade === true
+    model.simpleShadow = design.simpleShadow === true
     models.set(design, model)
   }
   return model
