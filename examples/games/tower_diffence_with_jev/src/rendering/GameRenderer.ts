@@ -2672,7 +2672,7 @@ export class GameRenderer {
         for (const lift of [0, 12, 24, 36, 48, 60, -6]) {
           const candidate = Math.max(18, barBase - lift)
           if (lift > 0 && barBase - lift < 18) continue
-          if (!placedBars.some((bar) => Math.abs(bar.x - x) < 52 && Math.abs(bar.y - candidate) < 12)) {
+          if (!placedBars.some((bar) => Math.abs(bar.x - x) < 64 && Math.abs(bar.y - candidate) < 12)) {
             staggerY = lift
             break
           }

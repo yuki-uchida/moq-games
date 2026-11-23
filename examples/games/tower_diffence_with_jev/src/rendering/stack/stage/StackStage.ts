@@ -400,7 +400,7 @@ export class StackStage {
       y: Math.max(my, Math.min(field.height - 26, p.y))
     })
     // Keep the whole cave on the board. The volcanic silhouette carries a taller lava crown.
-    const denLift = field.id === 'volcanic' ? 104 : 66
+    const denLift = field.id === 'volcanic' ? 104 : 72
     const denPoint = inside({ x: entry.x - first.x * 10, y: entry.y - first.y * 10 }, 56, denLift)
     this.den = this.createPlaced(denDesign(field.id), denPoint.x, denPoint.y, snapCardinal(first), 0.5, 1.52, `stack-den:${field.id}`, [4, 4])
 
