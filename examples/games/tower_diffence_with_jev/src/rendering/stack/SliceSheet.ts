@@ -437,7 +437,7 @@ export function bakePoseSliceSheet(
     // Flying sprites get one readable contact ellipse instead of fragmented wing-tip specks.
     shadow.fill(0)
     const cx = width / 2,
-      cy = height - 3,
+      cy = height / 2,
       rx = Math.max(4, width * 0.3),
       ry = Math.max(2, height * 0.1)
     for (let sy = 0; sy < height; sy++)
