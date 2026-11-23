@@ -173,16 +173,16 @@ export class StackVisual {
 
   /** World-space height of the sprite's visible top edge above the unit's feet. */
   headroom(): number {
-    // Projected top of the current frame and turn plus a 2-art-px gap. Measuring the rotated
-    // silhouette keeps the nameplate gap identical for every facing and animation frame.
+    // Projected top of the current frame and turn. The nameplate keeps a constant screen gap in
+    // GameRenderer, so no art-pixel padding is baked in here (that varied with each cell size).
     const tops = this.atlas.frameTops[this.frame]
     if (tops) {
       const buckets = tops.length
       const bucket = ((Math.round((this.turn / (Math.PI * 2)) * buckets) % buckets) + buckets) % buckets
-      return Math.max(0, tops[bucket] + 2) * this.cell() * this.presentation
+      return Math.max(0, tops[bucket]) * this.cell() * this.presentation
     }
     const height = this.atlas.frameHeights[this.frame] ?? this.atlas.sliceHeight * 0.5
-    return Math.max(0, height + 2) * this.cell() * this.presentation
+    return Math.max(0, height) * this.cell() * this.presentation
   }
 
   /** Optional interactive camera override (used by EXTRA viewer to orbit turn & squash). */

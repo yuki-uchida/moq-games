@@ -2664,15 +2664,15 @@ export class GameRenderer {
       }
       // Stack crowded attackers' bars onto distinct rows so two bars never read as one long line.
       const headroom = this.models?.headroom(unit.id)
-      const barBase = unit.y + sepY - (headroom ?? (authored ? 70 * bodyScale(unit) : 58)) - 4
+      const barBase = unit.y + sepY - (headroom ?? (authored ? 70 * bodyScale(unit) : 58)) - 8
       let staggerY = 0
       if (unit.owner === 'ai') {
-        // Rows run upward first; at the lane's top edge they flip below the head instead of all
-        // collapsing onto the `Math.max(18, …)` clamp, which merged neighbours into one long line.
-        for (const lift of [0, 7, 14, 21, 28, 35, -9, -18]) {
-          const candidate = barBase - lift
-          if (lift > 0 && candidate < 18) continue
-          if (!placedBars.some((bar) => Math.abs(bar.x - x) < 52 && Math.abs(bar.y - candidate) < 9)) {
+        // 12px rows (bar + outline is 10px, so 12 keeps a 2px seam). Rows climb above the head;
+        // at the lane's top edge one 6px row below the head is allowed while it still clears it.
+        for (const lift of [0, 12, 24, 36, 48, 60, -6]) {
+          const candidate = Math.max(18, barBase - lift)
+          if (lift > 0 && barBase - lift < 18) continue
+          if (!placedBars.some((bar) => Math.abs(bar.x - x) < 52 && Math.abs(bar.y - candidate) < 12)) {
             staggerY = lift
             break
           }

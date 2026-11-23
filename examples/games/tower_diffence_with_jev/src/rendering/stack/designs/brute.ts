@@ -79,10 +79,10 @@ export const brute: StackDesign = {
         // Dark shoulder seam + forward-set arms keep the near arm distinct from the torso in profile.
         arm.box([-2, -7, -3], [1, -2, 1], 'stoneDark')
         arm
-          .box([-3 + (s > 0 ? 1 : 0), -12, -2], [3 + (s > 0 ? 1 : 0), -6, 4], 'stoneLight')
-          .box([-3 + (s > 0 ? 1 : 0), -12, 4], [3 + (s > 0 ? 1 : 0), -7, 4], 'stoneLight')
+          .box([-3 + (s > 0 ? 1 : 0), -11, -2], [3 + (s > 0 ? 1 : 0), -5, 4], 'stoneLight')
+          .box([-3 + (s > 0 ? 1 : 0), -11, 4], [3 + (s > 0 ? 1 : 0), -6, 4], 'stoneLight')
           // Dark knuckle band so the fist never melts into the pale leg column in profile.
-          .box([-3 + (s > 0 ? 1 : 0), -8, -2], [3 + (s > 0 ? 1 : 0), -8, 4], 'stoneDark')
+          .box([-3 + (s > 0 ? 1 : 0), -7, -2], [3 + (s > 0 ? 1 : 0), -7, 4], 'stoneDark')
       }
     }
   },
