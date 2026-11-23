@@ -5,6 +5,7 @@ import {
   MAX_STACK_PARTS,
   MAX_STACK_SLICES,
   shadeSliceColor,
+  STACK_SPACING,
   type SliceSheet
 } from './SliceSheet'
 import type { StackDesign, StackMotion } from './StackDesign'
@@ -81,8 +82,8 @@ export interface StackFrameAtlas {
   readonly texture: THREE.DataTexture
   readonly bands: Readonly<Record<StackMotion, StackMotionBand>>
   readonly sheets: readonly SliceSheet[]
-  /** Topmost opaque row per frame, measured on the unified slice sheets. */
-  readonly frameTops: readonly number[]
+  /** Projected opaque top (art px above the feet) per frame, including the stack lift. */
+  readonly frameHeights: readonly number[]
   dispose(): void
 }
 
@@ -342,14 +343,20 @@ export function buildStackFrameAtlas(design: StackDesign, model: StackModel): St
     return bakePoseSliceSheet(model, m, { width: maxW, height: maxH, count: sliceCount, minY: minLift })
   })
 
-  const frameTops = sheets.map((sheet) => {
-    let top = sheet.height
-    for (let y = 0; y < sheet.height; y++)
-      for (let x = 0; x < sheet.width * sheet.count; x++)
-        if (sheet.pixels[(y * sheet.width * sheet.count + x) * 4 + 3] >= 128) {
-          if (y < top) top = y
-          break
-        }
+  // Project the real top: the highest slice lift plus that slice's maximum vertical radius.
+  const frameHeights = sheets.map((sheet) => {
+    let top = 0
+    for (let slice = 0; slice < sheet.count; slice++) {
+      let minY = sheet.height
+      for (let y = 0; y < sheet.height; y++)
+        for (let x = slice * sheet.width; x < (slice + 1) * sheet.width; x++)
+          if (sheet.pixels[(y * sheet.width * sheet.count + x) * 4 + 3] >= 128) {
+            if (y < minY) minY = y
+            break
+          }
+      if (minY < sheet.height)
+        top = Math.max(top, (sheet.baseLift + slice) * STACK_SPACING + (sheet.height / 2 - minY))
+    }
     return top
   })
   const { texture, atlasWidth, atlasHeight } = packSheetsToTexture(sheets)
@@ -375,7 +382,7 @@ export function buildStackFrameAtlas(design: StackDesign, model: StackModel): St
     cx: Math.floor(maxW / 2),
     cy: Math.floor(maxH / 2),
     frameCount: sheets.length,
-    frameTops,
+    frameHeights,
     atlasWidth,
     atlasHeight,
     texture,

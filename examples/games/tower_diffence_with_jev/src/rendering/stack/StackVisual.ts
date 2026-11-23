@@ -173,11 +173,9 @@ export class StackVisual {
 
   /** World-space height of the sprite's visible top edge above the unit's feet. */
   headroom(): number {
-    // Measure the drawn frame's topmost opaque row; the sheet is centred on the feet.
-    const top = this.atlas.frameTops[this.frame] ?? 0
-    // The sheet origin sits a few art pixels below the projected crown; the offset clears the
-    // helmet outline while still following each frame's opaque top.
-    return Math.max(0, this.atlas.sliceHeight * 0.5 - top + 9) * this.cell() * this.presentation
+    // Projected top of the current frame (slice lift + footprint radius) plus a 2-art-px gap.
+    const height = this.atlas.frameHeights[this.frame] ?? this.atlas.sliceHeight * 0.5
+    return Math.max(0, height + 2) * this.cell() * this.presentation
   }
 
   /** Optional interactive camera override (used by EXTRA viewer to orbit turn & squash). */
