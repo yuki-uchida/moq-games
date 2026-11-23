@@ -2841,7 +2841,6 @@ export class GameRenderer {
           renderedMotion: this.models.motion(unit.id) ?? '',
           healingAnimation: unit.type === 'paladin' && currentAttack?.kind === 'heal' ? 'neutral-held-3d-pose' : ''
         })
-        label.style.top = `${Math.max(18, unit.y - 76 * bodyScale(unit) * this.modelPresentationScale)}px`
         if (visual.defenderHandle) {
           visual.defenderHandle.hidden =
             !visible ||

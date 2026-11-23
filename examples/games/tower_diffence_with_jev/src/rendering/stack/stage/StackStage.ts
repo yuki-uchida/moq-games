@@ -128,7 +128,7 @@ export function stageLayout(field: ResolvedBattlefield): { kind: PropKind; x: nu
     if (
       point.x < 24 ||
       point.x > field.width - 24 ||
-      point.y < (kind === 'tree' ? 66 : 30) ||
+      point.y < (kind === 'tree' ? 72 : 46) ||
       point.y > field.height - 26
     )
       return false
@@ -184,8 +184,8 @@ export function stageLayout(field: ResolvedBattlefield): { kind: PropKind; x: nu
     if (hash(x, seed + 71) < 0.32) continue
     const topWave = Math.sin(x * 0.017 + seed * 0.13) + Math.cos(x * 0.008 + seed * 0.31) * 0.5
     if (topWave > -0.15) {
-      band(x, 34, false, true)
-      if (topWave > 0.35) band(x + 14, 68, true, true)
+      band(x, 46, false, true)
+      if (topWave > 0.35) band(x + 14, 74, true, true)
     }
     const botWave = Math.sin(x * 0.016 + seed * 0.47 + 1.9) + Math.cos(x * 0.009 + seed * 0.21) * 0.5
     if (botWave > -0.1) {
@@ -404,7 +404,8 @@ export class StackStage {
 
     const gate = field.gate,
       last = direction(field.path[field.path.length - 2] ?? gate, gate)
-    this.castleAt = inside({ x: gate.x + last.x * 62, y: gate.y + last.y * 62 }, 76, 76)
+    // The gatehouse protrudes ~16 units; 34 keeps its mouth on the road end instead of a side wall.
+    this.castleAt = inside({ x: gate.x + last.x * 34, y: gate.y + last.y * 34 }, 76, 76)
     // Lock castle to clean cardinal orientation facing the incoming road (eliminates jagged diagonal edges).
     this.castleFacing = snapCardinal({ x: -last.x, y: -last.y })
     this.castles = ([0, 1, 2] as const).map((tier) =>
