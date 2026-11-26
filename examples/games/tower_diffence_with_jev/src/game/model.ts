@@ -841,27 +841,42 @@ export const WAVE_PLANS: Readonly<Record<number, readonly number[]>> = {
   5: [8, 9, 10, 11, 13],
   6: [8, 9, 10, 12, 14],
   7: [7, 8, 9, 10, 11, 12],
-  8: [7, 8, 9, 10, 11, 14],
-  9: [7, 8, 8, 9, 9, 10, 12],
-  10: [7, 8, 9, 9, 10, 11, 13]
+  8: [7, 8, 9, 10, 11, 12],
+  9: [7, 8, 9, 9, 10, 10],
+  10: [7, 8, 9, 10, 10, 11]
 }
-/** Policy 5 horde enemies are individually weaker than the single-assault rosters (HP and attack, per stage). */
+/** Policy 5 horde HP per stage, relative to the classic stage scale (attacks take {@link WAVE_ATTACK_SCALING} of it). */
 export const WAVE_ENEMY_STRENGTH: Readonly<Record<number, number>> = {
   1: 1,
-  2: 1,
+  2: 1.05,
   3: 0.95,
   4: 1.05,
   5: 1.1,
-  6: 1.3,
-  7: 1.3,
-  8: 1.3,
-  9: 1.0,
-  10: 1.1
+  6: 1.2,
+  7: 1.15,
+  8: 1.1,
+  9: 1.2,
+  10: 1.55
 }
+/**
+ * Policy 5: share of the stage strength that enemy attacks receive. Late hordes grow tougher rather than
+ * deadlier, so a defense bends (and leaks) instead of collapsing at once.
+ */
+export const WAVE_ATTACK_SCALING = 0.5
+/** Policy 5: minimum game seconds between two deployments of a wave. */
+export const WAVE_SPAWN_INTERVAL = 0.9
 /** Policy 5: game seconds between a cleared wave and the next one, unless the player calls it early. */
 export const WAVE_BREAK_SECONDS = 12
 /** Policy 5: a horde enemy reaching the castle deals this share of its hit (many more enemies arrive). */
 export const WAVE_BASE_DAMAGE_FACTOR = 0.5
+/**
+ * Share of an enemy's hit the castle takes. Policy 5 also removes the stage attack scale from castle hits, so a
+ * leak costs what its enemy type costs on any stage while stronger stages still fight harder on the road.
+ */
+export function baseDamageFactor(stage: number, waveBossPolicy: WaveBossPolicy): number {
+  const rules = stageRules(stage, waveBossPolicy)
+  return isWaveCampaign(waveBossPolicy) ? WAVE_BASE_DAMAGE_FACTOR / (rules.attackStrength ?? rules.strength) : 1
+}
 /** Policy 5: battle gold per second of break skipped by calling the next wave early. */
 export const EARLY_CALL_GOLD_PER_SECOND = 2
 /** Policy 5: battle gold for defeating a boss (regular enemies pay {@link killGold}). */
@@ -881,6 +896,10 @@ export interface StageRules {
   bossType: EnemyType | null
   /** Policy 5 only: enemies per wave, summing to `enemyCount`. */
   waves?: number[]
+  /** Policy 5 only: stage scale of enemy attacks (HP scales by `strength`). */
+  attackStrength?: number
+  /** Policy 5 only: the boss keeps the classic stage scale (the horde multiplier tunes its escorts). */
+  bossStrength?: number
 }
 export function stageRules(stage: number, waveBossPolicy: WaveBossPolicy = 2): StageRules {
   // Preserve saved-wave counts/stats/budgets; space stronger late enemies rather than stacking them.
@@ -891,11 +910,16 @@ export function stageRules(stage: number, waveBossPolicy: WaveBossPolicy = 2): S
     )
   if (isWaveCampaign(waveBossPolicy)) {
     const waves = [...WAVE_PLANS[level]],
-      enemyCount = waves.reduce((sum, count) => sum + count, 0)
+      enemyCount = waves.reduce((sum, count) => sum + count, 0),
+      bossStrength = 1 + (level - 1) * 0.1,
+      strength = bossStrength * WAVE_ENEMY_STRENGTH[level]
     return {
       enemyCount,
-      strength: (1 + (level - 1) * 0.1) * WAVE_ENEMY_STRENGTH[level],
-      spawnInterval: 1.8,
+      strength,
+      attackStrength: 1 + (strength - 1) * WAVE_ATTACK_SCALING,
+      bossStrength,
+      // Below the one-second decision cadence: a wave pours in as fast as its cooldowns allow.
+      spawnInterval: WAVE_SPAWN_INTERVAL,
       reward: 65 + level * 15,
       enemyTypes,
       spawnBudget: enemyCount * (2 + Math.floor(level / 3)) + (bossType ? 5 : 0),
@@ -924,6 +948,12 @@ export const MAX_STAGE_ENEMY_COUNT = Math.max(
 export const MAX_STAGE_SPAWN_BUDGET = Math.max(
   ...WAVE_BOSS_POLICIES.flatMap((policy) =>
     Array.from({ length: CONFIG.stages }, (_, index) => stageRules(index + 1, policy).spawnBudget)
+  )
+)
+/** The strongest enemy stage scale under any wave policy (checkpoint bounds). */
+export const MAX_ENEMY_STRENGTH = Math.max(
+  ...WAVE_BOSS_POLICIES.flatMap((policy) =>
+    Array.from({ length: CONFIG.stages }, (_, index) => stageRules(index + 1, policy).strength)
   )
 )
 /** Upper bound of the policy-5 battle gold (kills and early calls) a run can earn through `stage`. */
@@ -993,6 +1023,8 @@ export const REGULAR_ENEMY_ATTACK_MULTIPLIER = 1.3
 export const unitLevelMultiplier = (level: number): number => 1.12 ** (level - 1)
 /** Policy 3 stage-10 boss dragon: shorter reach, softer hits and unscaled attack geometry. */
 export const FINALE_DRAGON_BOSS_ATTACK = 0.75
+/** Policy 5: a boss arrives behind a whole wave of escorts, so it hits softer than a single-assault boss. */
+export const WAVE_BOSS_ATTACK_FACTOR = 0.7
 export const finaleDragonBoss = (
   unit: Pick<Unit, 'owner' | 'type' | 'boss'>,
   waveBossPolicy: WaveBossPolicy
@@ -1008,7 +1040,14 @@ export function combatStats(
   waveBossPolicy: WaveBossPolicy
 ) {
   const definition = DEFINITIONS[unit.type],
-    scale = unit.owner === 'player' ? unitLevelMultiplier(allyLevel) : stageRules(stage, waveBossPolicy).strength
+    rules = unit.owner === 'player' ? null : stageRules(stage, waveBossPolicy),
+    bossScale = unit.boss ? rules?.bossStrength : undefined,
+    scale = rules ? (bossScale ?? rules.strength) : unitLevelMultiplier(allyLevel),
+    attackScale = !rules
+      ? scale
+      : bossScale !== undefined
+        ? 1 + (bossScale - 1) * WAVE_ATTACK_SCALING
+        : (rules.attackStrength ?? rules.strength)
   return {
     maxHp:
       (definition.hp *
@@ -1023,12 +1062,31 @@ export function combatStats(
       (unit.owner === 'ai' && unit.boss ? 3 : 1),
     attack:
       definition.attack *
-      scale *
+      attackScale *
       (finaleDragonBoss(unit, waveBossPolicy) ? FINALE_DRAGON_BOSS_ATTACK : 1) *
-      (unit.boss ? 1.95 : unit.owner === 'ai' ? REGULAR_ENEMY_ATTACK_MULTIPLIER : 1) *
+      (unit.boss
+        ? 1.95 * (isWaveCampaign(waveBossPolicy) ? WAVE_BOSS_ATTACK_FACTOR : 1)
+        : unit.owner === 'ai'
+          ? REGULAR_ENEMY_ATTACK_MULTIPLIER
+          : 1) *
       (unit.owner === 'player' && unit.equipment === 'weapon' ? 1.2 : 1),
     range: definition.range * (unit.boss && !finaleDragonBoss(unit, waveBossPolicy) ? 1.25 : 1)
   }
+}
+/** Policy 5 on the long winding meadow road (layout 4): every enemy walks this much faster, keeping relative speeds. */
+export const WAVE_ROAD_SPEED_FACTOR = 2
+export const waveRoadSpeedFactor = (
+  waveBossPolicy: WaveBossPolicy,
+  layoutRevision: LayoutRevision | undefined
+): number => (isWaveCampaign(waveBossPolicy) && layoutRevision === 4 ? WAVE_ROAD_SPEED_FACTOR : 1)
+/** Walk speed of a newly spawned enemy (bosses walk at 80%). */
+export function enemyWalkSpeed(
+  type: EnemyType,
+  boss: boolean,
+  waveBossPolicy: WaveBossPolicy,
+  layoutRevision: LayoutRevision | undefined
+): number {
+  return DEFINITIONS[type].speed * (boss ? 0.8 : 1) * waveRoadSpeedFactor(waveBossPolicy, layoutRevision)
 }
 export function deploymentCooldown(type: EnemyType, stage: number): number {
   return DEFINITIONS[type].cooldown * (stage === 1 ? 1.5 : 1)
@@ -1768,8 +1826,13 @@ export function serializeStateForAI(s: Readonly<GameState>) {
       nextSpawnIn: Math.max(0, s.nextSpawnAt - s.time),
       ...(rules.waves
         ? (() => {
-            const wave = waveStatus(s)!
-            return { currentWave: wave.wave, waveBreakIn: Math.round(wave.breakRemaining * 100) / 100 }
+            const wave = waveStatus(s)!,
+              walkSpeedFactor = waveRoadSpeedFactor(waveBossPolicy, s.layoutRevision)
+            return {
+              currentWave: wave.wave,
+              waveBreakIn: Math.round(wave.breakRemaining * 100) / 100,
+              ...(walkSpeedFactor !== 1 ? { walkSpeedFactor } : {})
+            }
           })()
         : {})
     },

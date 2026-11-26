@@ -1,9 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { SPECIALS, specialReady } from '../src/game/SpecialAbilities'
 import {
   BOSS_KILL_GOLD,
   CONFIG,
-  CURRENT_WAVE_BOSS_POLICY,
+  DEFINITIONS,
+  WAVE_ROAD_SPEED_FACTOR,
+  baseDamageFactor,
+  combatStats,
+  enemyWalkSpeed,
+  getField,
   ENEMY_TYPES,
   MAX_WAVE_GOLD,
   WAVE_BREAK_SECONDS,
@@ -13,10 +17,10 @@ import {
   serializeStateForAI,
   stageRules,
   waveStatus,
-  type AllyType,
-  type GameState
+  type AllyType
 } from '../src/game/model'
 import { DRAGON_BREATH_MOUTHS } from '../src/rendering/DragonBreathArt'
+import { playCampaign, table } from './wave-balance-harness'
 import { GameEngine } from '../src/game/GameEngine'
 import { RuleBasedAI } from '../src/ai/AIController'
 import { validateCampaignCheckpoint, type CampaignCheckpoint } from '../src/game/CampaignCheckpoint'
@@ -27,7 +31,6 @@ import {
   freshProfile,
   freshRunFromProfile,
   resumeProgress,
-  scout,
   upgradeCost
 } from '../src/progression/UpgradeSystem'
 import { DEPLOYMENT_COST } from '../src/game/DefenderRoster'
@@ -58,18 +61,6 @@ const ORDER: AllyType[] = [
 ]
 const ANCHOR = 180
 
-interface StageLog {
-  stage: number
-  result: GameState['phase']
-  seconds: number
-  hp: number
-  waves: number
-  enemies: number
-  goldEarned: number
-  earlyCalls: number
-  midBattleSpend: number
-}
-
 function deployMissing(e: GameEngine, save: ReturnType<typeof freshRunFromProfile>, stage: number): number {
   let spent = 0
   for (const type of ORDER) {
@@ -97,138 +88,59 @@ function upgradeRoster(e: GameEngine, save: ReturnType<typeof freshRunFromProfil
   return spent
 }
 
-function castSpecials(e: GameEngine): void {
-  const foes = e.state.units.filter((u) => u.owner === 'ai' && u.hp > 0)
-  for (const u of e.state.units.filter((u) => u.owner === 'player' && u.hp > 0)) {
-    if (!specialReady(e.state, u.id)) continue
-    const spec = SPECIALS[u.type as keyof typeof SPECIALS]
-    if (u.type === 'healer') {
-      const hurt = e.state.units.find(
-        (v) => v.owner === 'player' && v.hp > 0 && v.maxHp - v.hp > 25 && Math.hypot(v.x - u.x, v.y - u.y) <= spec.range
-      )
-      if (hurt) e.castSpecial(u.id, hurt)
-      continue
-    }
-    const inRange = foes.filter((v) => Math.hypot(v.x - u.x, v.y - u.y) <= spec.range)
-    const crowd = (t: (typeof foes)[number]) =>
-      (t.boss ? 1000 : 0) + foes.filter((v) => Math.hypot(v.x - t.x, v.y - t.y) < spec.radius).length * 100
-    inRange.sort((a, b) => crowd(b) - crowd(a))
-    const t = inRange[0]
-    if (t && (t.boss || inRange.length >= 2)) if (e.castSpecial(u.id, t)) break
-  }
-}
-
-async function playCampaign(mode: 'competent' | 'lazy', seed = 42): Promise<StageLog[]> {
-  let clock = 0
-  const save = freshRunFromProfile(freshProfile(), 2, 1),
-    e = new GameEngine(new RuleBasedAI(), save, 'meadow', seed, () => clock, DRAGON_BREATH_MOUTHS, 2, 1),
-    logs: StageLog[] = []
-  expect(e.state.waveBossPolicy).toBe(CURRENT_WAVE_BOSS_POLICY)
-  for (let stage = 1; stage <= 10; stage++) {
-    if (mode === 'competent') {
-      if (stage > 1 && save.gold >= 120) scout(save, () => 0, e.state)
-      deployMissing(e, save, stage)
-      upgradeRoster(e, save)
-    } else if (stage === 1) {
-      for (const type of ['tank', 'soldier'] as AllyType[]) {
-        const [dx, dy] = OFFSETS[type]
-        e.place(type, { x: 640 + dx, y: ANCHOR + dy })
-      }
-    }
-    const before = e.state.waveGold ?? 0
-    let earlyCalls = 0,
-      midBattleSpend = 0,
-      handledBreak = -1
-    expect(e.startAssault()).toBe(true)
-    for (let i = 0; i < 20000 && e.state.phase === 'assault'; i++) {
-      clock += 50
-      e.update(0.05)
-      if (mode === 'competent') {
-        const wave = waveStatus(e.state)!
-        if (wave.inBreak && e.buildWindowOpen && handledBreak !== wave.wave) {
-          handledBreak = wave.wave
-          midBattleSpend += deployMissing(e, save, stage) + upgradeRoster(e, save)
-          // Confident with a healthy castle: skip the second wave's break for the bonus.
-          if (e.state.playerBaseHp >= 90 && wave.wave === 2 && stage >= 3 && e.callNextWave() > 0) earlyCalls++
-        }
-        if (i % 20 === 0) castSpecials(e)
-      }
-      for (let j = 0; j < 12; j++) await Promise.resolve()
-    }
-    const rules = stageRules(stage, e.state.waveBossPolicy)
-    logs.push({
-      stage,
-      result: e.state.phase,
-      seconds: Math.round(e.state.time),
-      hp: Math.round(e.state.playerBaseHp),
-      waves: rules.waves!.length,
-      enemies: rules.enemyCount,
-      goldEarned: (e.state.waveGold ?? 0) - before,
-      earlyCalls,
-      midBattleSpend
-    })
-    if (!e.nextStage()) break
-  }
-  return logs
-}
-
-function table(title: string, logs: StageLog[]): string {
-  return [
-    title,
-    'stage | result  | sec | baseHP | waves | enemies | waveG | early | midSpend',
-    ...logs.map(
-      (l) =>
-        `${String(l.stage).padStart(5)} | ${l.result.padEnd(7)} | ${String(l.seconds).padStart(3)} | ${String(l.hp).padStart(6)} | ${String(l.waves).padStart(5)} | ${String(l.enemies).padStart(7)} | ${String(l.goldEarned).padStart(5)} | ${String(l.earlyCalls).padStart(5)} | ${String(l.midBattleSpend).padStart(8)}`
-    )
-  ].join('\n')
-}
-
 describe('wave campaign (policy 5)', () => {
-  it('plans 3 to 7 waves per stage with the boss closing the final wave', () => {
+  it('plans 3 to 6 waves per stage with the boss closing the final wave', () => {
     for (let stage = 1; stage <= 10; stage++) {
       const rules = stageRules(stage, 5)
       expect(rules.waves!.reduce((a, b) => a + b, 0)).toBe(rules.enemyCount)
       expect(rules.enemyCount).toBeLessThanOrEqual(70)
-      expect(rules.spawnInterval).toBeGreaterThanOrEqual(1)
-      expect(rules.spawnInterval).toBeLessThanOrEqual(1.8)
+      // Below the one-second decision cadence: per-type cooldowns pace a wave, not a global gap.
+      expect(rules.spawnInterval).toBeLessThan(CONFIG.decisionInterval)
     }
     expect(stageRules(1, 5).waves).toHaveLength(3)
-    expect(stageRules(10, 5).waves).toHaveLength(7)
+    expect(stageRules(10, 5).waves).toHaveLength(6)
     expect(stageRules(1, 5).enemyCount).toBe(24)
-    expect(stageRules(10, 5).enemyCount).toBe(67)
+    expect(stageRules(10, 5).enemyCount).toBe(55)
     for (const policy of [1, 2, 3, 4] as const)
       for (let stage = 1; stage <= 10; stage++) expect(stageRules(stage, policy).waves).toBeUndefined()
   })
 
-  it('a competent player who spends kill gold between waves clears all ten stages', async () => {
+  it('a competent stage-select player clears all ten stages on the real road with a paced, threatening curve', async () => {
     const logs = await playCampaign('competent')
-    console.log(table('competent player (seed 42)', logs))
+    console.log(table('competent player, layout 4, stage select', logs))
     expect(logs).toHaveLength(10)
     expect(logs.at(-1)!.result).toBe('victory')
     for (const log of logs.slice(0, -1)) expect(log.result, `stage ${log.stage}`).toBe('cleared')
-    expect(logs[0].seconds).toBeGreaterThanOrEqual(60)
-    expect(logs[0].seconds).toBeLessThanOrEqual(90)
-    for (const log of logs.slice(1, 4)) {
-      expect(log.seconds, `stage ${log.stage}`).toBeGreaterThanOrEqual(60)
-      expect(log.seconds, `stage ${log.stage}`).toBeLessThanOrEqual(300)
+    // Stage 1 is a short tutorial; the finale runs three to about five and a half minutes.
+    expect(logs[0].seconds).toBeGreaterThanOrEqual(90)
+    expect(logs[0].seconds).toBeLessThanOrEqual(150)
+    expect(logs[9].seconds).toBeGreaterThanOrEqual(180)
+    expect(logs[9].seconds).toBeLessThanOrEqual(330)
+    for (const log of logs) {
+      // Every wave pours onto the field within 20 s, resolves within about a minute and a half,
+      // and nothing stalls for half a minute while a wave is on.
+      for (const seconds of log.waveSpawnSeconds) expect(seconds, `stage ${log.stage} spawn`).toBeLessThanOrEqual(20)
+      for (const seconds of log.waveSeconds) expect(seconds, `stage ${log.stage} wave`).toBeLessThanOrEqual(90)
+      expect(log.longestQuiet, `stage ${log.stage} quiet`).toBeLessThan(30)
+      expect(log.peakEnemies, `stage ${log.stage} swarm`).toBeGreaterThanOrEqual(6)
     }
-    for (const log of logs.slice(4)) {
-      expect(log.seconds, `stage ${log.stage}`).toBeGreaterThanOrEqual(120)
-      expect(log.seconds, `stage ${log.stage}`).toBeLessThanOrEqual(300)
-    }
-    // The castle is threatened somewhere in the middle or late campaign.
-    expect(logs.slice(3).some((log) => log.hp < 100)).toBe(true)
+    for (const seconds of logs[0].waveSeconds) expect(seconds).toBeLessThanOrEqual(60)
+    // The castle is meaningfully threatened in at least three of the stages from 4 on.
+    expect(logs.slice(3).filter((log) => log.minHp < 80).length).toBeGreaterThanOrEqual(3)
     expect(logs.every((log) => log.goldEarned > 0)).toBe(true)
     expect(logs.some((log) => log.earlyCalls > 0)).toBe(true)
     expect(logs.some((log) => log.midBattleSpend > 0)).toBe(true)
-  }, 600000)
+  }, 1200000)
 
-  it('a lazy player with two cheap allies who never spends falls by stage 4', async () => {
-    const logs = await playCampaign('lazy')
-    console.log(table('lazy player (seed 42)', logs))
-    const lost = logs.find((log) => log.result === 'defeat')
-    expect(lost).toBeDefined()
-    expect(lost!.stage).toBeLessThanOrEqual(4)
+  it('a weak player with two cheap allies who never spends falls on stage 2 or 3; three allies clear the tutorial', async () => {
+    const weak = await playCampaign('weak', 4, { weakUnits: 2 })
+    console.log(table('weak player, two allies', weak))
+    expect(weak.at(-1)!.result).toBe('defeat')
+    expect(weak.at(-1)!.stage).toBeGreaterThanOrEqual(2)
+    expect(weak.at(-1)!.stage).toBeLessThanOrEqual(3)
+    const tutorial = await playCampaign('weak', 1, { weakUnits: 3 })
+    console.log(table('weak player, three allies', tutorial))
+    expect(tutorial[0].result).toBe('cleared')
   }, 600000)
 })
 
@@ -260,6 +172,83 @@ function roundTrip(checkpoint: CampaignCheckpoint) {
   const raw = JSON.parse(JSON.stringify(checkpoint))
   return GameEngine.fromCheckpoint(raw, idle, resumeProgress(raw.profile, raw.progress), () => 0, DRAGON_BREATH_MOUTHS)
 }
+
+describe('wave road pacing and scaling (policy 5 only)', () => {
+  it('speeds up walkers only on the policy-5 winding road and keeps their relative speeds', () => {
+    for (const type of ENEMY_TYPES) {
+      const base = DEFINITIONS[type].speed
+      expect(enemyWalkSpeed(type, false, 5, 4)).toBeCloseTo(base * WAVE_ROAD_SPEED_FACTOR, 9)
+      expect(enemyWalkSpeed(type, true, 5, 4)).toBeCloseTo(base * 0.8 * WAVE_ROAD_SPEED_FACTOR, 9)
+      for (const policy of [1, 2, 3, 4] as const)
+        for (const revision of [1, 2, 3, 4] as const) expect(enemyWalkSpeed(type, false, policy, revision)).toBe(base)
+      expect(enemyWalkSpeed(type, false, 5, 1)).toBe(base)
+    }
+  })
+
+  it('scales horde HP fully, attacks by half, keeps bosses on the classic scale and prices leaks by type', () => {
+    for (let stage = 1; stage <= CONFIG.stages; stage++) {
+      const rules = stageRules(stage, 5),
+        classic = 1 + (stage - 1) * 0.1
+      expect(rules.bossStrength).toBeCloseTo(classic, 9)
+      expect(rules.attackStrength).toBeCloseTo(1 + (rules.strength - 1) * 0.5, 9)
+      const goblin = combatStats({ owner: 'ai', type: 'goblin', boss: false }, stage, 1, 5)
+      expect(goblin.maxHp).toBeCloseTo(DEFINITIONS.goblin.hp * rules.strength, 9)
+      expect(goblin.attack).toBeCloseTo(DEFINITIONS.goblin.attack * rules.attackStrength! * 1.3, 9)
+      // A leak costs the same share of a goblin hit on every stage.
+      expect(goblin.attack * baseDamageFactor(stage, 5)).toBeCloseTo(DEFINITIONS.goblin.attack * 1.3 * 0.5, 9)
+      if (rules.bossType) {
+        const boss = combatStats({ owner: 'ai', type: rules.bossType, boss: true }, stage, 1, 5)
+        expect(boss.maxHp).toBeCloseTo((DEFINITIONS[rules.bossType].hp * classic * 2.6) / 3, 9)
+      }
+      // Policies 1-4 keep one stage strength for HP, attacks and the castle.
+      for (const policy of [1, 2, 3, 4] as const) {
+        const legacy = stageRules(stage, policy)
+        expect(legacy.attackStrength).toBeUndefined()
+        expect(legacy.bossStrength).toBeUndefined()
+        expect(baseDamageFactor(stage, policy)).toBe(1)
+        expect(combatStats({ owner: 'ai', type: 'goblin', boss: false }, stage, 1, policy).attack).toBeCloseTo(
+          DEFINITIONS.goblin.attack * legacy.strength * 1.3,
+          9
+        )
+      }
+    }
+  })
+
+  it('keeps a running policy-5 battle on the winding road checkpoint-valid and resumable', async () => {
+    let clock = 0
+    const save = freshRunFromProfile(freshProfile(), 2, 1)
+    save.gold = stageStartGold(2)
+    const engine = new GameEngine(new RuleBasedAI(), save, 'meadow', 11, () => clock, DRAGON_BREATH_MOUTHS, 2, 4),
+      s = engine.state,
+      slots = getField('meadow', 2, 4).slots
+    expect(engine.startAtStage(2)).toBe(true)
+    for (const [type, slot] of [
+      ['soldier', 3],
+      ['archer', 4],
+      ['tank', 10]
+    ] as const)
+      expect(engine.place(type, slots[slot])).toBe(true)
+    expect(engine.startAssault()).toBe(true)
+    let checked = 0
+    for (let i = 0; i < 900 && s.phase === 'assault'; i++) {
+      clock += 50
+      engine.update(0.05)
+      for (let j = 0; j < 12; j++) await Promise.resolve()
+      if (i % 60 === 59) {
+        const checkpoint = engine.exportCheckpoint()
+        expect(checkpoint, `t=${s.time.toFixed(1)}`).not.toBeNull()
+        if (s.units.some((unit) => unit.owner === 'ai')) {
+          expect(roundTrip(checkpoint!)!.exportCheckpoint()).toEqual(checkpoint)
+          checked++
+        }
+      }
+    }
+    expect(
+      s.units.filter((unit) => unit.owner === 'ai').every((unit) => unit.speed > DEFINITIONS[unit.type].speed)
+    ).toBe(true)
+    expect(checked).toBeGreaterThan(3)
+  }, 120000)
+})
 
 describe('wave gating, breaks and battle gold', () => {
   it('opens a wave only after the previous one is resolved and its break has elapsed', () => {

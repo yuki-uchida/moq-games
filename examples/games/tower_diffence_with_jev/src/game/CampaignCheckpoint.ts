@@ -29,12 +29,16 @@ import {
   CURRENT_WAVE_BOSS_POLICY,
   combatStats,
   deploymentCooldown,
+  enemyWalkSpeed,
+  waveRoadSpeedFactor,
+  WAVE_ROAD_SPEED_FACTOR,
   enemyGeometryScale,
   pathLength,
   pointOnPath,
   stageRules,
   type StageRules,
   MAX_STAGE_ENEMY_COUNT,
+  MAX_ENEMY_STRENGTH,
   MAX_STAGE_SPAWN_BUDGET,
   MAX_WAVE_GOLD,
   maxWaveGoldThrough,
@@ -355,8 +359,9 @@ const epsilon = 1e-6,
     Math.max(...Object.values(FORMATIONS).map((formation) => (formation.types.length - 1) * formation.interval)),
   maximumPower =
     Math.max(...Object.values(DEFINITIONS).map((definition) => definition.attack)) *
-    Math.max(multiplier(4), stageRules(CONFIG.stages).strength * 2.6),
-  maximumSpeed = Math.max(52, ...Object.values(DEFINITIONS).map((definition) => definition.speed)),
+    Math.max(multiplier(4), MAX_ENEMY_STRENGTH * 2.6),
+  maximumSpeed =
+    Math.max(52, ...Object.values(DEFINITIONS).map((definition) => definition.speed)) * WAVE_ROAD_SPEED_FACTOR,
   battlefieldFields = Object.values(FIELDS).flatMap((field) => [
     resolveBattlefield(field, 1),
     resolveBattlefield(field, 2)
@@ -393,7 +398,7 @@ function checked<T>(value: T | null): T {
 }
 function checkpointBounds(version: CheckpointVersion) {
   const cooldown = version === 1 ? 11 : maximumCooldown,
-    strength = version === 1 ? legacyCheckpointRules(CONFIG.stages).strength : stageRules(CONFIG.stages).strength,
+    strength = version === 1 ? legacyCheckpointRules(CONFIG.stages).strength : MAX_ENEMY_STRENGTH,
     scale = Math.max(multiplier(4), strength * 2.6),
     power =
       Math.max(...Object.values(DEFINITIONS).map((definition) => definition.attack)) *
@@ -2324,10 +2329,20 @@ function validateUnits(checkpoint: DecodedCheckpoint): void {
       )
     requireCheckpoint(near(unit.maxHp, stats.maxHp) && near(unit.attack, stats.attack))
     requireCheckpoint(
-      near(
-        unit.speed,
-        player ? (unit.type === 'tank' ? TANK_GUARD.moveSpeed : 52) : definition.speed * (unit.boss ? 0.8 : 1)
-      )
+      player
+        ? near(unit.speed, unit.type === 'tank' ? TANK_GUARD.moveSpeed : 52)
+        : near(
+            unit.speed,
+            enemyWalkSpeed(
+              unit.type as EnemyType,
+              !!unit.boss,
+              checkpointPolicy(checkpoint),
+              layoutRevision(checkpoint)
+            )
+          ) ||
+            // Policy-5 layout-4 runs saved before the faster wave road keep their walkers' original speed.
+            (waveRoadSpeedFactor(checkpointPolicy(checkpoint), layoutRevision(checkpoint)) !== 1 &&
+              near(unit.speed, definition.speed * (unit.boss ? 0.8 : 1)))
     )
     if (unit.returnHomeAt !== undefined) {
       requireCheckpoint((player && unit.type === 'tank') || unit.returnHomeAt === 0)
