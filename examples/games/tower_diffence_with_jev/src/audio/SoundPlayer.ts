@@ -11,10 +11,10 @@ import { createFeelPlayer, type FeelSound } from './FeelSounds'
 /** Synthesized cues measured 6-15 dB (RMS) above the shipped attack clips at the same master
  * gain, so routine ones (coins, deploys, stars) sit at -6 dB, level with the combat sounds. The
  * moments that must read over the battle music keep more: kills, heavy hits, cut-ins, combos, the boss
- * horn, castle hits and the outcome stings. */
+ * horn, castle hits, ally upgrades, wave clears and the outcome stings. */
 const FEEL_BUS_GAIN = 0.5
 const FEEL_KEY_GAIN = 0.8
-const KEY_FEEL: ReadonlySet<FeelSound> = new Set(['kill', 'hit-heavy', 'cutin', 'combo', 'boss', 'base-hit', 'clear', 'defeat', 'assault'])
+const KEY_FEEL: ReadonlySet<FeelSound> = new Set(['kill', 'hit-heavy', 'cutin', 'combo', 'boss', 'base-hit', 'clear', 'defeat', 'assault', 'upgrade', 'wave-clear'])
 /** Recent feel cues (kind and AudioContext time), for diagnostics and mix measurements. */
 const FEEL_LOG_LIMIT = 128
 

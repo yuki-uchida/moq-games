@@ -692,6 +692,10 @@ export class GameRenderer {
     marker: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>
   }[] = []
   private healthLabels = new Map<number, { element: HTMLDivElement; hp: number }>()
+  /** Allies whose next level the player can buy right now, with its gold cost (drawn as a tap-to-upgrade badge). */
+  private upgradeOffers: ReadonlyMap<number, number> = new Map()
+  /** Fired when the player taps or activates an ally's upgrade badge. */
+  onUpgradeRequest?: (unitId: number) => void
   private specialAbilities = new SpecialAbilityVisual(this.scene)
   specialAbilityStatus(type: AllyType) { return this.specialAbilities.ready(type) ? 'ready' : this.specialAbilities.failed(type) ? 'error' : 'loading' }
   preloadSpecialAbilities(base: URL) { return this.specialAbilities.preload(base) }
@@ -2053,6 +2057,20 @@ export class GameRenderer {
     this.fortifications.setGateSelected(selected)
   }
 
+  setUpgradeOffers(offers: ReadonlyMap<number, number>): void {
+    this.upgradeOffers = offers
+  }
+
+  /** Presentation only: pop the ally's figure and level chip after an upgrade. */
+  levelUp(unitId: number): void {
+    this.models?.pop(unitId)
+    const label = this.healthLabels.get(unitId)?.element
+    if (!label) return
+    label.classList.remove('level-up')
+    void label.offsetWidth
+    label.classList.add('level-up')
+  }
+
   setSandbagSelection(id: number | null): void {
     this.selectedSandbagId = id
   }
@@ -2591,7 +2609,22 @@ export class GameRenderer {
         label.title = DEFINITIONS[unit.type].name
         label.innerHTML =
           '<span></span><i><b></b></i>' +
-          (unit.owner === 'player' ? '<em class="battle-relocation-status" hidden></em><em class="battle-special-status" hidden></em>' : '')
+          (unit.owner === 'player'
+            ? '<em class="battle-relocation-status" hidden></em><em class="battle-special-status" hidden></em><em class="unit-level" hidden></em><button type="button" class="unit-upgrade-badge" hidden></button>'
+            : '')
+        const upgrade = label.querySelector<HTMLButtonElement>('.unit-upgrade-badge')
+        if (upgrade) {
+          const id = unit.id
+          // Keep the tap off the field's drag, pan and selection handlers.
+          upgrade.addEventListener('pointerdown', (event) => event.stopPropagation())
+          upgrade.addEventListener('click', (event) => {
+            event.stopPropagation()
+            this.onUpgradeRequest?.(id)
+          })
+        }
+        label.addEventListener('animationend', (event) => {
+          if (event.target === label) label.classList.remove('level-up')
+        })
         this.host.append(label)
         this.healthLabels.set(unit.id, { element: label, hp: -1 })
         this.scene.add(group)
@@ -2651,6 +2684,31 @@ export class GameRenderer {
         specialBadge.hidden = s.phase !== 'assault' || unit.hp <= 0 || remaining === 0
         const text = `✦ ${remaining}`
         if (specialBadge.textContent !== text) specialBadge.textContent = text
+      }
+      const levelChip = label.querySelector<HTMLElement>('.unit-level')
+      if (levelChip) {
+        const level = unit.level ?? 1,
+          text = `Lv${level}`
+        levelChip.hidden = s.economyVersion !== 2 || unit.hp <= 0
+        if (levelChip.textContent !== text) {
+          levelChip.textContent = text
+          levelChip.dataset.level = String(level)
+          levelChip.title = `レベル${level}`
+        }
+      }
+      const upgradeBadge = label.querySelector<HTMLButtonElement>('.unit-upgrade-badge')
+      if (upgradeBadge) {
+        const cost = unit.hp > 0 ? this.upgradeOffers.get(unit.id) : undefined
+        upgradeBadge.hidden = cost === undefined
+        const key = cost === undefined ? '' : `${unit.level ?? 1}:${cost}`
+        if (cost !== undefined && upgradeBadge.dataset.offer !== key) {
+          upgradeBadge.dataset.offer = key
+          upgradeBadge.innerHTML = `<b aria-hidden="true">↑</b><small>${cost}G</small>`
+          const name = `${DEFINITIONS[unit.type].name}をレベル${(unit.level ?? 1) + 1}へ強化 · ${cost} G`
+          upgradeBadge.setAttribute('aria-label', name)
+          upgradeBadge.title = name
+        }
+        updateDataset(label, { upgrade: cost === undefined ? 'none' : 'ready' })
       }
       const relocationBadge = label.querySelector<HTMLElement>('.battle-relocation-status')
       if (relocationBadge) {

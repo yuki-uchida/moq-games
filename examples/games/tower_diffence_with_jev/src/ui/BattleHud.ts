@@ -1,4 +1,4 @@
-import { CONFIG, EARLY_CALL_GOLD_PER_SECOND, stageRules, waveStatus, type GameState } from '../game/model'
+import { CONFIG, DEFINITIONS, EARLY_CALL_GOLD_PER_SECOND, stageRules, waveStatus, type GameState } from '../game/model'
 
 const SPEED_KEY = 'tower-jev-speed-v1'
 export type BattleSpeed = 1 | 2
@@ -47,12 +47,18 @@ export class BattleHud {
   readonly waveCall: HTMLButtonElement
   private readonly waveCallBonus: HTMLElement
   private readonly waveCallTime: HTMLElement
+  /** The living boss's health, under the HUD while it is on the field. */
+  private readonly boss: HTMLElement
+  private readonly bossName: HTMLElement
+  private readonly bossFill: HTMLElement
+  private readonly bossTrail: HTMLElement
+  private readonly bossNum: HTMLElement
   private currentSpeed: BattleSpeed = readSpeed()
   private shown = false
   private speedShown = true
   private lastBaseHp = -1
   private lastCoins = -1
-  private cache = { castle: '', level: '', enemies: '', crown: '', coins: '', wave: '', call: '' }
+  private cache = { castle: '', level: '', enemies: '', crown: '', coins: '', wave: '', call: '', boss: '' }
 
   constructor(
     parent: HTMLElement,
@@ -63,7 +69,7 @@ export class BattleHud {
     this.root = document.createElement('div')
     this.root.className = 'battle-hud'
     this.root.hidden = true
-    this.root.innerHTML = `<div class="bhud-main"><div class="bhud-wave" role="group" aria-label="ウェーブ" hidden><small>WAVE</small><output class="bhud-num"></output></div><div class="bhud-castle" role="group" aria-label="拠点の体力">${ICONS.castle}<span class="bhud-bar"><i class="bhud-trail"></i><b class="bhud-fill"></b></span><output class="bhud-num"></output></div><div class="bhud-enemies" role="group" aria-label="敵の進行">${ICONS.enemy}<span class="bhud-bar"><b class="bhud-fill"></b></span><output class="bhud-num"></output><span class="bhud-crown" data-state="idle" title="ボス">${ICONS.crown}</span></div></div><div class="bhud-side"><div class="bhud-coins" role="group" aria-label="戦闘で得たコイン">${ICONS.coin}<output class="bhud-num">+0</output></div><button class="bhud-pause" type="button" aria-label="一時停止" title="一時停止 (P)" hidden>${ICONS.pause}</button><button class="bhud-speed" type="button" aria-pressed="false" aria-label="速度 2倍" title="速度 2倍">${ICONS.speed}<span></span></button></div><button class="wave-call" type="button" hidden aria-keyshortcuts="N"><span class="wave-call-time"></span><b class="wave-call-title">次のウェーブ ▶</b><span class="wave-call-bonus"></span></button>`
+    this.root.innerHTML = `<div class="bhud-main"><div class="bhud-wave" role="group" aria-label="ウェーブ" hidden><small>WAVE</small><output class="bhud-num"></output></div><div class="bhud-castle" role="group" aria-label="拠点の体力">${ICONS.castle}<span class="bhud-bar"><i class="bhud-trail"></i><b class="bhud-fill"></b></span><output class="bhud-num"></output></div><div class="bhud-enemies" role="group" aria-label="敵の進行">${ICONS.enemy}<span class="bhud-bar"><b class="bhud-fill"></b></span><output class="bhud-num"></output><span class="bhud-crown" data-state="idle" title="ボス">${ICONS.crown}</span></div></div><div class="bhud-side"><div class="bhud-coins" role="group" aria-label="戦闘で得たコイン">${ICONS.coin}<output class="bhud-num">+0</output></div><button class="bhud-pause" type="button" aria-label="一時停止" title="一時停止 (P)" hidden>${ICONS.pause}</button><button class="bhud-speed" type="button" aria-pressed="false" aria-label="速度 2倍" title="速度 2倍">${ICONS.speed}<span></span></button></div><button class="wave-call" type="button" hidden aria-keyshortcuts="N"><span class="wave-call-time"></span><b class="wave-call-title">次のウェーブ ▶</b><span class="wave-call-bonus"></span></button><div class="bhud-boss" role="group" aria-label="ボスの体力" hidden>${ICONS.crown}<b class="bhud-boss-name"></b><span class="bhud-boss-bar"><i class="bhud-trail"></i><b class="bhud-fill"></b></span><output class="bhud-num"></output></div>`
     parent.append(this.root)
     const q = <T extends HTMLElement>(selector: string) => this.root.querySelector<T>(selector)!
     this.castle = q('.bhud-castle')
@@ -89,6 +95,11 @@ export class BattleHud {
     this.waveCallBonus = q('.wave-call-bonus')
     this.waveCallTime = q('.wave-call-time')
     this.waveCall.addEventListener('click', () => this.onCallWave?.())
+    this.boss = q('.bhud-boss')
+    this.bossName = q('.bhud-boss-name')
+    this.bossFill = q('.bhud-boss .bhud-fill')
+    this.bossTrail = q('.bhud-boss .bhud-trail')
+    this.bossNum = q('.bhud-boss .bhud-num')
     this.paintSpeed()
   }
 
@@ -178,6 +189,25 @@ export class BattleHud {
     if (!rules.bossType) crown = 'none'
     else if (state.corpses.some((corpse) => corpse.owner === 'ai' && corpse.boss)) crown = 'down'
     else if (state.units.some((unit) => unit.owner === 'ai' && unit.boss)) crown = 'alive'
+    const boss = state.phase === 'assault' ? state.units.find((unit) => unit.owner === 'ai' && unit.boss && unit.hp > 0) : undefined,
+      bossHp = boss ? Math.ceil(boss.hp) : 0,
+      bossKey = boss ? `${boss.id}:${bossHp}:${Math.ceil(boss.maxHp)}` : ''
+    if (bossKey !== this.cache.boss) {
+      const appeared = !!boss && !this.cache.boss.startsWith(`${boss.id}:`)
+      this.cache.boss = bossKey
+      this.boss.hidden = !boss
+      if (boss) {
+        const ratio = Math.max(0, Math.min(1, boss.hp / boss.maxHp)),
+          name = DEFINITIONS[boss.type].name
+        this.bossName.textContent = name
+        this.bossFill.style.width = `${ratio * 100}%`
+        this.bossTrail.style.width = `${ratio * 100}%`
+        this.bossNum.textContent = `${bossHp} / ${Math.ceil(boss.maxHp)}`
+        this.boss.setAttribute('aria-label', `ボス ${name} の体力 ${bossHp} / ${Math.ceil(boss.maxHp)}`)
+        this.boss.dataset.level = ratio < 0.3 ? 'low' : 'ok'
+        if (appeared) this.boss.animate([{ opacity: 0, scale: '0.9' }, { opacity: 1, scale: '1' }], { duration: 320 })
+      }
+    }
     if (crown !== this.cache.crown) {
       this.cache.crown = crown
       this.crown.dataset.state = crown

@@ -377,15 +377,18 @@ export class BattleFeedback {
         if (cleared > this.wavesCleared && wave.inBreak) this.waveToast(`WAVE ${cleared} CLEAR!`, '仲間が全回復')
         if (started > this.wavesStarted && started > 1) {
           const final = started === waves.length,
-            boss = final && !!stageRules(state.stage, state.waveBossPolicy).bossType
-          this.banner(
-            boss ? 'boss' : 'wave',
-            final ? 'FINAL WAVE' : `WAVE ${started}`,
-            final ? (boss ? 'ボスが来るぞ！' : `WAVE ${started}/${waves.length}`) : `WAVE ${started}/${waves.length}`
-          )
-          if (boss) this.options.play('boss')
-          else this.options.play('assault')
-          this.options.announce?.(final ? '最終ウェーブ' : `ウェーブ${started}`)
+            bossType = final ? stageRules(state.stage, state.waveBossPolicy).bossType : null
+          if (bossType) {
+            // The boss wave gets its own red warning: striped banner, pulsing red edges and the horn.
+            this.banner('boss', 'BOSS 接近', `FINAL WAVE · ${DEFINITIONS[bossType].name}`, 0, 'approach')
+            this.alarm()
+            this.options.play('boss')
+            this.options.announce?.(`最終ウェーブ · ボス接近 ${DEFINITIONS[bossType].name}`)
+          } else {
+            this.banner('wave', final ? 'FINAL WAVE' : `WAVE ${started}`, `WAVE ${started}/${waves.length}`)
+            this.options.play('assault')
+            this.options.announce?.(final ? '最終ウェーブ' : `ウェーブ${started}`)
+          }
         }
       }
       this.wavesStarted = started
@@ -626,7 +629,10 @@ export class BattleFeedback {
     this.options.announce?.(`ボス出現 ${DEFINITIONS[type].name}`)
   }
 
-  /** Policy 5: battle gold a kill paid pops over the corpse; an early wave call pops by the call button. */
+  /**
+   * Policy 5: battle gold a kill paid pops over the corpse, a wave clear's bonus joins the WAVE CLEAR toast and an
+   * early wave call pops by the call button.
+   */
   goldGains(gains: readonly GoldGain[]): void {
     if (!gains.length || gains[0].battleId + ':' + gains[0].stage !== this.key) return
     for (const gain of gains) {
@@ -637,9 +643,55 @@ export class BattleFeedback {
           1300,
           true
         )
+      else if (gain.kind === 'wave-clear') this.waveClearBonus(gain.amount)
       else this.waveToast(`+${gain.amount}G`, '早期ボーナス', 'bonus')
     }
     this.options.play('coin')
+  }
+
+  /** An ally just levelled up at world point (x, y = its feet): a ring and rising sparkles, LEVEL UP! and a chime. */
+  levelUp(x: number, y: number, level: number): void {
+    const ring = this.make('fx-levelup', x, y - 34)
+    ring.innerHTML = Array.from({ length: 8 }, (_, i) => `<i style="--i:${i}"></i>`).join('')
+    this.spawn(this.options.field, ring, 1100, true)
+    const text = this.make('fx-num levelup', x, y - 118, 'LEVEL UP!')
+    const small = document.createElement('small')
+    small.textContent = `Lv${level}`
+    text.append(small)
+    this.spawn(this.options.field, text, 1400, true)
+    this.options.play('upgrade')
+  }
+
+  private waveClearBonus(amount: number): void {
+    let toast = this.toastEl
+    if (!toast?.isConnected || !toast.classList.contains('clear')) {
+      this.waveToast('WAVE CLEAR!', '仲間が全回復')
+      toast = this.toastEl!
+    }
+    toast.querySelector('.fx-wave-bonus')?.remove()
+    const bonus = document.createElement('em')
+    bonus.className = 'fx-wave-bonus'
+    bonus.textContent = `+${amount}G`
+    toast.insertBefore(bonus, toast.querySelector('small'))
+    toast.dataset.bonus = String(amount)
+    this.options.announce?.(`ウェーブクリア · ボーナス ${amount} G`)
+  }
+
+  /** Red screen-edge pulses for an approaching boss. */
+  private alarm(): void {
+    if (prefersReducedMotion()) return
+    this.vignette.animate(
+      [
+        { opacity: 0 },
+        { opacity: 0.85, offset: 0.15 },
+        { opacity: 0.1, offset: 0.35 },
+        { opacity: 0.85, offset: 0.55 },
+        { opacity: 0.1, offset: 0.75 },
+        { opacity: 0.7, offset: 0.88 },
+        { opacity: 0 }
+      ],
+      { duration: 1800 }
+    )
   }
 
   private waveToast(title: string, small: string, kind: 'clear' | 'bonus' = 'clear'): void {
@@ -656,13 +708,19 @@ export class BattleFeedback {
     })
     this.overlay.append(el)
     this.toastEl = el
-    if (kind === 'clear') this.options.play('clear')
+    if (kind === 'clear') this.options.play('wave-clear')
   }
 
-  private banner(kind: 'assault' | 'boss' | 'win' | 'lose' | 'wave', title: string, small: string, sparkles = 0): void {
+  private banner(
+    kind: 'assault' | 'boss' | 'win' | 'lose' | 'wave',
+    title: string,
+    small: string,
+    sparkles = 0,
+    variant = ''
+  ): void {
     this.bannerEl?.remove()
     const el = document.createElement('div')
-    el.className = `fx-banner ${kind}`
+    el.className = `fx-banner ${kind}${variant ? ` ${variant}` : ''}`
     const text = document.createElement('b')
     text.textContent = title
     if (small) {

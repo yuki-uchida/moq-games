@@ -54,6 +54,7 @@ import {
   fieldFor,
   pointOnPath,
   stageRules,
+  isWaveCampaign,
   actionLabel,
   type AllyType,
   type UnitType,
@@ -246,7 +247,7 @@ $('app').innerHTML = `${titleScreenMarkup(artBase)}
 <button id="items-toggle" class="field-icon" aria-expanded="false" aria-controls="item-tray" aria-label="道の備え" title="道の備え">${fortificationIcon('tools')}</button>
 <button id="assault" class="field-icon primary" aria-label="襲撃開始" title="襲撃開始" disabled>▶</button>
 </nav><div id="road-placement-status" hidden><span id="road-placement-label" role="status"></span><button id="road-placement-cancel" type="button">取消</button></div></div><p id="control-tooltip" role="tooltip" hidden></p>
-<section id="unit-tray" class="floating-tray panel" aria-labelledby="unit-tray-title" hidden><div class="tray-heading"><h2 id="unit-tray-title" class="tray-title">仲間・控え</h2><span id="count" class="sr-only"></span><span id="ai-mode" class="sr-only"></span><button id="unit-tray-close" class="icon-close" aria-label="仲間を閉じる">×</button></div><div class="tray-heading tray-roster-actions"><button id="scout" class="scout-button" hidden aria-label="仲間をスカウト · 80 G" title="仲間をスカウト · 80 G">${fortificationIcon('scout')}<span>◈ ${SCOUT_COST}</span></button><button id="upgrade" aria-controls="upgrade-panel" aria-expanded="false" aria-label="旧遠征の強化" title="旧遠征の強化" hidden>↑</button><button id="unit-prev" class="tray-page" aria-label="前の仲間" hidden>‹</button><span id="unit-page" class="tray-page-count" aria-live="polite" hidden></span><button id="unit-next" class="tray-page" aria-label="次の仲間" hidden>›</button></div><div class="cards" aria-label="配置できる仲間">${ALLY_TYPES.map((type, i) => `<button class="unit" id="unit-${type}" aria-label="${DEFINITIONS[type].name} をドラッグして配置" title="${DEFINITIONS[type].name} · 40 G" hidden><kbd aria-hidden="true">${(i + 1) % 10}</kbd><img src="${displayPortrait(type) ?? ''}" alt="" draggable="false"><small id="level-${type}"></small><span class="unit-check" aria-hidden="true">✓</span></button>`).join('')}</div></section>
+<section id="unit-tray" class="floating-tray panel" aria-labelledby="unit-tray-title" hidden><div class="tray-heading"><h2 id="unit-tray-title" class="tray-title">仲間・控え</h2><span id="count" class="sr-only"></span><span id="ai-mode" class="sr-only"></span><button id="unit-tray-close" class="icon-close" aria-label="仲間を閉じる">×</button></div><div class="tray-heading tray-roster-actions"><button id="scout" class="scout-button" hidden aria-label="仲間をスカウト · 80 G" title="仲間をスカウト · 80 G">${fortificationIcon('scout')}<span>◈ ${SCOUT_COST}</span></button><button id="upgrade" aria-controls="upgrade-panel" aria-expanded="false" aria-label="旧遠征の強化" title="旧遠征の強化" hidden>↑</button><button id="unit-prev" class="tray-page" aria-label="前の仲間" hidden>‹</button><span id="unit-page" class="tray-page-count" aria-live="polite" hidden></span><button id="unit-next" class="tray-page" aria-label="次の仲間" hidden>›</button></div><div class="cards" aria-label="配置できる仲間">${ALLY_TYPES.map((type, i) => `<button class="unit" id="unit-${type}" aria-label="${DEFINITIONS[type].name} をドラッグして配置" title="${DEFINITIONS[type].name} · 40 G" hidden><kbd aria-hidden="true">${(i + 1) % 10}</kbd><img src="${displayPortrait(type) ?? ''}" alt="" draggable="false"><small id="level-${type}"></small><span class="unit-check" aria-hidden="true">✓</span></button>`).join('')}</div><p id="unit-tray-empty" class="tray-empty" role="status" hidden><b id="unit-tray-empty-title"></b><small id="unit-tray-empty-hint"></small></p></section>
 <section id="item-tray" class="floating-tray panel" aria-labelledby="item-tray-title" hidden><div class="tray-heading"><h2 id="item-tray-title" class="tray-title">道の備え</h2><span id="sandbag-stock" class="sr-only"></span><button id="item-tray-close" class="icon-close" aria-label="道の備えを閉じる">×</button></div><div class="road-actions item-tools"><button id="sandbag-place" class="item-tool" aria-pressed="false" aria-label="土のうを配置" aria-describedby="sandbag-stock" title="土のうを配置">${fortificationIcon('sandbag')}<span class="item-tool-name">土のう</span><small id="sandbag-place-label"></small></button>${roadItemControls}</div><p id="paid-item-status" class="sr-only" role="status" hidden></p></section>
 <section id="selection-context" class="selection-context floating-tray panel" aria-labelledby="unit-action-name" hidden><div class="context-heading"><b id="unit-action-name"></b><button id="selection-close" aria-label="選択メニューを閉じる">×</button></div><p id="unit-action-status"></p><div id="defender-actions" class="context-actions"><button id="unit-special" aria-label="必殺技" title="必殺技" hidden>✦</button><button id="unit-upgrade" aria-label="強化" title="強化">↑</button><button id="unit-move" aria-label="キーボードで移動" title="キーボードで移動">✥</button><button id="unit-recall" aria-label="控えに戻す · 40 G返金" title="控えに戻す · 40 G返金">↩ <small>+40</small></button></div><div id="sandbag-actions" class="context-actions" hidden><button id="sandbag-move" aria-label="土のうを移動" title="土のうを移動" disabled>✥</button><button id="sandbag-remove" aria-label="土のうを撤去" title="土のうを撤去" disabled>×</button></div><div id="road-item-actions" class="context-actions" hidden><button id="road-item-move" aria-label="アイテムを移動" title="アイテムを移動">✥</button><button id="road-item-remove" aria-label="アイテムを撤去・返金なし" title="アイテムを撤去・返金なし">×</button></div>${equipmentControls}<p id="unit-action-hint" class="sr-only" role="status"></p></section>
 </main>
@@ -782,9 +783,48 @@ function assaulting() {
 function building() {
   return preparing() || (assaulting() && engine.buildWindowOpen)
 }
-/** Assault outside a wave break: only battle relocation and specials are available. */
+/** Assault outside a wave break: battle relocation and specials (and, under policy 5, upgrades and gear). */
 function fighting() {
   return assaulting() && !engine.buildWindowOpen
+}
+/** Allies may be upgraded and equipped: while building, and under policy 5 at any point of a running assault. */
+function improvable() {
+  return building() || (assaulting() && isWaveCampaign(engine.state.waveBossPolicy))
+}
+/** Allies on the field whose next level the player can buy right now, with its cost (the tap-to-upgrade badges). */
+function upgradeOffers(): Map<number, number> {
+  const offers = new Map<number, number>()
+  if (
+    !paidRoster() ||
+    !improvable() ||
+    paused ||
+    specialAimId !== null ||
+    placingSandbag ||
+    placingRoadItem ||
+    document.querySelector('dialog[open]')
+  )
+    return offers
+  // In preparation an ally still waiting to deploy comes first: no upgrade nudges until the formation is out.
+  if (preparing() && ALLY_TYPES.some((type) => rosterEligible(type))) return offers
+  for (const unit of engine.state.units) {
+    if (unit.owner !== 'player' || unit.slotId === undefined || unit.hp <= 0) continue
+    const cost = engine.upgradeOffer(unit.id)
+    if (cost !== null) offers.set(unit.id, cost)
+  }
+  return offers
+}
+/** Buy the ally's next level (the field badge or the context menu), with its level-up burst and chime. */
+function upgradeAlly(id: number): boolean {
+  const unit = findDefender(engine.state, id)
+  if (!unit || !paidRoster() || !improvable() || paused || !engine.upgradeDefender(id)) return false
+  const level = defenderLevel(unit, save)
+  persist()
+  renderer.levelUp(id)
+  battleFeedback.levelUp(unit.x, unit.y, level)
+  updateSelectionContext()
+  updateRosterControls()
+  announce(`${DEFINITIONS[unit.type].name}をレベル${level}に強化しました。残りHPの割合を保ち、回復はしません。`)
+  return true
 }
 function announce(message: string) {
   $('feedback').textContent = message
@@ -2135,7 +2175,7 @@ function updateSelectionContext() {
   $('defender-actions').hidden = !unit
   $('sandbag-actions').hidden = !bag
   $('road-item-actions').hidden = !item
-  $('equipment-actions').hidden = !building() || !unit || !paidRoster()
+  $('equipment-actions').hidden = !improvable() || !unit || !paidRoster()
   if (unit) {
     const reserve = unit.slotId === undefined,
       level = defenderLevel(unit, save),
@@ -2148,9 +2188,9 @@ function updateSelectionContext() {
         relocating = !!unit.battleRelocation?.destination
       $('unit-action-status').textContent += relocating ? ' · ↝' : ` · ↦ ${remaining}`
       $('unit-recall').hidden = true
-      if (building() && paidRoster()) paintEquipment(unit)
-      // Between waves the selected ally can also be upgraded.
-      $('unit-upgrade').hidden = !building() || !paidRoster()
+      if (improvable() && paidRoster()) paintEquipment(unit)
+      // Between waves (and during policy-5 waves) the selected ally can also be upgraded.
+      $('unit-upgrade').hidden = !improvable() || !paidRoster()
       $<HTMLButtonElement>('unit-upgrade').disabled = !canUpgrade
       $('unit-upgrade').textContent = Number.isFinite(cost) ? `↑${level + 1} · ◈${cost}` : 'MAX'
       $('unit-move').hidden = false
@@ -2275,7 +2315,7 @@ function updateFortificationControls() {
   }
 }
 function buyEquipment(id: number, equipment: Equipment) {
-  if (!building() || !paidRoster() || !engine.equipDefender(id, equipment)) return
+  if (!improvable() || !paidRoster() || !engine.equipDefender(id, equipment)) return
   persist()
   selectDefender(id, false)
   updateFortificationControls()
@@ -2287,7 +2327,7 @@ for (const equipment of ['weapon', 'armor'] as const)
   $(`equipment-${equipment}`).onclick = () => {
     const unit = selectedDefender()
     if (
-      !building() ||
+      !improvable() ||
       !paidRoster() ||
       !unit ||
       unit.equipment === equipment ||
@@ -2317,7 +2357,7 @@ $('fortification-confirm-accept').onclick = () => {
   fortificationConfirm.close()
   if (!action || !paidRoster()) return
   if (action.kind === 'equipment') {
-    if (!building()) return
+    if (!improvable()) return
     if (findDefender(engine.state, action.id)?.equipment === action.previous) buyEquipment(action.id, action.equipment)
   } else if (preparing() && engine.removeRoadItem(action.id)) {
     clearPlacementModes()
@@ -2374,11 +2414,10 @@ $('unit-recall').onclick = () => {
   if (selectedDefenderId !== null) recallDefender(selectedDefenderId)
 }
 $('unit-upgrade').onclick = () => {
-  if (!building() || selectedDefenderId === null || !engine.upgradeDefender(selectedDefenderId)) return
-  soundPlayer.playCue('ui_upgrade')
-  persist()
-  updateSelectionContext()
-  announce('選択中の仲間を強化しました。残りHPの割合を保ち、回復はしません。')
+  if (selectedDefenderId !== null) upgradeAlly(selectedDefenderId)
+}
+renderer.onUpgradeRequest = (id) => {
+  upgradeAlly(id)
 }
 $('unit-move').onclick = () => {
   const unit = selectedDefender()
@@ -2564,6 +2603,32 @@ function updateRosterControls() {
       : availableCount
         ? `仲間 ${availableCount} · 控え ${reserveCount}`
         : '配置できる仲間はいません'
+  const formation = availableAllies(save, engine.state.stage),
+    allOut =
+      formation.length > 0 &&
+      formation.every((type) =>
+        retainedDefenders(engine.state).some((unit) => unit.type === type && unit.slotId !== undefined)
+      ),
+    emptyTitle = !paidRoster() || availableCount
+      ? ''
+      : allOut
+        ? preparing()
+          ? '全員配置済み — 余ったGで仲間を強化しよう'
+          : '全員出撃中 — 撃破Gで仲間を強化しよう'
+        : !building()
+          ? '控えの仲間はウェーブの合間に出撃できます'
+          : `出撃には${DEPLOYMENT_COST}G必要です`,
+    emptyHint = allOut
+      ? improvable()
+        ? '仲間の頭上の「↑」をタップすると、すぐにレベルアップします。'
+        : ''
+      : !building()
+        ? '敵をたおすとGが入ります。仲間の頭上の「↑」で強化もできます。'
+        : '敵をたおすとGが入ります。'
+  $('unit-tray-empty').hidden = !emptyTitle
+  if ($('unit-tray-empty-title').textContent !== emptyTitle) $('unit-tray-empty-title').textContent = emptyTitle
+  if ($('unit-tray-empty-hint').textContent !== emptyHint) $('unit-tray-empty-hint').textContent = emptyHint
+  $('unit-tray-empty-hint').hidden = !emptyHint
   $('deck-toggle').title = tooltip
   $('deck-toggle').setAttribute('aria-label', heldDefenderId !== null ? tooltip : `${tooltip}。仲間・控えを開く`)
   $('unit-tray').setAttribute('aria-description', tooltip)
@@ -3121,6 +3186,9 @@ function frame(now: number) {
   renderer.setCommanderMode(engine.ai !== rule)
   syncBattleMusic()
   soundPlayer.setBattle(state.battleId, state.stage)
+  const offers = upgradeOffers()
+  renderer.setUpgradeOffers(offers)
+  skillBar.setUpgradeOffers(offers)
   renderer.render(
     state,
     specialAimId !== null || placingSandbag || placingRoadItem || document.querySelector('dialog[open]') ? null : (dropTarget ?? selectedSlot),

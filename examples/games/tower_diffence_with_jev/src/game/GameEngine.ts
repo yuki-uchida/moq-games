@@ -114,6 +114,10 @@ import {
   baseDamageFactor,
   WAVE_BREAK_SECONDS,
   killGold,
+  isWaveCampaign,
+  bossLeavesAfterBreach,
+  WAVE_BOSS_BREACH,
+  waveClearGold,
   waveStart,
   waveStatus,
   type WaveStatus
@@ -154,10 +158,10 @@ import {
 } from './BreathGeometry'
 const SPECIAL_IMPACT_QUEUE_LIMIT = 256
 const GOLD_GAIN_QUEUE_LIMIT = 64
-/** Presentation only: battle gold a kill or an early wave call just paid (policy 5). */
+/** Presentation only: battle gold a kill, a wave clear or an early wave call just paid (policy 5). */
 export interface GoldGain {
   id: string
-  kind: 'kill' | 'early-call'
+  kind: 'kill' | 'wave-clear' | 'early-call'
   amount: number
   x: number
   y: number
@@ -270,6 +274,30 @@ export class GameEngine {
   }
   private canBuild(): boolean {
     return this.state.phase === 'preparation' || this.buildWindowOpen
+  }
+  /**
+   * Upgrades and equipment follow the build window, except under policy 5 where a living ally on the field may
+   * also be improved while a wave is on.
+   */
+  private canImprove(unit: Readonly<Unit>): boolean {
+    const s = this.state
+    if (this.canBuild()) return true
+    return (
+      isWaveCampaign(s.waveBossPolicy) &&
+      s.phase === 'assault' &&
+      !s.result &&
+      unit.hp > 0 &&
+      unit.slotId !== undefined &&
+      s.units.includes(unit as Unit)
+    )
+  }
+  /** Gold the next level of this ally costs when it can be bought right now, or null (presentation and input). */
+  upgradeOffer(unitId: number): number | null {
+    const s = this.state,
+      unit = findDefender(s, unitId)
+    if (s.economyVersion !== 2 || !unit || unit.hp <= 0 || !this.canImprove(unit)) return null
+    const cost = upgradeCost(defenderLevel(unit, this.save))
+    return Number.isFinite(cost) && canSpendOnRoster(this.save, cost, s) ? cost : null
   }
   /** Gold the early call would pay right now (0 when no break is running). */
   get earlyCallBonus(): number {
@@ -686,9 +714,9 @@ export class GameEngine {
       unit = findDefender(s, unitId)
     if (
       s.economyVersion !== 2 ||
-      !this.canBuild() ||
       !unit ||
       unit.hp <= 0 ||
+      !this.canImprove(unit) ||
       (equipment !== 'weapon' && equipment !== 'armor') ||
       unit.equipment === equipment ||
       !canSpendOnRoster(this.save, FORTIFICATIONS.equipmentCost, s)
@@ -883,7 +911,7 @@ export class GameEngine {
   upgradeDefender(unitId: number): boolean {
     const s = this.state,
       unit = findDefender(s, unitId)
-    if (s.economyVersion !== 2 || !this.canBuild() || !unit || unit.hp <= 0) return false
+    if (s.economyVersion !== 2 || !unit || unit.hp <= 0 || !this.canImprove(unit)) return false
     const level = defenderLevel(unit, this.save),
       cost = upgradeCost(level)
     if (!canSpendOnRoster(this.save, cost, s)) return false
@@ -908,6 +936,11 @@ export class GameEngine {
       healthFraction = unit.hp / unit.maxHp
     if (stats.attack > unit.attack && this.state.units.includes(unit))
       this.history.change(this.state, 'upgrade', unit, canInitiateDamage(unit) ? stats.attack - unit.attack : 0)
+    // A policy-5 upgrade or new gear during a wave also strengthens the ally's attacks already under way.
+    if (stats.attack !== unit.attack && unit.attack > 0)
+      for (const attack of this.state.attacks)
+        if (attack.attackerId === unit.id && attack.owner === unit.owner && attack.power > 0)
+          attack.power *= stats.attack / unit.attack
     unit.hp =
       this.state.economyVersion === 2
         ? unit.maxHp === stats.maxHp
@@ -1853,8 +1886,26 @@ export class GameEngine {
       : undefined
   }
   private latchGateExit(unit: Unit | undefined, attack: CombatAttack): void {
-    if (this.state.battlefieldVersion !== 2 || !unit || unit.owner !== 'ai' || unit.boss || unit.gateExit) return
+    const s = this.state
+    if (
+      s.battlefieldVersion !== 2 ||
+      !unit ||
+      unit.owner !== 'ai' ||
+      (unit.boss && !bossLeavesAfterBreach(s.waveBossPolicy)) ||
+      unit.gateExit
+    )
+      return
     unit.gateExit = { attackId: attack.id, exitAt: Math.max(attack.endsAt, attack.impactAt) }
+  }
+  /**
+   * Castle damage (before the gate and stage factors) of `power` from `attack`. A policy-5 boss's blow is a fixed
+   * breach of {@link WAVE_BOSS_BREACH} castle HP, shared over its breath ticks, whatever its attack.
+   */
+  private castleHit(attack: CombatAttack, power: number): number {
+    const s = this.state
+    if (!attack.boss || attack.owner !== 'ai' || !bossLeavesAfterBreach(s.waveBossPolicy) || !(attack.power > 0))
+      return power
+    return (WAVE_BOSS_BREACH / baseDamageFactor(s.stage, s.waveBossPolicy)) * (power / attack.power)
   }
   /** Policy 5 wave clear: every ally, fallen ones included, regroups at full health for the next wave. */
   private regroupDefenders(): void {
@@ -2399,10 +2450,11 @@ export class GameEngine {
           const power = attack.power / BREATH_TIMING.tickCount
           if (attack.base) {
             if (insideBreath(breath.shape, { x: base.x, y: base.y - 22 })) {
-              baseDamage += power
+              const castle = this.castleHit(attack, power)
+              baseDamage += castle
               baseContributions.push({
                 deploymentId: this.deploymentByUnit.get(attack.attackerId),
-                amount: power
+                amount: castle
               })
               attack.damageHit = true
               this.latchGateExit(attacker, attack)
@@ -2454,10 +2506,11 @@ export class GameEngine {
       if (attack.base && attack.damageActive) {
         attack.damageHit = true
         this.latchGateExit(attacker, attack)
-        baseDamage += attack.power
+        const castle = this.castleHit(attack, attack.power)
+        baseDamage += castle
         baseContributions.push({
           deploymentId: this.deploymentByUnit.get(attack.attackerId),
-          amount: attack.power
+          amount: castle
         })
         hit = true
       }
@@ -2654,6 +2707,8 @@ export class GameEngine {
         s.enemiesSpawned < waveRules.reduce((sum, count) => sum + count, 0)
       ) {
         s.waveBreak = { wave: wave.nextWave, until: s.time + WAVE_BREAK_SECONDS }
+        const castle = fieldFor(s).path.at(-1)!
+        this.earnWaveGold('wave-clear', waveClearGold(wave.nextWave - 1), castle, false, wave.nextWave - 1)
         this.regroupDefenders()
       }
     }
