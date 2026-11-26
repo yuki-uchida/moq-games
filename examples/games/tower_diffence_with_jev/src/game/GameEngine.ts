@@ -109,9 +109,9 @@ import {
   type AINoDecisionReason,
   CURRENT_WAVE_BOSS_POLICY,
   enemyGeometryScale,
+  enemyWalkSpeed,
   EARLY_CALL_GOLD_PER_SECOND,
-  WAVE_BASE_DAMAGE_FACTOR,
-  isWaveCampaign,
+  baseDamageFactor,
   WAVE_BREAK_SECONDS,
   killGold,
   waveStart,
@@ -1076,7 +1076,12 @@ export class GameEngine {
       hp,
       maxHp: hp,
       attack: stats.attack,
-      speed: owner === 'player' ? (type === 'tank' ? TANK_GUARD.moveSpeed : 52) : d.speed * (boss ? 0.8 : 1),
+      speed:
+        owner === 'player'
+          ? type === 'tank'
+            ? TANK_GUARD.moveSpeed
+            : 52
+          : enemyWalkSpeed(type as EnemyType, boss, this.state.waveBossPolicy, this.state.layoutRevision),
       attackRange: stats.range,
       attackSpeed: d.attackSpeed,
       attackCooldown: 0,
@@ -2607,7 +2612,7 @@ export class GameEngine {
     if (s.fortifications)
       s.fortifications.items = s.fortifications.items.filter((item) => item.kind !== 'spike' || item.hp > 0)
     const rawBaseDamage = baseDamage
-    baseDamage *= gateDamageFactor(s) * (isWaveCampaign(s.waveBossPolicy) ? WAVE_BASE_DAMAGE_FACTOR : 1)
+    baseDamage *= gateDamageFactor(s) * baseDamageFactor(s.stage, s.waveBossPolicy)
     const effectiveBaseDamage = Math.min(s.playerBaseHp, baseDamage)
     s.stageSummary.baseDamage = Math.min(CONFIG.baseHp, s.stageSummary.baseDamage + effectiveBaseDamage)
     for (const contribution of baseContributions) {

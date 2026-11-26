@@ -106,6 +106,10 @@ class WaveState(BoundedModel):
     waves: list[int] | None = Field(default=None, max_length=12)
     currentWave: int | None = Field(default=None, ge=1, le=12)
     waveBreakIn: float | None = Field(default=None, ge=0, le=300)
+    # Policy 5: attacks scale by attackStrength, bosses keep bossStrength, enemies walk walkSpeedFactor faster.
+    attackStrength: float | None = Field(default=None, gt=0, le=100)
+    bossStrength: float | None = Field(default=None, gt=0, le=100)
+    walkSpeedFactor: float | None = Field(default=None, gt=0, le=10)
 
 
 class FlightState(BoundedModel):
@@ -1279,16 +1283,29 @@ def no_decision(reason: str, source: str = 'bot') -> dict:
 
 
 FINALE_DRAGON_BOSS_ATTACK = .75  # mirrors model.ts
+WAVE_ATTACK_SCALING = .5  # mirrors model.ts (policy 5)
+WAVE_BOSS_ATTACK_FACTOR = .7  # mirrors model.ts (policy 5)
 
 
 def spawn_stats(unit_type: str, state: dict, boss: bool = False) -> dict:
     stats = dict(UNIT_STATS[unit_type])
-    strength = state['wave']['strength']
-    stats['hp'] *= strength * (2.6 / 3 if boss else 1)
-    finale_dragon = boss and unit_type == 'dragon' and state['wave'].get('waveBossPolicy', 2) >= 3
-    stats['attack'] *= strength * (1.95 * (FINALE_DRAGON_BOSS_ATTACK if finale_dragon else 1) if boss else 1.3)
+    wave = state['wave']
+    strength = wave['strength']
+    boss_strength = wave.get('bossStrength') if boss else None
+    hp_scale = boss_strength if boss_strength is not None else strength
+    attack_scale = (
+        1 + (boss_strength - 1) * WAVE_ATTACK_SCALING
+        if boss_strength is not None
+        else wave.get('attackStrength') or strength
+    )
+    wave_boss = WAVE_BOSS_ATTACK_FACTOR if wave.get('waveBossPolicy', 2) >= 5 else 1
+    stats['hp'] *= hp_scale * (2.6 / 3 if boss else 1)
+    finale_dragon = boss and unit_type == 'dragon' and wave.get('waveBossPolicy', 2) >= 3
+    stats['attack'] *= attack_scale * (
+        1.95 * wave_boss * (FINALE_DRAGON_BOSS_ATTACK if finale_dragon else 1) if boss else 1.3
+    )
     stats['range'] *= 1.25 if boss and not finale_dragon else 1
-    stats['speed'] *= .8 if boss else 1
+    stats['speed'] *= (.8 if boss else 1) * (wave.get('walkSpeedFactor') or 1)
     stats['cooldown'] *= 1.5 if state['stage'] == 1 else 1
     stats['cost'] = 5 if boss else stats['cost']
     if state.get('combatObservation', {}).get('version') == 1:
@@ -1533,7 +1550,7 @@ class JevAdapter(ChoiceAdapter):
                 'roadEffects': road_rule,
                 'tacticalHistory': 'When enabled, board.tacticalHistory is self-contained browser-owned evidence: a 20-second recent window and at most three older completed deployments in this same stage/field. It is capped at 6000 bytes, with latest-first records and explicit truncation. Deployment totals are cumulative since startedAt; events/contributions cover only the recent window. Order/spacingSeconds are declared deployment order and delays; observedOrder/observedGaps are the last observed living formation. Front survival is elapsed so far while frontAlive is true. Upgrade event amount is the increase in attack power of that placed defender, not gold spent. Preparation event x/y are home positions; area-loss x/y are the victim centroid. Contributions are actual damage capped and proportionally allocated at resolution; onDefeatStep can identify several contributors in the same simultaneous lethal step, not a unique killer. Area-loss records mean multiple victims died on a step receiving the same area attack, not proof it alone caused the losses. Infer causes only tentatively. Missing or truncated records mean unknown, never absence. History disabled sends no prior outcomes or stage summary. Observation-only snapshots are not model conversation memory and are not merged into this request; only this decision board is consumed.',
                 'deployment': 'Only listed legalActions may be chosen. The browser enforces finite wave cost budgets, type unlocks, cooldowns, boss flags and spawn intervals. A wait names exactly one listed unitType and boss flag whose standalone deployment is blocked only by its current deployment cooldown. board.cooldowns is the request-time remaining-seconds snapshot. A targeted wait holds until its cooldown is ready. No Rule deployment runs while held. Readiness requests Jev once immediately, even inside five seconds, subject to busy/backoff guards. Waiting reserves no budget or units and promises no spawn. A ready unit, an unlisted target, and a generic wait are invalid. Formations are immutable, contain at most three distinct types, reserve their entire cost/count immediately, and preserve declared front-to-rear order. Bosses must be standalone final deployments.',
-                'scaling': 'unitStats and option member.unit already include stage-scaled HP/attack and deployment cooldown. Boss factors are HP (2.6 / 3), attack 1.95, range 1.25, speed 0.8. Under wave.waveBossPolicy 3 or later the stage-10 dragon boss keeps range x1, attack 1.95 x 0.75 and unscaled area geometry (splash and breath half size). Do not multiply these tables again. Stage strength is 1 + (stage - 1) * 0.10. Regular enemy attack adds 1.3; bosses do not. Observed defender HP/maxHp/attack already include current balance, level and equipment; do not apply another health multiplier. level/maxHp are per individual; do not reapply level scaling. Reserves are absent. Only stage-1 type deployment cooldowns get 1.5; global spawn/combat intervals are unchanged. Saved active waves retain bossType/budget until next stage. The wave clears only after every allocated monster has spawned and died, provided the player base survives.',
+                'scaling': 'unitStats and option member.unit already include stage-scaled HP/attack and deployment cooldown. Boss factors are HP (2.6 / 3), attack 1.95, range 1.25, speed 0.8. Under wave.waveBossPolicy 3 or later the stage-10 dragon boss keeps range x1, attack 1.95 x 0.75 and unscaled area geometry (splash and breath half size). Do not multiply these tables again. Stage strength is 1 + (stage - 1) * 0.10. Under wave.waveBossPolicy 5 HP uses wave.strength, attacks wave.attackStrength, the boss wave.bossStrength (attack 1.95 x 0.7) and walk speed wave.walkSpeedFactor when present. Regular enemy attack adds 1.3; bosses do not. Observed defender HP/maxHp/attack already include current balance, level and equipment; do not apply another health multiplier. level/maxHp are per individual; do not reapply level scaling. Reserves are absent. Only stage-1 type deployment cooldowns get 1.5; global spawn/combat intervals are unchanged. Saved active waves retain bossType/budget until next stage. The wave clears only after every allocated monster has spawned and died, provided the player base survives.',
                 'selection': 'Return relative probabilities for legal options. The browser combines whole-action scores with field weights and bounded seeded randomness without shuffling formation members. A selected wait is honored.',
                 'unitStats': {unit_type: spawn_stats(unit_type, state) for unit_type in UNIT_STATS}}},
             'questions': {'deployment': {

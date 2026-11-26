@@ -119,6 +119,8 @@ describe('v17 enemy checkpoint compatibility', () => {
   }
   it('migrates published v16 revision 4 without changing geometry or simulation', () => {
     const { engine, save } = game(1, 4)
+    // A published v16 battle ran the classic single assault, whose walkers keep their base speed.
+    engine.state.waveBossPolicy = 2
     expect(engine.applyAIAction({ type: 'spawn', unitType: 'slime', routeId: 'left' })).toBe(true)
     for (let tick = 0; tick < 30; tick++) engine.update(1 / 60)
     const checkpoint = structuredClone(engine.exportCheckpoint()!)
