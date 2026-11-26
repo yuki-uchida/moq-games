@@ -1,8 +1,7 @@
 import {
   ALLY_TYPES,
-  CONFIG,
   ENEMY_TYPES,
-  stageRules,
+  MAX_STAGE_ENEMY_COUNT,
   type DamageSourceType,
   type EnemyType,
   type GameState,
@@ -13,7 +12,8 @@ import { FORTIFICATIONS } from './Fortifications'
 
 /** Ten retained defenders, ten placed road items, and the gate. Stage ownership never reuses an ID. */
 export const ENEMY_HISTORY_LIMITS = {
-  enemies: stageRules(CONFIG.stages).enemyCount,
+  /** Every enemy of the largest stage under any wave policy. */
+  enemies: MAX_STAGE_ENEMY_COUNT,
   sourcesPerEnemy: ALLY_TYPES.length + FORTIFICATIONS.maxItems + 1,
   outcomes: 3,
   outcomeSources: 4,

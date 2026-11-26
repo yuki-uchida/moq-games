@@ -28,6 +28,8 @@ function campaign(stage = 1, field: FieldId = 'meadow') {
   const save = freshSave(),
     engine = new GameEngine(idle, save, field, 42, () => 0)
   engine.state.stage = stage
+  // These rules tests pin the single-assault counts (policy 4); wave-campaign.test.ts covers policy 5.
+  engine.state.waveBossPolicy = 4
   engine.place('soldier', FIELDS[field].slots[0].id)
   return { engine, save }
 }
@@ -39,7 +41,7 @@ function spawn(engine: GameEngine) {
   return engine.state.units.at(-1)!
 }
 function finishWave(engine: GameEngine) {
-  const count = stageRules(engine.state.stage).enemyCount
+  const count = stageRules(engine.state.stage, engine.state.waveBossPolicy).enemyCount
   engine.state.enemiesSpawned = count
   engine.state.enemiesResolved = count
   engine.update(1 / 60)

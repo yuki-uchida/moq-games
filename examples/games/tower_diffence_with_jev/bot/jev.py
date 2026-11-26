@@ -101,7 +101,11 @@ class WaveState(BoundedModel):
     reservedCount: int = Field(default=0, ge=0, le=3)
     reservedBudget: int = Field(default=0, ge=0, le=15)
     nextSpawnIn: float = Field(default=0, ge=0, le=300)
-    waveBossPolicy: Literal[1, 2, 3, 4] = 2
+    waveBossPolicy: Literal[1, 2, 3, 4, 5] = 2
+    # Policy 5 (wave campaign) only: enemies per wave, the wave on the field and the break countdown.
+    waves: list[int] | None = Field(default=None, max_length=12)
+    currentWave: int | None = Field(default=None, ge=1, le=12)
+    waveBreakIn: float | None = Field(default=None, ge=0, le=300)
 
 
 class FlightState(BoundedModel):
@@ -413,8 +417,8 @@ class PendingSpawn(BoundedModel):
 
 class StageSummary(BoundedModel):
     stage: int = Field(ge=1, le=10)
-    spawned: int = Field(ge=0, le=23)
-    resolved: int = Field(ge=0, le=23)
+    spawned: int = Field(ge=0, le=70)
+    resolved: int = Field(ge=0, le=70)
     maxProgress: float = Field(ge=0, le=1)
     baseDamage: float = Field(ge=0, le=100)
     defenderDamage: float = Field(ge=0, le=1000000000)
@@ -732,7 +736,7 @@ class EnemyOutcomeSummary(BoundedModel):
 
 class DamageTrend(HistorySourceDamage):
     enemyType: ENEMY_TYPES
-    defeatedVictims: int = Field(ge=0, le=23)
+    defeatedVictims: int = Field(ge=0, le=70)
 
     @model_validator(mode='after')
     def allied_enemy_damage(self):

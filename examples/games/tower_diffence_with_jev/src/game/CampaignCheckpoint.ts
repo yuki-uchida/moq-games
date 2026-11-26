@@ -33,6 +33,14 @@ import {
   pathLength,
   pointOnPath,
   stageRules,
+  type StageRules,
+  MAX_STAGE_ENEMY_COUNT,
+  MAX_STAGE_SPAWN_BUDGET,
+  MAX_WAVE_GOLD,
+  maxWaveGoldThrough,
+  waveStart,
+  WAVE_BREAK_SECONDS,
+  WAVE_BOSS_POLICIES,
   type AIAction,
   type AllyType,
   type CombatAttack,
@@ -119,7 +127,7 @@ import {
   type Decoder
 } from './CheckpointCodec'
 
-export const CAMPAIGN_CHECKPOINT_VERSION = 20
+export const CAMPAIGN_CHECKPOINT_VERSION = 21
 export const CHECKPOINT_LIMITS = {
   simulationSeconds: 24 * 60 * 60,
   maximumId: 0xffffffff,
@@ -213,10 +221,12 @@ export type CampaignStateCheckpoint = Pick<
   | 'decisionTime'
   | 'cooldownHold'
   | 'historyEnabled'
+  | 'waveBreak'
+  | 'waveGold'
 > & { corpses: CheckpointCorpse[] }
 
 export interface CampaignCheckpoint {
-  version: 20
+  version: 21
   profile: ProfileData
   progress: RunProgressData
   rewardedThroughStage: number
@@ -293,6 +303,9 @@ interface VersionEighteenCampaignCheckpoint extends Omit<CampaignCheckpoint, 've
 interface VersionNineteenCampaignCheckpoint extends Omit<CampaignCheckpoint, 'version'> {
   version: 19
 }
+interface VersionTwentyCampaignCheckpoint extends Omit<CampaignCheckpoint, 'version'> {
+  version: 20
+}
 type DecodedCheckpoint =
   | LegacyCampaignCheckpoint
   | VersionTwoCampaignCheckpoint
@@ -313,6 +326,7 @@ type DecodedCheckpoint =
   | VersionSeventeenCampaignCheckpoint
   | VersionEighteenCampaignCheckpoint
   | VersionNineteenCampaignCheckpoint
+  | VersionTwentyCampaignCheckpoint
   | CampaignCheckpoint
 type CheckpointVersion = DecodedCheckpoint['version']
 function battlefieldVersion(checkpoint: DecodedCheckpoint): 1 | 2 {
@@ -334,7 +348,7 @@ const LEGACY_SANDBAG_MAX_HP = 120
 const epsilon = 1e-6,
   maxTime = CHECKPOINT_LIMITS.simulationSeconds,
   maximumId = CHECKPOINT_LIMITS.maximumId,
-  maximumEnemies = stageRules(CONFIG.stages).enemyCount,
+  maximumEnemies = MAX_STAGE_ENEMY_COUNT,
   maximumMembers = Math.max(...Object.values(FORMATIONS).map((formation) => formation.types.length)),
   maximumCooldown =
     Math.max(...ENEMY_TYPES.map((type) => deploymentCooldown(type, 1))) +
@@ -395,7 +409,7 @@ function checkpointBounds(version: CheckpointVersion) {
     deadline: maxTime + cooldown + HISTORY_LIMITS.windowSeconds
   }
 }
-function checkpointRules(checkpoint: DecodedCheckpoint) {
+function checkpointRules(checkpoint: DecodedCheckpoint): StageRules {
   return checkpoint.version === 1
     ? legacyCheckpointRules(checkpoint.state.stage)
     : {
@@ -777,6 +791,7 @@ function createCheckpointDecoder(version: CheckpointVersion): Decoder<DecodedChe
   })
   const totalEarnableGold =
     STARTING_GOLD +
+    MAX_WAVE_GOLD +
     Array.from({ length: CONFIG.stages }, (_, index) => stageRules(index + 1).reward).reduce(
       (sum, reward) => sum + reward,
       0
@@ -827,7 +842,7 @@ function createCheckpointDecoder(version: CheckpointVersion): Decoder<DecodedChe
     playerBaseHp: number(0, CONFIG.baseHp),
     enemiesSpawned: count,
     enemiesResolved: count,
-    budgetSpent: number(0, stageRules(CONFIG.stages).spawnBudget, true),
+    budgetSpent: number(0, MAX_STAGE_SPAWN_BUDGET, true),
     nextSpawnAt: deadline,
     units: array(decodeUnit, CONFIG.maxUnits),
     attacks: array(decodeAttack, CHECKPOINT_LIMITS.attacks),
@@ -866,6 +881,8 @@ function createCheckpointDecoder(version: CheckpointVersion): Decoder<DecodedChe
           })
         : absent,
     historyEnabled: boolean,
+    waveBreak: version >= 21 ? optional(object({ wave: number(2, 16, true), until: deadline })) : absent,
+    waveGold: version >= 21 ? optional(number(0, MAX_WAVE_GOLD, true)) : absent,
     corpses: array(decodeCorpse, maximumEnemies + CONFIG.stages)
   }
   const decodeLegacyState = object<LegacyCampaignCheckpoint['state']>(stateSchema)
@@ -874,7 +891,12 @@ function createCheckpointDecoder(version: CheckpointVersion): Decoder<DecodedChe
     ...stateSchema,
     battlefieldVersion: choice([1, 2]),
     layoutRevision: version >= 16 ? choice([1, 2, 3, 4]) : version >= 14 ? choice([1, 2, 3]) : () => 1,
-    waveBossPolicy: version >= 20 ? choice([1, 2, 3, 4]) : version >= 19 ? choice([1, 2, 3]) : choice([1, 2]),
+    waveBossPolicy:
+      version >= 21
+        ? choice([1, 2, 3, 4, 5])
+        : version >= 20
+          ? choice([1, 2, 3, 4])
+          : version >= 19 ? choice([1, 2, 3]) : choice([1, 2]),
     lastAction: nullable(decodeCurrentAction),
     requestedAction: nullable(decodeCurrentAction)
   })
@@ -1173,7 +1195,13 @@ function createCheckpointDecoder(version: CheckpointVersion): Decoder<DecodedChe
       version: choice([19]),
       state: decodeCurrentState
     })
-  return object<CampaignCheckpoint>({ ...checkpointSchema, version: choice([20]), state: decodeCurrentState })
+  if (version === 20)
+    return object<VersionTwentyCampaignCheckpoint>({
+      ...checkpointSchema,
+      version: choice([20]),
+      state: decodeCurrentState
+    })
+  return object<CampaignCheckpoint>({ ...checkpointSchema, version: choice([21]), state: decodeCurrentState })
 }
 const checkpointDecoders = {
   1: createCheckpointDecoder(1),
@@ -1195,11 +1223,12 @@ const checkpointDecoders = {
   17: createCheckpointDecoder(17),
   18: createCheckpointDecoder(18),
   19: createCheckpointDecoder(19),
-  20: createCheckpointDecoder(20)
+  20: createCheckpointDecoder(20),
+  21: createCheckpointDecoder(21)
 }
 function decodeCheckpoint(value: unknown): DecodedCheckpoint {
   const input = record(value),
-    version = choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20])(input.version),
+    version = choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21])(input.version),
     state = record(input.state)
   // Select and validate layout identity before decoding any geometry-dependent number.
   const revision =
@@ -1276,7 +1305,10 @@ function validAction(action: CheckpointAction, checkpoint: DecodedCheckpoint): b
   return checkpointMembers(checkpoint, action).every((member) => validEnemy(member.unitType, member.boss, checkpoint))
 }
 function validateSummary(summary: StageSummary): void {
-  requireCheckpoint(summary.resolved <= summary.spawned && summary.spawned <= stageRules(summary.stage).enemyCount)
+  requireCheckpoint(
+    summary.resolved <= summary.spawned &&
+      summary.spawned <= Math.max(...WAVE_BOSS_POLICIES.map((policy) => stageRules(summary.stage, policy).enemyCount))
+  )
 }
 
 export function validateCampaignCheckpoint(
@@ -1298,9 +1330,9 @@ export function validateCampaignCheckpoint(
     migrateHealthBalance(normalized)
     removePaladinHealing(normalized)
     const migrated = normalized.version === 2 ? migrateGenericWaitCheckpoint(normalized) : normalized,
-      current = checkpointDecoders[20]({
+      current = checkpointDecoders[21]({
         ...migrated,
-        version: 20,
+        version: 21,
         state: {
           ...migrated.state,
           // Nothing has spawned during preparation, so it can adopt the current wave rules.
@@ -1319,7 +1351,7 @@ export function validateCampaignCheckpoint(
             : {})
         }
       })
-    requireCheckpoint(current.version === 20)
+    requireCheckpoint(current.version === 21)
     validateCheckpointSemantics(current, progress, current.profile)
     return current
   } catch {
@@ -1558,7 +1590,8 @@ function validateCheckpointSemantics(
   requireCheckpoint(
     checkpoint.version === 1 ||
       s.phase !== 'preparation' ||
-      checkpoint.state.waveBossPolicy === (checkpoint.version >= 20 ? 4 : checkpoint.version >= 19 ? 3 : 2)
+      checkpoint.state.waveBossPolicy ===
+        (checkpoint.version >= 21 ? 5 : checkpoint.version >= 20 ? 4 : checkpoint.version >= 19 ? 3 : 2)
   )
   requireCheckpoint(JSON.stringify(checkpoint.progress) === JSON.stringify(pairedProgress))
   requireCheckpoint(JSON.stringify(checkpoint.profile) === JSON.stringify(pairedProfile))
@@ -1592,8 +1625,12 @@ function validateCheckpointSemantics(
       deploymentSpend +
       (s.fortifications?.fortificationSpend ?? 0) +
       (s.fortifications?.gearSpend ?? 0) <=
-      earned + (paidRoster ? (checkpoint.version < 8 ? LEGACY_STARTING_GOLD : STARTING_GOLD) : 0)
+      earned +
+        (s.waveGold ?? 0) +
+        (paidRoster ? (checkpoint.version < 8 ? LEGACY_STARTING_GOLD : STARTING_GOLD) : 0)
   )
+  requireCheckpoint((s.waveGold ?? 0) <= maxWaveGoldThrough(s.stage))
+  validateWaveBreak(checkpoint, rules)
   for (const type of ALLY_TYPES)
     if (pairedProgress.unitLevels[type] > 1)
       requireCheckpoint(
@@ -1647,7 +1684,12 @@ function validateCheckpointSemantics(
   if (s.previousStageSummary) {
     validateSummary(s.previousStageSummary)
     requireCheckpoint(s.previousStageSummary.stage === s.stage - 1)
-    requireCheckpoint(s.previousStageSummary.resolved === stageRules(s.stage - 1).enemyCount)
+    // A policy-5 stage may follow a single-assault one and vice versa only from v21 on.
+    requireCheckpoint(
+      (checkpoint.version >= 21 ? WAVE_BOSS_POLICIES : WAVE_BOSS_POLICIES.filter((policy) => policy < 5)).some(
+        (policy) => s.previousStageSummary!.resolved === stageRules(s.stage - 1, policy).enemyCount
+      )
+    )
   } else requireCheckpoint(s.stage === 1)
   for (const action of [s.lastAction, s.requestedAction]) if (action) requireCheckpoint(validAction(action, checkpoint))
   validateCommanderSupport(checkpoint)
@@ -1658,6 +1700,18 @@ function validateCheckpointSemantics(
   validateHistory(checkpoint)
   validateRuntime(checkpoint)
   validateInterception(checkpoint)
+}
+
+function validateWaveBreak(checkpoint: DecodedCheckpoint, rules: StageRules): void {
+  const s = checkpoint.state as CampaignStateCheckpoint
+  if (!s.waveBreak) return
+  // A break exists only between two policy-5 waves of a running assault, before the next wave's first spawn.
+  requireCheckpoint(!!rules.waves && s.phase === 'assault' && !s.result)
+  const waves = rules.waves!
+  requireCheckpoint(s.waveBreak.wave >= 2 && s.waveBreak.wave <= waves.length)
+  requireCheckpoint(s.enemiesSpawned === waveStart(waves, s.waveBreak.wave) && s.enemiesResolved === s.enemiesSpawned)
+  requireCheckpoint(s.pendingSpawns.length === 0)
+  requireCheckpoint(s.waveBreak.until <= s.time + WAVE_BREAK_SECONDS + epsilon)
 }
 
 function migrateLegacyCheckpoint(checkpoint: LegacyCampaignCheckpoint): VersionTwoCampaignCheckpoint {
@@ -1824,6 +1878,7 @@ function normalizeSandbagHealth(
     | VersionSeventeenCampaignCheckpoint
     | VersionEighteenCampaignCheckpoint
     | VersionNineteenCampaignCheckpoint
+    | VersionTwentyCampaignCheckpoint
     | CampaignCheckpoint
 ): void {
   const bags = checkpoint.state.sandbags.filter((bag) => bag.maxHp !== ROAD_EFFECTS.sandbag.hp)

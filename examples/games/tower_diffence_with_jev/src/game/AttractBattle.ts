@@ -94,6 +94,8 @@ export function createAttractBattle(
     ATTRACT_LAYOUT_REVISION
   )
   engine.startAtStage(stage)
+  // The demo plays one short single assault (policy 4); a full multi-wave stage outlasts the title loop.
+  engine.state.waveBossPolicy = 4
   for (const { type, point } of attractPlacements(engine, save.formation)) engine.place(type, point)
   engine.startAssault()
   let elapsed = 0,
@@ -154,6 +156,7 @@ export function createAttractBattle(
       // The demo is silent and has no HUD: discard presentation queues the real game would consume.
       engine.takeCombatSounds()
       engine.takeSpecialImpacts()
+      engine.takeGoldGains()
       if (endedAt === null && (state.phase !== 'assault' || elapsed >= ATTRACT_MAX_BATTLE_SECONDS)) endedAt = elapsed
     }
   }
