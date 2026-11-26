@@ -1244,3 +1244,429 @@
     }
   }
 }
+
+/* ---------- Ally level chip, tap-to-upgrade badge and level-up burst ---------- */
+/* The badge and chip keep about the same on-screen size however far the field is scaled down. */
+#field {
+  --field-chip-scale: calc(var(--field-label-boost, 1) / max(1, var(--field-label-boost, 1) / 2));
+}
+.unit-health .unit-level {
+  scale: min(1.6, var(--field-chip-scale, 1));
+  transform-origin: right center;
+  position: absolute;
+  right: calc(100% - 1px);
+  top: 50%;
+  translate: 0 -50%;
+  padding: 0 3px;
+  border: 1px solid #a9cfa2;
+  border-radius: 5px;
+  background: #17261fe8;
+  color: #e6f3d8;
+  font: 900 9px/12px 'Hiragino Sans', system-ui, sans-serif;
+  font-style: normal;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.unit-health .unit-level[data-level='2'] {
+  border-color: #9fd4ff;
+  color: #d8eeff;
+}
+.unit-health .unit-level[data-level='3'] {
+  border-color: #e0b0ff;
+  color: #f4e2ff;
+}
+.unit-health .unit-level[data-level='4'] {
+  border-color: #ffd24a;
+  background: #5a3a08e8;
+  color: #ffe9a0;
+}
+.unit-health .unit-upgrade-badge {
+  pointer-events: auto;
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 5px);
+  translate: -50% 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 0;
+  height: 24px;
+  padding: 0 7px 0 3px;
+  border: 1.5px solid #fff3c4;
+  border-radius: 12px;
+  scale: var(--field-chip-scale, 1);
+  transform-origin: center bottom;
+  background: linear-gradient(#ffd75e, #e39a1c);
+  box-shadow: 0 2px 0 #7a4a06, 0 0 0 1px #3a2404, 0 0 10px #ffd24a99;
+  color: #3a2404;
+  font: 900 13px/1 'Hiragino Sans', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: none;
+  animation: unit-upgrade-pulse 1.1s ease-in-out infinite;
+}
+/* A finger-sized hit area around the small badge. */
+.unit-health .unit-upgrade-badge::after {
+  content: '';
+  position: absolute;
+  inset: -9px -8px -6px;
+}
+.unit-health .unit-upgrade-badge b {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #3a2404;
+  color: #ffe08a;
+  font-size: 13px;
+}
+.unit-health .unit-upgrade-badge:hover,
+.unit-health .unit-upgrade-badge:focus-visible {
+  background: linear-gradient(#ffe27f, #f0aa2a);
+  border-color: #fffbe8;
+}
+/* Beat the global button press shrink, which would replace the screen-size scale. */
+.unit-health .unit-upgrade-badge:active:not(:disabled) {
+  scale: var(--field-chip-scale, 1);
+  filter: brightness(0.92);
+}
+.unit-health .unit-upgrade-badge:focus-visible {
+  outline: 2px solid #fffbe8;
+  outline-offset: 2px;
+}
+@keyframes unit-upgrade-pulse {
+  0%,
+  100% {
+    translate: -50% 0;
+    box-shadow: 0 2px 0 #7a4a06, 0 0 0 1px #3a2404, 0 0 6px #ffd24a66;
+  }
+  50% {
+    translate: -50% -3px;
+    box-shadow: 0 2px 0 #7a4a06, 0 0 0 1px #3a2404, 0 0 16px #ffd24acc;
+  }
+}
+.unit-health.level-up i {
+  animation: unit-level-pop 0.5s ease-out;
+}
+.unit-health.level-up .unit-level {
+  animation: unit-level-chip 0.7s ease-out;
+}
+@keyframes unit-level-pop {
+  30% {
+    scale: 1.25;
+    filter: brightness(2);
+  }
+}
+@keyframes unit-level-chip {
+  25% {
+    filter: brightness(2.2) drop-shadow(0 0 4px #ffd24a);
+  }
+}
+#field .fx-levelup {
+  position: absolute;
+  z-index: 7;
+  width: 96px;
+  height: 96px;
+  pointer-events: none;
+  transform: var(--anchor);
+}
+#field .fx-levelup::before,
+#field .fx-levelup::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 4px solid #ffe27f;
+  box-shadow: 0 0 14px #ffd24a, inset 0 0 12px #ffd24a99;
+  animation: fx-levelup-ring 0.7s ease-out forwards;
+}
+#field .fx-levelup::after {
+  border-color: #fffbe8;
+  border-width: 2px;
+  animation-delay: 0.12s;
+  opacity: 0;
+}
+#field .fx-levelup i {
+  position: absolute;
+  left: calc(50% - 6px + (var(--i) - 3.5) * 10px);
+  bottom: 18%;
+  width: 12px;
+  height: 12px;
+  background: #fff3b0;
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+  opacity: 0;
+  animation: fx-levelup-spark 0.95s ease-out forwards;
+  animation-delay: calc(var(--i) * 45ms);
+}
+#field .fx-levelup i:nth-child(odd) {
+  background: #ffd24a;
+}
+@keyframes fx-levelup-ring {
+  0% {
+    opacity: 1;
+    transform: scale(0.2);
+  }
+  70% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}
+@keyframes fx-levelup-spark {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.4);
+  }
+  20% {
+    opacity: 1;
+    transform: translateY(-14px) scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-78px) scale(0.6) rotate(90deg);
+  }
+}
+#field .fx-num.levelup {
+  display: grid;
+  justify-items: center;
+  font-size: 26px;
+  color: #ffe27f;
+  letter-spacing: 0.04em;
+  text-shadow:
+    -2px 0 #5a3500,
+    2px 0 #5a3500,
+    0 -2px #5a3500,
+    0 2px #5a3500,
+    -2px -2px #5a3500,
+    2px 2px #5a3500,
+    0 4px 6px #0008,
+    0 0 14px #ffd24a;
+  animation: fx-num-levelup 1.35s ease-out forwards;
+}
+#field .fx-num.levelup small {
+  font-size: 15px;
+  color: #fffbe8;
+}
+@keyframes fx-num-levelup {
+  0% {
+    opacity: 0;
+    transform: var(--anchor) translateY(12px) scale(0.5);
+  }
+  15% {
+    opacity: 1;
+    transform: var(--anchor) scale(1.25);
+  }
+  28% {
+    transform: var(--anchor) translateY(-4px) scale(1);
+  }
+  78% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: var(--anchor) translateY(-34px) scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .unit-health .unit-upgrade-badge {
+    animation: none;
+  }
+}
+
+/* ---------- Wave-clear bonus, boss warning and boss bar ---------- */
+.fx-wave-bonus {
+  font: 900 clamp(20px, 3vw, 28px) / 1 'Hiragino Sans', system-ui, sans-serif;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  color: #ffd84a;
+  text-shadow: 0 2px 0 #5a3500, 0 0 10px #ffd24a88;
+  animation: fx-wave-bonus 0.5s ease-out;
+}
+@keyframes fx-wave-bonus {
+  0% {
+    opacity: 0;
+    scale: 0.4;
+  }
+  60% {
+    opacity: 1;
+    scale: 1.25;
+  }
+}
+.fx-wave-toast.clear {
+  animation-duration: 2.2s;
+}
+.fx-banner.boss.approach {
+  background: linear-gradient(90deg, transparent, #9c140ff5 18%, #b3170f 50%, #9c140ff5 82%, transparent);
+  animation-duration: 2.1s;
+}
+.fx-banner.boss.approach::before,
+.fx-banner.boss.approach::after {
+  animation: fx-hazard 0.5s linear infinite;
+  background-size: 39.6px 100%;
+}
+.fx-banner.boss.approach b {
+  color: #fff3d6;
+  animation: fx-approach-blink 0.42s steps(2, jump-none) 4;
+}
+.fx-banner.boss.approach small {
+  color: #ffe0a0;
+  letter-spacing: 0.2em;
+}
+@keyframes fx-hazard {
+  to {
+    background-position-x: 39.6px;
+  }
+}
+@keyframes fx-approach-blink {
+  50% {
+    color: #ffd24a;
+  }
+}
+.bhud-boss {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  translate: -50% 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: min(420px, calc(100vw - 32px));
+  height: 34px;
+  padding: 0 10px;
+  border: 1.5px solid #ffcf2e;
+  border-radius: 9px;
+  background: #5a100cee;
+  box-shadow: 0 4px 14px #10271960;
+  color: #ffeab0;
+  font-size: 13px;
+  pointer-events: none;
+}
+.bhud-boss[hidden] {
+  display: none;
+}
+.bhud-boss svg {
+  width: 18px;
+  height: 18px;
+  color: #ffd24a;
+}
+.bhud-boss-name {
+  white-space: nowrap;
+  letter-spacing: 0.04em;
+}
+.bhud-boss-bar {
+  position: relative;
+  flex: 1;
+  height: 12px;
+  overflow: hidden;
+  border: 2px solid #2a0705;
+  border-radius: 7px;
+  background: #2a0705;
+  box-shadow: inset 0 0 0 1px #ffffff1f;
+}
+.bhud-boss-bar .bhud-fill {
+  background: linear-gradient(#ff8a66, #d63a2c);
+}
+.bhud-boss[data-level='low'] .bhud-boss-bar .bhud-fill {
+  animation: bhud-pulse 0.7s ease-in-out infinite;
+}
+.bhud-boss .bhud-num {
+  font-size: 12px;
+  color: #ffd0c8;
+}
+
+/* ---------- Speed and pause toggles stay readable in every state ---------- */
+/* Beat the global light button hover/active/disabled paints (white text on a near-white fill otherwise). */
+.bhud-speed:hover:not(:disabled),
+.bhud-pause:hover:not(:disabled) {
+  border-color: #a5c19f;
+  background: #55785f;
+  color: #fffbe8;
+}
+.bhud-speed:active:not(:disabled),
+.bhud-pause:active:not(:disabled) {
+  background: #36513f;
+  color: #fffbe8;
+}
+.bhud-speed[aria-pressed='true']:hover:not(:disabled) {
+  border-color: #fffbe8;
+  background: #e3bb67;
+  color: var(--ink);
+}
+.bhud-speed[aria-pressed='true']:active:not(:disabled) {
+  background: #c49a45;
+  color: var(--ink);
+}
+.bhud-speed:disabled,
+.bhud-pause:disabled {
+  border-color: #5d725c;
+  background: #3a5243;
+  color: #c9d6c4;
+}
+
+/* ---------- Skill-bar upgrade hint and the empty reserve tray ---------- */
+.skill-upgrade {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid #fff3c4;
+  border-radius: 50%;
+  background: linear-gradient(#ffd75e, #e39a1c);
+  color: #3a2404;
+  font: 900 12px/1 system-ui, sans-serif;
+  pointer-events: none;
+  animation: skill-upgrade-bob 1.1s ease-in-out infinite;
+}
+.skill-upgrade[hidden] {
+  display: none;
+}
+@keyframes skill-upgrade-bob {
+  50% {
+    translate: 0 -2px;
+  }
+}
+.floating-tray .tray-empty {
+  display: grid;
+  gap: 4px;
+  margin: 2px 0 0;
+  padding: 12px 14px;
+  border: 1.5px dashed #c9b77d;
+  border-radius: 10px;
+  background: #fbf3dc;
+  color: var(--ink);
+  text-align: center;
+}
+.floating-tray .tray-empty[hidden] {
+  display: none;
+}
+.floating-tray .tray-empty b {
+  font-size: 14px;
+}
+.floating-tray .tray-empty small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+@media (max-width: 420px) {
+  /* The HUD hugs the right edge here; the boss bar spans the screen with a 16px gutter. */
+  .bhud-boss {
+    left: auto;
+    right: calc(16px - max(8px, env(safe-area-inset-right)));
+    translate: none;
+    width: calc(100vw - 32px);
+    height: 30px;
+    font-size: 12px;
+  }
+}
+/* An ally with an upgrade on offer draws its label (and badge) above crowding enemy bars. */
+#field .unit-health[data-upgrade='ready'] {
+  z-index: 8;
+}

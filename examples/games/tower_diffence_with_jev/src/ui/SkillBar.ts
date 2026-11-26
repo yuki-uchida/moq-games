@@ -32,6 +32,7 @@ export class SkillBar {
   private order = ''
   private shown = false
   private autoOn = loadAutoSkill()
+  private upgrades: ReadonlyMap<number, number> = new Map()
   constructor(parent: HTMLElement, private readonly options: SkillBarOptions) {
     this.element.id = 'skill-bar'
     this.element.className = 'skill-bar'
@@ -72,7 +73,7 @@ export class SkillBar {
       `<img alt="" draggable="false" src="${this.options.portrait(type) ?? ''}"><span class="skill-ring" aria-hidden="true"></span>` +
       `<span class="skill-count" aria-hidden="true"></span><span class="skill-mark" aria-hidden="true"></span>` +
       `<span class="skill-badge" aria-hidden="true"></span><span class="skill-aim" aria-hidden="true">${CROSSHAIR}</span>` +
-      `<span class="skill-name" aria-hidden="true">${SPECIALS[type].name}</span>`
+      `<span class="skill-name" aria-hidden="true">${SPECIALS[type].name}</span><span class="skill-upgrade" aria-hidden="true" hidden>↑</span>`
     let timer = 0,
       longPressed = false,
       startX = 0,
@@ -148,6 +149,10 @@ export class SkillBar {
       entry.name.textContent = entry.tip
     }, 1500)
   }
+  /** Allies whose next level is affordable now: their portrait shows a small gold arrow (the field badge buys it). */
+  setUpgradeOffers(offers: ReadonlyMap<number, number>) {
+    this.upgrades = offers
+  }
   buttonFor(unitId: number): HTMLButtonElement | undefined {
     return this.entries.get(unitId)?.button
   }
@@ -212,6 +217,11 @@ export class SkillBar {
         entry.badge.textContent = targets <= 0 ? '' : type === 'healer' ? '回復' : `×${targets}`
         entry.tip = ready ? `${spec.name} · 長押しで場所を指定` : spec.name
         if (!entry.button.dataset.hint) entry.name.textContent = entry.tip
+      }
+      const upgrade = !down && this.upgrades.has(unit.id)
+      if ((entry.button.dataset.upgrade === 'true') !== upgrade) {
+        entry.button.dataset.upgrade = String(upgrade)
+        entry.button.querySelector<HTMLElement>('.skill-upgrade')!.hidden = !upgrade
       }
       if (entry.charge !== charge) {
         entry.charge = charge

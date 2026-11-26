@@ -16,11 +16,13 @@ import {
   killGold,
   serializeStateForAI,
   stageRules,
+  waveClearGold,
   waveStatus,
+  WAVE_BOSS_BREACH,
   type AllyType
 } from '../src/game/model'
 import { DRAGON_BREATH_MOUTHS } from '../src/rendering/DragonBreathArt'
-import { playCampaign, table } from './wave-balance-harness'
+import { playCampaign, playStage, progressBefore, table, type StageLog } from './wave-balance-harness'
 import { GameEngine } from '../src/game/GameEngine'
 import { RuleBasedAI } from '../src/ai/AIController'
 import { validateCampaignCheckpoint, type CampaignCheckpoint } from '../src/game/CampaignCheckpoint'
@@ -34,6 +36,7 @@ import {
   upgradeCost
 } from '../src/progression/UpgradeSystem'
 import { DEPLOYMENT_COST } from '../src/game/DefenderRoster'
+import { COMMANDER_SUPPORT } from '../src/game/CommanderSupport'
 
 const OFFSETS: Record<AllyType, [number, number]> = {
   tank: [0, 0],
@@ -106,6 +109,16 @@ describe('wave campaign (policy 5)', () => {
   })
 
   it('a competent stage-select player clears all ten stages on the real road with a paced, threatening curve', async () => {
+    /** Pacing targets every stage meets, on any seed. */
+    const checkPacing = (log: StageLog, label: string) => {
+      // Every wave pours onto the field within 20 s, resolves within about a minute and a half,
+      // and nothing stalls for half a minute while a wave is on.
+      for (const seconds of log.waveSpawnSeconds) expect(seconds, `${label} spawn`).toBeLessThanOrEqual(20)
+      for (const seconds of log.waveSeconds) expect(seconds, `${label} wave`).toBeLessThanOrEqual(90)
+      expect(log.longestQuiet, `${label} quiet`).toBeLessThan(30)
+      expect(log.peakEnemies, `${label} swarm`).toBeGreaterThanOrEqual(6)
+      expect(log.goldEarned, `${label} gold`).toBeGreaterThan(0)
+    }
     const logs = await playCampaign('competent')
     console.log(table('competent player, layout 4, stage select', logs))
     expect(logs).toHaveLength(10)
@@ -116,21 +129,26 @@ describe('wave campaign (policy 5)', () => {
     expect(logs[0].seconds).toBeLessThanOrEqual(150)
     expect(logs[9].seconds).toBeGreaterThanOrEqual(180)
     expect(logs[9].seconds).toBeLessThanOrEqual(330)
-    for (const log of logs) {
-      // Every wave pours onto the field within 20 s, resolves within about a minute and a half,
-      // and nothing stalls for half a minute while a wave is on.
-      for (const seconds of log.waveSpawnSeconds) expect(seconds, `stage ${log.stage} spawn`).toBeLessThanOrEqual(20)
-      for (const seconds of log.waveSeconds) expect(seconds, `stage ${log.stage} wave`).toBeLessThanOrEqual(90)
-      expect(log.longestQuiet, `stage ${log.stage} quiet`).toBeLessThan(30)
-      expect(log.peakEnemies, `stage ${log.stage} swarm`).toBeGreaterThanOrEqual(6)
-    }
+    for (const log of logs) checkPacing(log, `stage ${log.stage}`)
     for (const seconds of logs[0].waveSeconds) expect(seconds).toBeLessThanOrEqual(60)
     // The castle is meaningfully threatened in at least three of the stages from 4 on.
     expect(logs.slice(3).filter((log) => log.minHp < 80).length).toBeGreaterThanOrEqual(3)
-    expect(logs.every((log) => log.goldEarned > 0)).toBe(true)
     expect(logs.some((log) => log.earlyCalls > 0)).toBe(true)
     expect(logs.some((log) => log.midBattleSpend > 0)).toBe(true)
-  }, 1200000)
+    // One seed can hinge on a single moment, so the three hardest stages also have to hold on two more seeds.
+    for (const offset of [1000, 2000]) {
+      const late = []
+      for (const stage of [8, 9, 10])
+        late.push(await playStage(stage, progressBefore(stage), 'competent', { seed: 20261003 + stage + offset }))
+      console.log(table(`competent player, stages 8-10, seed offset ${offset}`, late))
+      for (const log of late) {
+        expect(log.result, `stage ${log.stage} +${offset}`).toBe(log.stage === 10 ? 'victory' : 'cleared')
+        checkPacing(log, `stage ${log.stage} +${offset}`)
+      }
+      expect(late[2].seconds).toBeGreaterThanOrEqual(180)
+      expect(late[2].seconds).toBeLessThanOrEqual(330)
+    }
+  }, 1800000)
 
   it('a weak player with two cheap allies who never spends falls on stage 2 or 3; three allies clear the tutorial', async () => {
     const weak = await playCampaign('weak', 4, { weakUnits: 2 })
@@ -306,11 +324,15 @@ describe('wave gating, breaks and battle gold', () => {
     expect(engine.buildWindowOpen).toBe(false)
     expect(engine.place('runner', { x: 640 + 42, y: ANCHOR })).toBe(false)
     killAll(engine)
-    expect(save.gold - goldBefore).toBe(first * killGold('slime', false))
-    expect(s.waveGold).toBe(first * killGold('slime', false))
+    // Kill gold plus the wave-clear bonus paid when the break opens.
+    expect(save.gold - goldBefore).toBe(first * killGold('slime', false) + waveClearGold(1))
+    expect(s.waveGold).toBe(first * killGold('slime', false) + waveClearGold(1))
     const gains = engine.takeGoldGains()
-    expect(gains).toHaveLength(first)
-    expect(gains.every((gain) => gain.kind === 'kill' && gain.amount === killGold('slime', false))).toBe(true)
+    expect(gains).toHaveLength(first + 1)
+    expect(
+      gains.slice(0, first).every((gain) => gain.kind === 'kill' && gain.amount === killGold('slime', false))
+    ).toBe(true)
+    expect(gains.at(-1)).toMatchObject({ kind: 'wave-clear', amount: waveClearGold(1) })
     expect(engine.takeGoldGains()).toEqual([])
     // Every ally, fallen ones included, regroups at full health for the next wave.
     expect(archer.hp).toBe(archer.maxHp)
@@ -438,5 +460,157 @@ describe('wave gating, breaks and battle gold', () => {
     rich.progress.gold += saved.state.waveGold! + 1000
     expect(validate(rich)).toBeNull()
     expect(MAX_RUN_GOLD).toBeGreaterThan(MAX_WAVE_GOLD)
+  }, 120000)
+})
+
+describe('mid-wave upgrades and wave-clear gold (policy 5 only)', () => {
+  it('upgrades and equips a living ally while a wave is on, keeps other build actions closed and stays checkpoint-valid', async () => {
+    let clock = 0
+    const save = freshRunFromProfile(freshProfile(), 2, 1)
+    save.gold = stageStartGold(2)
+    const engine = new GameEngine(new RuleBasedAI(), save, 'meadow', 11, () => clock, DRAGON_BREATH_MOUTHS, 2, 4),
+      s = engine.state,
+      slots = getField('meadow', 2, 4).slots
+    expect(engine.startAtStage(2)).toBe(true)
+    for (const [type, slot] of [
+      ['soldier', 3],
+      ['archer', 4],
+      ['tank', 10]
+    ] as const)
+      expect(engine.place(type, slots[slot])).toBe(true)
+    expect(engine.startAssault()).toBe(true)
+    const attacking = (type: AllyType) =>
+      s.attacks.some(
+        (attack) =>
+          attack.owner === 'player' &&
+          attack.type === type &&
+          attack.power > 0 &&
+          (attack.status === 'windup' || attack.status === 'released')
+      )
+    // Wait until the archer and the tank both have an attack under way, so the upgrade has to carry over to them.
+    for (let i = 0; i < 4000 && !(attacking('archer') && attacking('tank') && !s.waveBreak); i++) {
+      clock += 50
+      engine.update(0.05)
+      for (let j = 0; j < 12; j++) await Promise.resolve()
+    }
+    expect(attacking('archer') && attacking('tank')).toBe(true)
+    expect(engine.buildWindowOpen).toBe(false)
+    const archer = s.units.find((unit) => unit.owner === 'player' && unit.type === 'archer')!,
+      tank = s.units.find((unit) => unit.owner === 'player' && unit.type === 'tank')!
+    // Deployment, road items and the gate keep their preparation/break rules.
+    expect(engine.place('runner', slots[5])).toBe(false)
+    expect(engine.upgradeGate('cannon')).toBe(false)
+    // A policy-4 battle keeps upgrades to preparation.
+    s.waveBossPolicy = 4
+    expect(engine.upgradeOffer(archer.id)).toBeNull()
+    expect(engine.upgradeDefender(archer.id)).toBe(false)
+    s.waveBossPolicy = 5
+    expect(save.gold).toBeGreaterThanOrEqual(upgradeCost(1) + 60)
+    expect(engine.upgradeOffer(archer.id)).toBe(upgradeCost(1))
+    const gold = save.gold,
+      attack = archer.attack
+    expect(engine.upgradeDefender(archer.id)).toBe(true)
+    expect(archer.level).toBe(2)
+    expect(archer.attack).toBeGreaterThan(attack)
+    for (const pending of s.attacks.filter((value) => value.attackerId === archer.id && value.power > 0))
+      expect(pending.power / archer.attack).toBeCloseTo(pending.supportAttack ? COMMANDER_SUPPORT.attackMultiplier : 1, 6)
+    expect(save.gold).toBe(gold - upgradeCost(1))
+    expect(engine.equipDefender(tank.id, 'armor')).toBe(true)
+    expect(tank.equipment).toBe('armor')
+    const checkpoint = engine.exportCheckpoint()
+    expect(checkpoint).not.toBeNull()
+    expect(roundTrip(checkpoint!)!.exportCheckpoint()).toEqual(checkpoint)
+    for (let i = 0; i < 200 && s.phase === 'assault'; i++) {
+      clock += 50
+      engine.update(0.05)
+      for (let j = 0; j < 12; j++) await Promise.resolve()
+    }
+    expect(engine.exportCheckpoint()).not.toBeNull()
+    // A fallen ally cannot be improved until it regroups.
+    const fallen = s.units.find((unit) => unit.owner === 'player' && unit.hp > 0)!
+    fallen.hp = 0
+    expect(engine.upgradeOffer(fallen.id)).toBeNull()
+    expect(engine.upgradeDefender(fallen.id)).toBe(false)
+  }, 120000)
+
+  it('pays a growing bonus for each cleared wave but none for the last', () => {
+    expect([1, 2, 3, 4, 5].map(waveClearGold)).toEqual([15, 20, 25, 30, 35])
+    const { engine, save } = waveBattle(),
+      s = engine.state,
+      waves = stageRules(1, 5).waves!
+    let paid = 0
+    for (let wave = 1; wave <= waves.length; wave++) {
+      if (s.waveBreak) engine.callNextWave()
+      for (let i = 0; i < waves[wave - 1]; i++) {
+        s.time += 2
+        expect(spawnSlime(engine)).toBe(true)
+      }
+      const gold = save.gold
+      killAll(engine)
+      const gains = engine.takeGoldGains().filter((gain) => gain.kind === 'wave-clear')
+      if (wave < waves.length) {
+        expect(gains).toMatchObject([{ kind: 'wave-clear', amount: waveClearGold(wave) }])
+        paid += waveClearGold(wave)
+      } else expect(gains).toEqual([])
+      expect(save.gold).toBeGreaterThan(gold)
+    }
+    expect(s.result).toBe('win')
+    expect(paid).toBe(waveClearGold(1) + waveClearGold(2))
+    expect(MAX_WAVE_GOLD).toBeGreaterThanOrEqual(s.waveGold!)
+  })
+})
+
+describe('boss breach at the castle (policy 5 only)', () => {
+  it('a boss that reaches the castle lands one bounded blow and leaves through the gate', async () => {
+    let clock = 0
+    const save = freshRunFromProfile(freshProfile(), 2, 1)
+    save.gold = stageStartGold(3)
+    const engine = new GameEngine(new RuleBasedAI(), save, 'meadow', 42, () => clock, DRAGON_BREATH_MOUTHS, 2, 1),
+      s = engine.state
+    expect(engine.startAtStage(3)).toBe(true)
+    for (const type of ['tank', 'archer'] as AllyType[]) {
+      const [dx, dy] = OFFSETS[type]
+      expect(engine.place(type, { x: 640 + dx, y: ANCHOR + dy })).toBe(true)
+    }
+    expect(engine.startAssault()).toBe(true)
+    const step = async () => {
+      clock += 50
+      engine.update(0.05)
+      for (let j = 0; j < 12; j++) await Promise.resolve()
+    }
+    // Fight the stage normally (the castle is kept standing) until the boss is on the road.
+    for (let i = 0; i < 20000 && !s.units.some((unit) => unit.boss); i++) {
+      await step()
+      s.playerBaseHp = CONFIG.baseHp
+      s.stageSummary.baseDamage = 0
+      if (s.waveBreak) engine.callNextWave()
+    }
+    const boss = s.units.find((unit) => unit.boss)!
+    expect(boss.type).toBe(stageRules(3, 5).bossType)
+    // The allies fall, so nothing stands in the boss's way; the castle is kept full until its escorts are gone.
+    for (const unit of s.units) if (unit.owner === 'player') unit.hp = 0
+    let before = NaN,
+      latched = false
+    for (let i = 0; i < 12000 && s.units.includes(boss); i++) {
+      await step()
+      if (Number.isNaN(before)) {
+        if (s.units.some((unit) => unit.owner === 'ai' && !unit.boss) || s.pendingSpawns.length) {
+          s.playerBaseHp = CONFIG.baseHp
+          s.stageSummary.baseDamage = 0
+        } else before = s.playerBaseHp
+      }
+      if (boss.gateExit && !latched) {
+        latched = true
+        expect(engine.exportCheckpoint()).not.toBeNull()
+      }
+    }
+    expect(latched).toBe(true)
+    expect(s.units).not.toContain(boss)
+    expect(s.corpses.some((corpse) => corpse.id === boss.id)).toBe(false)
+    // One breach (gate armor 0), not the whole castle.
+    expect(before - s.playerBaseHp).toBeCloseTo(WAVE_BOSS_BREACH, 6)
+    expect(s.playerBaseHp).toBeGreaterThan(0)
+    expect(s.result).toBe('win')
+    expect(engine.exportCheckpoint()).not.toBeNull()
   }, 120000)
 })

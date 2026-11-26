@@ -13,9 +13,12 @@ export type FeelSound =
   | 'star'
   | 'cutin'
   | 'levelup'
+  | 'wave-clear'
+  | 'upgrade'
 
 const MIN_INTERVAL: Partial<Record<FeelSound, number>> = {
   kill: 0.045,
+  upgrade: 0.08,
   coin: 0.045,
   'hit-heavy': 0.07,
   combo: 0.12,
@@ -199,6 +202,27 @@ export function createFeelPlayer() {
         case 'cutin':
           burst({ dur: 0.34, peak: 0.28, filter: 'bandpass', freq: [300, 3200], q: 1.2 })
           tone({ type: 'sine', from: 200, to: 900, dur: 0.3, peak: 0.2 })
+          break
+        case 'wave-clear': {
+          // A short brass-like call (shorter and lighter than the stage-clear fanfare) with a coin shimmer.
+          for (const [f, at, dur] of [[392, 0, 0.12], [523.25, 0.1, 0.12], [659.25, 0.2, 0.42]] as const) {
+            tone({ type: 'sawtooth', from: f, at, dur, peak: 0.16, attack: 0.012, lowpass: [900, 2600] })
+            tone({ type: 'triangle', from: f, at, dur, peak: 0.3 })
+          }
+          tone({ type: 'triangle', from: 783.99, at: 0.2, dur: 0.42, peak: 0.16 })
+          tone({ type: 'sine', from: 2093, at: 0.3, dur: 0.18, peak: 0.1 })
+          tone({ type: 'sine', from: 2637, at: 0.38, dur: 0.24, peak: 0.08 })
+          burst({ at: 0.2, dur: 0.3, peak: 0.05, filter: 'highpass', freq: 5200 })
+          break
+        }
+        case 'upgrade':
+          // An ally levels up on the field: a soft thump, a quick rising arpeggio and a sparkle on top.
+          tone({ type: 'sine', from: 180, to: 320, dur: 0.14, peak: 0.42 })
+          ;[0, 4, 7, 12].forEach((n, i) =>
+            tone({ type: 'triangle', from: semis(659.25, n), at: 0.03 + i * 0.055, dur: i === 3 ? 0.36 : 0.13, peak: 0.32 })
+          )
+          tone({ type: 'sine', from: semis(1318.5, 12), at: 0.22, dur: 0.3, peak: 0.1 })
+          burst({ at: 0.2, dur: 0.26, peak: 0.06, filter: 'highpass', freq: 6000 })
           break
         case 'levelup':
           ;[0, 4, 7, 12, 16, 19].forEach((n, i) =>

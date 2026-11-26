@@ -67,6 +67,13 @@ export function hitFlash(unit: Pick<Unit, 'hitAnimation' | 'owner'>): number {
   return Math.round(curve * (unit.owner === 'player' ? 0.5 : 0.85) * 10) / 10
 }
 
+const POP_MS = 520
+/** Level-up pop: a quick overshoot to 1.3x that settles back with a small bounce. */
+export function popScale(t: number): number {
+  if (t <= 0 || t >= 1) return 1
+  return t < 0.25 ? 1 + 0.3 * (t / 0.25) : 1 + 0.3 * Math.cos(((t - 0.25) / 0.75) * Math.PI * 1.5) * (1 - (t - 0.25) / 0.75)
+}
+
 const seedOf = (id: number) => ((Math.imul(id + 1, 2654435761) >>> 0) % 1000) / 1000
 
 interface Actor {
@@ -88,6 +95,8 @@ export class StackUnitLayer {
   private previousField?: string
   private presentationScale = 1
   private presentationAspect = 1
+  /** Presentation only: figures popping after a level-up, by unit id, with the pop's start (performance.now). */
+  private pops = new Map<number, number>()
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -191,6 +200,7 @@ export class StackUnitLayer {
       const offset = unitDisplayOffset(unit)
       actor.visual.setPosition(unit.x + offset.x, unit.y + offset.y)
       actor.visual.setAppearance(1, 0xffffff, hitFlash(unit))
+      this.applyPop(unit.id, actor)
       this.sample(actor, pose, state.time)
     }
     for (const [id, actor] of this.actors) {
@@ -221,6 +231,22 @@ export class StackUnitLayer {
         this.actors.delete(id)
       }
     }
+  }
+  /** Scale-pop and brighten a figure for a moment (a level-up). */
+  pop(id: number): void {
+    this.pops.set(id, performance.now())
+  }
+  private applyPop(id: number, actor: Actor): void {
+    const start = this.pops.get(id)
+    if (start === undefined) return
+    const t = (performance.now() - start) / POP_MS
+    if (t >= 1 || t < 0) {
+      this.pops.delete(id)
+      actor.visual.setPresentation(this.presentationScale, this.presentationAspect)
+      return
+    }
+    actor.visual.setPresentation(this.presentationScale * popScale(t), this.presentationAspect)
+    actor.visual.setAppearance(1, 0xffffff, Math.max(hitFlash(actor.last), 0.7 * (1 - t)))
   }
   setPreview(type?: UnitType, point?: Point, facing?: Point, valid = true, preparation = false): void {
     if (!type || !point || !facing) {

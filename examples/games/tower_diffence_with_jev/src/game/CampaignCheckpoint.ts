@@ -41,6 +41,7 @@ import {
   MAX_ENEMY_STRENGTH,
   MAX_STAGE_SPAWN_BUDGET,
   MAX_WAVE_GOLD,
+  bossLeavesAfterBreach,
   maxWaveGoldThrough,
   waveStart,
   WAVE_BREAK_SECONDS,
@@ -2407,7 +2408,9 @@ function validateUnits(checkpoint: DecodedCheckpoint): void {
       requireCheckpoint(near(unit.homeX, field.entrance.x) && near(unit.homeY, field.entrance.y))
       if (unit.gateExit) {
         const attack = s.attacks.find((candidate) => candidate.id === unit.gateExit!.attackId)
-        requireCheckpoint(battlefieldVersion(checkpoint) === 2 && !unit.boss)
+        requireCheckpoint(
+          battlefieldVersion(checkpoint) === 2 && (!unit.boss || bossLeavesAfterBreach(checkpointPolicy(checkpoint)))
+        )
         requireCheckpoint(attack && attack.attackerId === unit.id && attack.base && attack.damageHit)
         requireCheckpoint(near(unit.gateExit.exitAt, Math.max(attack.endsAt, attack.impactAt)))
         requireCheckpoint(unit.gateExit.exitAt >= s.time - epsilon)
@@ -3058,7 +3061,7 @@ function validateEnemyHistory(checkpoint: DecodedCheckpoint): void {
         outcome.lastKiller === null &&
           outcome.lethalContributors.length === 0 &&
           outcome.omittedLethalContributors === 0 &&
-          outcome.boss !== true &&
+          (outcome.boss !== true || bossLeavesAfterBreach(checkpointPolicy(checkpoint))) &&
           !history.events.some((event) => event.kind === 'loss' && event.unitId === outcome.enemyId)
       )
     else requireCheckpoint(outcome.legacyUnknown || outcome.lethalContributors.length > 0)
@@ -3144,7 +3147,11 @@ function validateHistory(checkpoint: DecodedCheckpoint): void {
         }
       }
       if (member.exitedAt !== undefined) {
-        requireCheckpoint(battlefieldVersion(checkpoint) === 2 && !members[index].boss && member.diedAt === null)
+        requireCheckpoint(
+          battlefieldVersion(checkpoint) === 2 &&
+            (!members[index].boss || bossLeavesAfterBreach(checkpointPolicy(checkpoint))) &&
+            member.diedAt === null
+        )
         requireCheckpoint(member.exitedAt >= member.spawnedAt && member.exitedAt <= s.time + epsilon)
         requireCheckpoint(
           !s.units.some((unit) => unit.id === member.id) && !s.corpses.some((corpse) => corpse.id === member.id)

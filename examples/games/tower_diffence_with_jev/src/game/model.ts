@@ -877,11 +877,20 @@ export function baseDamageFactor(stage: number, waveBossPolicy: WaveBossPolicy):
   const rules = stageRules(stage, waveBossPolicy)
   return isWaveCampaign(waveBossPolicy) ? WAVE_BASE_DAMAGE_FACTOR / (rules.attackStrength ?? rules.strength) : 1
 }
+/**
+ * Policy 5: castle HP a boss takes when it reaches the castle. It lands one heavy blow (gate armor still softens it)
+ * and leaves through the gate like any other leak, instead of camping at the castle until it falls.
+ */
+export const WAVE_BOSS_BREACH = 30
+/** Policy 5: a boss leaves through the gate after its castle blow (earlier policies keep it at the castle). */
+export const bossLeavesAfterBreach = (waveBossPolicy: WaveBossPolicy): boolean => isWaveCampaign(waveBossPolicy)
 /** Policy 5: battle gold per second of break skipped by calling the next wave early. */
 export const EARLY_CALL_GOLD_PER_SECOND = 2
 /** Policy 5: battle gold for defeating a boss (regular enemies pay {@link killGold}). */
 export const BOSS_KILL_GOLD = 50
 export const isWaveCampaign = (waveBossPolicy: WaveBossPolicy): boolean => waveBossPolicy >= 5
+/** Policy 5: battle gold paid when wave `wave` (1-based) is cleared and the next break opens. */
+export const waveClearGold = (wave: number): number => 10 + 5 * wave
 /** Policy 5 battle gold for one defeated enemy. */
 export function killGold(type: EnemyType, boss: boolean): number {
   return boss ? BOSS_KILL_GOLD : 2 + DEFINITIONS[type].cost * 2
@@ -956,7 +965,7 @@ export const MAX_ENEMY_STRENGTH = Math.max(
     Array.from({ length: CONFIG.stages }, (_, index) => stageRules(index + 1, policy).strength)
   )
 )
-/** Upper bound of the policy-5 battle gold (kills and early calls) a run can earn through `stage`. */
+/** Upper bound of the policy-5 battle gold (kills, wave clears and early calls) a run can earn through `stage`. */
 export function maxWaveGoldThrough(stage: number): number {
   let total = 0
   for (let level = 1; level <= Math.min(CONFIG.stages, stage); level++) {
@@ -967,6 +976,7 @@ export function maxWaveGoldThrough(stage: number): number {
       (rules.enemyCount - (rules.bossType ? 1 : 0)) * regular +
       (rules.bossType ? BOSS_KILL_GOLD : 0) +
       (waves.length - 1) * Math.ceil(WAVE_BREAK_SECONDS * EARLY_CALL_GOLD_PER_SECOND)
+    for (let wave = 1; wave < waves.length; wave++) total += waveClearGold(wave)
   }
   return total
 }
