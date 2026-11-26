@@ -15,6 +15,7 @@ export const commander: StackDesign = {
   shadow: [8, 7],
   blueprint: {
     id: 'commander',
+    density: 2,
     colors: {
       skin: '#9460d4',
       skinDark: '#63379c',
@@ -47,10 +48,17 @@ export const commander: StackDesign = {
         },
         { torsoHalf: 5, torsoDepth: 3, legs: 5, robe: true }
       )
-      for (const x of [-3, -2, 1, 2]) b.head.face(x, 3, '*eye').face(x, 4, '*eye')
-      b.head.face(-2, 3, 'pupil').face(1, 3, 'pupil')
-      b.head.face(1, 5, 'gold').face(2, 5, 'gold').face(1, 2, 'gold').face(2, 2, '*glass', '+z', 1, 1)
-      b.head.face(-1, 1, 'skinDark').face(0, 1, 'skinDark')
+      // High-res glowing amber eyes + crisp brass-rimmed cyan monocle + wicked smirk.
+      for (const gx of [-6, -5, -4, 3, 4, 5])
+        for (let dy = 0; dy < 4; dy++) b.head.rawFace(gx, 6 + dy, '*eye', '+z', 2)
+      b.head.rawFace(-5, 7, 'pupil', '+z', 2).rawFace(4, 7, 'pupil', '+z', 2)
+      for (const gx of [2, 3, 4, 5, 6]) {
+        b.head.rawFace(gx, 10, 'gold', '+z', 1, 1).rawFace(gx, 5, 'gold', '+z', 1, 1)
+      }
+      b.head.rawFace(2, 6, 'gold', '+z', 1, 1).rawFace(2, 9, 'gold', '+z', 1, 1)
+      b.head.rawFace(6, 6, 'gold', '+z', 1, 1).rawFace(6, 9, 'gold', '+z', 1, 1)
+      b.head.rawFace(5, 8, '*glass', '+z', 1, 1)
+      b.head.rawFace(-2, 3, 'skinDark', '+z', 2).rawFace(-1, 3, 'skinDark', '+z', 2).rawFace(0, 3, 'skinDark', '+z', 2).rawFace(1, 4, 'skinDark', '+z', 2)
       // Swept black bicorne hat with gold brim and curved ivory horns.
       b.head.fill(
         [-8, 7, -4],

@@ -17,6 +17,7 @@ export const frost: StackDesign = {
   emitter: { part: 'weapon', at: [0.5, 1.5, 15.5] },
   blueprint: {
     id: 'frost',
+    density: 2,
     colors: {
       skin: '#ffd0ae',
       eye: '#111d38',
@@ -64,17 +65,17 @@ export const frost: StackDesign = {
         const ring = Math.hypot(x / 5.7, (y - 5.2) / 5.6)
         return z > 0.8 && z < 2.8 && ring <= 1.04 && ring > 0.8 && y >= 3.5
       })
-      // Fur shoulder collar & vertical coat trim.
-      b.torso.fill([-6, 5, -4], [5, 7, 4], 'fur', (x, y, z) => Math.hypot(x / 4.8, z / 3.8) <= 1.1)
-      b.torso.box([-1, 1, 4], [0, 4, 4], 'fur')
-      // Chunky 2px birch staff with a glowing six-pointed ice crystal.
+      // Fur shoulder collar & vertical coat trim with ice-crystal clasp.
+      b.torso.fill([-6, 5, -4], [5, 7, 4], 'fur', (x, _y, z) => Math.hypot(x / 4.8, z / 3.8) <= 1.1)
+      b.torso.rawBox([-1, 1, 7], [0, 9, 8], 'fur').rawBox([-1, 10, 8], [0, 11, 8], '*ice')
+      // Tapered birch staff with razor-crisp 6-pointed translucent ice star.
       const staff = kit.part('weapon', 'armR', [0, b.hand, 1])
-      staff.box([0, 0, -3], [1, 1, 13], 'birch').set(0, 1, 4, 'knot').set(1, 1, 9, 'knot')
+      staff.segment([0.5, 0.5, -3], [0.5, 0.5, 13], 0.72, 'birch', 0.62).rawSet(0, 2, 8, 'knot').rawSet(1, 2, 18, 'knot')
       for (let i = 0; i < 6; i++) {
         const a = (i / 6) * Math.PI * 2
-        staff.segment([0.5, 1.5, 15.5], [0.5 + Math.sin(a) * 3.2, 1.5, 15.5 + Math.cos(a) * 3.2], 0.7, '*ice')
+        staff.segment([0.5, 1.5, 15.5], [0.5 + Math.sin(a) * 3.3, 1.5, 15.5 + Math.cos(a) * 3.3], 0.55, '*ice', 0.25)
       }
-      staff.segment([0.5, -0.5, 15.5], [0.5, 3.5, 15.5], 0.7, '*ice').set(0, 1, 15, '*iceCore')
+      staff.segment([0.5, -0.5, 15.5], [0.5, 3.5, 15.5], 0.5, '*ice', 0.25).rawBox([0, 2, 30], [1, 3, 31], '*iceCore')
     }
   },
   pose: (input) => bipedPose(input, { attack: 'frostCast', stride: 0.4, bob: 0.6, ready: -0.6 })

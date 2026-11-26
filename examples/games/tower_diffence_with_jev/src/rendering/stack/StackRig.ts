@@ -27,9 +27,10 @@ const worlds = Array.from({ length: MAX_STACK_PARTS }, () => new THREE.Matrix4()
 
 /** Hierarchical part transforms (parents first), used for emitter placement and slice-sheet baking. */
 export function poseMatrices(model: StackModel, pose: StackPose, out: Float32Array): Float32Array {
+  const d = model.density
   model.parts.forEach((part, index) => {
     const p = pose[part.name]
-    position.set(part.at[0] + (p?.x ?? 0), part.at[1] + (p?.y ?? 0), part.at[2] + (p?.z ?? 0))
+    position.set(part.at[0] + (p?.x ?? 0) * d, part.at[1] + (p?.y ?? 0) * d, part.at[2] + (p?.z ?? 0) * d)
     euler.set(p?.rx ?? 0, p?.ry ?? 0, p?.rz ?? 0, 'YXZ')
     quaternion.setFromEuler(euler)
     const s = p?.s ?? 1
@@ -42,7 +43,7 @@ export function poseMatrices(model: StackModel, pose: StackPose, out: Float32Arr
   return out
 }
 
-/** Local point of a part in the figure's root cells. */
+/** Local logical point of a part in the figure's native root cells. */
 export function partPoint(
   model: StackModel,
   pose: StackPose,
@@ -51,8 +52,11 @@ export function partPoint(
 ): THREE.Vector3 {
   const index = model.partIndex.get(part)
   if (index === undefined) throw new Error(`${model.id} has no part ${part}`)
+  const d = model.density
   const matrices = poseMatrices(model, pose, new Float32Array(MAX_STACK_PARTS * 16))
-  return new THREE.Vector3(...at).applyMatrix4(new THREE.Matrix4().fromArray(matrices, index * 16))
+  return new THREE.Vector3(at[0] * d, at[1] * d, at[2] * d).applyMatrix4(
+    new THREE.Matrix4().fromArray(matrices, index * 16)
+  )
 }
 
 // ---------- SpriteCook True 2D Slice-Stacking Shader (Body + 1px Exterior Outline + Internal Depth Creases) ----------
@@ -73,6 +77,9 @@ uniform vec2 uAtlasSize;
 uniform vec2 uSliceSize;
 uniform vec2 uCenter;
 uniform int uSlices;
+uniform float uColsPerFrame;
+uniform float uTilesPerRow;
+uniform float uCreaseStep;
 uniform float uBaseLift;
 uniform float uFrame;
 uniform float uTurn;
@@ -102,6 +109,7 @@ vec4 sampleStack(vec2 u, float c, float s, float maxR) {
   int zBot = int(floor((-halfY - u.y) / max(0.001, uSpacing) - uBaseLift));
   if (zTop >= uSlices) zTop = uSlices - 1;
   if (zBot < 0) zBot = 0;
+  float frameBase = uFrame * uColsPerFrame;
   for (int i = 0; i < ${MAX_STACK_SLICES}; i++) {
     int z = zTop - i;
     if (z < zBot) break;
@@ -110,7 +118,10 @@ vec4 sampleStack(vec2 u, float c, float s, float maxR) {
     vec2 local = vec2(c * r.x + s * r.y, -s * r.x + c * r.y);
     vec2 sp = floor(local + uCenter + 0.5);
     if (sp.x >= 0.0 && sp.x < uSliceSize.x && sp.y >= 0.0 && sp.y < uSliceSize.y) {
-      vec2 texPx = vec2(float(z) * uSliceSize.x + sp.x + 0.5, uFrame * uSliceSize.y + sp.y + 0.5);
+      float tileIdx = frameBase + float(z);
+      float tileRow = floor(tileIdx / uTilesPerRow);
+      float tileCol = tileIdx - tileRow * uTilesPerRow;
+      vec2 texPx = vec2(tileCol * uSliceSize.x + sp.x + 0.5, tileRow * uSliceSize.y + sp.y + 0.5);
       vec4 col = texture2D(map, texPx / uAtlasSize);
       if (col.a > 0.5) return vec4(col.rgb, float(z) + 1.0);
     }
@@ -147,7 +158,7 @@ void main() {
     float zH = hit.a;
     vec4 nUp = sampleStack(u - duY, c, s, maxR);
     vec4 nL = sampleStack(u - duX, c, s, maxR);
-    if ((nUp.a > 0.5 && nUp.a - zH >= 7.0) || (nL.a > 0.5 && nL.a - zH >= 7.0)) {
+    if ((nUp.a > 0.5 && nUp.a - zH >= uCreaseStep) || (nL.a > 0.5 && nL.a - zH >= uCreaseStep)) {
       rgb = mix(rgb, inkFor(rgb), 0.32);
     }
   } else {
@@ -172,6 +183,8 @@ uniform vec2 uAtlasSize;
 uniform vec2 uSliceSize;
 uniform vec2 uCenter;
 uniform float uShadowColumn;
+uniform float uColsPerFrame;
+uniform float uTilesPerRow;
 uniform float uFrame;
 uniform float uTurn;
 uniform float uSquash;
@@ -187,7 +200,10 @@ void main() {
   vec2 local = vec2(c * r.x + s * r.y, -s * r.x + c * r.y);
   vec2 sp = floor(local + uCenter + 0.5);
   if (sp.x < 0.0 || sp.x >= uSliceSize.x || sp.y < 0.0 || sp.y >= uSliceSize.y) discard;
-  vec2 texPx = vec2(uShadowColumn * uSliceSize.x + sp.x + 0.5, uFrame * uSliceSize.y + sp.y + 0.5);
+  float tileIdx = uFrame * uColsPerFrame + uShadowColumn;
+  float tileRow = floor(tileIdx / uTilesPerRow);
+  float tileCol = tileIdx - tileRow * uTilesPerRow;
+  vec2 texPx = vec2(tileCol * uSliceSize.x + sp.x + 0.5, tileRow * uSliceSize.y + sp.y + 0.5);
   vec4 mask = texture2D(map, texPx / uAtlasSize);
   if (mask.a < 0.4) discard;
   // Core footprint (mask.r > 0.85) is darker than soft 1px rim (mask.r ~ 0.63).
@@ -203,6 +219,9 @@ export interface StackMaterialUniforms {
   uCenter: THREE.IUniform<THREE.Vector2>
   uArtBounds: THREE.IUniform<THREE.Vector4>
   uSlices: THREE.IUniform<number>
+  uColsPerFrame: THREE.IUniform<number>
+  uTilesPerRow: THREE.IUniform<number>
+  uCreaseStep: THREE.IUniform<number>
   uBaseLift: THREE.IUniform<number>
   uFrame: THREE.IUniform<number>
   uTurn: THREE.IUniform<number>
@@ -223,6 +242,8 @@ export interface StackShadowUniforms {
   uCenter: THREE.IUniform<THREE.Vector2>
   uArtBounds: THREE.IUniform<THREE.Vector4>
   uShadowColumn: THREE.IUniform<number>
+  uColsPerFrame: THREE.IUniform<number>
+  uTilesPerRow: THREE.IUniform<number>
   uFrame: THREE.IUniform<number>
   uTurn: THREE.IUniform<number>
   uSquash: THREE.IUniform<number>
@@ -242,6 +263,9 @@ export function createStackMaterial(
     uCenter: { value: new THREE.Vector2(atlas.cx, atlas.cy) },
     uArtBounds: { value: bounds.clone() },
     uSlices: { value: atlas.sliceCount },
+    uColsPerFrame: { value: atlas.colsPerFrame },
+    uTilesPerRow: { value: atlas.tilesPerRow },
+    uCreaseStep: { value: Math.round(7 * atlas.density) },
     uBaseLift: { value: atlas.baseLift },
     uFrame: { value: 0 },
     uTurn: { value: 0 },
@@ -271,6 +295,7 @@ export function createStackShadowMaterial(
   atlas: StackFrameAtlas,
   bounds: THREE.Vector4
 ): THREE.ShaderMaterial & { uniforms: StackShadowUniforms } {
+  const shadowOff = Math.round(2 * atlas.density)
   const uniforms: StackShadowUniforms = {
     map: { value: atlas.texture },
     uAtlasSize: { value: new THREE.Vector2(atlas.atlasWidth, atlas.atlasHeight) },
@@ -278,10 +303,12 @@ export function createStackShadowMaterial(
     uCenter: { value: new THREE.Vector2(atlas.cx, atlas.cy) },
     uArtBounds: { value: bounds.clone() },
     uShadowColumn: { value: atlas.sliceCount },
+    uColsPerFrame: { value: atlas.colsPerFrame },
+    uTilesPerRow: { value: atlas.tilesPerRow },
     uFrame: { value: 0 },
     uTurn: { value: 0 },
     uSquash: { value: STACK_SQUASH },
-    uShadowOffset: { value: new THREE.Vector2(2, 2) },
+    uShadowOffset: { value: new THREE.Vector2(shadowOff, shadowOff) },
     uOpacity: { value: 1 }
   }
   const material = new THREE.ShaderMaterial({

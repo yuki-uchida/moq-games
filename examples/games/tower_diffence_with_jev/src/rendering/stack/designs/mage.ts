@@ -9,13 +9,14 @@ export const mage: StackDesign = {
   type: 'mage',
   voxel: 2,
   walkDistance: 28,
-  portraitCrop: 0.64,
+  portraitCrop: 0.58,
   portraitYaw: -0.2,
-  portraitFocusY: 0.08,
+  portraitFocusY: 0.14,
   shadow: [8, 6],
   emitter: { part: 'weapon', at: [0.5, 1.5, 15.5] },
   blueprint: {
     id: 'mage',
+    density: 2,
     colors: {
       skin: '#ffd4b0',
       eye: '#211638',
@@ -80,23 +81,23 @@ export const mage: StackDesign = {
                 : 'hair'
           : undefined
       )
-      // Wide brim raised at y=8 and shifted slightly back (-z) so eyes & cheeks are NEVER covered!
-      b.head.fill([-8, 8, -9], [7, 8, 5], 'hat', (x, y, z) => Math.hypot(x / 7.6, (z + 1.5) / 6.8) <= 1)
-      b.head.fill([-5, 9, -6], [4, 9, 3], 'hatBand', (x, y, z) => Math.hypot(x, z + 1.2) <= 4.9)
-      for (let y = 10; y <= 17; y++) {
-        const r = 4.6 * (1 - (y - 10) / 9)
-        const lean = Math.max(0, y - 13) * 0.85
-        b.head.fill([-6, y, -7], [5, y, 8], 'hat', (x, yy, z) => Math.hypot(x, z + 1.2 - lean) <= Math.max(0.8, r))
-      }
+      // Smooth curved pointed witch hat tilted cleanly back so 19x19 face shines!
+      b.head.fill([-8, 8, -9], [7, 8, 5], 'hat', (x, _y, z) => Math.hypot(x / 7.6, (z + 1.5) / 6.8) <= 1)
+      b.head.fill([-5, 9, -6], [4, 9, 3], 'hatBand', (x, _y, z) => Math.hypot(x, z + 1.2) <= 4.9)
+      b.head.fill([-6, 10, -7], [5, 17, 8], 'hat', (x, y, z) => {
+        const r = 4.6 * (1 - (y - 10) / 8.8)
+        const lean = Math.max(0, y - 12.8) * 0.85
+        return Math.hypot(x, z + 1.2 - lean) <= Math.max(0.65, r)
+      })
       b.head.box([-1, 17, 4], [0, 17, 6], 'hat').box([-1, 16, 7], [0, 16, 7], '*glow')
-      // Bright gold stars on the starry robe.
-      for (const [x, y] of [
-        [-3, 2],
-        [2, 4],
-        [-1, 5],
-        [1, 1]
+      // Crisp 1px gold star motifs on the starry robe.
+      for (const [gx, gy] of [
+        [-6, 4],
+        [4, 8],
+        [-2, 10],
+        [2, 2]
       ])
-        b.torso.set(x, y, 4, 'star')
+        b.torso.rawSet(gx, gy, 7, 'star').rawSet(gx + 1, gy, 7, 'star').rawSet(gx, gy + 1, 7, 'star')
       for (const [x, y, z] of [
         [-5, -2, 3],
         [4, -1, 4],

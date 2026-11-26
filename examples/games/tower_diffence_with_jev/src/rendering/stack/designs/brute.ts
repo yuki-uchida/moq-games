@@ -15,6 +15,7 @@ export const brute: StackDesign = {
   shadow: [12, 10],
   blueprint: {
     id: 'brute',
+    density: 2,
     colors: {
       stone: '#ad9774',
       stoneDark: '#6e5c44',
@@ -64,9 +65,9 @@ export const brute: StackDesign = {
       const head = kit.part('head', 'torso', [0, 9, 5.5])
       head.box([-4, -2, -1], [3, 2, 4], 'stone').box([-5, 2, -1], [4, 4, 5], 'stoneDark')
       head.box([-4, -1, 3], [3, 1, 4], 'crack')
-      // Blazing 2x2 amber-gold eyes on the frontmost face plane so they survive the brow and cracks.
-      head.box([-4, 0, 5], [-2, 1, 5], '*eye').box([1, 0, 5], [3, 1, 5], '*eye')
-      head.set(-3, 1, 5, '*eyeCore').set(2, 1, 5, '*eyeCore')
+      // Blazing high-res amber-gold eyes with gleaming white cores under the heavy boulder brow.
+      head.rawBox([-8, 0, 10], [-3, 3, 11], '*eye').rawBox([2, 0, 10], [7, 3, 11], '*eye')
+      head.rawBox([-6, 1, 11], [-5, 2, 11], '*eyeCore').rawBox([4, 1, 11], [5, 2, 11], '*eyeCore')
       head.box([-4, -2, 0], [3, -2, 3], 'crack')
 
       for (const [name, x] of [

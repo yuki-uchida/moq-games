@@ -21,6 +21,7 @@ export const bat: StackDesign = {
   shadow: [7, 6],
   blueprint: {
     id: 'bat',
+    density: 2,
     colors: {
       fur: '#7e5cd6',
       furDark: '#4a2e94',
@@ -37,18 +38,19 @@ export const bat: StackDesign = {
       const body = kit.part('body', undefined, [0, 0, 0])
       body.ellipsoid([0, 0, 0], [4.5, 4.4, 4.6], 'fur')
       body.ellipsoid([0, -0.8, 2.0], [2.7, 2.6, 2.4], 'tummy')
-      for (const [x, ex] of [
-        [-4, -3],
-        [2, 1]
-      ] as const) {
-        body.box([x, 3, -1], [x + 1, 8, 1], 'furDark')
-        body.box([x, 4, 1], [x + 1, 7, 1], 'ear')
-        body.set(x < 0 ? x : x + 1, 9, 0, 'furDark')
-        body.face(ex, 1, '*eye').face(ex + 1, 1, '*eye').face(ex, 2, '*eye').face(ex + 1, 2, '*eye')
+      // Tapered velvet bat ears with clean pink inner hollows, crisp 3x3 gold eyes, cute nose & twin fangs.
+      for (const side of [-1, 1]) {
+        const bx = side < 0 ? -3.1 : 3.1
+        body.segment([bx, 3.4, -0.4], [bx + side * 0.4, 9.0, -0.6], 1.35, 'furDark', 0.45)
+        body.segment([bx, 4.0, 0.7], [bx + side * 0.2, 7.6, 0.4], 0.8, 'ear', 0.25)
       }
-      body.face(-2, 1, 'pupil').face(1, 1, 'pupil')
-      body.face(-1, 0, 'furDark').face(0, 0, 'furDark')
-      body.face(-2, -1, 'fang').face(1, -1, 'fang')
+      for (const gx of [-6, -5, -4, 3, 4, 5])
+        for (let gy = 2; gy <= 4; gy++) body.rawFace(gx, gy, '*eye', '+z', 2)
+      body.rawFace(-5, 2, 'pupil', '+z', 2).rawFace(4, 2, 'pupil', '+z', 2)
+      body.rawFace(-1, 0, 'furDark', '+z', 2).rawFace(0, 0, 'furDark', '+z', 2)
+      for (let gx = -4; gx <= 3; gx++) body.rawFace(gx, -1, 'furDark', '+z', 2)
+      body.rawFace(-3, -2, 'fang', '+z', 2).rawFace(-3, -3, 'fang', '+z', 2)
+      body.rawFace(2, -2, 'fang', '+z', 2).rawFace(2, -3, 'fang', '+z', 2)
       body.box([-1, -5, -1], [0, -4, 0], 'furDark')
 
       for (const [name, side] of [

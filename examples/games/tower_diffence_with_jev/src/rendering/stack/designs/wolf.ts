@@ -17,6 +17,7 @@ export const wolf: StackDesign = {
   shadow: [8, 11],
   blueprint: {
     id: 'wolf',
+    density: 2,
     colors: {
       top: '#2e354d',
       mid: '#526080',
@@ -47,23 +48,26 @@ export const wolf: StackDesign = {
       head.paint((x, y) => (y >= 2 ? 'top' : undefined))
       // Cheek fur tufts for unmistakable wolf width from the front and back.
       head.box([-6, -2, -1], [-5, 0, 2], 'ruff').box([4, -2, -1], [5, 0, 2], 'ruff')
-      // Long wolf snout & black nose.
-      head.box([-2, -2, 3], [1, 1, 8], 'mid').box([-2, 1, 3], [1, 1, 7], 'top').box([-1, 0, 8], [0, 1, 8], 'nose')
-      // Bold blazing amber eyes visible from front and 3/4 profile.
-      head.box([-4, 1, 2], [-3, 2, 4], '*eye').box([2, 1, 2], [3, 2, 4], '*eye')
-      head.set(-3, 1, 4, 'pupil').set(2, 1, 4, 'pupil')
-      // Tall pointed wolf ears.
-      for (const [x, innerX] of [
-        [-5, -4],
-        [4, 4]
-      ] as const) {
-        head.box([x, 4, -2], [x + 1, 7, 0], 'ear').set(x, 8, -1, 'top')
-        head.box([innerX, 4, 0], [innerX, 6, 0], 'earInner')
+      // Tapered wolf snout & wet black nose.
+      head
+        .rawBox([-4, -3, 6], [3, 2, 15], 'mid')
+        .rawBox([-3, -2, 15], [2, 1, 17], 'mid')
+        .rawBox([-4, 2, 6], [3, 3, 15], 'top')
+        .rawBox([-2, 0, 16], [1, 2, 18], 'nose')
+      // Fierce high-res glowing amber eyes with dark pupils.
+      head.rawBox([-8, 2, 4], [-5, 4, 8], '*eye').rawBox([4, 2, 4], [7, 4, 8], '*eye')
+      head.rawBox([-6, 2, 8], [-5, 3, 8], 'pupil').rawBox([4, 2, 8], [5, 3, 8], 'pupil')
+      // Tall pointed wolf ears with crisp dark tips & inner ear pink.
+      for (const side of [-1, 1]) {
+        const bx = side < 0 ? -4.5 : 4.5
+        head.segment([bx, 4.2, -1], [bx + side * 0.6, 8.4, -1.2], 1.25, 'ear', 0.45)
+        head.segment([bx - side * 0.2, 4.4, 0.0], [bx + side * 0.2, 7.0, -0.3], 0.65, 'earInner', 0.25)
       }
 
       const jaw = kit.part('jaw', 'head', [0, -2, 3])
-      jaw.box([-2, -1, 0], [1, 0, 5], 'under')
-      jaw.set(-2, 0, 4, 'tooth').set(1, 0, 4, 'tooth').box([-1, 0, 1], [0, 0, 3], 'mouth')
+      jaw.rawBox([-3, -2, 0], [2, 0, 10], 'under')
+      jaw.rawBox([-3, 0, 7], [-3, 1, 9], 'tooth').rawBox([2, 0, 7], [2, 1, 9], 'tooth')
+      jaw.rawBox([-2, 0, 2], [1, 0, 7], 'mouth')
 
       for (const [name, x, z] of [
         ['legFL', 3, 4],

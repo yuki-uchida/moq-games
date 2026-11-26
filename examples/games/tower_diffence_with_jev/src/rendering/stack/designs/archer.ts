@@ -17,6 +17,7 @@ export const archer: StackDesign = {
   emitter: { part: 'offhand', at: [0, 3, 2] },
   blueprint: {
     id: 'archer',
+    density: 2,
     colors: {
       skin: '#ffc89e',
       eye: '#162426',
@@ -66,13 +67,14 @@ export const archer: StackDesign = {
         .box([1, 1, -5], [3, 7, -3], 'quiver')
         .box([1, 8, -5], [3, 10, -4], 'fletch')
         .box([2, 10, -5], [2, 11, -5], 'scarf')
-      // Tall recurve bow held upright in left fist with clear gap between grip and torso.
+      // Tall smooth recurve bow with crisp 1px taut bowstring.
       const bow = kit.part('offhand', 'armL', [1, b.hand + 1, 2])
-      for (let y = -7; y <= 10; y++) {
-        const z = 3 - Math.round(2.8 * (y / 10) ** 2)
-        bow.box([-1, y, z], [0, y, z + 1], Math.abs(y) < 2 ? 'leather' : 'wood')
+      for (let gy = -14; gy <= 20; gy++) {
+        const y = gy / 2
+        const gz = Math.round(6 - 5.6 * (y / 10) ** 2)
+        bow.rawBox([-2, gy, gz], [0, gy, gz + 1], Math.abs(y) < 1.8 ? 'leather' : 'wood')
       }
-      bow.box([0, -6, 0], [0, 9, 0], 'string')
+      bow.rawBox([-1, -12, 0], [-1, 18, 0], 'string')
     }
   },
   pose: (input) => {

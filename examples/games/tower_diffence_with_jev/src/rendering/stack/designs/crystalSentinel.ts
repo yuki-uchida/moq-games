@@ -14,6 +14,7 @@ export const crystalSentinel: StackDesign = {
   shadow: [11, 9],
   blueprint: {
     id: 'crystalSentinel',
+    density: 2,
     colors: {
       stone: '#525670',
       stoneDark: '#2f3247',
@@ -39,7 +40,9 @@ export const crystalSentinel: StackDesign = {
         .box([-7, 0, -5], [6, 10, 5], 'stone')
         .box([-7, 10, -5], [6, 10, 5], 'stoneLight')
         .box([-5, 0, -4], [4, 0, 4], 'stoneDark')
-      torso.box([-1, 1, 6], [0, 9, 6], '*vein').box([-6, 5, 6], [5, 5, 6], '*vein')
+      // Crisp 1px glowing neon-violet circuit veins on obsidian chest.
+      torso.rawBox([-1, 2, 11], [0, 19, 12], '*vein').rawBox([-11, 10, 11], [10, 11, 12], '*vein')
+      torso.rawBox([-5, 6, 11], [-4, 15, 11], '*vein').rawBox([3, 6, 11], [4, 15, 11], '*vein')
       for (const [x, z, h] of [
         [-6, -2, 7],
         [4, -3, 9],

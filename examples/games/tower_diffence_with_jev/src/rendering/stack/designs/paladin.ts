@@ -10,13 +10,14 @@ export const paladin: StackDesign = {
   type: 'paladin',
   voxel: 2,
   walkDistance: 27,
-  portraitCrop: 0.64,
-  portraitYaw: -0.32,
-  portraitFocusY: 0.1,
+  portraitCrop: 0.58,
+  portraitYaw: -0.28,
+  portraitFocusY: 0.12,
   softShade: true,
   shadow: [9, 7],
   blueprint: {
     id: 'paladin',
+    density: 2,
     colors: {
       skin: '#ffd0a8',
       eye: '#26180d',
@@ -68,11 +69,9 @@ export const paladin: StackDesign = {
       b.head.box([-4, 8, 3], [3, 9, 4], 'gold')
       b.head.box([-1, 10, -3], [0, 11, 2], 'gold')
       for (const side of [-1, 1]) {
-        const x = side < 0 ? -6 : 5
         b.head
-          .box([x, 6, -2], [x, 8, 0], 'wing')
-          .box([x + side, 7, -3], [x + side, 9, -1], 'wing')
-          .box([x + side * 2, 8, -4], [x + side * 2, 10, -2], 'wing')
+          .segment([side * 5.2, 6.2, -1], [side * 7.8, 9.6, -3.5], 0.9, 'wing', 0.45)
+          .segment([side * 5.2, 5.4, -1.5], [side * 7.2, 8.0, -3.8], 0.75, 'wing', 0.35)
       }
       // Royal blue & gold chest tabard + flowing cape (breaks cleanly off white snow!).
       b.torso.box([-2, 0, 4], [1, 5, 4], 'tabard').box([-1, 2, 5], [0, 3, 5], 'gold')

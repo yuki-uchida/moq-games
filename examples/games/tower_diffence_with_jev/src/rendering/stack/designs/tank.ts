@@ -10,12 +10,13 @@ export const tank: StackDesign = {
   type: 'tank',
   voxel: 2,
   walkDistance: 26,
-  portraitCrop: 0.62,
+  portraitCrop: 0.56,
   portraitYaw: -0.35,
-  portraitAspect: 1.24,
+  portraitAspect: 1.18,
   shadow: [10, 8],
   blueprint: {
     id: 'tank',
+    density: 2,
     colors: {
       plate: '#9eb6d6',
       plateDark: '#4f6485',
@@ -50,21 +51,22 @@ export const tank: StackDesign = {
       // Taper waist narrower than the broad overhanging pauldrons so side & back views read with heroic knight form!
       b.hips.paint(() => 0)
       b.hips.box([-4, 0, -3], [3, 1, 3], 'cloth').box([-1, 0, 3], [0, 1, 3], 'gold')
-      // Sculpted bucket helm with gold brow crest and glowing eyes inside dark T-visor.
+      // Sculpted beveled bucket helm with crisp gold filigree, recessed dark T-visor & glowing eyes.
       b.head.paint(() => 0)
       b.head
-        .box([-4, 0, -3], [3, 8, 3], 'plate')
-        .box([-4, 8, -3], [3, 9, 3], 'plateLight')
-        .box([-4, 0, -3], [3, 0, 3], 'plateDark')
-        .box([-4, 5, 3], [3, 6, 3], 'gold')
-        // Side visor slits and ear guards keep the profile from reading as a plain box.
-        .box([-4, 3, 0], [-4, 4, 1], 'visor')
-        .box([3, 3, 0], [3, 4, 1], 'visor')
-        .box([-3, 3, 3], [2, 4, 3], 'visor')
-        .box([-1, 1, 3], [0, 4, 3], 'visor')
-        .box([-3, 3, 3], [-2, 4, 3], '*eyeGlow')
-        .box([1, 3, 3], [2, 4, 3], '*eyeGlow')
-        .box([-1, 9, -3], [0, 11, 2], 'gold')
+        .fill([-4, 0, -3], [3, 8, 3], 'plate', (x, _y, z) => (Math.abs(x) / 4.2) ** 4 + (Math.abs(z) / 3.8) ** 4 <= 1.05)
+        .rawBox([-7, 16, -6], [6, 18, 6], 'plateLight')
+        .rawBox([-7, 0, -6], [6, 1, 6], 'plateDark')
+        .rawBox([-7, 11, 6], [6, 12, 7], 'gold')
+        // Side visor slits & breath vents keep the profile sleek and armored.
+        .rawBox([-8, 6, 0], [-8, 8, 3], 'visor')
+        .rawBox([7, 6, 0], [7, 8, 3], 'visor')
+        .rawBox([-6, 6, 7], [5, 8, 7], 'visor')
+        .rawBox([-1, 2, 7], [0, 8, 7], 'visor')
+        .rawBox([-5, 7, 7], [-3, 8, 7], '*eyeGlow')
+        .rawBox([2, 7, 7], [4, 8, 7], '*eyeGlow')
+        .rawBox([-1, 18, -6], [0, 22, 4], 'gold')
+        .rawBox([-1, 21, -4], [0, 23, 2], 'plateLight')
       // Broad sculpted overhanging cobalt-and-gold pauldrons + chest tabard (contrasts strongly on frost snow!).
       for (const x of [-8, 5])
         b.torso

@@ -26,6 +26,7 @@ export const dragon: StackDesign = {
   emitter: { part: 'jaw', at: [0, 1, 6] },
   blueprint: {
     id: 'dragon',
+    density: 2,
     colors: {
       scale: '#d9412e',
       scaleDark: '#8f2119',
@@ -66,18 +67,19 @@ export const dragon: StackDesign = {
       head.fill([-5, -2, -4], [4, 4, 5], 'scale', (x, y, z) => Math.hypot(x / 4.2, y / 3.2, (z - 0.5) / 4.2) <= 1)
       head.box([-3, -1, 3], [2, 2, 8], 'scale').box([-3, 2, 4], [2, 2, 7], 'scaleDark')
       head.box([-4, 2, 1], [-2, 3, 4], 'scaleDark').box([1, 2, 1], [3, 3, 4], 'scaleDark')
-      // Bold 2x2 glowing eyes readable from front and 3/4.
-      head.box([-4, 0, 2], [-3, 1, 4], '*eyeGlow').box([2, 0, 2], [3, 1, 4], '*eyeGlow')
-      head.set(-3, 0, 4, 'eye').set(2, 0, 4, 'eye')
-      // Swept ivory horns.
+      // Fierce high-res glowing amber dragon eyes with sharp vertical slit pupils & nostrils.
+      head.rawBox([-8, 0, 4], [-5, 3, 9], '*eyeGlow').rawBox([4, 0, 4], [7, 3, 9], '*eyeGlow')
+      head.rawBox([-6, 0, 8], [-6, 2, 9], 'eye').rawBox([5, 0, 8], [5, 2, 9], 'eye')
+      // Swept tapered ivory horns.
       head
-        .segment([-2.5, 3, -1], [-4.5, 7, -5.5], 1.1, 'horn', 0.5)
-        .segment([1.5, 3, -1], [3.5, 7, -5.5], 1.1, 'horn', 0.5)
-      head.box([-2, 0, 8], [1, 0, 8], 'mouth').set(-2, 1, 8, 'scaleDark').set(1, 1, 8, 'scaleDark')
+        .segment([-2.5, 3, -1], [-4.8, 7.4, -5.8], 1.1, 'horn', 0.35)
+        .segment([1.5, 3, -1], [3.8, 7.4, -5.8], 1.1, 'horn', 0.35)
+      head.rawBox([-4, 0, 16], [3, 1, 17], 'mouth').rawBox([-4, 2, 16], [-3, 3, 17], 'scaleDark').rawBox([2, 2, 16], [3, 3, 17], 'scaleDark')
 
       const jaw = kit.part('jaw', 'head', [0, -1.8, 3.5])
       jaw.box([-3, -1, 0], [2, 0, 5], 'belly')
-      jaw.box([-3, 0, 4], [-2, 1, 5], 'claw').box([1, 0, 4], [2, 1, 5], 'claw')
+      jaw.rawBox([-5, 0, 8], [-4, 2, 10], 'claw').rawBox([3, 0, 8], [4, 2, 10], 'claw')
+      jaw.rawBox([-2, 0, 9], [-2, 1, 10], 'claw').rawBox([1, 0, 9], [1, 1, 10], 'claw')
       jaw.box([-2, 0, 1], [1, 0, 3], '*ember')
 
       for (const [name, x, z] of [

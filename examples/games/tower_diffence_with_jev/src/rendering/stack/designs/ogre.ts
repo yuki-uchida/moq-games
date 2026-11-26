@@ -16,6 +16,7 @@ export const ogre: StackDesign = {
   shadow: [12, 10],
   blueprint: {
     id: 'ogre',
+    density: 2,
     colors: {
       skin: '#cf835b',
       skinDark: '#965436',
@@ -75,12 +76,13 @@ export const ogre: StackDesign = {
       // Larger expressive ogre head & jaw so glowing eyes and twin ivory tusks dominate front & 3/4 views.
       head.fill([-7, 0, -5], [6, 9, 6], 'skin', (x, y, z) => Math.hypot(x / 5.9, (y - 4.4) / 4.8, (z - 0.5) / 5.2) <= 1)
       head.box([-5, 0, 2], [4, 2, 6], 'belly')
-      // Raised heavy brow over bold 2x2 glowing orange eyes + broad nose + chunky upturned tusks.
+      // Raised heavy brow over fierce high-res glowing orange eyes, broad nose & curved tapered ivory tusks.
       head.box([-5, 6, 3], [4, 7, 6], 'brow')
-      head.box([-4, 4, 5], [-3, 5, 6], '*eye').box([2, 4, 5], [3, 5, 6], '*eye')
-      head.set(-3, 4, 6, 'pupil').set(2, 4, 6, 'pupil')
-      head.box([-1, 3, 6], [0, 4, 7], 'skinDark')
-      head.box([-4, 1, 6], [-3, 3, 7], 'tusk').box([2, 1, 6], [3, 3, 7], 'tusk')
+      head.rawBox([-8, 8, 10], [-5, 11, 12], '*eye').rawBox([4, 8, 10], [7, 11, 12], '*eye')
+      head.rawBox([-6, 9, 12], [-5, 10, 12], 'pupil').rawBox([4, 9, 12], [5, 10, 12], 'pupil')
+      head.ellipsoid([0, 3.6, 6.2], [1.4, 1.0, 1.0], 'skinDark')
+      head.segment([-3.3, 1.4, 6.2], [-3.6, 3.9, 7.0], 0.85, 'tusk', 0.35)
+      head.segment([2.7, 1.4, 6.2], [3.0, 3.9, 7.0], 0.85, 'tusk', 0.35)
       // Side ears & compact red-tied warrior topknot.
       head.box([-7, 4, -1], [-6, 6, 1], 'skinDark').box([5, 4, -1], [6, 6, 1], 'skinDark')
       head

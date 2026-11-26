@@ -15,6 +15,7 @@ export const runner: StackDesign = {
   shadow: [7, 6],
   blueprint: {
     id: 'runner',
+    density: 2,
     colors: {
       skin: '#f7c192',
       eye: '#241810',
@@ -52,15 +53,16 @@ export const runner: StackDesign = {
         { torsoHalf: 3, torsoDepth: 3, legs: 8, armLength: 7 }
       )
       b.head.paint((x, y, z) => (z < 1 && y >= 1 ? 'hair' : y >= 6 && z < 3 ? 'hair' : undefined))
-      for (const [x, z] of [
-        [-3, -2],
-        [-1, -3],
-        [1, -3],
-        [2, -1],
-        [0, 0],
-        [-2, 1]
-      ])
-        b.head.box([x, 9, z], [x + 1, 11, z + 1], 'hair')
+      // Swept spiky anime scout hair above the ivory headband (zero blocky top-hat silhouette!).
+      for (const [x, z, dx, h] of [
+        [-2.8, -1.2, -1.0, 10.6],
+        [-1.0, -2.0, -0.4, 11.2],
+        [1.2, -1.8, 0.8, 11.0],
+        [2.6, -0.6, 1.1, 10.4],
+        [0.0, 0.2, 0.2, 10.8],
+        [-1.8, 0.8, -0.8, 10.3]
+      ] as const)
+        b.head.segment([x, 8.4, z], [x + dx, h, z - 1.2], 1.15, 'hair', 0.35)
       // Slim ivory headband (single row so rear view doesn't look like a thick white bandage).
       b.head.fill([-6, 7, -6], [5, 7, 5], 'band', (x, y, z) => {
         const d = Math.hypot(x / 5.0, z / 4.8)
@@ -71,14 +73,15 @@ export const runner: StackDesign = {
       b.torso.fill([-5, 5, -4], [4, 7, 4], 'scarf', (x, y, z) => Math.hypot(x / 3.9, z / 3.4) <= 1.15)
       const cape = kit.part('cape', 'torso', [1, 6.2, -3.2])
       cape.box([-1, -1, -5], [0, 0, -1], 'scarf').box([-1, -3, -7], [0, -1, -5], 'scarfDark')
-      // Sleek tapered spear held firmly in right fist (sharp tapered point, not a blocky sock).
+      // Sleek tapered high-res spear held firmly in right fist.
       const spear = kit.part('weapon', 'armR', [0, b.hand, 1])
       spear
-        .box([0, 0, -7], [1, 1, 12], 'shaft')
-        .box([-1, 0, 11], [2, 1, 12], 'scarf')
-        .box([0, 0, 13], [1, 1, 15], 'bladeDark')
-        .box([0, 0, 16], [1, 1, 17], 'blade')
-        .box([0, 0, 18], [0, 1, 19], 'blade')
+        .rawBox([0, 0, -14], [2, 2, 24], 'shaft')
+        .rawBox([-2, -1, 22], [4, 3, 24], 'scarf')
+        .rawBox([0, 0, 25], [2, 2, 30], 'bladeDark')
+        .rawBox([0, 0, 31], [2, 2, 34], 'blade')
+        .rawBox([0, 0, 35], [1, 1, 38], 'blade')
+        .rawSet(1, 1, 39, 'blade')
     }
   },
   pose: (input) => {
