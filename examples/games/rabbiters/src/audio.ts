@@ -5,8 +5,15 @@ import { CAMPAIGN, nightVision } from './campaign'
 import { ZONES, zonesAt } from './map'
 import { inRect } from './stages/kit'
 import { beamRect } from './stages/waterway/map'
+import { CUES, soundBank, STAGE_BEDS, type CueId } from './sound-bank'
 
 const COVER_GRACE_SECONDS = 0.5
+const MASTER_GAIN = 1
+const MAX_VOICES = 16
+/** Bed level under each threat, relative to its calm level. */
+const BED_LEVEL = { calm: 1, suspicious: 0.7, chase: 0.5 } as const
+
+type Layer = { source: AudioBufferSourceNode; gain: GainNode }
 
 export function bindAudioResume(doc: Document, resume: () => void): () => void {
   const wake = (event: Event) => {
@@ -104,11 +111,12 @@ export class RabbitersAudio {
   private context: AudioContext | null = null
   private master: GainNode | null = null
   private timer: ReturnType<typeof setInterval> | null = null
-  private voices = new Set<OscillatorNode>()
+  private voices = new Set<AudioBufferSourceNode>()
+  /** Looping music layers (stage bed and threat layers), kept across threat changes so they can crossfade. */
+  private loops = new Map<CueId, Layer>()
   private muted = false
   private previous: Observation | null = null
   private lastQuery = -Infinity
-  private beat = 0
   private musicAfter = 0
   private alarmUntil = 0
   private alarmReceived: number | null = null
@@ -138,8 +146,9 @@ export class RabbitersAudio {
         this.pendingQuery = pendingQuery ? { ...pendingQuery, context } : null
         context.onstatechange = () => this.playPendingAlarm(context)
         this.master = this.context.createGain()
-        this.master.gain.value = this.muted ? 0 : 0.12
+        this.master.gain.value = this.muted ? 0 : MASTER_GAIN
         this.master.connect(this.context.destination)
+        void soundBank(context).load()
       }
       const context = this.context
       void context
@@ -168,7 +177,6 @@ export class RabbitersAudio {
     this.previous = null
     this.threats.reset()
     this.lastQuery = -Infinity
-    this.beat = 0
     this.musicAfter = 0
     this.evadedWhileHidden = false
   }
@@ -177,7 +185,7 @@ export class RabbitersAudio {
     this.muted = muted
     if (muted) this.pendingAlarm = null
     if (muted) this.silence()
-    if (this.master) this.master.gain.value = muted ? 0 : 0.12
+    if (this.master) this.master.gain.value = muted ? 0 : MASTER_GAIN
   }
 
   update(state: GameState, localPlayerId: string): void {
@@ -251,7 +259,6 @@ export class RabbitersAudio {
     if (!previous || (previous.phase !== 'playing' && next.phase === 'playing')) {
       if (previous) {
         this.silence()
-        this.beat = 0
         this.musicAfter = 0
         this.lastQuery = -Infinity
       }
@@ -277,13 +284,13 @@ export class RabbitersAudio {
       return
     }
     if (previous.threat !== next.threat || previous.phase !== next.phase) {
-      this.beat = 0
       if (
         (previous.phase !== next.phase && next.phase !== 'lost') ||
         (this.context?.currentTime ?? 0) >= this.musicAfter
       ) {
         const query = this.pendingQuery
-        this.silence()
+        // A threat change crossfades the music layers; a phase change ends them.
+        this.silence(previous.phase === next.phase)
         this.pendingQuery = query
         this.musicAfter = 0
       }
@@ -295,10 +302,10 @@ export class RabbitersAudio {
     )
       this.alarm()
     if (previous.phase === 'playing' && next.phase !== 'playing') {
-      this.chime(next.phase === 'won' ? [523, 659, 784, 1047] : [392, 330, 262, 196])
+      this.play(next.phase === 'won' ? 'won' : 'lost')
     }
     if (next.phase !== 'playing') return
-    if ([...previous.nests].some((id) => !next.nests.has(id))) this.chime([180, 110, 65], 'sawtooth')
+    if ([...previous.nests].some((id) => !next.nests.has(id))) this.play('nest-broken')
     // Any rabbit being spotted is a team-wide cue; "?" only sounds for suspicion aimed at you.
     if (
       rediscoveredAfterHiding ||
@@ -341,11 +348,11 @@ export class RabbitersAudio {
     ) {
       this.query(state.time)
     }
-    if (next.chapter > previous.chapter || next.stage > previous.stage) this.chime([392, 523, 659, 784, 1047])
-    else if (next.bedding > previous.bedding) this.chime([587, 784])
-    if (next.kitsLost > previous.kitsLost) this.chime([440, 330, 220], 'triangle')
+    if (next.chapter > previous.chapter || next.stage > previous.stage) this.play('chapter')
+    else if (next.bedding > previous.bedding) this.play('bedding')
+    if (next.kitsLost > previous.kitsLost) this.play('kit-lost')
     if (!player || previous.playerId !== localPlayerId) return
-    if (!previous.pregnant && next.pregnant) this.chime([523, 659, 880])
+    if (!previous.pregnant && next.pregnant) this.play('bloom')
   }
 
   private query(time: number): void {
@@ -372,11 +379,11 @@ export class RabbitersAudio {
     }
     this.pendingQuery = null
     this.lastQuery = time
-    this.tone(494, 0.12, 'triangle', 0, 520, 0.07)
-    this.tone(587, 0.22, 'triangle', 0.11, 659, 0.07)
+    this.play('query')
   }
 
-  private silence(): void {
+  /** Stops every sting; the music layers too unless `keepMusic` (they then follow the threat in music()). */
+  private silence(keepMusic = false): void {
     this.pendingQuery = null
     this.alarmUntil = 0
     this.alarmReceived = null
@@ -387,29 +394,45 @@ export class RabbitersAudio {
       voice.disconnect()
     }
     this.voices.clear()
+    if (!keepMusic) for (const id of [...this.loops.keys()]) this.release(id)
   }
 
+  /** Keeps the stage bed and the threat layers playing at their levels for the current threat. */
   private music(): void {
-    if (this.previous?.phase !== 'playing') return
-    if ((this.context?.currentTime ?? 0) < this.musicAfter) return
-    if (this.previous.threat !== 'calm') {
-      const step = this.beat++ % 8
-      if (this.previous.threat === 'chase') {
-        const bass = [98, 98, 104, 98, 98, 92, 104, 92][step]
-        this.tone(bass, 0.22, 'triangle', 0, bass, 0.28, 0.6)
-        this.tone(bass * 4, 0.1, 'square', 0.125, bass * 4, 0.14, 0.4)
-        this.tone(step % 2 === 0 ? 150 : 120, 0.1, 'sine', 0, 48, 0.26)
-        if (step % 2 === 1) this.tone(1760, 0.045, 'triangle', 0.125, 880, 0.06)
-        if (step === 3 || step === 7) this.tone(587, 0.12, 'sine', 0.125, 740, 0.1, 0.3)
-      } else if (step % 2 === 0) {
-        this.tone(step % 4 === 0 ? 392 : 416, 0.36, 'triangle', 0, 370, 0.14, 0.45)
+    const context = this.context
+    if (this.previous?.phase !== 'playing' || !context) return
+    if (context.currentTime < this.musicAfter) return
+    const threat = this.previous.threat
+    const wanted = new Map<CueId, number>([[STAGE_BEDS[this.previous.stage] ?? 'bed-forest', BED_LEVEL[threat]]])
+    if (threat !== 'calm') wanted.set('tension-search', 1)
+    if (threat === 'chase') wanted.set('tension-chase', 1)
+    for (const id of [...this.loops.keys()]) if (!wanted.has(id)) this.release(id, 0.25)
+    for (const [id, level] of wanted) {
+      const layer = this.loops.get(id)
+      if (!layer) {
+        const started = this.play(id, { level, loop: true })
+        if (started) this.loops.set(id, started)
+        continue
       }
-      return
+      try {
+        layer.gain.gain.setTargetAtTime(CUES[id].gain * level, context.currentTime, 0.25)
+      } catch {}
     }
-    const melody = [72, 76, 79, 76, 74, 79, 81, 79, 76, 72, 69, 72, 74, 71, 67, 71]
-    const step = this.beat++ % melody.length
-    this.tone(440 * 2 ** ((melody[step] - 69) / 12), 0.18, 'sine')
-    if (step % 4 === 0) this.tone([131, 147, 110, 98][step / 4], 0.45, 'triangle')
+  }
+
+  /** Fades out and stops one music layer. */
+  private release(id: CueId, fade = 0.03): void {
+    const layer = this.loops.get(id)
+    if (!layer) return
+    this.loops.delete(id)
+    try {
+      const now = this.context?.currentTime ?? 0
+      layer.gain.gain.setTargetAtTime(0, now, fade)
+      layer.source.stop(now + fade * 5)
+    } catch {
+      layer.source.disconnect()
+      layer.gain.disconnect()
+    }
   }
 
   private alarm(): void {
@@ -430,10 +453,8 @@ export class RabbitersAudio {
     this.alarmReceived = Date.now()
     this.alarmUntil = this.context.currentTime + 0.55
     this.musicAfter = this.context.currentTime + 0.55
-    this.tone(160, 0.28, 'triangle', 0, 45, 0.36, 0.15)
-    this.tone(830, 0.16, 'square', 0, 622, 0.36, 0.35)
-    this.tone(1245, 0.22, 'triangle', 0.035, 932, 0.36, 0.4)
-    this.tone(466, 0.36, 'sine', 0.16, 698, 0.36, 0.25)
+    this.play('alarm-hit')
+    this.play('alarm-crow', { delay: 0.03 })
   }
 
   private playPendingAlarm(context: AudioContext): void {
@@ -468,42 +489,36 @@ export class RabbitersAudio {
     }
   }
 
-  private chime(notes: number[], type: OscillatorType = 'sine'): void {
-    notes.forEach((frequency, index) => this.tone(frequency, 0.16, type, index * 0.09))
-  }
-
-  private tone(
-    frequency: number,
-    duration: number,
-    type: OscillatorType,
-    delay = 0,
-    end = frequency,
-    peak = 0.15,
-    hold = 0
-  ): void {
+  /** Plays a recorded cue (looped for music layers, which fade in and do not count as voices). */
+  private play(id: CueId, { delay = 0, level = 1, loop = false } = {}): Layer | undefined {
     const context = this.context
-    if (!context || !this.master || this.muted || context.state !== 'running' || this.voices.size >= 16) return
+    if (!context || !this.master || this.muted || context.state !== 'running') return
+    if (!loop && this.voices.size >= MAX_VOICES) return
+    const buffer = soundBank(context).get(id)
+    if (!buffer) return
     try {
-      const oscillator = context.createOscillator()
-      const envelope = context.createGain()
+      const source = context.createBufferSource()
+      const gain = context.createGain()
       const start = context.currentTime + delay
-      oscillator.type = type
-      oscillator.frequency.setValueAtTime(frequency, start)
-      oscillator.frequency.exponentialRampToValueAtTime(end, start + duration)
-      envelope.gain.setValueAtTime(0, start)
-      envelope.gain.linearRampToValueAtTime(Math.min(peak, 0.36), start + 0.01)
-      if (hold > 0) envelope.gain.setValueAtTime(Math.min(peak, 0.36), start + duration * hold)
-      envelope.gain.exponentialRampToValueAtTime(0.001, start + duration)
-      oscillator.connect(envelope)
-      envelope.connect(this.master)
-      this.voices.add(oscillator)
-      oscillator.onended = () => {
-        this.voices.delete(oscillator)
-        oscillator.disconnect()
-        envelope.disconnect()
+      const volume = CUES[id].gain * level
+      source.buffer = buffer
+      source.loop = loop
+      if (loop) {
+        gain.gain.setValueAtTime(0, start)
+        gain.gain.linearRampToValueAtTime(volume, start + 0.6)
+      } else gain.gain.setValueAtTime(volume, start)
+      source.connect(gain)
+      gain.connect(this.master)
+      if (!loop) this.voices.add(source)
+      source.onended = () => {
+        this.voices.delete(source)
+        source.disconnect()
+        gain.disconnect()
       }
-      oscillator.start(start)
-      oscillator.stop(start + duration)
-    } catch {}
+      source.start(start)
+      return { source, gain }
+    } catch {
+      return
+    }
   }
 }

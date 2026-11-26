@@ -2,10 +2,12 @@ import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { JuiceEvent } from '../src/juice-events'
 import { RabbitersSfx, type UiSound } from '../src/sfx'
+import { CUES, soundBank, type CueId } from '../src/sound-bank'
 
 const parameter = () => ({
   value: 0,
   setValueAtTime: vi.fn(),
+  setTargetAtTime: vi.fn(),
   linearRampToValueAtTime: vi.fn(),
   exponentialRampToValueAtTime: vi.fn()
 })
@@ -16,9 +18,14 @@ class Context {
   destination = {}
   nodes = 0
   gains: ReturnType<Context['createGain']>[] = []
-  oscillators: ReturnType<Context['createOscillator']>[] = []
+  sources: ReturnType<Context['createBufferSource']>[] = []
   resume = vi.fn(() => Promise.resolve())
   close = vi.fn(() => Promise.resolve())
+  decodeAudioData = vi.fn(() => new Promise<never>(() => {}))
+  constructor() {
+    const bank = soundBank(this as unknown as BaseAudioContext)
+    for (const cue of Object.keys(CUES) as CueId[]) bank.put(cue, { duration: 0.3, cue } as unknown as AudioBuffer)
+  }
   createGain() {
     const gain = { gain: parameter(), connect: vi.fn(), disconnect: vi.fn() }
     this.gains.push(gain)
@@ -27,31 +34,19 @@ class Context {
   createDynamicsCompressor() {
     return { connect: vi.fn(), disconnect: vi.fn() }
   }
-  createBuffer(_channels: number, length: number) {
-    const data = new Float32Array(length)
-    return { duration: length / 8000, getChannelData: () => data }
-  }
   createBufferSource() {
     this.nodes++
-    return { buffer: null, connect: vi.fn(), disconnect: vi.fn(), start: vi.fn(), stop: vi.fn(), onended: null }
-  }
-  createBiquadFilter() {
-    return { type: 'lowpass', Q: { value: 0 }, frequency: parameter(), connect: vi.fn(), disconnect: vi.fn() }
-  }
-  createOscillator() {
-    this.nodes++
-    const oscillator = {
-      type: 'sine',
-      frequency: parameter(),
-      detune: parameter(),
+    const source = {
+      buffer: null as { cue: CueId } | null,
+      playbackRate: parameter(),
       connect: vi.fn(),
       disconnect: vi.fn(),
       start: vi.fn(),
       stop: vi.fn(),
       onended: null
     }
-    this.oscillators.push(oscillator)
-    return oscillator
+    this.sources.push(source)
+    return source
   }
 }
 
@@ -119,7 +114,7 @@ describe('Rabbiters sfx', () => {
       context.currentTime += 1
       expect(() => sfx.ui(kind)).not.toThrow()
     }
-    expect(context.nodes).toBeGreaterThan(60)
+    expect(context.nodes).toBeGreaterThan(25)
     sfx.stop()
     sfx.stop()
   })
@@ -188,7 +183,7 @@ describe('Rabbiters sfx', () => {
       const { sfx, context } = setup()
       context.currentTime = 60
       if (limit === 'rate limit') sfx.play({ type: 'step', at, sprint: false, crouch: false })
-      else for (let index = 0; index < 20; index++) sfx.play({ type: 'revived', at })
+      else for (let index = 0; index < 30; index++) sfx.play({ type: 'revived', at })
       expect(context.nodes).toBeGreaterThan(0)
       if (limit === 'voice limit') expect(context.nodes).toBe(24)
 
@@ -213,7 +208,7 @@ describe('Rabbiters sfx', () => {
     const { sfx, context } = setup()
     sfx.setChase(true)
     vi.advanceTimersByTime(545)
-    expect(context.oscillators).toHaveLength(2)
+    expect(context.sources).toHaveLength(1)
     context.state = 'closed'
     const replacement = new Context()
     vi.stubGlobal(
@@ -224,17 +219,17 @@ describe('Rabbiters sfx', () => {
     )
     sfx.start()
     expect(vi.getTimerCount()).toBe(1)
-    expect(context.oscillators.every((voice) => voice.disconnect.mock.calls.length === 1)).toBe(true)
+    expect(context.sources.every((voice) => voice.disconnect.mock.calls.length === 1)).toBe(true)
     vi.advanceTimersByTime(545)
-    expect(replacement.oscillators).toHaveLength(2)
+    expect(replacement.sources).toHaveLength(1)
     sfx.stop()
     expect(vi.getTimerCount()).toBe(0)
   })
 
   it('caps the number of simultaneous voices', () => {
     const { sfx, context } = setup()
-    for (let i = 0; i < 20; i++) sfx.play({ type: 'revived', at })
-    expect(context.nodes).toBeLessThanOrEqual(24)
+    for (let i = 0; i < 30; i++) sfx.play({ type: 'revived', at })
+    expect(context.nodes).toBe(24)
   })
 
   it('pulses a heartbeat only while chased', () => {
@@ -244,7 +239,7 @@ describe('Rabbiters sfx', () => {
     sfx.setChase(true)
     expect(vi.getTimerCount()).toBe(1)
     vi.advanceTimersByTime(1200)
-    expect(context.nodes).toBeGreaterThanOrEqual(4)
+    expect(context.nodes).toBeGreaterThanOrEqual(2)
     sfx.setChase(false)
     expect(vi.getTimerCount()).toBe(0)
     const before = context.nodes
@@ -253,7 +248,7 @@ describe('Rabbiters sfx', () => {
     sfx.stop()
   })
 
-  it('aligns the chase vignette peaks with the heartbeat at its normal cadence', () => {
+  it('aligns the chase vignette peaks with the two thumps of the heartbeat recording', () => {
     vi.useFakeTimers()
     const { sfx, context } = setup()
     const css = readFileSync(new URL('../src/fx.css', import.meta.url), 'utf8')
@@ -264,11 +259,26 @@ describe('Rabbiters sfx', () => {
     )
     sfx.setChase(true)
     vi.advanceTimersByTime(duration * 1000)
-    const audioPeaks = context.gains.slice(-2).map((gain) => gain.gain.linearRampToValueAtTime.mock.calls[0][1])
+    const beat = context.sources.at(-1)!
+    expect(beat.buffer?.cue).toBe('heartbeat')
+    expect(beat.start).toHaveBeenCalledWith(0)
+    const wav = readFileSync(new URL('../src/sounds/heartbeat.wav', import.meta.url))
+    const data = wav.indexOf('data') + 8
+    const rate = wav.readUInt32LE(24)
+    const thumps = [0, 0.1].map((from, index) => {
+      let loudest = [0, 0]
+      const end = index === 0 ? 0.1 : Infinity
+      for (let offset = data + Math.round(from * rate) * 2; offset + 1 < wav.length; offset += 2) {
+        const time = (offset - data) / 2 / rate
+        if (time >= end) break
+        const level = Math.abs(wav.readInt16LE(offset))
+        if (level > loudest[0]) loudest = [level, time]
+      }
+      return loudest[1]
+    })
     expect(peaks).toHaveLength(2)
-    expect(audioPeaks).toHaveLength(2)
     for (let index = 0; index < peaks.length; index++)
-      expect(Math.abs(peaks[index] - audioPeaks[index])).toBeLessThan(0.015)
+      expect(Math.abs(peaks[index] - thumps[index])).toBeLessThan(0.015)
     sfx.stop()
   })
 
@@ -285,11 +295,11 @@ describe('Rabbiters sfx', () => {
       if (scenario === 'unmute') sfx.setMuted(false)
       else sfx.start()
       vi.advanceTimersByTime(244)
-      expect(context.oscillators).toHaveLength(0)
+      expect(context.sources).toHaveLength(0)
       vi.advanceTimersByTime(1)
-      expect(context.oscillators).toHaveLength(2)
+      expect(context.sources).toHaveLength(1)
       vi.advanceTimersByTime(545)
-      expect(context.oscillators).toHaveLength(4)
+      expect(context.sources).toHaveLength(2)
       sfx.stop()
     }
   )
@@ -300,18 +310,18 @@ describe('Rabbiters sfx', () => {
     sfx.setChase(true)
     context.state = state
     vi.advanceTimersByTime(745)
-    expect(context.oscillators).toHaveLength(0)
+    expect(context.sources).toHaveLength(0)
     context.state = 'running'
     sfx.start()
     vi.advanceTimersByTime(344)
-    expect(context.oscillators).toHaveLength(0)
+    expect(context.sources).toHaveLength(0)
     vi.advanceTimersByTime(1)
-    expect(context.oscillators).toHaveLength(2)
+    expect(context.sources).toHaveLength(1)
     sfx.stop()
   })
 
   it.each([
-    [49, 2],
+    [49, 1],
     [50, 0]
   ])('plays a heartbeat delayed by %sms only within the timing tolerance', (delay, voices) => {
     vi.useFakeTimers()
@@ -320,7 +330,7 @@ describe('Rabbiters sfx', () => {
     sfx.setChase(true)
     now.mockReturnValue(545 + delay)
     vi.advanceTimersByTime(545)
-    expect(context.oscillators).toHaveLength(voices)
+    expect(context.sources).toHaveLength(voices)
     sfx.stop()
     now.mockRestore()
   })
@@ -332,10 +342,10 @@ describe('Rabbiters sfx', () => {
     sfx.setChase(true)
     now.mockReturnValue(1080)
     vi.advanceTimersByTime(545)
-    expect(context.oscillators).toHaveLength(0)
+    expect(context.sources).toHaveLength(0)
     now.mockReturnValue(1090)
     vi.advanceTimersByTime(10)
-    expect(context.oscillators).toHaveLength(2)
+    expect(context.sources).toHaveLength(1)
     sfx.stop()
     now.mockRestore()
   })
@@ -349,7 +359,7 @@ describe('Rabbiters sfx', () => {
     sfx.start()
     now.mockReturnValue(1090)
     vi.advanceTimersByTime(90)
-    expect(context.oscillators).toHaveLength(2)
+    expect(context.sources).toHaveLength(1)
     sfx.stop()
     now.mockRestore()
   })
@@ -365,22 +375,22 @@ describe('Rabbiters sfx', () => {
     vi.useFakeTimers()
     const { sfx, context } = setup()
     sfx.play({ type: 'jump', at })
-    const jump = context.oscillators[0]
+    const jump = context.sources[0]
     sfx.setChase(true)
     vi.advanceTimersByTime(545)
-    const heartbeat = context.oscillators.slice(1)
-    expect(heartbeat).toHaveLength(2)
-    expect(heartbeat[1].start).toHaveBeenCalledWith(0.17)
+    const heartbeat = context.sources.slice(1)
+    expect(heartbeat).toHaveLength(1)
+    expect(heartbeat[0].buffer?.cue).toBe('heartbeat')
     context.state = state
     if (action === 'escape') sfx.setChase(false)
     else if (action === 'mute') sfx.setMuted(true)
     else sfx.stop()
     for (const voice of heartbeat) {
-      expect(voice.stop).toHaveBeenCalledTimes(2)
+      expect(voice.stop).toHaveBeenCalledTimes(1)
       expect(voice.stop).toHaveBeenLastCalledWith()
       expect(voice.disconnect).toHaveBeenCalledTimes(1)
     }
-    expect(jump.stop).toHaveBeenCalledTimes(1)
+    expect(jump.stop).not.toHaveBeenCalled()
     expect(vi.getTimerCount()).toBe(0)
     context.state = 'running'
     if (action === 'escape') sfx.setChase(true)
@@ -390,7 +400,7 @@ describe('Rabbiters sfx', () => {
       sfx.setChase(true)
     }
     vi.advanceTimersByTime(545)
-    expect(context.oscillators).toHaveLength(5)
+    expect(context.sources).toHaveLength(3)
     sfx.stop()
   })
 
@@ -399,10 +409,10 @@ describe('Rabbiters sfx', () => {
     const { sfx, context } = setup()
     sfx.setChase(true)
     vi.advanceTimersByTime(545)
-    const heartbeat = context.oscillators[0]
+    const heartbeat = context.sources[0]
     ;(heartbeat.onended as unknown as () => void)()
     sfx.setChase(false)
-    expect(heartbeat.stop).toHaveBeenCalledTimes(1)
+    expect(heartbeat.stop).not.toHaveBeenCalled()
     expect(heartbeat.disconnect).toHaveBeenCalledTimes(1)
     sfx.stop()
   })
@@ -411,8 +421,8 @@ describe('Rabbiters sfx', () => {
     vi.useFakeTimers()
     const { sfx, context } = setup()
     sfx.setChase(true)
-    vi.advanceTimersByTime(545)
-    const [first, second] = context.oscillators
+    vi.advanceTimersByTime(1090)
+    const [first, second] = context.sources
     first.stop.mockImplementationOnce(() => {
       throw new Error('stop failed')
     })
@@ -421,7 +431,7 @@ describe('Rabbiters sfx', () => {
     })
     expect(() => sfx.setChase(false)).not.toThrow()
     expect(first.disconnect).toHaveBeenCalledTimes(1)
-    expect(second.stop).toHaveBeenCalledTimes(2)
+    expect(second.stop).toHaveBeenCalledTimes(1)
     expect(vi.getTimerCount()).toBe(0)
     sfx.stop()
   })
@@ -435,7 +445,7 @@ describe('Rabbiters sfx', () => {
     sfx.setChase(false)
     sfx.setMuted(false)
     vi.advanceTimersByTime(1200)
-    expect(context.oscillators).toHaveLength(2)
+    expect(context.sources).toHaveLength(1)
     expect(vi.getTimerCount()).toBe(0)
     sfx.stop()
   })
@@ -453,7 +463,7 @@ describe('Rabbiters sfx', () => {
     expect(vi.getTimerCount()).toBe(0)
     sfx.setChase(true)
     vi.advanceTimersByTime(600)
-    expect(context.nodes).toBe(2)
+    expect(context.nodes).toBe(1)
     sfx.stop()
   })
 

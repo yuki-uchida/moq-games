@@ -279,9 +279,9 @@ window.discoveryDuringResume = async () => {
   const analyser = context.createAnalyser();
   audio.master.connect(analyser);
   const samples = new Float32Array(analyser.fftSize);
-  const createOscillator = context.createOscillator.bind(context);
+  const createBufferSource = context.createBufferSource.bind(context);
   let voices = 0;
-  context.createOscillator = () => { voices++; return createOscillator(); };
+  context.createBufferSource = () => { voices++; return createBufferSource(); };
   const resume = context.resume.bind(context);
   let release;
   context.resume = () => new Promise((resolve, reject) => {
@@ -327,7 +327,7 @@ window.discoveryDuringResume = async () => {
       trace: unknown
     }>('window.discoveryDuringResume()')
     expect(result.beforeResume).toBe(0)
-    expect(result.voices, JSON.stringify(result.trace)).toBe(4)
+    expect(result.voices, JSON.stringify(result.trace)).toBe(2)
     expect(result.state).toBe('running')
     expect(result.signal).toBeGreaterThan(0.00001)
   })

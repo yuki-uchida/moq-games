@@ -1,12 +1,14 @@
 import { expect, test } from '@playwright/test'
 
 test('discovery remains prominent through full-range and small-speaker playback', async ({ page }) => {
+  test.setTimeout(60_000)
   await page.route('**/src/main.ts*', async (route) => {
     const response = await route.fetch()
     await route.fulfill({
       response,
       body: `${await response.text()}
 import { RabbitersSfx as MixSfx } from '/src/sfx.ts';
+import { soundBank as mixBank } from '/src/sound-bank.ts';
 window.rabbitersAudioLevels = async () => {
   const rate = 48000;
   const originalContext = window.AudioContext;
@@ -55,17 +57,17 @@ window.rabbitersAudioLevels = async () => {
       createDynamicsCompressor: () => offline.createDynamicsCompressor(),
       createBuffer: (...args) => offline.createBuffer(...args),
       createBufferSource: () => offline.createBufferSource(), createBiquadFilter: () => offline.createBiquadFilter(),
+      decodeAudioData: (bytes) => offline.decodeAudioData(bytes),
       resume: () => Promise.resolve(), close: () => Promise.resolve()
     };
     window.AudioContext = function () { return context; };
+    await mixBank(context).load();
     if (kind === 'alarm' || music) {
       const source = new RabbitersAudio();
       source.start(); clearInterval(source.timer); source.timer = null;
-      source.previous = { phase: 'playing', threat: kind, time: 0 };
+      source.previous = { phase: 'playing', threat: kind, time: 0, stage: 3 };
       if (music) {
-        for (let time = 0; time < 4; time += 0.25) {
-          context.currentTime = time; source.voices.clear(); source.music();
-        }
+        source.music();
       } else {
         context.currentTime = 0.05; source.alarm();
       }

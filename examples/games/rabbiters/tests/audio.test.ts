@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Game, packSnapshot, unpackSnapshot } from '../src/game'
 import { bindAudioResume, RabbitersAudio, ThreatTracker } from '../src/audio'
+import { CUES, soundBank, type CueId } from '../src/sound-bank'
 import { threatFor } from '../src/hud-fx'
 import { JuiceDetector } from '../src/juice'
 import { heightAt, ZONES } from '../src/map'
@@ -11,6 +12,7 @@ import { STEP as WATERWAY_STEP } from '../src/stages/waterway/script'
 const parameter = () => ({
   value: 0,
   setValueAtTime: vi.fn(),
+  setTargetAtTime: vi.fn(),
   linearRampToValueAtTime: vi.fn(),
   exponentialRampToValueAtTime: vi.fn()
 })
@@ -24,18 +26,24 @@ class Context {
     connect: ReturnType<typeof vi.fn>
     disconnect: ReturnType<typeof vi.fn>
   }[] = []
-  voices: ReturnType<Context['createOscillator']>[] = []
+  /** Every buffer source the audio started, stings and looping music layers alike. */
+  voices: ReturnType<Context['createBufferSource']>[] = []
   resume = vi.fn(() => Promise.resolve())
   close = vi.fn(() => Promise.resolve())
+  decodeAudioData = vi.fn(() => new Promise<never>(() => {}))
+  constructor() {
+    const bank = soundBank(this as unknown as BaseAudioContext)
+    for (const cue of Object.keys(CUES) as CueId[]) bank.put(cue, { duration: 0.5, cue } as unknown as AudioBuffer)
+  }
   createGain() {
     const gain = { gain: parameter(), connect: vi.fn(), disconnect: vi.fn() }
     this.gains.push(gain)
     return gain
   }
-  createOscillator() {
+  createBufferSource() {
     const voice = {
-      type: 'sine',
-      frequency: parameter(),
+      buffer: null as { cue: CueId } | null,
+      loop: false,
       connect: vi.fn(),
       disconnect: vi.fn(),
       start: vi.fn(),
@@ -46,6 +54,12 @@ class Context {
     return voice
   }
 }
+
+const cueOf = (voice: { buffer: { cue: CueId } | null } | undefined) => voice?.buffer?.cue
+const cuesOf = (voices: { buffer: { cue: CueId } | null }[]) => voices.map(cueOf)
+/** Music layers still looping (started and not stopped). */
+const looping = (voices: Context['voices']) =>
+  cuesOf(voices.filter((voice) => voice.loop && voice.stop.mock.calls.length === 0))
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -111,7 +125,7 @@ describe('Rabbiters audio', () => {
     audio.start()
     audio.update(game.state, 'local')
     await Promise.resolve()
-    expect(replacement.voices).toHaveLength(kind === 'chase' ? 4 : 2)
+    expect(replacement.voices).toHaveLength(kind === 'chase' ? 2 : 1)
     expect(context.voices).toHaveLength(0)
     audio.stop()
   })
@@ -166,7 +180,7 @@ describe('Rabbiters audio', () => {
     audio.start()
     await Promise.resolve()
     replacement.onstatechange?.()
-    expect(replacement.voices).toHaveLength(reason === 'discovery' ? 4 : 0)
+    expect(replacement.voices).toHaveLength(reason === 'discovery' ? 2 : 0)
     audio.stop()
   })
 
@@ -228,11 +242,7 @@ describe('Rabbiters audio', () => {
       audio.update(snapshot, local.id)
       expect.soft(query).toHaveBeenCalledTimes(1)
       expect.soft(detector.update(snapshot, local.id).filter((event) => event.type === 'suspicious')).toHaveLength(1)
-      expect
-        .soft(
-          context.voices.slice(beforeVoices).some((voice) => voice.frequency.setValueAtTime.mock.calls[0][0] === 494)
-        )
-        .toBe(true)
+      expect.soft(context.voices.slice(beforeVoices).some((voice) => cueOf(voice) === 'query')).toBe(true)
       audio.update(oldSnapshot, local.id)
       audio.update(snapshot, local.id)
       expect(query).toHaveBeenCalledTimes(1)
@@ -310,11 +320,12 @@ describe('Rabbiters audio', () => {
         detector.update(receive(), local.id).filter((event) => event.type === 'spotted' && event.you)
       ).toHaveLength(1)
       expect(alarm).toHaveBeenCalledTimes(beforeRetarget + 1)
-      expect(context.voices).toHaveLength(beforeVoices + 4)
-      expect(context.voices[beforeVoices].frequency.setValueAtTime).toHaveBeenCalledWith(160, 0.6)
+      expect(context.voices).toHaveLength(beforeVoices + 2)
+      expect(cueOf(context.voices[beforeVoices])).toBe('alarm-hit')
+      expect(context.voices[beforeVoices].start).toHaveBeenCalledWith(0.6)
       audio.update(receive(), local.id)
       expect(alarm).toHaveBeenCalledTimes(beforeRetarget + 1)
-      expect(context.voices).toHaveLength(beforeVoices + 4)
+      expect(context.voices).toHaveLength(beforeVoices + 2)
       audio.stop()
     }
   )
@@ -345,7 +356,7 @@ describe('Rabbiters audio', () => {
     game.step(1 / 60)
     expect(game.state.discoveries).toMatchObject([{ targetId: 'local', count: 1, stage: 1 }])
     audio.update(receive(), 'local')
-    expect(context.voices).toHaveLength(wasPlaying ? 4 : 0)
+    expect(context.voices).toHaveLength(wasPlaying ? 2 : 0)
     context.state = state
     context.onstatechange?.()
     vi.advanceTimersByTime(100)
@@ -363,13 +374,16 @@ describe('Rabbiters audio', () => {
       expect(game.state.phase).toBe(fresh === 'instant defeat' ? 'lost' : 'playing')
     }
     audio.update(receive(), 'local')
-    const previousVoices = wasPlaying ? 4 : 0
-    for (const voice of context.voices.slice(0, previousVoices)) expect(voice.stop).toHaveBeenCalledTimes(2)
+    const previousVoices = wasPlaying ? 2 : 0
+    for (const voice of context.voices.slice(0, previousVoices)) expect(voice.stop).toHaveBeenCalledTimes(1)
     context.state = 'running'
     context.onstatechange?.()
     context.onstatechange?.()
-    expect(context.voices).toHaveLength(previousVoices + (fresh === 'none' ? 0 : 4))
-    if (fresh !== 'none') expect(context.voices[previousVoices].frequency.setValueAtTime).toHaveBeenCalledWith(160, 0)
+    expect(context.voices).toHaveLength(previousVoices + (fresh === 'none' ? 0 : 2))
+    if (fresh !== 'none') {
+      expect(cueOf(context.voices[previousVoices])).toBe('alarm-hit')
+      expect(context.voices[previousVoices].start).toHaveBeenCalledWith(0)
+    }
     audio.stop()
   })
 
@@ -384,11 +398,11 @@ describe('Rabbiters audio', () => {
     game.state.time = 1
     audio.update(game.state, 'local')
     const alarm = [...context.voices]
-    expect(alarm).toHaveLength(4)
+    expect(alarm).toHaveLength(2)
     game.nextStage()
     audio.update(game.state, 'local')
-    expect(alarm.every((voice) => voice.stop.mock.calls.length === 2)).toBe(true)
-    expect(context.voices.slice(4).some((voice) => voice.frequency.setValueAtTime.mock.calls[0][0] === 392)).toBe(true)
+    expect(alarm.every((voice) => voice.stop.mock.calls.length === 1)).toBe(true)
+    expect(context.voices.slice(2).some((voice) => cueOf(voice) === 'chapter')).toBe(true)
     audio.stop()
   })
 
@@ -418,9 +432,9 @@ describe('Rabbiters audio', () => {
     audio.update(oldSnapshot, 'local')
     context.state = 'running'
     context.onstatechange?.()
-    expect(context.voices).toHaveLength(fresh ? 2 : 0)
+    expect(context.voices).toHaveLength(fresh ? 1 : 0)
     context.onstatechange?.()
-    expect(context.voices).toHaveLength(fresh ? 2 : 0)
+    expect(context.voices).toHaveLength(fresh ? 1 : 0)
     audio.stop()
   })
 
@@ -439,8 +453,8 @@ describe('Rabbiters audio', () => {
     context.onstatechange?.()
     audio.start()
     await Promise.resolve()
-    expect(context.voices).toHaveLength(4)
-    expect(context.voices.some((voice) => voice.type === 'square')).toBe(true)
+    expect(context.voices).toHaveLength(2)
+    expect(context.voices.some((voice) => cueOf(voice) === 'alarm-crow')).toBe(true)
     audio.stop()
   })
 
@@ -459,20 +473,21 @@ describe('Rabbiters audio', () => {
     audio.start()
     await Promise.resolve()
     context.onstatechange?.()
-    expect(context.voices).toHaveLength(2)
-    expect(context.voices[0].frequency.setValueAtTime).toHaveBeenCalledWith(494, 0)
+    expect(context.voices).toHaveLength(1)
+    expect(cueOf(context.voices[0])).toBe('query')
+    expect(context.voices[0].start).toHaveBeenCalledWith(0)
     game.state.predators[0].state = 'patrol'
     audio.update(game.state, 'local')
     game.state.predators[0].state = 'suspicious'
     game.state.time = 2.9
     audio.update(game.state, 'local')
-    expect(context.voices).toHaveLength(2)
+    expect(context.voices).toHaveLength(1)
     game.state.predators[0].state = 'patrol'
     audio.update(game.state, 'local')
     game.state.predators[0].state = 'suspicious'
     game.state.time = 3.1
     audio.update(game.state, 'local')
-    expect(context.voices).toHaveLength(4)
+    expect(context.voices).toHaveLength(2)
     audio.stop()
   })
 
@@ -493,8 +508,9 @@ describe('Rabbiters audio', () => {
       context.state = 'running'
       context.onstatechange?.()
       context.onstatechange?.()
-      expect(context.voices).toHaveLength(6)
-      expect(context.voices[4].frequency.setValueAtTime).toHaveBeenCalledWith(494, 0)
+      expect(context.voices).toHaveLength(3)
+      expect(cueOf(context.voices[2])).toBe('query')
+      expect(context.voices[2].start).toHaveBeenCalledWith(0)
       audio.stop()
     }
   )
@@ -517,8 +533,9 @@ describe('Rabbiters audio', () => {
     context.state = 'running'
     context.onstatechange?.()
     context.onstatechange?.()
-    expect(context.voices).toHaveLength(6)
-    expect(context.voices[4].frequency.setValueAtTime).toHaveBeenCalledWith(494, 1)
+    expect(context.voices).toHaveLength(3)
+    expect(cueOf(context.voices[2])).toBe('query')
+    expect(context.voices[2].start).toHaveBeenCalledWith(1)
     audio.stop()
   })
 
@@ -549,12 +566,8 @@ describe('Rabbiters audio', () => {
       context.state = 'running'
       resume?.()
       resume?.()
-      expect(context.voices).toHaveLength(reason === 'discovery' ? 4 : 0)
-      expect(
-        context.voices.every(
-          (voice) => !voice.frequency.setValueAtTime.mock.calls.some(([frequency]) => frequency === 494)
-        )
-      ).toBe(true)
+      expect(context.voices).toHaveLength(reason === 'discovery' ? 2 : 0)
+      expect(cuesOf(context.voices)).not.toContain('query')
       audio.stop()
     }
   )
@@ -584,10 +597,10 @@ describe('Rabbiters audio', () => {
         })
         target.dispatchEvent(new Event(type))
         expect(context.resume).toHaveBeenCalledOnce()
-        expect(context.voices).toHaveLength(4)
+        expect(context.voices).toHaveLength(2)
         expect(wakeEffects).toHaveBeenCalledOnce()
         target.dispatchEvent(new Event(type))
-        expect(context.voices).toHaveLength(4)
+        expect(context.voices).toHaveLength(2)
         detach()
         target.dispatchEvent(new Event(type))
         expect(wake).toHaveBeenCalledTimes(2)
@@ -623,13 +636,13 @@ describe('Rabbiters audio', () => {
       Object.assign(predator, { state: 'suspicious', targetId: 'local' })
     })
     const detector = new JuiceDetector()
-    expect(context.voices).toHaveLength(2)
+    expect(context.voices).toHaveLength(1)
     expect(detector.update(game.state, 'local')).toEqual([expect.objectContaining({ type: 'suspicious' })])
     for (let index = 0; index < 3; index++) {
       audio.update(game.state, 'local')
       expect(detector.update(game.state, 'local')).toEqual([])
     }
-    expect(context.voices).toHaveLength(2)
+    expect(context.voices).toHaveLength(1)
     audio.stop()
   })
 
@@ -654,11 +667,11 @@ describe('Rabbiters audio', () => {
     game.state.time = context.currentTime = 1
     expect(threatFor(game.state, 'local').mode).toBe('suspicious')
     audio.update(game.state, 'local')
-    expect(context.voices).toHaveLength(2)
+    expect(context.voices).toHaveLength(1)
     expect(detector.update(game.state, 'local')).toEqual([expect.objectContaining({ type: 'suspicious' })])
     audio.update(game.state, 'local')
     expect(detector.update(game.state, 'local')).toEqual([])
-    expect(context.voices).toHaveLength(2)
+    expect(context.voices).toHaveLength(1)
     audio.stop()
   })
 
@@ -677,9 +690,7 @@ describe('Rabbiters audio', () => {
         if (scenario === 'chasing')
           game.state.predators.push({ ...predator, id: 'chaser', state: 'chase', targetId: 'local' })
       })
-      const queryVoices = context.voices.filter((voice) =>
-        [494, 587].includes(voice.frequency.setValueAtTime.mock.calls[0]?.[0])
-      )
+      const queryVoices = context.voices.filter((voice) => cueOf(voice) === 'query')
       expect(queryVoices).toHaveLength(0)
       if (scenario !== 'muted') {
         expect(new JuiceDetector().update(game.state, 'local').filter((event) => event.type === 'suspicious')).toEqual(
@@ -688,9 +699,7 @@ describe('Rabbiters audio', () => {
       }
       audio.setMuted(false)
       audio.update(game.state, 'local')
-      expect(
-        context.voices.filter((voice) => [494, 587].includes(voice.frequency.setValueAtTime.mock.calls[0]?.[0]))
-      ).toHaveLength(0)
+      expect(context.voices.filter((voice) => cueOf(voice) === 'query')).toHaveLength(0)
       audio.stop()
     }
   )
@@ -705,7 +714,7 @@ describe('Rabbiters audio', () => {
     game.state.time = context.currentTime = 1
     game.state.predators.push({ ...game.state.predators[0], id: 'new-hunter', state: 'suspicious' })
     audio.update(game.state, 'local')
-    expect(context.voices).toHaveLength(4)
+    expect(context.voices).toHaveLength(2)
     expect(detector.update(game.state, 'local').filter((event) => event.type === 'suspicious')).toEqual([])
     audio.stop()
   })
@@ -715,20 +724,16 @@ describe('Rabbiters audio', () => {
       game.state.predators[0].state = 'suspicious'
       game.state.predators = [game.state.predators[0]]
     })
-    expect(context.voices).toHaveLength(2)
+    expect(context.voices).toHaveLength(1)
     game.state.phase = 'lost'
     game.state.time = context.currentTime = 0.1
     audio.update(game.state, 'local')
     game.state.phase = 'playing'
     game.state.time = context.currentTime = 0.2
     audio.update(game.state, 'local')
-    expect(
-      context.voices.filter((voice) => [494, 587].includes(voice.frequency.setValueAtTime.mock.calls[0]?.[0]))
-    ).toHaveLength(4)
+    expect(context.voices.filter((voice) => cueOf(voice) === 'query')).toHaveLength(2)
     audio.update(game.state, 'local')
-    expect(
-      context.voices.filter((voice) => [494, 587].includes(voice.frequency.setValueAtTime.mock.calls[0]?.[0]))
-    ).toHaveLength(4)
+    expect(context.voices.filter((voice) => cueOf(voice) === 'query')).toHaveLength(2)
     audio.stop()
   })
 
@@ -784,15 +789,15 @@ describe('Rabbiters audio', () => {
     game.state.time = context.currentTime = 1
     audio.update(game.state, 'local')
     const firstAlarm = [...context.voices]
-    expect(firstAlarm).toHaveLength(4)
+    expect(firstAlarm).toHaveLength(2)
     predator.targetId = 'local'
     game.state.time = context.currentTime = 1 + gap
     audio.update(game.state, 'local')
-    expect(context.voices).toHaveLength(gap < 0.55 ? 4 : 8)
-    expect(firstAlarm.every((voice) => voice.stop.mock.calls.length === (gap < 0.55 ? 1 : 2))).toBe(true)
+    expect(context.voices).toHaveLength(gap < 0.55 ? 2 : 4)
+    expect(firstAlarm.every((voice) => voice.stop.mock.calls.length === (gap < 0.55 ? 0 : 1))).toBe(true)
     context.currentTime = 2
     audio.update(game.state, 'local')
-    expect(context.voices).toHaveLength(gap < 0.55 ? 4 : 8)
+    expect(context.voices).toHaveLength(gap < 0.55 ? 2 : 4)
     audio.stop()
   })
 
@@ -803,10 +808,10 @@ describe('Rabbiters audio', () => {
       { predatorId: 'mom', targetId: 'local', count: 1, time: game.state.time, x: 0, y: 0, z: 0 }
     ]
     audio.update(game.state, 'local')
-    const alarm = context.voices.find((voice) => voice.frequency.setValueAtTime.mock.calls[0]?.[0] === 830)!
+    const alarm = context.voices.find((voice) => cueOf(voice) === 'alarm-crow')!
     game.state.phase = 'lost'
     audio.update(game.state, 'local')
-    expect(alarm.stop).toHaveBeenCalledTimes(1)
+    expect(alarm.stop).not.toHaveBeenCalled()
     audio.stop()
   })
 
@@ -827,12 +832,12 @@ describe('Rabbiters audio', () => {
       context.state = 'running'
       context.onstatechange?.()
     }
-    const alarms = context.voices.filter((voice) => voice.frequency.setValueAtTime.mock.calls[0]?.[0] === 830)
+    const alarms = context.voices.filter((voice) => cueOf(voice) === 'alarm-crow')
     expect(alarms).toHaveLength(1)
     audio.update(game.state, 'local')
-    expect(alarms[0].stop).toHaveBeenCalledTimes(1)
+    expect(alarms[0].stop).not.toHaveBeenCalled()
     audio.setMuted(true)
-    expect(alarms[0].stop).toHaveBeenCalledTimes(2)
+    expect(alarms[0].stop).toHaveBeenCalledTimes(1)
     audio.stop()
   })
 
@@ -853,12 +858,12 @@ describe('Rabbiters audio', () => {
       if (scenario === 'other') game.state.predators[0].targetId = 'other'
       if (scenario === 'calm') game.state.predators[0].state = 'patrol'
       audio.update(game.state, 'local')
-      expect(context.voices).toHaveLength(beforeRetry + (scenario === 'local' ? 4 : 0))
+      expect(context.voices).toHaveLength(beforeRetry + (scenario === 'local' ? 2 : 0))
       audio.update(game.state, 'local')
       audio.setMuted(false)
       game.state.time += 0.1
       audio.update(game.state, 'local')
-      expect(context.voices).toHaveLength(beforeRetry + (scenario === 'local' ? 4 : 0))
+      expect(context.voices).toHaveLength(beforeRetry + (scenario === 'local' ? 2 : 0))
       audio.stop()
     }
   )
@@ -884,7 +889,7 @@ describe('Rabbiters audio', () => {
         game.state.discoveries.push({ predatorId: 'fox', targetId: 'other', count: 1, time: 10.1, x: 0, y: 0, z: 0 })
       audio.update(game.state, 'local')
       audio.update(game.state, 'local')
-      expect(context.voices).toHaveLength(beforeRetry + (kind === 'fresh' ? 4 : 0))
+      expect(context.voices).toHaveLength(beforeRetry + (kind === 'fresh' ? 2 : 0))
       audio.stop()
     }
   )
@@ -933,7 +938,7 @@ describe('Rabbiters audio', () => {
       context.state = 'running'
       context.onstatechange?.()
     }
-    expect(context.voices).toHaveLength(before + (kind === 'fresh' || kind === 'suspended' ? 4 : 0))
+    expect(context.voices).toHaveLength(before + (kind === 'fresh' || kind === 'suspended' ? 2 : 0))
     expect(detector.update(game.state, 'local')).toEqual([])
     audio.stop()
   })
@@ -957,21 +962,22 @@ describe('Rabbiters audio', () => {
       audio.update(game.state, 'local')
       context.state = 'running'
       context.onstatechange?.()
-      expect(context.voices).toHaveLength(8)
+      expect(context.voices).toHaveLength(4)
       expect(oldAlarm.every((voice) => voice.disconnect.mock.calls.length === 1)).toBe(true)
-      expect(context.voices[4].frequency.setValueAtTime).toHaveBeenCalledWith(160, 0)
+      expect(cueOf(context.voices[2])).toBe('alarm-hit')
+      expect(context.voices[2].start).toHaveBeenCalledWith(0)
       context.onstatechange?.()
       audio.update(game.state, 'local')
-      expect(context.voices).toHaveLength(8)
+      expect(context.voices).toHaveLength(4)
       audio.stop()
     }
   )
 
   it.each([
-    ['suspended', 100, 4],
-    ['suspended', 200, 8],
-    ['interrupted', 100, 4],
-    ['interrupted', 200, 8]
+    ['suspended', 100, 2],
+    ['suspended', 200, 4],
+    ['interrupted', 100, 2],
+    ['interrupted', 200, 4]
   ] as const)('keeps a fresh discovery through %s when resuming %sms later', (state, delay, voices) => {
     const { audio, game, context } = setup()
     game.state.predators[0].state = 'chase'
@@ -991,7 +997,7 @@ describe('Rabbiters audio', () => {
     context.state = 'running'
     context.onstatechange?.()
     expect(context.voices).toHaveLength(voices)
-    expect(oldAlarm.every((voice) => voice.disconnect.mock.calls.length === (voices === 8 ? 1 : 0))).toBe(true)
+    expect(oldAlarm.every((voice) => voice.disconnect.mock.calls.length === (voices === 4 ? 1 : 0))).toBe(true)
     context.onstatechange?.()
     audio.update(game.state, 'local')
     expect(context.voices).toHaveLength(voices)
@@ -1009,7 +1015,7 @@ describe('Rabbiters audio', () => {
     vi.advanceTimersByTime(elapsed)
     context.state = 'running'
     context.onstatechange?.()
-    expect(context.voices).toHaveLength(4)
+    expect(context.voices).toHaveLength(2)
     expect(alarm.every((voice) => voice.disconnect.mock.calls.length === (elapsed > 550 ? 1 : 0))).toBe(true)
     audio.stop()
   })
@@ -1042,9 +1048,9 @@ describe('Rabbiters audio', () => {
       const beforeResume = context.voices.length
       context.state = 'running'
       context.onstatechange?.()
-      expect(context.voices).toHaveLength(beforeResume + (action === 'lost' ? 4 : 0))
+      expect(context.voices).toHaveLength(beforeResume + (action === 'lost' ? 2 : 0))
       context.onstatechange?.()
-      expect(context.voices).toHaveLength(beforeResume + (action === 'lost' ? 4 : 0))
+      expect(context.voices).toHaveLength(beforeResume + (action === 'lost' ? 2 : 0))
       audio.stop()
     }
   )
@@ -1061,10 +1067,10 @@ describe('Rabbiters audio', () => {
       context.state = 'running'
       context.onstatechange?.()
       context.onstatechange?.()
-      expect(context.voices).toHaveLength(4)
+      expect(context.voices).toHaveLength(2)
       audio.stop()
       context.onstatechange?.()
-      expect(context.voices).toHaveLength(4)
+      expect(context.voices).toHaveLength(2)
     }
   )
 
@@ -1116,7 +1122,7 @@ describe('Rabbiters audio', () => {
     resume()
     await Promise.resolve()
     await Promise.resolve()
-    expect(context.voices).toHaveLength(4)
+    expect(context.voices).toHaveLength(2)
     audio.stop()
   })
 
@@ -1196,14 +1202,14 @@ describe('Rabbiters audio', () => {
     resume()
     await Promise.resolve()
     await Promise.resolve()
-    expect(context.voices).toHaveLength(4)
+    expect(context.voices).toHaveLength(2)
     audio.update(game.state, 'local')
     context.currentTime = 3.54
     vi.advanceTimersByTime(250)
-    expect(context.voices).toHaveLength(4)
+    expect(context.voices).toHaveLength(2)
     context.currentTime = 3.56
     vi.advanceTimersByTime(250)
-    expect(context.voices.length).toBeGreaterThan(4)
+    expect(context.voices.length).toBeGreaterThan(2)
     audio.stop()
   })
 
@@ -1215,18 +1221,18 @@ describe('Rabbiters audio', () => {
     predator.state = 'chase'
     audio.update(game.state, 'local')
     const alarm = [...context.voices]
-    expect(alarm).toHaveLength(4)
+    expect(alarm).toHaveLength(2)
     context.currentTime = 1.1
     game.state.time = 1.1
     Object.assign(predator, { state, targetId: null })
     audio.update(game.state, 'local')
-    expect.soft(alarm.every((voice) => voice.stop.mock.calls.length === 1)).toBe(true)
+    expect.soft(alarm.every((voice) => voice.stop.mock.calls.length === 0)).toBe(true)
     context.currentTime = 1.54
     vi.advanceTimersByTime(500)
-    expect(context.voices).toHaveLength(4)
+    expect(context.voices).toHaveLength(2)
     context.currentTime = 1.55
     vi.advanceTimersByTime(250)
-    expect(context.voices.length).toBeGreaterThan(4)
+    expect(context.voices.length).toBeGreaterThan(2)
     audio.stop()
   })
 
@@ -1239,7 +1245,7 @@ describe('Rabbiters audio', () => {
     predator.state = 'chase'
     audio.update(game.state, 'local')
     const alarm = [...context.voices]
-    expect(alarm).toHaveLength(4)
+    expect(alarm).toHaveLength(2)
     context.currentTime = 1.1
     game.state.time = 1.1
     if (action === 'mute') audio.setMuted(true)
@@ -1248,7 +1254,7 @@ describe('Rabbiters audio', () => {
       game.state.phase = action
       audio.update(game.state, 'local')
     }
-    expect(alarm.every((voice) => voice.stop.mock.calls.length === 2)).toBe(true)
+    expect(alarm.every((voice) => voice.stop.mock.calls.length === 1)).toBe(true)
     audio.stop()
   })
 
@@ -1261,20 +1267,21 @@ describe('Rabbiters audio', () => {
       game.state.chapter = 2
       game.state.kits = [{ id: 'old-loss', x: 0, y: 0, z: 0, angle: 0, hidden: false, status: 'lost' }]
     })
-    expect(context.voices).toHaveLength(4)
-    expect(context.voices[0].frequency.setValueAtTime).toHaveBeenCalledWith(160, 0)
+    expect(context.voices).toHaveLength(2)
+    expect(cueOf(context.voices[0])).toBe('alarm-hit')
+    expect(context.voices[0].start).toHaveBeenCalledWith(0)
     audio.update(game.state, 'local')
     game.state.time += 0.1
     game.state.predators[1].state = 'chase'
     audio.update(game.state, 'local')
-    expect(context.voices).toHaveLength(4)
+    expect(context.voices).toHaveLength(2)
     context.currentTime = 0.54
     vi.advanceTimersByTime(250)
-    expect(context.voices).toHaveLength(4)
+    expect(context.voices).toHaveLength(2)
     context.currentTime = 0.55
     vi.advanceTimersByTime(250)
-    expect(context.voices).toHaveLength(7)
-    expect(context.voices[4].frequency.setValueAtTime).toHaveBeenCalledWith(98, 0.55)
+    expect(cuesOf(context.voices.slice(2))).toEqual(['bed-forest', 'tension-search', 'tension-chase'])
+    expect(context.voices[2].start).toHaveBeenCalledWith(0.55)
     audio.stop()
   })
 
@@ -1299,51 +1306,49 @@ describe('Rabbiters audio', () => {
     }
   )
 
-  it('gives discovery a sustained impact and chase a syncopated bass without raising master gain', () => {
+  it('layers the discovery sting and fades chase music in without raising master gain', () => {
     const { audio, game, context } = setup()
     game.state.predators[0].state = 'chase'
     game.state.time = 1
     context.currentTime = 1
     audio.update(game.state, 'local')
-    expect(context.gains[0].gain.value).toBe(0.12)
-    expect(context.gains[1].gain.linearRampToValueAtTime).toHaveBeenCalledWith(0.36, 1.01)
-    expect(context.gains[1].gain.setValueAtTime).toHaveBeenCalledWith(0.36, 1 + 0.28 * 0.15)
-    expect(context.voices[0].frequency.exponentialRampToValueAtTime).toHaveBeenCalledWith(45, 1.28)
+    expect(context.gains[0].gain.value).toBe(1)
+    expect(cuesOf(context.voices)).toEqual(['alarm-hit', 'alarm-crow'])
+    expect(context.gains[1].gain.setValueAtTime).toHaveBeenCalledWith(CUES['alarm-hit'].gain, 1)
+    expect(context.voices[1].start).toHaveBeenCalledWith(1.03)
     context.currentTime = 1.6
     vi.advanceTimersByTime(250)
-    expect(context.voices).toHaveLength(7)
-    expect(context.voices[4].frequency.setValueAtTime).toHaveBeenCalledWith(98, 1.6)
-    expect(context.voices[5].start).toHaveBeenCalledWith(1.725)
-    expect(context.gains[5].gain.setValueAtTime).toHaveBeenCalledWith(0.28, 1.6 + 0.22 * 0.6)
+    expect(cuesOf(context.voices.slice(2))).toEqual(['bed-forest', 'tension-search', 'tension-chase'])
+    expect(context.voices.slice(2).every((voice) => voice.loop)).toBe(true)
+    expect(context.gains[3].gain.setValueAtTime).toHaveBeenCalledWith(0, 1.6)
+    expect(context.gains[3].gain.linearRampToValueAtTime).toHaveBeenCalledWith(CUES['bed-forest'].gain * 0.5, 2.2)
+    for (const cue of ['alarm-hit', 'alarm-crow', 'bed-forest', 'tension-search', 'tension-chase'] as const)
+      expect(CUES[cue].gain).toBeLessThan(1)
     audio.stop()
   })
 
-  it('bounds scheduled polyphony and signal peaks, then frees voices on mute and end', () => {
+  it('keeps one loop per music layer, then frees voices on mute and end', () => {
     const { audio, game, context } = setup()
     game.state.predators[0].state = 'chase'
     game.state.time = 1
     audio.update(game.state, 'local')
     context.currentTime = 1
     vi.advanceTimersByTime(4000)
-    expect(context.voices).toHaveLength(16)
-    const peaks = context.gains.slice(1).map((gain) => gain.gain.linearRampToValueAtTime.mock.calls[0][0] as number)
-    expect(Math.max(...peaks)).toBeLessThanOrEqual(0.36)
-    expect(peaks.reduce((sum, peak) => sum + peak, 0) * context.gains[0].gain.value).toBeLessThan(1)
-    const ended = context.voices[0]
-    ;(ended.onended as (() => void) | null)?.()
-    vi.advanceTimersByTime(250)
-    expect(context.voices).toHaveLength(17)
+    expect(context.voices).toHaveLength(5)
+    const music = context.voices.slice(2)
     audio.setMuted(true)
+    expect(music.every((voice) => voice.stop.mock.calls.length === 1)).toBe(true)
     vi.advanceTimersByTime(1000)
-    expect(context.voices).toHaveLength(17)
+    expect(context.voices).toHaveLength(5)
     audio.setMuted(false)
     vi.advanceTimersByTime(250)
-    expect(context.voices.length).toBeGreaterThan(17)
+    expect(context.voices).toHaveLength(8)
     audio.stop()
-    expect(context.voices.every((voice) => voice.disconnect.mock.calls.length > 0)).toBe(true)
+    expect(context.voices.slice(0, 2).every((voice) => voice.disconnect.mock.calls.length > 0)).toBe(true)
+    expect(context.voices.slice(5).every((voice) => voice.stop.mock.calls.length === 1)).toBe(true)
   })
 
-  it('replaces cheerful music with suspicion and chase pulses, then restores it on escape', () => {
+  it('layers search and chase tension over the stage bed, then fades back to the bed on escape', () => {
     const { audio, game, context } = setup()
     const predator = game.state.predators[0]
     const update = (time: number) => {
@@ -1351,29 +1356,42 @@ describe('Rabbiters audio', () => {
       context.currentTime = time
       audio.update(game.state, 'local')
     }
+    predator.state = 'patrol'
+    update(0.5)
+    vi.advanceTimersByTime(250)
+    expect(cuesOf(context.voices)).toEqual(['bed-forest'])
+    const bed = context.voices[0]
+    const bedGain = context.gains[1].gain
     predator.state = 'suspicious'
     update(1)
     vi.advanceTimersByTime(250)
-    expect(context.voices.at(-1)?.frequency.setValueAtTime).toHaveBeenCalledWith(392, 1)
-    const warning = context.voices.at(-1)!
+    expect(cuesOf(context.voices)).toEqual(['bed-forest', 'query', 'tension-search'])
+    expect(bed.stop).not.toHaveBeenCalled()
+    expect(bedGain.setTargetAtTime).toHaveBeenLastCalledWith(CUES['bed-forest'].gain * 0.7, 1, 0.25)
+    const search = context.voices[2]
     predator.state = 'chase'
     update(2)
-    expect(warning.stop).toHaveBeenCalledTimes(2)
+    expect(search.stop).toHaveBeenCalledTimes(1)
+    expect(bed.stop).toHaveBeenCalledTimes(1)
+    expect(cuesOf(context.voices.slice(3))).toEqual(['alarm-hit', 'alarm-crow'])
     const stingCount = context.voices.length
     vi.advanceTimersByTime(250)
     expect(context.voices).toHaveLength(stingCount)
     context.currentTime = 2.6
     vi.advanceTimersByTime(250)
-    expect(context.voices[stingCount].frequency.setValueAtTime).toHaveBeenCalledWith(98, 2.6)
-    const pulse = context.voices[stingCount]
+    expect(cuesOf(context.voices.slice(stingCount))).toEqual(['bed-forest', 'tension-search', 'tension-chase'])
+    const [chaseBed, chaseSearch, pulse] = context.voices.slice(stingCount)
     predator.state = 'patrol'
     update(3)
-    expect(pulse.stop).toHaveBeenCalledTimes(2)
     vi.advanceTimersByTime(250)
-    expect(context.voices.at(-2)?.frequency.setValueAtTime).toHaveBeenCalledWith(440 * 2 ** ((72 - 69) / 12), 3)
+    expect(pulse.stop).toHaveBeenCalledTimes(1)
+    expect(chaseSearch.stop).toHaveBeenCalledTimes(1)
+    expect(chaseBed.stop).not.toHaveBeenCalled()
+    expect(context.voices).toHaveLength(stingCount + 3)
     predator.state = 'chase'
     update(4)
-    expect(context.voices.at(-1)?.type).toBe('sine')
+    expect(chaseBed.stop).toHaveBeenCalledTimes(1)
+    expect(cuesOf(context.voices.slice(-2))).toEqual(['alarm-hit', 'alarm-crow'])
     audio.stop()
   })
 
@@ -1382,12 +1400,12 @@ describe('Rabbiters audio', () => {
     game.state.predators[0].state = 'chase'
     game.state.time = 1
     audio.update(game.state, 'local')
-    expect(context.voices).toHaveLength(4)
+    expect(context.voices).toHaveLength(2)
     game.state.predators[1].state = 'chase'
     game.state.time = 4
     audio.update(game.state, 'local')
     audio.update({ ...game.state, time: 2 }, 'local')
-    expect(context.voices).toHaveLength(4)
+    expect(context.voices).toHaveLength(2)
     audio.stop()
   })
 
@@ -1401,15 +1419,13 @@ describe('Rabbiters audio', () => {
     for (const voice of context.voices) (voice.onended as (() => void) | null)?.()
     context.currentTime = 1.6
     vi.advanceTimersByTime(250)
-    const music = context.voices.slice(4)
+    const music = context.voices.slice(2)
     expect(music).toHaveLength(3)
     Object.assign(second, { state: 'chase', targetId: 'local' })
     game.state.time = context.currentTime = 1.61
     audio.update(game.state, 'local')
-    expect(music.every((voice) => voice.stop.mock.calls.length === 2)).toBe(true)
-    expect(context.voices.slice(-4).map((voice) => voice.frequency.setValueAtTime.mock.calls[0][0])).toEqual([
-      160, 830, 1245, 466
-    ])
+    expect(music.every((voice) => voice.stop.mock.calls.length === 1)).toBe(true)
+    expect(cuesOf(context.voices.slice(-2))).toEqual(['alarm-hit', 'alarm-crow'])
     const count = context.voices.length
     vi.advanceTimersByTime(250)
     expect(context.voices).toHaveLength(count)
@@ -1435,11 +1451,9 @@ describe('Rabbiters audio', () => {
       game.state.time = context.currentTime = 1 + index * 0.01
       audio.update(game.state, 'local')
     }
-    expect(context.voices).toHaveLength(4)
-    expect(context.voices.every((voice) => voice.stop.mock.calls.length === 1)).toBe(true)
-    expect(context.voices.slice(-4).map((voice) => voice.frequency.setValueAtTime.mock.calls[0][0])).toEqual([
-      160, 830, 1245, 466
-    ])
+    expect(context.voices).toHaveLength(2)
+    expect(context.voices.every((voice) => voice.stop.mock.calls.length === 0)).toBe(true)
+    expect(cuesOf(context.voices)).toEqual(['alarm-hit', 'alarm-crow'])
     audio.stop()
   })
 
@@ -1450,7 +1464,7 @@ describe('Rabbiters audio', () => {
     game.state.time = 1
     Object.assign(predator, { state: 'chase', targetId: 'local' })
     audio.update(game.state, 'local')
-    expect(context.voices).toHaveLength(4)
+    expect(context.voices).toHaveLength(2)
 
     context.state = 'closed'
     const replacement = new Context()
@@ -1476,9 +1490,9 @@ describe('Rabbiters audio', () => {
       Object.assign(predator, { state: 'chase', targetId: 'local' })
       game.state.time = 3
       audio.update(game.state, 'local')
-      expect(replacement.voices).toHaveLength(4)
+      expect(replacement.voices).toHaveLength(2)
       audio.update(game.state, 'local')
-      expect(replacement.voices).toHaveLength(4)
+      expect(replacement.voices).toHaveLength(2)
     }
     audio.stop()
   })
@@ -1492,7 +1506,7 @@ describe('Rabbiters audio', () => {
     expect(context.voices.length).toBeGreaterThan(0)
     audio.stop()
     expect(vi.getTimerCount()).toBe(0)
-    expect(context.voices.every((voice) => voice.stop.mock.calls.length >= 2)).toBe(true)
+    expect(context.voices.every((voice) => voice.stop.mock.calls.length >= 1)).toBe(true)
   })
 
   it('detects all effects without replaying mutable frames or duplicate/stale snapshots', () => {
@@ -1505,15 +1519,15 @@ describe('Rabbiters audio', () => {
     game.state.nests[0].active = false
     game.state.time = 1
     audio.update(game.state, 'local')
-    expect(context.voices).toHaveLength(6)
+    expect(cuesOf(context.voices)).toEqual(['nest-broken', 'bloom'])
     audio.update(game.state, 'local')
     audio.update(JSON.parse(JSON.stringify(game.state)), 'local')
     audio.update({ ...game.state, time: 0 }, 'local')
-    expect(context.voices).toHaveLength(6)
+    expect(context.voices).toHaveLength(2)
     game.state.phase = 'won'
     audio.update(game.state, 'local')
     audio.update(game.state, 'local')
-    expect(context.voices).toHaveLength(10)
+    expect(cuesOf(context.voices)).toEqual(['nest-broken', 'bloom', 'won'])
     audio.stop()
   })
 
@@ -1538,7 +1552,7 @@ describe('Rabbiters audio', () => {
     expect(context.voices).toHaveLength(0)
     game.state.phase = 'lost'
     audio.update(game.state, 'local')
-    expect(context.voices).toHaveLength(4)
+    expect(cuesOf(context.voices)).toEqual(['lost'])
     audio.stop()
   })
 
@@ -1558,20 +1572,20 @@ describe('Rabbiters audio', () => {
     at(1.1)
     first.state = 'suspicious'
     at(1.2)
-    expect(context.voices).toHaveLength(2)
+    expect(context.voices).toHaveLength(1)
     Object.assign(second, { state: 'chase', targetId: 'friend' })
     at(1.3)
-    expect(context.voices).toHaveLength(6)
-    expect(context.voices.some((voice) => voice.type === 'square')).toBe(true)
+    expect(context.voices).toHaveLength(3)
+    expect(context.voices.some((voice) => cueOf(voice) === 'alarm-crow')).toBe(true)
     first.state = 'chase'
     at(1.9)
-    expect(context.voices).toHaveLength(10)
+    expect(context.voices).toHaveLength(5)
     audio.setMuted(true)
     Object.assign(first, { state: 'patrol' })
     at(5)
     first.state = 'chase'
     at(5.1)
-    expect(context.voices).toHaveLength(10)
+    expect(context.voices).toHaveLength(5)
     audio.stop()
   })
 
@@ -1588,19 +1602,19 @@ describe('Rabbiters audio', () => {
     expect(context.voices).toHaveLength(0)
     predator.targetId = 'local'
     update(1.1)
-    expect(context.voices).toHaveLength(2)
+    expect(context.voices).toHaveLength(1)
     update(1.2)
-    expect(context.voices).toHaveLength(2)
+    expect(context.voices).toHaveLength(1)
     predator.targetId = 'friend'
     update(1.3)
     predator.targetId = 'local'
     update(1.4)
-    expect(context.voices).toHaveLength(2)
+    expect(context.voices).toHaveLength(1)
     predator.targetId = 'friend'
     update(4)
     predator.targetId = 'local'
     update(4.1)
-    expect(context.voices).toHaveLength(4)
+    expect(context.voices).toHaveLength(2)
     audio.stop()
   })
 
@@ -1667,16 +1681,16 @@ describe('Rabbiters audio', () => {
           .length
       }
     }
-    expect(tick('friend')).toEqual({ localVoices: 4, friendVoices: 4, localSpotted: 0, friendSpotted: 1 })
+    expect(tick('friend')).toEqual({ localVoices: 2, friendVoices: 2, localSpotted: 0, friendSpotted: 1 })
     const firstAlarm = [...context.voices]
     game.state.time += gap - 1 / 60
     expect(tick('local')).toEqual({
-      localVoices: gap < 0.55 ? 0 : 4,
+      localVoices: gap < 0.55 ? 0 : 2,
       friendVoices: 0,
       localSpotted: 1,
       friendSpotted: 0
     })
-    if (gap < 0.55) expect(firstAlarm.every((voice) => voice.stop.mock.calls.length === 1)).toBe(true)
+    if (gap < 0.55) expect(firstAlarm.every((voice) => voice.stop.mock.calls.length === 0)).toBe(true)
     for (let index = 0; index < 12; index++) {
       expect(tick(index % 2 ? 'local' : 'friend')).toEqual({
         localVoices: 0,
@@ -1747,7 +1761,7 @@ describe('Rabbiters audio', () => {
         .soft(detector.update(game.state, 'local').filter((event) => event.type === 'suspicious'))
         .toHaveLength(scenario === 'friend' ? 1 : 0)
       expect.soft(query).toHaveBeenCalledTimes(scenario === 'friend' ? 1 : 0)
-      expect(context.voices.filter((voice) => voice.type === 'square')).toHaveLength(1)
+      expect(context.voices.filter((voice) => cueOf(voice) === 'alarm-crow')).toHaveLength(1)
       audio.stop()
     }
   )
@@ -1785,7 +1799,7 @@ describe('Rabbiters audio', () => {
     targets[0].z = 20
     expect(tick()).toEqual([expect.objectContaining({ type: 'suspicious' })])
     expect(predator).toMatchObject({ state: 'suspicious', targetId: 'local' })
-    expect(context.voices).toHaveLength(2)
+    expect(context.voices).toHaveLength(1)
     audio.stop()
   })
 
@@ -1803,12 +1817,12 @@ describe('Rabbiters audio', () => {
     Object.assign(second, { state: 'search', targetId: null })
     update(2)
     vi.advanceTimersByTime(250)
-    expect(context.voices.at(-1)?.frequency.setValueAtTime).toHaveBeenCalledWith(392, 2)
+    expect(looping(context.voices)).toEqual(['bed-forest', 'tension-search'])
     update(6)
     first.state = 'patrol'
     update(6.5)
     vi.advanceTimersByTime(250)
-    expect(context.voices.at(-2)?.frequency.setValueAtTime).toHaveBeenCalledWith(440 * 2 ** ((72 - 69) / 12), 6.5)
+    expect(looping(context.voices)).toEqual(['bed-forest'])
     audio.stop()
   })
 
@@ -1828,7 +1842,7 @@ describe('Rabbiters audio', () => {
     Object.assign(predator, { state: 'chase', targetId: 'local' })
     game.state.time = 2.1
     audio.update(game.state, 'local')
-    expect(context.voices).toHaveLength(4)
+    expect(context.voices).toHaveLength(2)
     game.state.phase = 'lost'
     audio.update(game.state, 'local')
     game.state.phase = 'playing'
@@ -1837,14 +1851,15 @@ describe('Rabbiters audio', () => {
     context.currentTime = 3
     audio.update(game.state, 'local')
     vi.advanceTimersByTime(250)
-    expect(context.voices.at(-2)?.frequency.setValueAtTime).toHaveBeenCalledWith(440 * 2 ** ((72 - 69) / 12), 3)
+    expect(looping(context.voices)).toEqual(['bed-forest'])
     audio.stop()
     audio.start()
     game.state.time = 0
     context.currentTime = 0
     audio.update(game.state, 'local')
     vi.advanceTimersByTime(250)
-    expect(context.voices.at(-2)?.frequency.setValueAtTime).toHaveBeenCalledWith(440 * 2 ** ((72 - 69) / 12), 0)
+    expect(looping(context.voices)).toEqual(['bed-forest'])
+    expect(context.voices.at(-1)?.start).toHaveBeenCalledWith(0)
     audio.stop()
   })
 
@@ -1853,15 +1868,15 @@ describe('Rabbiters audio', () => {
     game.state.bedding = 1
     game.state.time = 1
     audio.update(game.state, 'local')
-    expect(context.voices).toHaveLength(2)
+    expect(cuesOf(context.voices)).toEqual(['bedding'])
     Object.assign(game.state, { time: 2, bedding: 6, chapter: 2 })
     audio.update(game.state, 'local')
-    expect(context.voices).toHaveLength(7)
+    expect(cuesOf(context.voices)).toEqual(['bedding', 'chapter'])
     game.state.kits = [{ id: 'kit-0', x: 0, y: 0, z: 0, angle: 0, hidden: false, status: 'lost' }]
     game.state.time = 3
     audio.update(game.state, 'local')
     audio.update(game.state, 'local')
-    expect(context.voices).toHaveLength(10)
+    expect(cuesOf(context.voices)).toEqual(['bedding', 'chapter', 'kit-lost'])
     audio.stop()
   })
 
