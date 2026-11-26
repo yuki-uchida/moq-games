@@ -22,6 +22,8 @@ it('completes all ten stages with earned funds, spaced defenses and reserved cas
     let clock = 0
     const save = freshRunFromProfile(freshProfile(), 2, 1),
       e = new GameEngine(new RuleBasedAI(), save, 'meadow', seed, () => clock, DRAGON_BREATH_MOUTHS, 2, 1)
+    // This curve pins the single-assault rules (policy 4); wave-campaign.test.ts plays policy 5.
+    e.state.waveBossPolicy = 4
     const offsets: Record<AllyType, [number, number]> = {
       tank: [0, 0],
       soldier: [-42, 0],
@@ -117,7 +119,8 @@ it('completes all ten stages with earned funds, spaced defenses and reserved cas
       })
       if (process.env.TOWER_DIFFICULTY_REPORT)
         writeFileSync(process.env.TOWER_DIFFICULTY_REPORT, JSON.stringify(logs, null, 2))
-      if (!e.nextStage()) {
+      if (e.nextStage()) e.state.waveBossPolicy = 4
+      else {
         expect(e.state.phase, `seed ${seed} stage ${stage}`).toBe('victory')
         expect(stage).toBe(10)
         break
@@ -150,10 +153,10 @@ for (const phase of ['preparation', 'assault'])
       expect(restored!.state.enemiesSpawned).toBe(23)
       expect(restored!.state.budgetSpent).toBe(68)
     }
-    expect(restored!.state.waveBossPolicy).toBe(phase === 'assault' ? 2 : 4)
+    expect(restored!.state.waveBossPolicy).toBe(phase === 'assault' ? 2 : 5)
     const exported = restored!.exportCheckpoint()
     expect(exported).not.toBeNull()
-    expect(exported!.version).toBe(20)
-    expect(exported!.state.waveBossPolicy).toBe(phase === 'assault' ? 2 : 4)
+    expect(exported!.version).toBe(21)
+    expect(exported!.state.waveBossPolicy).toBe(phase === 'assault' ? 2 : 5)
     expect(JSON.stringify(checkpoint)).toBe(raw)
   })

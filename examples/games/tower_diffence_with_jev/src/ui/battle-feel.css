@@ -1022,3 +1022,225 @@
 .fx-special.compact[data-empty='true'] b {
   font-size: 15px;
 }
+
+/* ---------- Wave campaign (policy 5) ---------- */
+.bhud-wave {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 0 8px;
+  height: 30px;
+  align-self: center;
+  align-items: center;
+  border-radius: 8px;
+  background: #0f261c99;
+  color: #fff3d6;
+}
+.bhud-wave[hidden] {
+  display: none;
+}
+.bhud-wave small {
+  font-size: 0.68em;
+  letter-spacing: 0.08em;
+  color: #bfe3c9;
+}
+.bhud-wave[data-final='true'] {
+  background: #7d1712cc;
+  box-shadow: 0 0 0 1px #ffcf2e;
+}
+.bhud-wave[data-final='true'] small {
+  color: #ffd0c8;
+}
+.wave-call {
+  pointer-events: auto;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  translate: -50% 0;
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-areas: 'time time' 'title bonus';
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 2px;
+  min-height: 44px;
+  padding: 5px 14px 6px;
+  border: 2px solid #fff0c7;
+  border-radius: 12px;
+  background: linear-gradient(#f3c859, #d69a2c);
+  box-shadow: 0 4px 14px #10271960, inset 0 2px 0 #ffffff66;
+  color: #2c1a07;
+  font: 900 16px/1.1 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', Meiryo, system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+  animation: wave-call-in 0.28s ease-out;
+}
+.wave-call[hidden] {
+  display: none;
+}
+.wave-call:hover,
+.wave-call:focus-visible {
+  filter: brightness(1.08);
+}
+.wave-call:active {
+  translate: -50% 1px;
+}
+.wave-call-time {
+  grid-area: time;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #5b3a0b;
+}
+.wave-call-title {
+  grid-area: title;
+}
+.wave-call-bonus {
+  grid-area: bonus;
+  padding: 2px 7px;
+  border-radius: 8px;
+  background: #2c1a07;
+  color: #ffe08a;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.wave-call[data-final='true'] {
+  border-color: #ffcf2e;
+  background: linear-gradient(#e35a43, #a52219);
+  color: #fff3d6;
+}
+.wave-call[data-final='true'] .wave-call-time {
+  color: #ffd0c8;
+}
+@keyframes wave-call-in {
+  from {
+    opacity: 0;
+    translate: -50% -6px;
+  }
+}
+.fx-banner.wave b {
+  color: #fff3d6;
+}
+.fx-wave-toast {
+  position: absolute;
+  left: 50%;
+  top: max(30%, 170px);
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 8px 22px 9px;
+  border: 2px solid #7be495;
+  border-radius: 12px;
+  background: #0f3a26e6;
+  color: #e9ffe9;
+  box-shadow: 0 6px 18px #0a1f1460;
+  transform: translateX(-50%);
+  animation: fx-toast 1.7s ease-out forwards;
+}
+.fx-wave-toast b {
+  font: 900 clamp(22px, 3.6vw, 34px) / 1.05 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', Meiryo, system-ui, sans-serif;
+  letter-spacing: 0.05em;
+  text-shadow: 0 2px 0 #08261599;
+}
+.fx-wave-toast small {
+  font: 800 12px/1 'Hiragino Sans', system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  color: #a9f0bb;
+}
+.fx-wave-toast.bonus {
+  border-color: #ffe08a;
+  background: #3b2608e6;
+  color: #ffe08a;
+}
+.fx-wave-toast.bonus small {
+  color: #ffd37a;
+}
+@keyframes fx-toast {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px) scale(0.9);
+  }
+  14% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1.04);
+  }
+  24% {
+    transform: translateX(-50%) scale(1);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-10px);
+  }
+}
+#field .fx-num.gold {
+  font-size: 30px;
+  color: #ffd84a;
+  text-shadow:
+    -2px 0 #5a3500,
+    2px 0 #5a3500,
+    0 -2px #5a3500,
+    0 2px #5a3500,
+    -2px -2px #5a3500,
+    2px 2px #5a3500,
+    0 4px 5px #0007;
+  animation: fx-num-gold 1.2s ease-out forwards;
+}
+#field .fx-num.gold.boss {
+  font-size: 46px;
+}
+@keyframes fx-num-gold {
+  0% {
+    opacity: 0;
+    transform: var(--anchor) translateY(6px) scale(0.6);
+  }
+  16% {
+    opacity: 1;
+    transform: var(--anchor) scale(1.2);
+  }
+  30% {
+    transform: var(--anchor) translateY(-6px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: var(--anchor) translateY(-46px) scale(1);
+  }
+}
+.gold-purse.gold-tick b {
+  animation: gold-tick 0.32s ease-out;
+}
+@keyframes gold-tick {
+  35% {
+    transform: scale(1.22);
+    color: #ffe9a0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wave-call,
+  .gold-purse.gold-tick b {
+    animation-duration: 0.01ms;
+  }
+}
+@media (max-width: 420px) {
+  .bhud-wave {
+    height: 22px;
+    padding: 0 5px;
+  }
+  .wave-call {
+    left: auto;
+    right: 0;
+    translate: none;
+    font-size: 14px;
+    padding-inline: 10px;
+  }
+  .wave-call:active {
+    translate: 0 1px;
+  }
+  @keyframes wave-call-in {
+    from {
+      opacity: 0;
+    }
+  }
+}

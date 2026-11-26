@@ -313,7 +313,7 @@ describe('individual special abilities', () => {
     const { engine } = fixture()
     engine.startAssault()
     engine.castSpecial(engine.state.units[0].id, engine.state.units[0])
-    engine.state.enemiesSpawned = engine.state.enemiesResolved = stageRules(1).enemyCount
+    engine.state.enemiesSpawned = engine.state.enemiesResolved = stageRules(1, engine.state.waveBossPolicy).enemyCount
     engine.update(1 / 60)
     expect(engine.state.phase).toBe('cleared')
     const remaining = engine.state.units[0].specialCooldown

@@ -108,7 +108,15 @@ import {
   type EnemyType,
   type AINoDecisionReason,
   CURRENT_WAVE_BOSS_POLICY,
-  enemyGeometryScale
+  enemyGeometryScale,
+  EARLY_CALL_GOLD_PER_SECOND,
+  WAVE_BASE_DAMAGE_FACTOR,
+  isWaveCampaign,
+  WAVE_BREAK_SECONDS,
+  killGold,
+  waveStart,
+  waveStatus,
+  type WaveStatus
 } from './model'
 import type { AIController } from '../ai/AIController'
 import {
@@ -145,6 +153,19 @@ import {
   type BreathMouthTracks
 } from './BreathGeometry'
 const SPECIAL_IMPACT_QUEUE_LIMIT = 256
+const GOLD_GAIN_QUEUE_LIMIT = 64
+/** Presentation only: battle gold a kill or an early wave call just paid (policy 5). */
+export interface GoldGain {
+  id: string
+  kind: 'kill' | 'early-call'
+  amount: number
+  x: number
+  y: number
+  boss: boolean
+  at: number
+  battleId: number
+  stage: number
+}
 export class GameEngine {
   castSpecial(id: number, point: Point): boolean { return castSpecial(this.state, id, point) }
   readonly state: GameState
@@ -152,6 +173,7 @@ export class GameEngine {
   private combatSounds: CombatSoundEvent[] = []
   // Presentation only (never saved, never read by the simulation): what each special did this step.
   private specialImpacts: SpecialImpact[] = []
+  private goldGains: GoldGain[] = []
   private interception = new DefenderInterception()
   private id = 0
   private accumulator = 0
@@ -207,6 +229,64 @@ export class GameEngine {
     const impacts = this.specialImpacts
     this.specialImpacts = []
     return impacts
+  }
+  /** Battle gold paid since the last call (kills and early wave calls), oldest first. */
+  takeGoldGains(): GoldGain[] {
+    const gains = this.goldGains
+    this.goldGains = []
+    return gains
+  }
+  private earnWaveGold(kind: GoldGain['kind'], amount: number, at: Point, boss = false, sourceId = 0): void {
+    const s = this.state
+    this.save.gold += amount
+    s.waveGold = (s.waveGold ?? 0) + amount
+    this.goldGains.push({
+      id: `${s.battleId}:${s.stage}:${kind}:${sourceId}:${s.time.toFixed(3)}`,
+      kind,
+      amount,
+      x: at.x,
+      y: at.y,
+      boss,
+      at: s.time,
+      battleId: s.battleId,
+      stage: s.stage
+    })
+    if (this.goldGains.length > GOLD_GAIN_QUEUE_LIMIT) this.goldGains.shift()
+  }
+  /** Policy 5 wave position, or null for single-assault battles. */
+  get wave(): WaveStatus | null {
+    return waveStatus(this.state)
+  }
+  /** Policy 5: true while a break runs, so the player may deploy, upgrade and equip between waves. */
+  get buildWindowOpen(): boolean {
+    const s = this.state
+    return (
+      s.economyVersion === 2 &&
+      s.phase === 'assault' &&
+      !s.result &&
+      !!s.waveBreak &&
+      s.time + 1e-9 < s.waveBreak.until
+    )
+  }
+  private canBuild(): boolean {
+    return this.state.phase === 'preparation' || this.buildWindowOpen
+  }
+  /** Gold the early call would pay right now (0 when no break is running). */
+  get earlyCallBonus(): number {
+    const s = this.state
+    return s.phase === 'assault' && !s.result && s.waveBreak && s.time + 1e-9 < s.waveBreak.until
+      ? Math.ceil((s.waveBreak!.until - s.time) * EARLY_CALL_GOLD_PER_SECOND - 1e-9)
+      : 0
+  }
+  /** Policy 5: end the running break now for bonus battle gold; returns the bonus (0 when not allowed). */
+  callNextWave(): number {
+    const s = this.state,
+      bonus = this.earlyCallBonus
+    if (bonus <= 0 || !s.waveBreak) return 0
+    s.waveBreak.until = s.time
+    this.earnWaveGold('early-call', bonus, fieldFor(s).path[0], false, s.waveBreak.wave)
+    this.nextDecisionAt = Math.min(this.nextDecisionAt, this.now())
+    return bonus
   }
   private emitCombatSound(attack: CombatAttack, kind: CombatSoundKind, at: number): void {
     if (attack.kind === 'heal' || attack.type === 'healer') return
@@ -287,6 +367,8 @@ export class GameEngine {
             decisionTime: s.decisionTime,
             ...(s.specialEffects ? { specialEffects: structuredClone(s.specialEffects) } : {}),
             ...(s.cooldownHold ? { cooldownHold: structuredClone(s.cooldownHold) } : {}),
+            ...(s.waveBreak ? { waveBreak: { ...s.waveBreak } } : {}),
+            ...(s.waveGold !== undefined ? { waveGold: s.waveGold } : {}),
             historyEnabled: s.historyEnabled,
             corpses: s.corpses.map(({ key: _key, ...corpse }) => corpse)
           },
@@ -604,7 +686,7 @@ export class GameEngine {
       unit = findDefender(s, unitId)
     if (
       s.economyVersion !== 2 ||
-      s.phase !== 'preparation' ||
+      !this.canBuild() ||
       !unit ||
       unit.hp <= 0 ||
       (equipment !== 'weapon' && equipment !== 'armor') ||
@@ -621,7 +703,7 @@ export class GameEngine {
   }
   upgradeGate(kind: 'cannon' | 'armor'): boolean {
     const s = this.state
-    if (s.economyVersion !== 2 || s.phase !== 'preparation' || (kind !== 'cannon' && kind !== 'armor')) return false
+    if (s.economyVersion !== 2 || !this.canBuild() || (kind !== 'cannon' && kind !== 'armor')) return false
     const fortifications = s.fortifications!,
       gate = fortifications.gate,
       level = kind === 'cannon' ? gate.cannonLevel : gate.armorLevel,
@@ -637,7 +719,8 @@ export class GameEngine {
     if (!ALLY_TYPES.includes(type))
       return { point: point ?? { x: 0, y: 0 }, valid: false, reason: 'locked', reachesRoad: false }
     const result = previewGroundPlacement(
-      this.state,
+      // Between policy-5 waves new allies join as they would during preparation.
+      this.buildWindowOpen ? { ...this.state, phase: 'preparation' } : this.state,
       type,
       point,
       this.state.economyVersion === 2 ? undefined : replaceSlotId
@@ -737,6 +820,13 @@ export class GameEngine {
         unit = reserve ?? this.createUnit('player', type, { ...point, id: -(this.id + 1) })
       unit.slotId = -unit.id
       this.setDefenderHome(unit, point)
+      if (s.phase === 'assault') {
+        // Joining between waves: fight from here, as startAssault() would have recorded.
+        unit.redeployAnchor = { x: unit.homeX, y: unit.homeY }
+        unit.hasFought = true
+        unit.battleRelocation = { anchor: { x: unit.homeX, y: unit.homeY } }
+        this.interception.clear()
+      }
       s.reserveUnits = s.reserveUnits!.filter((candidate) => candidate !== unit)
       s.units.push(unit)
       this.save.gold -= DEPLOYMENT_COST
@@ -793,7 +883,7 @@ export class GameEngine {
   upgradeDefender(unitId: number): boolean {
     const s = this.state,
       unit = findDefender(s, unitId)
-    if (s.economyVersion !== 2 || s.phase !== 'preparation' || !unit || unit.hp <= 0) return false
+    if (s.economyVersion !== 2 || !this.canBuild() || !unit || unit.hp <= 0) return false
     const level = defenderLevel(unit, this.save),
       cost = upgradeCost(level)
     if (!canSpendOnRoster(this.save, cost, s)) return false
@@ -867,7 +957,7 @@ export class GameEngine {
     s.stageSummary.stage = stage
     s.sandbagStock = stage
     // Neutral record of the skipped clear (maxProgress 0.5 adds no AI bias); checkpoints require one past stage 1.
-    const cleared = stageRules(stage - 1).enemyCount
+    const cleared = stageRules(stage - 1, CURRENT_WAVE_BOSS_POLICY).enemyCount
     s.previousStageSummary =
       stage > 1
         ? { stage: stage - 1, spawned: cleared, resolved: cleared, maxProgress: 0.5, baseDamage: 0, defenderDamage: 0 }
@@ -889,6 +979,8 @@ export class GameEngine {
     this.specialImpacts = []
     s.stage++
     s.waveBossPolicy = CURRENT_WAVE_BOSS_POLICY
+    delete s.waveBreak
+    this.goldGains = []
     s.phase = 'preparation'
     s.result = null
     s.time = 0
@@ -1098,6 +1190,8 @@ export class GameEngine {
           }
       }
       s.units.push(unit)
+      // The first enemy of a wave ends its break.
+      delete s.waveBreak
       this.deploymentByUnit.set(unit.id, member.deploymentId)
       this.history.spawn(s, member.deploymentId, unit)
       this.lastDeploymentAt = s.time
@@ -1215,7 +1309,8 @@ export class GameEngine {
     this.ai.advanceDeployment?.()
     const legalActions = getLegalAIActions(s)
     if (s.pendingSpawns.length || !legalActions.length) {
-      if (!s.pendingSpawns.length) s.decisionStatus = noDecisionStatus('no-legal-actions')
+      if (!s.pendingSpawns.length)
+        s.decisionStatus = s.waveBreak ? `WAVE ${s.waveBreak.wave}の開始待ち` : noDecisionStatus('no-legal-actions')
       this.publishObservation(now)
       return
     }
@@ -1755,6 +1850,44 @@ export class GameEngine {
   private latchGateExit(unit: Unit | undefined, attack: CombatAttack): void {
     if (this.state.battlefieldVersion !== 2 || !unit || unit.owner !== 'ai' || unit.boss || unit.gateExit) return
     unit.gateExit = { attackId: attack.id, exitAt: Math.max(attack.endsAt, attack.impactAt) }
+  }
+  /** Policy 5 wave clear: every ally, fallen ones included, regroups at full health for the next wave. */
+  private regroupDefenders(): void {
+    const s = this.state,
+      revived = new Set<number>()
+    for (const u of s.units) {
+      if (u.owner !== 'player') continue
+      if (u.hp <= 0) {
+        revived.add(u.id)
+        delete u.specialCast
+        delete u.supportBuff
+        delete u.specialRootUntil
+        delete u.specialStunUntil
+        if (u.battleRelocation) {
+          delete u.battleRelocation.destination
+          delete u.battleRelocation.waypoints
+        }
+        u.x = u.homeX
+        u.y = u.homeY
+        u.moving = false
+        const facing = entranceFacing(s.fieldId, u, s.battlefieldVersion, s.layoutRevision)
+        u.facingX = facing.x
+        u.facingY = facing.y
+        u.attackAnimation = u.hitAnimation = u.attackCooldown = 0
+        u.attackTargetX = u.homeX
+        u.attackTargetY = u.homeY
+        u.returnHomeAt = 0
+        u.slowUntil = 0
+        u.slowFactor = 1
+        this.defenderDetours.delete(u.id)
+        this.failedDefenderDetours.delete(u.id)
+      }
+      u.hp = u.maxHp
+    }
+    if (revived.size) {
+      s.corpses = s.corpses.filter((corpse) => !revived.has(corpse.id))
+      this.interception.clear()
+    }
   }
   private recordCorpse(unit: Unit): void {
     const s = this.state
@@ -2474,7 +2607,7 @@ export class GameEngine {
     if (s.fortifications)
       s.fortifications.items = s.fortifications.items.filter((item) => item.kind !== 'spike' || item.hp > 0)
     const rawBaseDamage = baseDamage
-    baseDamage *= gateDamageFactor(s)
+    baseDamage *= gateDamageFactor(s) * (isWaveCampaign(s.waveBossPolicy) ? WAVE_BASE_DAMAGE_FACTOR : 1)
     const effectiveBaseDamage = Math.min(s.playerBaseHp, baseDamage)
     s.stageSummary.baseDamage = Math.min(CONFIG.baseHp, s.stageSummary.baseDamage + effectiveBaseDamage)
     for (const contribution of baseContributions) {
@@ -2487,11 +2620,13 @@ export class GameEngine {
       this.history.baseDamage(s, contribution.deploymentId, (effectiveBaseDamage * contribution.amount) / rawBaseDamage)
     }
     s.playerBaseHp = Math.max(0, s.playerBaseHp - baseDamage)
+    const waveRules = stageRules(s.stage, s.waveBossPolicy).waves
     s.units = s.units.filter((u) => {
       if (u.owner === 'player') return true
       const exited = s.battlefieldVersion === 2 && u.hp > 0 && u.gateExit && s.time + 1e-9 >= u.gateExit.exitAt
       if (u.hp <= 0 || exited) {
         if (exited) this.history.exit(s, u)
+        else if (waveRules) this.earnWaveGold('kill', killGold(u.type as EnemyType, u.boss), u, u.boss, u.id)
         s.enemiesResolved++
         s.stageSummary.resolved++
         const outcome = s.recentOutcomes.find((value) => value.id === this.deploymentByUnit.get(u.id))
@@ -2504,6 +2639,19 @@ export class GameEngine {
     for (const unit of s.units)
       if (unit.supportBuff && s.time + 1e-9 >= unit.supportBuff.expiresAt) delete unit.supportBuff
     this.updatePlan()
+    if (waveRules && s.playerBaseHp > 0 && !s.waveBreak && !s.pendingSpawns.length) {
+      // A wave is cleared once every member has spawned and resolved; the next one waits for a break.
+      const wave = waveStatus(s)!
+      if (
+        wave.nextWave > 1 &&
+        s.enemiesSpawned === waveStart(waveRules, wave.nextWave) &&
+        s.enemiesResolved === s.enemiesSpawned &&
+        s.enemiesSpawned < waveRules.reduce((sum, count) => sum + count, 0)
+      ) {
+        s.waveBreak = { wave: wave.nextWave, until: s.time + WAVE_BREAK_SECONDS }
+        this.regroupDefenders()
+      }
+    }
     if (s.playerBaseHp <= 0) {
       s.phase = 'defeat'
       s.result = 'lose'

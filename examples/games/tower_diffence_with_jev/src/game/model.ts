@@ -823,30 +823,171 @@ export function routePathFor(
 ): Point[] {
   return routeFor(fieldFor(state), routeId).path
 }
-export type WaveBossPolicy = 1 | 2 | 3 | 4
-export const CURRENT_WAVE_BOSS_POLICY: WaveBossPolicy = 4
+export type WaveBossPolicy = 1 | 2 | 3 | 4 | 5
+export const CURRENT_WAVE_BOSS_POLICY: WaveBossPolicy = 5
 const WAVE_BOSSES: Record<WaveBossPolicy, Partial<Record<number, EnemyType>>> = {
   1: { 3: 'ogre', 6: 'ogre', 9: 'ogre', 10: 'dragon' },
   2: { 3: 'ogre', 5: 'wolf', 7: 'beetle', 8: 'brute', 9: 'ogre', 10: 'dragon' },
   3: { 3: 'ogre', 5: 'wolf', 7: 'beetle', 8: 'brute', 9: 'ogre', 10: 'dragon' },
-  4: { 3: 'ogre', 5: 'wolf', 7: 'beetle', 8: 'brute', 9: 'ogre', 10: 'dragon' }
+  4: { 3: 'ogre', 5: 'wolf', 7: 'beetle', 8: 'brute', 9: 'ogre', 10: 'dragon' },
+  5: { 3: 'ogre', 5: 'wolf', 7: 'beetle', 8: 'brute', 9: 'ogre', 10: 'dragon' }
 }
-export function stageRules(stage: number, waveBossPolicy: WaveBossPolicy = 2) {
+/** Policy 5 (wave campaign): enemies per wave for each stage; the boss is the last enemy of the last wave. */
+export const WAVE_PLANS: Readonly<Record<number, readonly number[]>> = {
+  1: [6, 8, 10],
+  2: [7, 8, 10],
+  3: [6, 7, 8, 10],
+  4: [6, 8, 9, 11],
+  5: [8, 9, 10, 11, 13],
+  6: [8, 9, 10, 12, 14],
+  7: [7, 8, 9, 10, 11, 12],
+  8: [7, 8, 9, 10, 11, 14],
+  9: [7, 8, 8, 9, 9, 10, 12],
+  10: [7, 8, 9, 9, 10, 11, 13]
+}
+/** Policy 5 horde enemies are individually weaker than the single-assault rosters (HP and attack, per stage). */
+export const WAVE_ENEMY_STRENGTH: Readonly<Record<number, number>> = {
+  1: 1,
+  2: 1,
+  3: 0.95,
+  4: 1.05,
+  5: 1.1,
+  6: 1.3,
+  7: 1.3,
+  8: 1.3,
+  9: 1.0,
+  10: 1.1
+}
+/** Policy 5: game seconds between a cleared wave and the next one, unless the player calls it early. */
+export const WAVE_BREAK_SECONDS = 12
+/** Policy 5: a horde enemy reaching the castle deals this share of its hit (many more enemies arrive). */
+export const WAVE_BASE_DAMAGE_FACTOR = 0.5
+/** Policy 5: battle gold per second of break skipped by calling the next wave early. */
+export const EARLY_CALL_GOLD_PER_SECOND = 2
+/** Policy 5: battle gold for defeating a boss (regular enemies pay {@link killGold}). */
+export const BOSS_KILL_GOLD = 50
+export const isWaveCampaign = (waveBossPolicy: WaveBossPolicy): boolean => waveBossPolicy >= 5
+/** Policy 5 battle gold for one defeated enemy. */
+export function killGold(type: EnemyType, boss: boolean): number {
+  return boss ? BOSS_KILL_GOLD : 2 + DEFINITIONS[type].cost * 2
+}
+export interface StageRules {
+  enemyCount: number
+  strength: number
+  spawnInterval: number
+  reward: number
+  enemyTypes: EnemyType[]
+  spawnBudget: number
+  bossType: EnemyType | null
+  /** Policy 5 only: enemies per wave, summing to `enemyCount`. */
+  waves?: number[]
+}
+export function stageRules(stage: number, waveBossPolicy: WaveBossPolicy = 2): StageRules {
   // Preserve saved-wave counts/stats/budgets; space stronger late enemies rather than stacking them.
   const level = Math.max(1, Math.min(CONFIG.stages, stage)),
-    enemyCount = level === CONFIG.stages && waveBossPolicy >= 4 ? 21 : 3 + level * 2,
-    bossType = WAVE_BOSSES[waveBossPolicy][level] ?? null
+    bossType = WAVE_BOSSES[waveBossPolicy][level] ?? null,
+    enemyTypes = ENEMY_TYPES.filter(
+      (t) => DEFINITIONS[t].unlockStage <= level && !(waveBossPolicy >= 3 && level === CONFIG.stages && t === bossType)
+    )
+  if (isWaveCampaign(waveBossPolicy)) {
+    const waves = [...WAVE_PLANS[level]],
+      enemyCount = waves.reduce((sum, count) => sum + count, 0)
+    return {
+      enemyCount,
+      strength: (1 + (level - 1) * 0.1) * WAVE_ENEMY_STRENGTH[level],
+      spawnInterval: 1.8,
+      reward: 65 + level * 15,
+      enemyTypes,
+      spawnBudget: enemyCount * (2 + Math.floor(level / 3)) + (bossType ? 5 : 0),
+      bossType,
+      waves
+    }
+  }
+  const enemyCount = level === CONFIG.stages && waveBossPolicy >= 4 ? 21 : 3 + level * 2
   return {
     enemyCount,
     strength: 1 + (level - 1) * 0.1,
     spawnInterval: level <= 5 ? 2.8 - level * 0.14 : 2.1 + (level - 5) * 0.38,
     reward: 65 + level * 15,
-    enemyTypes: ENEMY_TYPES.filter(
-      (t) => DEFINITIONS[t].unlockStage <= level && !(waveBossPolicy >= 3 && level === CONFIG.stages && t === bossType)
-    ),
+    enemyTypes,
     spawnBudget: enemyCount * (2 + Math.floor(level / 3)) + (bossType ? 5 : 0),
     bossType
   }
+}
+export const WAVE_BOSS_POLICIES: readonly WaveBossPolicy[] = [1, 2, 3, 4, 5]
+/** The most enemies any stage fields under any wave policy (decoder bounds). */
+export const MAX_STAGE_ENEMY_COUNT = Math.max(
+  ...WAVE_BOSS_POLICIES.flatMap((policy) =>
+    Array.from({ length: CONFIG.stages }, (_, index) => stageRules(index + 1, policy).enemyCount)
+  )
+)
+export const MAX_STAGE_SPAWN_BUDGET = Math.max(
+  ...WAVE_BOSS_POLICIES.flatMap((policy) =>
+    Array.from({ length: CONFIG.stages }, (_, index) => stageRules(index + 1, policy).spawnBudget)
+  )
+)
+/** Upper bound of the policy-5 battle gold (kills and early calls) a run can earn through `stage`. */
+export function maxWaveGoldThrough(stage: number): number {
+  let total = 0
+  for (let level = 1; level <= Math.min(CONFIG.stages, stage); level++) {
+    const rules = stageRules(level, 5),
+      regular = Math.max(...rules.enemyTypes.map((type) => killGold(type, false))),
+      waves = rules.waves!
+    total +=
+      (rules.enemyCount - (rules.bossType ? 1 : 0)) * regular +
+      (rules.bossType ? BOSS_KILL_GOLD : 0) +
+      (waves.length - 1) * Math.ceil(WAVE_BREAK_SECONDS * EARLY_CALL_GOLD_PER_SECOND)
+  }
+  return total
+}
+export const MAX_WAVE_GOLD = maxWaveGoldThrough(CONFIG.stages)
+/** Policy 5 wave position of a battle, or null for single-assault policies. */
+export interface WaveStatus {
+  /** 1-based wave on the field: the one being fought, or the upcoming one during a break. */
+  wave: number
+  /** 1-based wave the next enemy spawn belongs to. */
+  nextWave: number
+  total: number
+  /** Enemies of `nextWave` still to spawn. */
+  remainingInWave: number
+  /** The previous wave is cleared and the next one has not spawned yet. */
+  inBreak: boolean
+  /** Seconds left in the current break (0 when the break elapsed or none is running). */
+  breakRemaining: number
+  /** `wave` is the last wave of the stage. */
+  final: boolean
+}
+export function waveStatus(
+  s: Readonly<Pick<GameState, 'stage' | 'waveBossPolicy' | 'enemiesSpawned' | 'enemiesResolved' | 'time'>> & {
+    waveBreak?: GameState['waveBreak']
+  }
+): WaveStatus | null {
+  const rules = stageRules(s.stage, s.waveBossPolicy)
+  if (!rules.waves) return null
+  let nextWave = 0,
+    end = 0
+  while (nextWave < rules.waves.length) {
+    end += rules.waves[nextWave]
+    nextWave++
+    if (s.enemiesSpawned < end) break
+  }
+  // Every member of the previous wave has spawned but some are still fighting: that wave is still on.
+  const fighting =
+    nextWave > 1 && !s.waveBreak && s.enemiesSpawned === waveStart(rules.waves, nextWave) && s.enemiesResolved < s.enemiesSpawned
+  const wave = fighting ? nextWave - 1 : nextWave
+  return {
+    wave,
+    nextWave,
+    total: rules.waves.length,
+    remainingInWave: Math.max(0, end - s.enemiesSpawned),
+    inBreak: !!s.waveBreak,
+    breakRemaining: s.waveBreak ? Math.max(0, s.waveBreak.until - s.time) : 0,
+    final: wave === rules.waves.length
+  }
+}
+/** Enemies spawned before `wave` (1-based) begins. */
+export function waveStart(waves: readonly number[], wave: number): number {
+  return waves.slice(0, Math.max(0, wave - 1)).reduce((sum, count) => sum + count, 0)
 }
 export const REGULAR_ENEMY_ATTACK_MULTIPLIER = 1.3
 export const unitLevelMultiplier = (level: number): number => 1.12 ** (level - 1)
@@ -867,7 +1008,7 @@ export function combatStats(
   waveBossPolicy: WaveBossPolicy
 ) {
   const definition = DEFINITIONS[unit.type],
-    scale = unit.owner === 'player' ? unitLevelMultiplier(allyLevel) : stageRules(stage).strength
+    scale = unit.owner === 'player' ? unitLevelMultiplier(allyLevel) : stageRules(stage, waveBossPolicy).strength
   return {
     maxHp:
       (definition.hp *
@@ -1015,6 +1156,10 @@ export interface CombatAttack {
   boss?: boolean
 }
 export interface GameState {
+  /** Policy 5: the break before 1-based `wave` (present from the previous wave's clear until `wave` spawns). */
+  waveBreak?: { wave: number; until: number }
+  /** Policy 5: battle gold this run earned from kills and early wave calls (checkpoint gold bound). */
+  waveGold?: number
   specialEffects?: import('./SpecialAbilities').SpecialEffect[]
   cooldownHold?: CooldownHold
   commanderSupportVersion?: 1
@@ -1215,6 +1360,8 @@ export type DeploymentBlockReason =
   | { code: 'result'; result: 'win' | 'lose' }
   | { code: 'pending-formation'; count: number }
   | { code: 'spawn-interval'; remaining: number }
+  | { code: 'wave-break'; wave: number; remaining: number | null }
+  | { code: 'wave-count'; wave: number; required: number; available: number }
   | { code: 'unit-capacity'; required: number; available: number }
   | { code: 'invalid-formation' }
   | { code: 'formation-unlock'; formationId: FormationId; stage: number; unlockStage: number }
@@ -1273,6 +1420,23 @@ export function deploymentBlockReasons(s: Readonly<GameState>, action: AIAction)
   }
   if (s.pendingSpawns.length) reasons.push({ code: 'pending-formation', count: s.pendingSpawns.length })
   if (s.time + 1e-9 < s.nextSpawnAt) reasons.push({ code: 'spawn-interval', remaining: s.nextSpawnAt - s.time })
+  const wave = waveStatus(s)
+  if (wave && rules.waves) {
+    // A new wave opens only after the previous one is fully resolved and its break has elapsed.
+    const opening = wave.nextWave > 1 && s.enemiesSpawned === waveStart(rules.waves, wave.nextWave)
+    if (opening && s.enemiesResolved < s.enemiesSpawned)
+      reasons.push({ code: 'wave-break', wave: wave.nextWave, remaining: null })
+    else if (opening && s.waveBreak && s.time + 1e-9 < s.waveBreak.until)
+      reasons.push({ code: 'wave-break', wave: wave.nextWave, remaining: s.waveBreak.until - s.time })
+    // One deployment never spills members into the next wave.
+    if (members.length > wave.remainingInWave)
+      reasons.push({
+        code: 'wave-count',
+        wave: wave.nextWave,
+        required: members.length,
+        available: wave.remainingInWave
+      })
+  }
   if (s.units.length + members.length > CONFIG.maxUnits)
     reasons.push({
       code: 'unit-capacity',
@@ -1601,7 +1765,13 @@ export function serializeStateForAI(s: Readonly<GameState>) {
       budgetRemaining: rules.spawnBudget - s.budgetSpent,
       reservedCount: s.pendingSpawns.length,
       reservedBudget: s.reservedBudget,
-      nextSpawnIn: Math.max(0, s.nextSpawnAt - s.time)
+      nextSpawnIn: Math.max(0, s.nextSpawnAt - s.time),
+      ...(rules.waves
+        ? (() => {
+            const wave = waveStatus(s)!
+            return { currentWave: wave.wave, waveBreakIn: Math.round(wave.breakRemaining * 100) / 100 }
+          })()
+        : {})
     },
     defenders: units.filter((u) => u.owner === 'player').map(summarize),
     enemies: units.filter((u) => u.owner === 'ai').map(summarize),

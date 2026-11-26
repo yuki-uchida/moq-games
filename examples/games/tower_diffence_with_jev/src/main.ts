@@ -531,9 +531,25 @@ function closeResult() {
   resultRevealAt = 0
   $<HTMLDialogElement>('result').close()
 }
-const battleHud = new BattleHud(battlePanel, () => {
-  if (placingSandbag || placingRoadItem) clearPlacementModes()
-}, () => pauseBattle())
+const battleHud = new BattleHud(
+  battlePanel,
+  () => {
+    if (placingSandbag || placingRoadItem) clearPlacementModes()
+  },
+  () => pauseBattle(),
+  () => callNextWave()
+)
+/** Policy 5: end the running break now for the early-call bonus. */
+function callNextWave() {
+  if (!assaulting() || paused) return
+  const bonus = engine.callNextWave()
+  if (!bonus) return
+  soundPlayer.playCue('ui_upgrade')
+  persist()
+  updateRosterControls()
+  updateSelectionContext()
+  announce(`次のウェーブを呼びました。早期ボーナス ${bonus} G。`)
+}
 const battleFeedback = new BattleFeedback({
   field: $('field'),
   overlayParent: battlePanel,
@@ -631,6 +647,22 @@ $('pause-confirm-cancel').onclick = () => {
   $('pause-confirm').hidden = true
   $('pause-resume').focus({ preventScroll: true })
 }
+window.addEventListener('keydown', (event) => {
+  const target = event.target as HTMLElement
+  if (
+    event.key.toLowerCase() !== 'n' ||
+    event.repeat ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey ||
+    ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName) ||
+    target.isContentEditable ||
+    document.querySelector('dialog[open]')
+  )
+    return
+  callNextWave()
+})
 window.addEventListener('keydown', (event) => {
   const target = event.target as HTMLElement
   if (
@@ -745,6 +777,14 @@ function preparing() {
 }
 function assaulting() {
   return started && !campaignLoading.open && engine.state.phase === 'assault'
+}
+/** Preparation, or a policy-5 break between waves: allies may be deployed, upgraded and equipped. */
+function building() {
+  return preparing() || (assaulting() && engine.buildWindowOpen)
+}
+/** Assault outside a wave break: only battle relocation and specials are available. */
+function fighting() {
+  return assaulting() && !engine.buildWindowOpen
 }
 function announce(message: string) {
   $('feedback').textContent = message
@@ -882,7 +922,7 @@ function closeContext() {
   else $('deck-toggle').focus({ preventScroll: true })
 }
 function rosterEligible(type: AllyType): boolean {
-  if (!preparing() || !availableAllies(save, engine.state.stage).includes(type)) return false
+  if (!building() || !availableAllies(save, engine.state.stage).includes(type)) return false
   const unit = retainedDefenders(engine.state).find((unit) => unit.type === type)
   if (unit && (unit.hp <= 0 || unit.slotId !== undefined)) return false
   return !paidRoster() || save.gold >= DEPLOYMENT_COST
@@ -900,7 +940,7 @@ function selectDefender(id: number, reveal = true) {
   else updateSelectionContext()
 }
 function deploy(type: AllyType, target: Placement) {
-  if (!preparing()) return
+  if (!building()) return
   const active = paidRoster() && deployedType(type)
   if (active) return
   if (!rosterEligible(type) || !renderer.defenderReady(type)) return
@@ -2046,6 +2086,30 @@ function spendingReason(cost: number): string {
     ? `あと ${cost - save.gold} G 必要です`
     : '配置中の生存者がいないため、再配置用の40Gを残してください'
 }
+function paintEquipment(unit: Readonly<GameEngine['state']['units'][number]>) {
+  const equipment = unit.equipment,
+    canEquip = canSpendOnRoster(save, FORTIFICATIONS.equipmentCost, engine.state)
+  $('equipment-current').textContent = equipment ? equipmentNames[equipment] : ''
+  for (const kind of ['weapon', 'armor'] as const) {
+    const current = equipment === kind
+    $<HTMLButtonElement>(`equipment-${kind}`).disabled = !canEquip || current
+    $(`equipment-${kind}`).setAttribute('aria-pressed', String(current))
+    $(`equipment-${kind}`).setAttribute(
+      'aria-label',
+      `${equipmentNames[kind]} ${equipmentEffect(kind, unit.type)} · ${current ? '装備中' : `${FORTIFICATIONS.equipmentCost} G${equipment ? 'で交換・元の装備は返金なし' : 'で購入'}`}`
+    )
+    $(`equipment-${kind}`).setAttribute(
+      'title',
+      `${equipmentNames[kind]} ${equipmentEffect(kind, unit.type)} · ${current ? '装備中' : `${FORTIFICATIONS.equipmentCost} G`}`
+    )
+    $(`equipment-${kind}-state`).textContent = current ? '✓' : `◈${FORTIFICATIONS.equipmentCost}`
+  }
+  $('equipment-hint').textContent = !canEquip
+    ? spendingReason(FORTIFICATIONS.equipmentCost)
+    : equipment
+      ? '交換は60G。元の装備は失われ、返金されません。HPの割合を保ちます。'
+      : 'この仲間だけに適用。HPの割合を保ち、回復はしません。'
+}
 function updateSelectionContext() {
   const unit = selectedDefender(),
     bag = engine.state.sandbags.find((bag) => bag.id === selectedSandbagId),
@@ -2071,7 +2135,7 @@ function updateSelectionContext() {
   $('defender-actions').hidden = !unit
   $('sandbag-actions').hidden = !bag
   $('road-item-actions').hidden = !item
-  $('equipment-actions').hidden = !preparing() || !unit || !paidRoster()
+  $('equipment-actions').hidden = !building() || !unit || !paidRoster()
   if (unit) {
     const reserve = unit.slotId === undefined,
       level = defenderLevel(unit, save),
@@ -2083,7 +2147,12 @@ function updateSelectionContext() {
       const remaining = engine.canRelocateDefender(unit.id) ? 1 : 0,
         relocating = !!unit.battleRelocation?.destination
       $('unit-action-status').textContent += relocating ? ' · ↝' : ` · ↦ ${remaining}`
-      $('unit-upgrade').hidden = $('unit-recall').hidden = true
+      $('unit-recall').hidden = true
+      if (building() && paidRoster()) paintEquipment(unit)
+      // Between waves the selected ally can also be upgraded.
+      $('unit-upgrade').hidden = !building() || !paidRoster()
+      $<HTMLButtonElement>('unit-upgrade').disabled = !canUpgrade
+      $('unit-upgrade').textContent = Number.isFinite(cost) ? `↑${level + 1} · ◈${cost}` : 'MAX'
       $('unit-move').hidden = false
       $('unit-move').textContent = movingDefenderId === unit.id ? '×' : `↦ ${remaining}`
       $('unit-move').setAttribute('aria-pressed', String(movingDefenderId === unit.id))
@@ -2102,30 +2171,7 @@ function updateSelectionContext() {
       return
     }
     $('unit-recall').hidden = false
-    if (paidRoster()) {
-      const equipment = unit.equipment,
-        canEquip = canSpendOnRoster(save, FORTIFICATIONS.equipmentCost, engine.state)
-      $('equipment-current').textContent = equipment ? equipmentNames[equipment] : ''
-      for (const kind of ['weapon', 'armor'] as const) {
-        const current = equipment === kind
-        $<HTMLButtonElement>(`equipment-${kind}`).disabled = !canEquip || current
-        $(`equipment-${kind}`).setAttribute('aria-pressed', String(current))
-        $(`equipment-${kind}`).setAttribute(
-          'aria-label',
-          `${equipmentNames[kind]} ${equipmentEffect(kind, unit.type)} · ${current ? '装備中' : `${FORTIFICATIONS.equipmentCost} G${equipment ? 'で交換・元の装備は返金なし' : 'で購入'}`}`
-        )
-        $(`equipment-${kind}`).setAttribute(
-          'title',
-          `${equipmentNames[kind]} ${equipmentEffect(kind, unit.type)} · ${current ? '装備中' : `${FORTIFICATIONS.equipmentCost} G`}`
-        )
-        $(`equipment-${kind}-state`).textContent = current ? '✓' : `◈${FORTIFICATIONS.equipmentCost}`
-      }
-      $('equipment-hint').textContent = !canEquip
-        ? spendingReason(FORTIFICATIONS.equipmentCost)
-        : equipment
-          ? '交換は60G。元の装備は失われ、返金されません。HPの割合を保ちます。'
-          : 'この仲間だけに適用。HPの割合を保ち、回復はしません。'
-    }
+    if (paidRoster()) paintEquipment(unit)
     $('unit-upgrade').hidden = !paidRoster()
     $<HTMLButtonElement>('unit-upgrade').disabled = !canUpgrade
     $('unit-upgrade').textContent = Number.isFinite(cost) ? `↑${level + 1} · ◈${cost}` : 'MAX'
@@ -2229,7 +2275,7 @@ function updateFortificationControls() {
   }
 }
 function buyEquipment(id: number, equipment: Equipment) {
-  if (!preparing() || !paidRoster() || !engine.equipDefender(id, equipment)) return
+  if (!building() || !paidRoster() || !engine.equipDefender(id, equipment)) return
   persist()
   selectDefender(id, false)
   updateFortificationControls()
@@ -2241,7 +2287,7 @@ for (const equipment of ['weapon', 'armor'] as const)
   $(`equipment-${equipment}`).onclick = () => {
     const unit = selectedDefender()
     if (
-      !preparing() ||
+      !building() ||
       !paidRoster() ||
       !unit ||
       unit.equipment === equipment ||
@@ -2269,10 +2315,11 @@ $('fortification-confirm-accept').onclick = () => {
   const action = pendingFortification
   pendingFortification = null
   fortificationConfirm.close()
-  if (!action || !preparing() || !paidRoster()) return
+  if (!action || !paidRoster()) return
   if (action.kind === 'equipment') {
+    if (!building()) return
     if (findDefender(engine.state, action.id)?.equipment === action.previous) buyEquipment(action.id, action.equipment)
-  } else if (engine.removeRoadItem(action.id)) {
+  } else if (preparing() && engine.removeRoadItem(action.id)) {
     clearPlacementModes()
     persist()
     updateFortificationControls()
@@ -2327,7 +2374,7 @@ $('unit-recall').onclick = () => {
   if (selectedDefenderId !== null) recallDefender(selectedDefenderId)
 }
 $('unit-upgrade').onclick = () => {
-  if (!preparing() || selectedDefenderId === null || !engine.upgradeDefender(selectedDefenderId)) return
+  if (!building() || selectedDefenderId === null || !engine.upgradeDefender(selectedDefenderId)) return
   soundPlayer.playCue('ui_upgrade')
   persist()
   updateSelectionContext()
@@ -2969,6 +3016,25 @@ function pageShown(event: PageTransitionEvent) {
   visibilityChanged()
 }
 let uiTick = 0
+let lastBuildWindow = false
+/** The purse counts up to battle gold earned in play instead of jumping (spending shows at once). */
+let shownGold = -1,
+  goldTickAt = 0
+function tickGold(now: number) {
+  const target = save.gold
+  if (shownGold === target) return
+  if (shownGold < 0 || target < shownGold || target - shownGold > 400) shownGold = target
+  else {
+    if (now - goldTickAt < 30) return
+    goldTickAt = now
+    shownGold = Math.min(target, shownGold + Math.max(1, Math.ceil((target - shownGold) / 6)))
+    const purse = $('gold').parentElement!
+    purse.classList.remove('gold-tick')
+    void purse.offsetWidth
+    purse.classList.add('gold-tick')
+  }
+  $('gold').textContent = `${shownGold} G`
+}
 function updateDefenderPreview() {
   if (specialAimId !== null) { renderer.setDefenderPlacementPreview(null); return }
   if (
@@ -2984,7 +3050,8 @@ function updateDefenderPreview() {
   const target = dropTarget ?? selectedSlot,
     unit = selectedDefender(),
     type = unit ? (unit.type as AllyType) : selected
-  if (assaulting() && (!unit || !engine.canRelocateDefender(unit.id))) {
+  // Between waves a new ally from the deck previews like a preparation placement.
+  if (assaulting() && !(building() && !unit) && (!unit || !engine.canRelocateDefender(unit.id))) {
     renderer.setDefenderPlacementPreview(null)
     return
   }
@@ -2996,7 +3063,7 @@ function updateDefenderPreview() {
   renderer.setDefenderPlacementPreview(
     point
       ? {
-          battle: assaulting(),
+          battle: assaulting() && !!unit,
           placement:
             unit?.slotId !== undefined
               ? assaulting()
@@ -3062,7 +3129,17 @@ function frame(now: number) {
     !!placingSandbag || !!placingRoadItem
   )
   battleFeedback.update(state, performance.now(), engine.takeSpecialImpacts())
+  battleFeedback.goldGains(engine.takeGoldGains())
   battleHud.update(state, battleFeedback.bountyArrived)
+  tickGold(now)
+  const buildWindow = engine.buildWindowOpen
+  if (buildWindow !== lastBuildWindow) {
+    // A wave break opened or closed: deploy/upgrade controls follow it.
+    lastBuildWindow = buildWindow
+    updateRosterControls()
+    updateSelectionContext()
+    if (!buildWindow) closeTrays()
+  }
   if (preparing()) renderer.prepareDefenders(availableAllies(save, state.stage))
   renderer.assetsReady(state)
   assetNotice.update(renderer.assetStatus, performance.now(), state.phase === 'assault')
@@ -3082,7 +3159,6 @@ function frame(now: number) {
     for (const type of ALL_TRIAL_TYPES) $<HTMLSelectElement>(`${type}-art`).disabled = started && !preparing()
     updateEnvironmentArtStatus()
     updateArtModeStatus()
-    $('gold').textContent = `${save.gold} G`
     $('stage').textContent = String(state.stage).padStart(2, '0')
     const goal = nextGoal(starsOf(stageProgress, state.stage)),
       goalText = goal ? `目標 ${'★'.repeat(goal.stars)} ${goal.label}` : ''

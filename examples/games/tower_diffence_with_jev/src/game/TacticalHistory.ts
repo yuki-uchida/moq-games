@@ -3,6 +3,7 @@ import {
   actionMembers,
   routePathFor,
   CONFIG,
+  MAX_STAGE_ENEMY_COUNT,
   pathLength,
   type AIAction,
   type FieldId,
@@ -34,7 +35,8 @@ export const HISTORY_LIMITS = {
   contributors: 8,
   storedEvents: 64,
   storedDamage: 128,
-  storedDeployments: 23
+  /** Every deployment of a stage (at most one per enemy), so a checkpoint can account for each spawn. */
+  storedDeployments: MAX_STAGE_ENEMY_COUNT
 } as const
 
 export interface HistoryEvent {

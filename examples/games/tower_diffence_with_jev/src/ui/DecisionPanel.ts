@@ -233,7 +233,9 @@ export class DecisionPanel {
         'budget',
         'cooldown',
         'pending-formation',
-        'spawn-interval'
+        'spawn-interval',
+        'wave-count',
+        'wave-break'
       ].indexOf(reason.code)
     const rows = blocked.map((entry) => ({
       key: actionKey(entry.action),
@@ -302,6 +304,12 @@ function blockReasonLabel(reason: DeploymentBlockReason): string {
       return `編成${reason.count}体の出撃予約中`
     case 'spawn-interval':
       return `出撃間隔 あと${reason.remaining.toFixed(1)}秒`
+    case 'wave-break':
+      return reason.remaining === null
+        ? `WAVE ${reason.wave}は前のウェーブの決着待ち`
+        : `WAVE ${reason.wave}まで休憩 あと${reason.remaining.toFixed(1)}秒`
+    case 'wave-count':
+      return `WAVE ${reason.wave}の残り${reason.available}枠・必要${reason.required}枠`
     case 'unit-capacity':
       return `盤面の空き${reason.available}枠・必要${reason.required}枠`
     case 'invalid-formation':

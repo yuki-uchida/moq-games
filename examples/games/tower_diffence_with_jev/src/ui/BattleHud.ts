@@ -1,4 +1,4 @@
-import { CONFIG, stageRules, type GameState } from '../game/model'
+import { CONFIG, EARLY_CALL_GOLD_PER_SECOND, stageRules, waveStatus, type GameState } from '../game/model'
 
 const SPEED_KEY = 'tower-jev-speed-v1'
 export type BattleSpeed = 1 | 2
@@ -41,18 +41,29 @@ export class BattleHud {
   private readonly coinNum: HTMLElement
   private readonly speedButton: HTMLButtonElement
   readonly pauseButton: HTMLButtonElement
+  private readonly wave: HTMLElement
+  private readonly waveNum: HTMLElement
+  /** Policy-5 break countdown and the "call the next wave early" button. */
+  readonly waveCall: HTMLButtonElement
+  private readonly waveCallBonus: HTMLElement
+  private readonly waveCallTime: HTMLElement
   private currentSpeed: BattleSpeed = readSpeed()
   private shown = false
   private speedShown = true
   private lastBaseHp = -1
   private lastCoins = -1
-  private cache = { castle: '', level: '', enemies: '', crown: '', coins: '' }
+  private cache = { castle: '', level: '', enemies: '', crown: '', coins: '', wave: '', call: '' }
 
-  constructor(parent: HTMLElement, private readonly onSpeed?: (speed: BattleSpeed) => void, private readonly onPause?: () => void) {
+  constructor(
+    parent: HTMLElement,
+    private readonly onSpeed?: (speed: BattleSpeed) => void,
+    private readonly onPause?: () => void,
+    private readonly onCallWave?: () => void
+  ) {
     this.root = document.createElement('div')
     this.root.className = 'battle-hud'
     this.root.hidden = true
-    this.root.innerHTML = `<div class="bhud-main"><div class="bhud-castle" role="group" aria-label="拠点の体力">${ICONS.castle}<span class="bhud-bar"><i class="bhud-trail"></i><b class="bhud-fill"></b></span><output class="bhud-num"></output></div><div class="bhud-enemies" role="group" aria-label="敵の進行">${ICONS.enemy}<span class="bhud-bar"><b class="bhud-fill"></b></span><output class="bhud-num"></output><span class="bhud-crown" data-state="idle" title="ボス">${ICONS.crown}</span></div></div><div class="bhud-side"><div class="bhud-coins" role="group" aria-label="戦闘で得たコイン">${ICONS.coin}<output class="bhud-num">+0</output></div><button class="bhud-pause" type="button" aria-label="一時停止" title="一時停止 (P)" hidden>${ICONS.pause}</button><button class="bhud-speed" type="button" aria-pressed="false" aria-label="速度 2倍" title="速度 2倍">${ICONS.speed}<span></span></button></div>`
+    this.root.innerHTML = `<div class="bhud-main"><div class="bhud-wave" role="group" aria-label="ウェーブ" hidden><small>WAVE</small><output class="bhud-num"></output></div><div class="bhud-castle" role="group" aria-label="拠点の体力">${ICONS.castle}<span class="bhud-bar"><i class="bhud-trail"></i><b class="bhud-fill"></b></span><output class="bhud-num"></output></div><div class="bhud-enemies" role="group" aria-label="敵の進行">${ICONS.enemy}<span class="bhud-bar"><b class="bhud-fill"></b></span><output class="bhud-num"></output><span class="bhud-crown" data-state="idle" title="ボス">${ICONS.crown}</span></div></div><div class="bhud-side"><div class="bhud-coins" role="group" aria-label="戦闘で得たコイン">${ICONS.coin}<output class="bhud-num">+0</output></div><button class="bhud-pause" type="button" aria-label="一時停止" title="一時停止 (P)" hidden>${ICONS.pause}</button><button class="bhud-speed" type="button" aria-pressed="false" aria-label="速度 2倍" title="速度 2倍">${ICONS.speed}<span></span></button></div><button class="wave-call" type="button" hidden aria-keyshortcuts="N"><span class="wave-call-time"></span><b class="wave-call-title">次のウェーブ ▶</b><span class="wave-call-bonus"></span></button>`
     parent.append(this.root)
     const q = <T extends HTMLElement>(selector: string) => this.root.querySelector<T>(selector)!
     this.castle = q('.bhud-castle')
@@ -72,6 +83,12 @@ export class BattleHud {
     })
     this.pauseButton = q<HTMLButtonElement>('.bhud-pause')
     this.pauseButton.addEventListener('click', () => this.onPause?.())
+    this.wave = q('.bhud-wave')
+    this.waveNum = q('.bhud-wave .bhud-num')
+    this.waveCall = q<HTMLButtonElement>('.wave-call')
+    this.waveCallBonus = q('.wave-call-bonus')
+    this.waveCallTime = q('.wave-call-time')
+    this.waveCall.addEventListener('click', () => this.onCallWave?.())
     this.paintSpeed()
   }
 
@@ -114,6 +131,7 @@ export class BattleHud {
       this.root.hidden = false
       this.lastBaseHp = -1
       this.lastCoins = -1
+      this.cache.wave = this.cache.call = ''
     }
     const speedShown = state.phase === 'preparation' || state.phase === 'assault'
     if (speedShown !== this.speedShown) {
@@ -164,6 +182,34 @@ export class BattleHud {
       this.cache.crown = crown
       this.crown.dataset.state = crown
       this.crown.hidden = crown === 'none'
+    }
+
+    const wave = waveStatus(state),
+      waveKey = wave ? `${wave.wave}/${wave.total}:${wave.final}` : ''
+    if (waveKey !== this.cache.wave) {
+      this.cache.wave = waveKey
+      this.wave.hidden = !wave
+      if (wave) {
+        this.waveNum.textContent = `${wave.wave}/${wave.total}`
+        this.wave.dataset.final = String(wave.final)
+        this.wave.setAttribute('aria-label', `ウェーブ ${wave.wave} / ${wave.total}${wave.final ? ' · 最終ウェーブ' : ''}`)
+      }
+    }
+    const breakLeft = wave && state.phase === 'assault' && !state.result ? wave.breakRemaining : 0,
+      seconds = Math.ceil(breakLeft - 1e-9),
+      bonus = Math.ceil(breakLeft * EARLY_CALL_GOLD_PER_SECOND - 1e-9),
+      callKey = breakLeft > 0 && wave ? `${wave.wave}:${seconds}:${bonus}` : ''
+    if (callKey !== this.cache.call) {
+      this.cache.call = callKey
+      this.waveCall.hidden = !callKey
+      if (callKey && wave) {
+        this.waveCallTime.textContent = `WAVE ${wave.wave}${wave.final ? ' (FINAL)' : ''}まで ${seconds}秒`
+        this.waveCallBonus.textContent = `+${bonus}G`
+        this.waveCall.dataset.final = String(wave.final)
+        const label = `次のウェーブをすぐ呼ぶ · 早期ボーナス ${bonus} G · 残り${seconds}秒 (N)`
+        this.waveCall.setAttribute('aria-label', label)
+        this.waveCall.title = label
+      }
     }
 
     if (battleCoins !== this.lastCoins) {

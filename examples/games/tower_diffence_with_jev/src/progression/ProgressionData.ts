@@ -1,4 +1,4 @@
-import { ALLY_TYPES, CONFIG, DEFINITIONS, stageRules, type AllyType } from '../game/model'
+import { ALLY_TYPES, CONFIG, DEFINITIONS, MAX_WAVE_GOLD, stageRules, type AllyType } from '../game/model'
 import { STARTING_GOLD } from '../game/DefenderRoster'
 
 export interface ProfileData {
@@ -29,10 +29,12 @@ export interface SaveData {
 
 export const LEGACY_SAVE_KEY = 'tower-jev-v2'
 export const MAX_LEGACY_SAVE_BYTES = 16 * 1024
-export const MAX_RUN_GOLD = Array.from({ length: CONFIG.stages }, (_, index) => stageRules(index + 1).reward).reduce(
-  (total, reward) => total + reward,
-  0
-)
+/** Stage rewards plus the most battle gold (kills, early wave calls) a policy-5 run can earn. */
+export const MAX_RUN_GOLD =
+  Array.from({ length: CONFIG.stages }, (_, index) => stageRules(index + 1).reward).reduce(
+    (total, reward) => total + reward,
+    0
+  ) + MAX_WAVE_GOLD
 const paidAllies = ALLY_TYPES.filter((type) => DEFINITIONS[type].purchaseCost > 0)
 
 export const freshProfile = (): ProfileData => ({ version: 1, purchased: [] })
