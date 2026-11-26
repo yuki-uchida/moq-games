@@ -16,6 +16,7 @@ export const beetle: StackDesign = {
   shadow: [10, 10],
   blueprint: {
     id: 'beetle',
+    density: 2,
     colors: {
       shell: '#3d5ac9',
       shellDark: '#213380',
@@ -36,14 +37,16 @@ export const beetle: StackDesign = {
         (x, y, z) => Math.hypot(x / 6.6, y / 6.5, (z + 1) / 7.4) <= 1 && y >= 0.5
       )
       body.fill([-6, -1, -7], [5, 1, 5], 'belly', (x, y, z) => Math.hypot(x / 5.8, (z + 1) / 6.6) <= 1)
-      // Crisp dark wing-case seam flanked by golden brass rivets + directional top-left sheen.
-      body.paint((x, y, z) => (x === -1 || x === 0 ? (y > 2 ? 'shellDark' : undefined) : undefined))
-      body.paint((x, y, z) =>
-        (y === 5 || y === 4) && (z === -4 || z === 0 || z === 4) && (x === -3 || x === 2) ? 'rivet' : undefined
+      // Crisp 1px dark wing-case seam flanked by fine golden brass rivets + directional sheen.
+      body.rawPaint((gx, gy) => ((gx === -1 || gx === 0) && gy > 4 ? 'shellDark' : undefined))
+      body.rawPaint((gx, gy, gz) =>
+        (gy === 9 || gy === 10) && (gz === -8 || gz === -7 || gz === 0 || gz === 1 || gz === 7 || gz === 8) && (gx === -6 || gx === -5 || gx === 4 || gx === 5)
+          ? 'rivet'
+          : undefined
       )
       body.paint((x, y, z) => (y >= 5 && x <= -3 && z > -2 ? 'shellLight' : undefined))
-      // Golden front carapace collar separating pronotum from the armored elytra.
-      body.paint((x, y, z) => (z === 5 && y >= 2 && y <= 5 && Math.abs(x + 0.5) <= 4.5 ? 'rivet' : undefined))
+      // Fine golden front carapace collar separating pronotum from the armored elytra.
+      body.rawPaint((gx, gy, gz) => (gz === 10 && gy >= 4 && gy <= 10 && Math.abs(gx + 0.5) <= 9.2 ? 'rivet' : undefined))
 
       const head = kit.part('head', 'body', [0, 2, 6])
       head.fill([-4, -2, -1], [3, 3, 4], 'shellDark', (x, y, z) => Math.hypot(x / 3.6, y / 2.8, (z - 1) / 2.6) <= 1)

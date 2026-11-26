@@ -14,6 +14,7 @@ export const slime: StackDesign = {
   shadow: [7, 6],
   blueprint: {
     id: 'slime',
+    density: 2,
     colors: {
       jelly: '#35c998',
       jellyDark: '#178767',
@@ -30,15 +31,24 @@ export const slime: StackDesign = {
         const r = y < 3 ? 6.7 : 6.7 * Math.sqrt(Math.max(0, 1 - ((y - 3) / 6.7) ** 2))
         return Math.hypot(x, z) <= r + (y < 1 ? 0.3 : 0)
       })
-      body.box([-1, 9, -1], [0, 9, 0], 'jelly')
-      body.paint((x, y) => (y <= 1 ? 'jellyDark' : undefined))
+      body.ellipsoid([0, 9.2, 0], [1.4, 0.9, 1.4], 'jelly')
+      body.paint((_x, y) => (y <= 1 ? 'jellyDark' : undefined))
       body.paint((x, y, z) => (y >= 6 && x < -1 && z > 0 ? 'jellyLight' : undefined))
-      body.box([-4, 7, 1], [-3, 8, 2], '*gloss')
-      for (const x of [-3, -2, 1, 2]) body.face(x, 4, 'eye').face(x, 5, 'eye')
-      body.face(-2, 5, '*gloss').face(2, 5, '*gloss')
-      body.face(-1, 3, 'mouth').face(0, 3, 'mouth')
-      body.face(-5, 3, 'cheek').face(4, 3, 'cheek')
-      body.set(2, 2, -2, 'pebble').set(3, 2, -2, 'pebble')
+      // Crescent high-res specular highlight on upper-left jelly dome.
+      body.rawBox([-8, 14, 3], [-6, 16, 5], '*gloss').rawBox([-6, 16, 2], [-5, 17, 4], '*gloss')
+      // Adorable 3x4 glossy slime eyes with 1px sparkle, rosy blush & curved happy smile.
+      for (const gx of [-6, -5, -4, 3, 4, 5])
+        for (let gy = 8; gy <= 11; gy++) body.rawFace(gx, gy, 'eye', '+z', 2)
+      body.rawFace(-5, 11, '*gloss', '+z', 2).rawFace(3, 11, '*gloss', '+z', 2)
+      body.rawFace(-4, 9, '*gloss', '+z', 1).rawFace(4, 9, '*gloss', '+z', 1)
+      body
+        .rawFace(-2, 7, 'mouth', '+z', 2)
+        .rawFace(-1, 6, 'mouth', '+z', 2)
+        .rawFace(0, 6, 'mouth', '+z', 2)
+        .rawFace(1, 7, 'mouth', '+z', 2)
+      body.rawFace(-9, 7, 'cheek', '+z', 2).rawFace(-8, 7, 'cheek', '+z', 2)
+      body.rawFace(7, 7, 'cheek', '+z', 2).rawFace(8, 7, 'cheek', '+z', 2)
+      body.rawBox([4, 4, -4], [6, 5, -3], 'pebble')
     }
   },
   pose: (input) => {

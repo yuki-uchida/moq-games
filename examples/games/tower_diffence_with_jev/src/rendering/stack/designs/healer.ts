@@ -17,6 +17,7 @@ export const healer: StackDesign = {
   emitter: { part: 'weapon', at: [0.5, 2, 14.5] },
   blueprint: {
     id: 'healer',
+    density: 2,
     colors: {
       skin: '#ffd6b8',
       eye: '#331c29',
@@ -57,12 +58,15 @@ export const healer: StackDesign = {
       b.head.box([-3, -4, -5], [2, 3, -4], 'hair')
       // Cream front apron panel distinguishing healer's bell skirt from mage & frost.
       b.hips.box([-2, -3, 3], [1, 1, 5], 'cream')
-      // Blossom crown perched high at y=8..9 so the eyes & cheeks read clearly underneath.
-      for (let i = 0; i < 7; i++) {
-        const a = (i / 7) * Math.PI * 2
-        const x = Math.round(Math.sin(a) * 4.5 - 0.5)
-        const z = Math.round(Math.cos(a) * 4.2 - 0.8)
-        b.head.box([x - 1, 8, z - 1], [x + 1, 8, z + 1], 'petal').set(x, 9, z, i % 2 ? 'petalLight' : '*bloom')
+      // Delicate high-res blossom crown perched high at y=8..9 with golden flower hearts.
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2
+        const gx = Math.round(Math.sin(a) * 9.0 - 0.5)
+        const gz = Math.round(Math.cos(a) * 8.4 - 1.5)
+        b.head
+          .rawBox([gx - 1, 16, gz - 1], [gx + 1, 17, gz + 1], i % 2 ? 'petal' : 'petalLight')
+          .rawSet(gx, 18, gz, '*bloom')
+          .rawSet(gx + 1, 16, gz, 'leaf')
       }
       // Emerald leaf mantle over shoulders.
       b.torso.fill(

@@ -16,6 +16,7 @@ export const clockworkPatchling: StackDesign = {
   shadow: [8, 7],
   blueprint: {
     id: 'clockworkPatchling',
+    density: 2,
     colors: {
       cloth: '#b87a40',
       clothDark: '#7d4d23',
@@ -57,22 +58,37 @@ export const clockworkPatchling: StackDesign = {
                 ? 'patchC'
                 : undefined
       )
-      // Riveted iron & brass clockwork chest window with toothed gear so it reads immediately as mechanical.
-      torso.box([-3, 2, 5], [2, 6, 6], 'iron').box([-2, 3, 6], [1, 5, 6], 'brass')
-      torso.set(-2, 5, 6, 'brassLight').set(1, 5, 6, 'brassLight').set(-1, 4, 6, 'iron').set(0, 4, 6, 'iron')
-      torso.set(-2, 3, 6, 'brassDark').set(1, 3, 6, 'brassDark')
-      // Crisp patchwork seams.
-      torso.paint((x, y, z) =>
-        x === 0 && z > 4 && y >= 7 && y % 2 === 0
+      // Riveted iron & toothed brass clockwork chest window with crisp 1px gear teeth & axle.
+      torso.rawBox([-6, 4, 10], [5, 12, 12], 'iron').rawBox([-4, 6, 12], [3, 10, 12], 'brass')
+      torso
+        .rawBox([-5, 8, 12], [-5, 8, 12], 'brassLight')
+        .rawBox([4, 8, 12], [4, 8, 12], 'brassLight')
+        .rawBox([-1, 11, 12], [0, 11, 12], 'brassLight')
+        .rawBox([-1, 5, 12], [0, 5, 12], 'brassDark')
+        .rawBox([-2, 7, 12], [1, 9, 12], 'iron')
+        .rawBox([-1, 8, 12], [0, 8, 12], 'brassLight')
+      // Fine 1px patchwork cross-stitches.
+      torso.rawPaint((gx, gy, gz) =>
+        gx === 0 && gz > 8 && gy >= 14 && gy % 3 === 0
           ? 'stitch'
-          : y === 8 && z > 3 && (x + 10) % 2 === 0 && x < -1
+          : gy === 16 && gz > 6 && (gx + 20) % 3 === 0 && gx < -2
             ? 'stitch'
             : undefined
       )
-      // Mismatched glowing button eyes (big golden left, bright cyan ringed right) + stitched grin.
-      torso.box([-4, 9, 4], [-2, 11, 5], 'button').box([-3, 10, 5], [-3, 10, 5], '*eyeGlow')
-      torso.box([1, 9, 4], [3, 11, 5], 'buttonRim').box([2, 10, 5], [2, 10, 5], '*eyeCyan')
-      torso.face(-2, 7, 'stitch').face(-1, 6, 'stitch').face(0, 6, 'stitch').face(1, 6, 'stitch').face(2, 7, 'stitch')
+      // Mismatched high-res glowing button eyes (golden left, cyan ringed right) + fine stitched smile.
+      torso.rawBox([-8, 18, 8], [-3, 22, 10], 'button').rawBox([-6, 19, 10], [-5, 21, 11], '*eyeGlow')
+      torso.rawBox([2, 18, 8], [7, 22, 10], 'buttonRim').rawBox([4, 19, 10], [5, 21, 11], '*eyeCyan')
+      for (const [gx, gy] of [
+        [-5, 14],
+        [-3, 13],
+        [-1, 13],
+        [1, 13],
+        [3, 13],
+        [5, 14]
+      ]) {
+        torso.rawFace(gx, gy, 'stitch', '+z', 2)
+        if (gx % 2 !== 0) torso.rawFace(gx, gy - 1, 'stitch', '+z', 1).rawFace(gx, gy + 1, 'stitch', '+z', 1)
+      }
       // Iron collar & gleaming brass crown bolt.
       torso.box([-2, 13, -2], [1, 14, 1], 'iron')
       torso.box([-1, 14, -1], [0, 15, 0], 'brassDark').box([-3, 16, -1], [2, 17, 0], 'brass')

@@ -14,6 +14,7 @@ export const soldier: StackDesign = {
   shadow: [7, 6],
   blueprint: {
     id: 'soldier',
+    density: 2,
     colors: {
       skin: '#ffcca3',
       cheek: '#f08278',
@@ -46,29 +47,44 @@ export const soldier: StackDesign = {
           .box([-1, -4, -1], [0, -4, 1], 'leather')
       }
       const torso = kit.part('torso', 'hips', [0, 2, 0])
+      torso.fill([-4, 0, -3], [3, 6, 3], 'tabard', (x, y, z) => {
+        const taper = 0.92 + 0.08 * Math.min(1, y / 6)
+        return (Math.abs(x) / (4 * taper)) ** 4 + (Math.abs(z) / (3.4 * taper)) ** 4 <= 1.05
+      })
+      torso.rawPaint((_gx, gy) => (gy === 0 ? 'tabardDark' : gy === 13 ? 'gold' : undefined))
+      // Crisp 2x high-res crenellated white castle-tower emblem on chest.
       torso
-        .box([-4, 0, -3], [3, 6, 3], 'tabard')
-        .box([-4, 0, -3], [3, 0, 3], 'tabardDark')
-        .box([-3, 6, -3], [2, 6, 3], 'gold')
-      // Crisp white castle-tower emblem on chest.
-      torso.box([-1, 1, 4], [0, 4, 4], 'emblem').box([-2, 4, 4], [1, 5, 4], 'emblem')
+        .rawBox([-2, 2, 7], [1, 8, 7], 'emblem')
+        .rawBox([-3, 8, 7], [2, 10, 7], 'emblem')
+        .rawSet(-3, 11, 7, 'emblem')
+        .rawSet(-1, 11, 7, 'emblem')
+        .rawSet(0, 11, 7, 'emblem')
+        .rawSet(2, 11, 7, 'emblem')
+        .rawBox([-1, 2, 7], [0, 4, 7], 'tabardDark')
       // Short royal cape on back so side & back views have real silhouette depth.
       const cape = kit.part('cape', 'torso', [0, 6, -3.5])
-      cape.box([-4, -6, -1], [3, 0, 0], 'cape').box([-4, -6, -1], [3, -6, 0], 'gold')
+      cape.box([-4, -6, -1], [3, 0, 0], 'cape').rawBox([-8, -12, -2], [7, -12, 1], 'gold')
 
       const head = kit.part('head', 'torso', [0, 7, 0.5])
-      head.ellipsoid([0, 4.7, 0], [4.7, 4.8, 4.5], 'skin')
+      head.ellipsoid([0, 4.7, 0], [4.8, 4.9, 4.7], 'skin')
       // Full back-of-head hair + steel neck guard so rear view never looks bald!
       head.paint((x, y, z) => (z < 1 && y >= 2 ? 'hair' : z < 1 && y < 2 ? 'steelDark' : undefined))
-      // Steel helm tilted slightly back so the face and eyes read boldly from 3/4 top-down.
+      // Steel helm tilted slightly back with curved brow bevel & gleaming royal crest.
       head.ellipsoid([0, 7.2, -0.8], [5.4, 1.0, 5.2], 'steelDark')
       head.ellipsoid([0, 7.8, -0.8], [4.9, 3.2, 4.8], 'steel')
-      head.box([-1, 10, -4], [0, 12, 3], 'crest').box([-1, 12, -3], [0, 13, 1], 'crest')
-      // Bold eyes + consistent top-left catchlights + brow + cheeks + sculpted ears.
-      for (const x of [-3, -2, 1, 2]) head.face(x, 3, 'eye').face(x, 4, 'eye').face(x, 5, 'hair')
-      head.face(-3, 4, 'shine').face(1, 4, 'shine')
-      head.face(-4, 2, 'cheek').face(3, 2, 'cheek')
-      head.box([-5, 2, -1], [-5, 3, 0], 'skin').box([4, 2, -1], [4, 3, 0], 'skin')
+      head.rawBox([-2, 14, 7], [1, 14, 8], 'gold')
+      head.segment([0, 10.5, -3.5], [0, 12.2, 2.5], 0.95, 'crest', 0.85)
+      head.segment([0, 12.0, -2.5], [0, 13.0, 0.8], 0.8, 'crest', 0.55)
+      // High-res 19x19 heroic face: 3x4 eyes, crisp 1px catchlight, arched brows, smile, blush & ears.
+      for (const gx of [-6, -5, -4, 3, 4, 5]) {
+        for (let dy = 0; dy < 4; dy++) head.rawFace(gx, 6 + dy, 'eye', '+z', 2)
+        head.rawFace(gx, 11, 'hair', '+z', 2)
+      }
+      head.rawFace(-5, 9, 'shine', '+z', 2).rawFace(3, 9, 'shine', '+z', 2)
+      head.rawFace(-7, 5, 'cheek', '+z', 2).rawFace(-6, 5, 'cheek', '+z', 2)
+      head.rawFace(5, 5, 'cheek', '+z', 2).rawFace(6, 5, 'cheek', '+z', 2)
+      head.rawFace(-1, 4, 'cheek', '+z', 2).rawFace(0, 4, 'cheek', '+z', 2)
+      head.rawBox([-10, 5, -2], [-10, 8, -1], 'skin').rawBox([9, 5, -2], [9, 8, -1], 'skin')
 
       for (const [name, x] of [
         ['armL', 5],
@@ -76,19 +92,20 @@ export const soldier: StackDesign = {
       ] as const) {
         const arm = kit.part(name, 'torso', [x, 6, 0])
         arm
-          .box([-1, -2, -2], [0, 1, 2], 'steel')
+          .ellipsoid([-0.5, -0.5, 0], [1.6, 1.9, 2.2], 'steel')
           .box([-1, -5, -1], [0, -3, 1], 'tabard')
           .box([-1, -7, -1], [0, -6, 1], 'leather')
       }
-      // Broad knight's sword with crisp gold crossguard, pommel, center steel fuller & tapered point.
+      // Tapered knight's broadsword with crisp 2x fuller, beveled edges, gold crossguard & gem pommel.
       const sword = kit.part('weapon', 'armR', [-0.5, -6, 1])
       sword
         .box([0, 0, -3], [1, 1, -2], 'gold')
         .box([0, 0, -1], [1, 1, 1], 'leather')
         .box([-3, 0, 1], [3, 1, 2], 'gold')
-        .box([-1, 0, 3], [1, 1, 10], 'blade')
-        .box([0, 1, 3], [0, 1, 9], 'steelDark')
-        .box([0, 0, 11], [0, 1, 13], 'blade')
+        .rawBox([-2, 0, 6], [3, 2, 21], 'blade')
+        .rawBox([0, 2, 6], [1, 2, 19], 'steelDark')
+        .rawBox([-1, 0, 22], [2, 2, 24], 'blade')
+        .rawBox([0, 0, 25], [1, 1, 26], 'blade')
       // Round heraldic buckler snug against left forearm.
       const buckler = kit.part('offhand', 'armL', [1, -4.5, 1])
       buckler.fill([0, -4, -4], [1, 4, 4], 'crest', (x, y, z) => x < 2 && Math.hypot(y, z) <= 3.8)

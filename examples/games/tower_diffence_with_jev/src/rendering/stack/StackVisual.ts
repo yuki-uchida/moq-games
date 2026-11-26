@@ -221,7 +221,7 @@ export class StackVisual {
   }
 
   private cell(): number {
-    return this.design.voxel * (this.boss ? MODEL_BOSS_SCALE : 1)
+    return (this.design.voxel / this.model.density) * (this.boss ? MODEL_BOSS_SCALE : 1)
   }
 
   private updateUniforms(): void {

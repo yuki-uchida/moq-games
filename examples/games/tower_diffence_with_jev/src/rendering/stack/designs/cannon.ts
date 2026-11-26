@@ -18,6 +18,7 @@ export const cannon: StackDesign = {
   emitter: { part: 'barrel', at: [0, 0, 11] },
   blueprint: {
     id: 'cannon',
+    density: 2,
     colors: {
       skin: '#f5be8e',
       eye: '#26170e',
@@ -59,13 +60,13 @@ export const cannon: StackDesign = {
         { torsoHalf: 5, torsoDepth: 3, legs: 5, headRadius: 4.8, eyeRow: 3 }
       )
       b.head.paint((x, y, z) => (y <= 1 && z >= 2 ? 'beard' : z < 1 && y >= 2 ? 'cap' : undefined))
-      // Leather cap with bright gleaming cyan goggles perched high at y=8..9 so eyes read unmistakably below!
+      // Leather cap with gleaming twin-lens cyan brass goggles perched clearly on the brow.
       b.head.fill([-6, 7, -6], [5, 10, 5], 'cap', (x, y, z) => Math.hypot(x / 5.0, (y - 7.2) / 3.4, z / 4.8) <= 1)
-      for (const x of [-3, 1])
+      for (const gx of [-7, 2])
         b.head
-          .box([x, 8, 4], [x + 1, 9, 5], 'goggle')
-          .set(x, 8, 5, '*lens')
-          .set(x + 1, 9, 5, '*lens')
+          .rawBox([gx, 15, 8], [gx + 4, 18, 10], 'goggle')
+          .rawBox([gx + 1, 16, 10], [gx + 3, 17, 11], '*lens')
+      b.head.rawBox([-2, 16, 9], [1, 17, 10], 'iron')
       b.head.paint((x, y, z) => (y === 8 && z < 4 && Math.hypot(x + 0.5, z + 0.5) > 3.8 ? 'goggle' : undefined))
       b.torso.box([-3, 0, 4], [2, 5, 4], 'apron')
       b.hips.box([-3, -3, 4], [2, 1, 4], 'apron')

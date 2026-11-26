@@ -29,6 +29,8 @@ export interface StackKit {
 export interface StackBlueprint {
   readonly id: string
   readonly colors: Readonly<Record<string, string>>
+  /** Sub-voxel density multiplier per axis (1 = standard props/landmarks, 2 = high-density characters). */
+  readonly density?: number
   /** Retained for blueprint compatibility; true slice sheets use 1 slice per art-pixel layer. */
   readonly layerCopies?: number
   build(kit: StackKit): void
@@ -44,6 +46,7 @@ export interface StackPartRuntime {
 
 export interface StackModel {
   readonly id: string
+  readonly density: number
   readonly parts: readonly StackPartRuntime[]
   readonly partIndex: ReadonlyMap<string, number>
   readonly geometry: THREE.BufferGeometry
@@ -68,9 +71,10 @@ export interface StackMotionBand {
 
 /**
  * Multi-frame SpriteCook slice-sheet atlas for one animated design:
- * each row is one animation frame's horizontal slice strip (`count` slices + 1 shadow union slice).
+ * tiles all frames' slices + shadow union footprints into a bounded 2D WebGL texture (<= 4096px wide).
  */
 export interface StackFrameAtlas {
+  readonly density: number
   readonly sliceWidth: number
   readonly sliceHeight: number
   readonly sliceCount: number
@@ -78,6 +82,8 @@ export interface StackFrameAtlas {
   readonly cx: number
   readonly cy: number
   readonly frameCount: number
+  readonly colsPerFrame: number
+  readonly tilesPerRow: number
   readonly atlasWidth: number
   readonly atlasHeight: number
   readonly texture: THREE.DataTexture
@@ -121,27 +127,51 @@ function packSheetsToTexture(sheets: readonly SliceSheet[]): {
   texture: THREE.DataTexture
   atlasWidth: number
   atlasHeight: number
+  colsPerFrame: number
+  tilesPerRow: number
 } {
   const first = sheets[0]
   const w = first.width
   const h = first.height
   const count = first.count
   // Extra column at index `count` holds the union ground-projection shadow footprint.
-  const atlasWidth = w * (count + 1)
-  const atlasHeight = h * sheets.length
+  const colsPerFrame = count + 1
+  const totalTiles = sheets.length * colsPerFrame
+  const maxTexWidth = 4096
+  const tilesPerRow = Math.max(1, Math.min(totalTiles, Math.floor(maxTexWidth / w)))
+  const tileRows = Math.ceil(totalTiles / tilesPerRow)
+  const atlasWidth = w * tilesPerRow
+  const atlasHeight = h * tileRows
   const data = new Uint8Array(atlasWidth * atlasHeight * 4)
 
   for (let f = 0; f < sheets.length; f++) {
     const sheet = sheets[f]
     const stripW = w * count
+    const baseTile = f * colsPerFrame
+    for (let z = 0; z < count; z++) {
+      const tileIdx = baseTile + z
+      const tileRow = Math.floor(tileIdx / tilesPerRow)
+      const tileCol = tileIdx - tileRow * tilesPerRow
+      const dstX = tileCol * w
+      const dstY = tileRow * h
+      const srcX = z * w
+      for (let sy = 0; sy < h; sy++) {
+        const srcRow = (sy * stripW + srcX) * 4
+        const dstRow = ((dstY + sy) * atlasWidth + dstX) * 4
+        data.set(sheet.pixels.subarray(srcRow, srcRow + w * 4), dstRow)
+      }
+    }
+    // Shadow grounded footprint in column `count` (r = 255 core, 160 soft rim).
+    const sTileIdx = baseTile + count
+    const sRow = Math.floor(sTileIdx / tilesPerRow)
+    const sCol = sTileIdx - sRow * tilesPerRow
+    const sDstX = sCol * w
+    const sDstY = sRow * h
     for (let sy = 0; sy < h; sy++) {
-      const dstRow = (f * h + sy) * atlasWidth * 4
-      const srcRow = sy * stripW * 4
-      data.set(sheet.pixels.subarray(srcRow, srcRow + stripW * 4), dstRow)
-      // Shadow grounded footprint in column `count` (r = 255 core, 160 soft rim).
-      const shadowBase = dstRow + stripW * 4
+      const shadowBase = ((sDstY + sy) * atlasWidth + sDstX) * 4
+      const syOff = sy * w
       for (let sx = 0; sx < w; sx++) {
-        const sv = sheet.shadow[sy * w + sx]
+        const sv = sheet.shadow[syOff + sx]
         if (sv >= 128) {
           const o = shadowBase + sx * 4
           data[o] = sv
@@ -159,10 +189,11 @@ function packSheetsToTexture(sheets: readonly SliceSheet[]): {
   texture.flipY = false
   texture.colorSpace = THREE.NoColorSpace
   texture.needsUpdate = true
-  return { texture, atlasWidth, atlasHeight }
+  return { texture, atlasWidth, atlasHeight, colsPerFrame, tilesPerRow }
 }
 
 export function buildStackModel(blueprint: StackBlueprint): StackModel {
+  const density = blueprint.density ?? 1
   const book = palette(blueprint.colors)
   const specs: StackPartSpec[] = []
   blueprint.build({
@@ -170,7 +201,7 @@ export function buildStackModel(blueprint: StackBlueprint): StackModel {
       if (specs.some((spec) => spec.name === name)) throw new Error(`Duplicate stack part ${name}`)
       if (parent && !specs.some((spec) => spec.name === parent))
         throw new Error(`Stack part ${name} needs parent ${parent} first`)
-      const voxels = new VoxelPart(book.index)
+      const voxels = new VoxelPart(book.index, density)
       specs.push({ name, parent, at, voxels })
       return voxels
     }
@@ -185,7 +216,7 @@ export function buildStackModel(blueprint: StackBlueprint): StackModel {
     return {
       name: spec.name,
       parent: spec.parent ? partIndex.get(spec.parent)! : -1,
-      at: spec.at,
+      at: [spec.at[0] * density, spec.at[1] * density, spec.at[2] * density] as Vec3,
       min: bounds.min,
       max: bounds.max
     }
@@ -193,6 +224,7 @@ export function buildStackModel(blueprint: StackBlueprint): StackModel {
 
   const tempModel: StackModel = {
     id: blueprint.id,
+    density,
     parts,
     partIndex,
     geometry: new THREE.PlaneGeometry(1, 1),
@@ -207,6 +239,7 @@ export function buildStackModel(blueprint: StackBlueprint): StackModel {
       cx: 1,
       cy: 1,
       baseLift: 0,
+      density,
       pixels: new Uint8ClampedArray(16),
       shadow: new Uint8Array(4)
     },
@@ -221,6 +254,7 @@ export function buildStackModel(blueprint: StackBlueprint): StackModel {
 
   return {
     id: blueprint.id,
+    density,
     parts,
     partIndex,
     geometry,
@@ -410,7 +444,7 @@ export function buildStackFrameAtlas(design: StackDesign, model: StackModel): St
     }
     return tops
   })
-  const { texture, atlasWidth, atlasHeight } = packSheetsToTexture(sheets)
+  const { texture, atlasWidth, atlasHeight, colsPerFrame, tilesPerRow } = packSheetsToTexture(sheets)
   texture.name = `stack-atlas:${design.blueprint.id}`
 
   const idleBand = bandMap.idle ?? { offset: 0, frames: 1 }
@@ -426,6 +460,7 @@ export function buildStackFrameAtlas(design: StackDesign, model: StackModel): St
   }
 
   return {
+    density: model.density,
     sliceWidth: maxW,
     sliceHeight: maxH,
     sliceCount,
@@ -433,6 +468,8 @@ export function buildStackFrameAtlas(design: StackDesign, model: StackModel): St
     cx: Math.floor(maxW / 2),
     cy: Math.floor(maxH / 2),
     frameCount: sheets.length,
+    colsPerFrame,
+    tilesPerRow,
     frameHeights,
     frameTops,
     atlasWidth,

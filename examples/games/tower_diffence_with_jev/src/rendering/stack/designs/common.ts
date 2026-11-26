@@ -69,6 +69,7 @@ export function human(kit: StackKit, c: HumanColors, shape: HumanShape = {}): Hu
   const hips = kit.part('hips', undefined, [0, legs, 0])
   hips.box([-half, 0, -depth], [half - 1, 1, depth], c.belt ?? c.torso)
 
+  const d = hips.density
   const legParts: VoxelPart[] = []
   for (const [name, x] of [
     ['legL', Math.max(2, Math.floor(half * 0.5))],
@@ -78,6 +79,13 @@ export function human(kit: StackKit, c: HumanColors, shape: HumanShape = {}): Hu
     if (shape.robe) {
       // Subtle tucked shoes beneath the robe hem (never two dark squares poking out front like eyes).
       leg.box([-1, -legs, -1], [0, -1, 1], c.legs).box([-1, -legs, -1], [0, -legs, 1], c.boots)
+    } else if (d >= 2) {
+      // High-density rounded boots & trousers with crisp 1px sole bevel.
+      leg.fill([-1, -legs + 1, -1], [0, -1, 1], c.legs, (lx, _ly, lz) => Math.hypot(lx / 1.05, lz / 1.25) <= 1.15)
+      leg.fill([-1, -legs, -1], [0, -legs + 1, 2], c.boots, (lx, ly, lz) => {
+        const front = ly < -legs + 0.8 ? 2.5 : 1.5
+        return Math.abs(lx) <= 1.05 && lz >= -1.05 && lz <= front
+      })
     } else {
       leg.box([-1, -legs + 1, -1], [0, -1, 1], c.legs).box([-1, -legs, -1], [0, -legs + 1, 2], c.boots)
     }
@@ -85,63 +93,106 @@ export function human(kit: StackKit, c: HumanColors, shape: HumanShape = {}): Hu
   }
 
   const torso = kit.part('torso', 'hips', [0, 2, 0])
-  torso.box([-half, 0, -depth], [half - 1, th - 1, depth], c.torso)
-  if (c.torsoTrim) {
-    torso.box([-half, 0, -depth], [half - 1, 0, depth], c.torsoTrim)
-    torso.box([-half + 1, th - 1, -depth], [half - 2, th - 1, depth], c.torsoTrim)
+  if (d >= 2) {
+    // High-density sculpted superellipse torso (organic beveled shoulders & waist instead of a hard cube!).
+    torso.fill([-half, 0, -depth], [half - 1, th - 1, depth], c.torso, (x, y, z) => {
+      const taper = 0.92 + 0.08 * Math.min(1, y / Math.max(1, th - 1))
+      const nx = Math.abs(x) / (half * taper)
+      const nz = Math.abs(z) / ((depth + 0.45) * taper)
+      return nx ** 4 + nz ** 4 <= 1.05
+    })
+    if (c.torsoTrim) {
+      // Crisp 1-art-px collar rim & lower tunic hem trim.
+      torso.rawPaint((gx, gy) =>
+        gy === 0 || gy === th * d - 1 ? c.torsoTrim : gy === th * d - 2 && Math.abs(gx + 0.5) <= 2.5 ? c.torsoTrim : undefined
+      )
+    }
+  } else {
+    torso.box([-half, 0, -depth], [half - 1, th - 1, depth], c.torso)
+    if (c.torsoTrim) {
+      torso.box([-half, 0, -depth], [half - 1, 0, depth], c.torsoTrim)
+      torso.box([-half + 1, th - 1, -depth], [half - 2, th - 1, depth], c.torsoTrim)
+    }
   }
   if (shape.robe) {
-    // Rounded flared ellipsoid skirt (zero boxy rectangular pedestal!) with crisp bottom-hem trim & pleats.
+    // Smooth continuous flared bell skirt evaluated at every native slice (zero staircase banding!).
     const drop = shape.robeLength ?? Math.max(1, legs - 1)
     const flareMax = shape.robeFlare ?? 1.35
     const yBottom = 1 - drop
-    for (let y = yBottom; y <= 1; y++) {
-      const t = (1 - y) / Math.max(1, drop)
-      const rx = half + 0.4 + t * flareMax
-      const rz = depth + 0.4 + t * (flareMax * 0.85)
-      hips.fill(
-        [-Math.ceil(rx) - 1, y, -Math.ceil(rz) - 1],
-        [Math.ceil(rx), y, Math.ceil(rz)],
-        c.torso,
-        (x, _yy, z) => Math.hypot(x / rx, z / rz) <= 1
-      )
-      if (y === yBottom && c.torsoTrim) {
-        // Trim ONLY on the outer 1-voxel perimeter of the bottom hem (never a flat box frame!).
-        hips.paint((x, yy, z) => {
-          if (yy !== yBottom) return undefined
-          const d = Math.hypot((x + 0.5) / rx, (z + 0.5) / rz)
-          return d >= 0.78 && d <= 1.05 ? c.torsoTrim : undefined
-        })
-      }
-      if (shape.robePleat && y < 1) {
-        hips.paint((x, yy, z) => {
-          if (yy !== y) return undefined
-          return (x === -2 || x === 1) && Math.abs(z) >= rz - 1.4 ? shape.robePleat : undefined
-        })
-      }
+    const maxRx = Math.ceil(half + 0.4 + flareMax) + 1
+    const maxRz = Math.ceil(depth + 0.4 + flareMax * 0.85) + 1
+    hips.fill([-maxRx, yBottom, -maxRz], [maxRx, 1, maxRz], c.torso, (x, y, z) => {
+      const t = Math.max(0, Math.min(1, (1.5 - y) / Math.max(1, drop)))
+      const rx = half + 0.35 + t * flareMax
+      const rz = depth + 0.35 + t * (flareMax * 0.85)
+      return Math.hypot(x / rx, z / rz) <= 1
+    })
+    if (c.torsoTrim) {
+      const hemGy = yBottom * d
+      const rxHem = (half + 0.35 + flareMax) * d
+      const rzHem = (depth + 0.35 + flareMax * 0.85) * d
+      hips.rawPaint((gx, gy, gz) => {
+        if (gy > hemGy + (d > 1 ? 1 : 0) || gy < hemGy) return undefined
+        const dist = Math.hypot((gx + 0.5) / rxHem, (gz + 0.5) / rzHem)
+        return dist >= 0.82 && dist <= 1.06 ? c.torsoTrim : undefined
+      })
+    }
+    if (shape.robePleat) {
+      hips.rawPaint((gx, gy, gz) => {
+        if (gy >= d) return undefined
+        const t = Math.max(0, Math.min(1, (1.5 * d - gy) / Math.max(1, drop * d)))
+        const rz = (depth + 0.35 + t * (flareMax * 0.85)) * d
+        return (Math.abs(gx + 0.5 - 3.5) < 0.9 || Math.abs(gx + 0.5 + 3.5) < 0.9) && Math.abs(gz + 0.5) >= rz - 2.2
+          ? shape.robePleat
+          : undefined
+      })
     }
   }
 
   const head = kit.part('head', 'torso', [0, th, 0.5])
   head.ellipsoid([0, hr, 0], [hr, hr + 0.3, hr], c.skin)
 
-  // Expressive front face: crisp 2x2 eyes with top-left catchlight, brow accent, soft cheeks, and clean ears.
   const eyeRow = shape.eyeRow ?? Math.round(hr * 0.62)
-  for (const x of [-3, -2, 1, 2]) {
-    head.face(x, eyeRow, c.eye).face(x, eyeRow + 1, c.eye)
-  }
-  if (c.shine) head.face(-3, eyeRow + 1, c.shine).face(1, eyeRow + 1, c.shine)
-  if (c.brow) {
-    for (const x of [-3, -2, 1, 2]) head.face(x, eyeRow + 2, c.brow)
-  }
-  if (c.cheek) {
-    head.face(-4, eyeRow - 1, c.cheek).face(3, eyeRow - 1, c.cheek)
-  }
-  // Clean sculpted ears on the sides of the head (zero extra side eyeballs or protruding temple blocks!).
-  const earX = Math.floor(hr)
-  if (!shape.coveredSides) {
-    head.set(earX, eyeRow, -1, c.skin).set(-earX - 1, eyeRow, -1, c.skin)
-    head.set(earX, eyeRow - 1, -1, c.skin).set(-earX - 1, eyeRow - 1, -1, c.skin)
+  if (d >= 2) {
+    // True 2x high-resolution 16-bit RPG face (~19x19 art-px):
+    // 3x4 expressive eyes with top-left sparkle catchlight, delicate 1px arched brows, soft cheeks, subtle smile & sculpted ears.
+    const ey = eyeRow * d
+    for (const gx of [-6, -5, -4, 3, 4, 5]) {
+      for (let dy = 0; dy < 4; dy++) head.rawFace(gx, ey + dy, c.eye, '+z', 2)
+    }
+    if (c.shine) {
+      head.rawFace(-5, ey + 3, c.shine, '+z', 2).rawFace(3, ey + 3, c.shine, '+z', 2)
+    }
+    if (c.brow) {
+      for (const gx of [-6, -5, -4, 3, 4, 5]) head.rawFace(gx, ey + 5, c.brow, '+z', 2)
+    }
+    if (c.cheek) {
+      head.rawFace(-7, ey - 1, c.cheek, '+z', 2).rawFace(-6, ey - 1, c.cheek, '+z', 2)
+      head.rawFace(5, ey - 1, c.cheek, '+z', 2).rawFace(6, ey - 1, c.cheek, '+z', 2)
+      // Gentle 2px smiling mouth accent.
+      head.rawFace(-1, ey - 2, c.cheek, '+z', 2).rawFace(0, ey - 2, c.cheek, '+z', 2)
+    }
+    const earX = Math.floor(hr * d)
+    if (!shape.coveredSides) {
+      head.rawBox([earX, ey - 1, -2], [earX, ey + 2, -1], c.skin)
+      head.rawBox([-earX - 1, ey - 1, -2], [-earX - 1, ey + 2, -1], c.skin)
+    }
+  } else {
+    for (const x of [-3, -2, 1, 2]) {
+      head.face(x, eyeRow, c.eye).face(x, eyeRow + 1, c.eye)
+    }
+    if (c.shine) head.face(-3, eyeRow + 1, c.shine).face(1, eyeRow + 1, c.shine)
+    if (c.brow) {
+      for (const x of [-3, -2, 1, 2]) head.face(x, eyeRow + 2, c.brow)
+    }
+    if (c.cheek) {
+      head.face(-4, eyeRow - 1, c.cheek).face(3, eyeRow - 1, c.cheek)
+    }
+    const earX = Math.floor(hr)
+    if (!shape.coveredSides) {
+      head.set(earX, eyeRow, -1, c.skin).set(-earX - 1, eyeRow, -1, c.skin)
+      head.set(earX, eyeRow - 1, -1, c.skin).set(-earX - 1, eyeRow - 1, -1, c.skin)
+    }
   }
 
   const parts: Partial<HumanParts> = { hips, torso, head }
@@ -150,10 +201,15 @@ export function human(kit: StackKit, c: HumanColors, shape: HumanShape = {}): Hu
     ['armR', -half - 1]
   ] as const) {
     const limb = kit.part(name, 'torso', [x, th - 1, 0])
-    // Solid 2x2 sleeve + 2x2 fist so held weapons join directly into the hand without gaps.
-    limb
-      .box([-1, -arm + 2, -1], [0, 0, 1], c.sleeve)
-      .box([-1, -arm, -1], [0, -arm + 1, 1], c.hands)
+    if (d >= 2) {
+      // Rounded 2x sleeve + sculpted cuff + hand so arms read organically from every facing.
+      limb.fill([-1, -arm + 2, -1], [0, 0, 1], c.sleeve, (lx, _ly, lz) => Math.hypot(lx / 1.05, lz / 1.25) <= 1.15)
+      limb.fill([-1, -arm, -1], [0, -arm + 1, 1], c.hands, (lx, _ly, lz) => Math.hypot(lx / 1.0, lz / 1.15) <= 1.15)
+    } else {
+      limb
+        .box([-1, -arm + 2, -1], [0, 0, 1], c.sleeve)
+        .box([-1, -arm, -1], [0, -arm + 1, 1], c.hands)
+    }
     parts[name] = limb
   }
 

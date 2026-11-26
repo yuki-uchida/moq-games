@@ -15,6 +15,7 @@ export const goblin: StackDesign = {
   shadow: [7, 6],
   blueprint: {
     id: 'goblin',
+    density: 2,
     colors: {
       skin: '#7ebf3d',
       skinDark: '#4f8522',
@@ -48,12 +49,16 @@ export const goblin: StackDesign = {
         },
         { legs: 3, torsoHalf: 3, torsoDepth: 3, torsoHeight: 5, headRadius: 4.5, armLength: 6, coveredSides: true }
       )
-      // Menacing glowing amber eyes + wide toothy grin + big hooked nose.
-      for (const x of [-3, -2, 1, 2]) b.head.face(x, 4, '*eye').face(x, 3, '*eye')
-      b.head.face(-2, 3, 'pupil').face(1, 3, 'pupil')
-      for (const x of [-3, -2, -1, 0, 1, 2]) b.head.face(x, 1, 'mouth')
-      b.head.face(-2, 1, 'tooth').face(1, 1, 'tooth')
-      b.head.box([-1, 2, 5], [0, 3, 6], 'skinDark')
+      // Menacing high-res glowing amber eyes with slit pupils + jagged toothy grin + hooked nose.
+      for (const gx of [-6, -5, -4, 3, 4, 5])
+        for (let gy = 6; gy <= 8; gy++) b.head.rawFace(gx, gy, '*eye', '+z', 2)
+      b.head.rawFace(-6, 9, '*eye', '+z', 2).rawFace(5, 9, '*eye', '+z', 2)
+      b.head.rawFace(-5, 7, 'pupil', '+z', 2).rawFace(4, 7, 'pupil', '+z', 2)
+      b.head.rawFace(-5, 8, 'pupil', '+z', 2).rawFace(4, 8, 'pupil', '+z', 2)
+      for (let gx = -6; gx <= 5; gx++) b.head.rawFace(gx, 2, 'mouth', '+z', 2).rawFace(gx, 3, 'mouth', '+z', 2)
+      for (const gx of [-5, -2, 1, 4]) b.head.rawFace(gx, 3, 'tooth', '+z', 2)
+      b.head.rawFace(-3, 2, 'tooth', '+z', 2).rawFace(2, 2, 'tooth', '+z', 2)
+      b.head.rawBox([-2, 5, 9], [1, 6, 12], 'skinDark').rawBox([-1, 4, 11], [0, 5, 13], 'skinDark')
       // Enormous pointed goblin ears jutting far beyond head width.
       for (const side of [-1, 1]) {
         const x0 = side < 0 ? -4.5 : 3.5

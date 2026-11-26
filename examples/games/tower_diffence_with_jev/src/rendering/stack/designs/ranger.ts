@@ -18,6 +18,7 @@ export const ranger: StackDesign = {
   emitter: { part: 'weapon', at: [0, 1, 12] },
   blueprint: {
     id: 'ranger',
+    density: 2,
     colors: {
       skin: '#f2be91',
       eye: '#162420',
@@ -67,16 +68,17 @@ export const ranger: StackDesign = {
       // Coat skirt + leather bandolier.
       b.hips.box([-4, -3, -3], [3, -1, 3], 'coat')
       b.torso.paint((x, y, z) => (x === y - 4 && z >= 3 ? 'leather' : undefined))
-      // Prominent perched hawk set slightly out on the left shoulder so face & hawk both read clearly.
+      // Prominent perched hawk with hooked golden beak, crisp eye & layered wing feathers.
       const hawk = kit.part('hawk', 'torso', [6.8, 7.6, 0.8])
       hawk
         .ellipsoid([0, 2.2, 0], [2.2, 2.6, 2.5], 'hawk')
         .ellipsoid([0, 2.8, 1.6], [1.7, 1.8, 1.3], 'hawkLight')
         .ellipsoid([0, 5.5, 0.8], [2.0, 1.8, 1.9], 'hawkLight')
-        .box([-1, 6, 0], [1, 7, 1], 'hawk')
-        .set(-1, 5, 2, 'hawkEye')
-        .set(1, 5, 2, 'hawkEye')
-        .box([0, 4, 2], [0, 5, 4], 'beak')
+        .rawBox([-2, 12, 0], [2, 14, 3], 'hawk')
+        .rawBox([-3, 10, 4], [-2, 11, 5], 'hawkEye')
+        .rawBox([2, 10, 4], [3, 11, 5], 'hawkEye')
+        .rawBox([-1, 9, 5], [0, 10, 8], 'beak')
+        .rawBox([-1, 8, 7], [0, 9, 8], 'beak')
         .box([-2, 1, -4], [2, 2, -2], 'hawkDark')
       // Chunky steel crossbow anchored in right fist.
       const bow = kit.part('weapon', 'armR', [0, b.hand, 1])

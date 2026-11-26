@@ -15,6 +15,7 @@ export const koboldLancer: StackDesign = {
   shadow: [7, 6],
   blueprint: {
     id: 'koboldLancer',
+    density: 2,
     colors: {
       fur: '#b86c32',
       furLight: '#f0ca92',
@@ -46,14 +47,14 @@ export const koboldLancer: StackDesign = {
         },
         { legs: 4, torsoHalf: 3, torsoDepth: 3, torsoHeight: 6, headRadius: 4.1, armLength: 6, coveredSides: true }
       )
-      // Glowing amber canine eyes + prominent protruding snout so profile never resembles human runner.
-      for (const x of [-3, -2, 1, 2]) b.head.face(x, 3, '*eye').face(x, 4, '*eye')
-      b.head.face(-2, 3, 'pupil').face(1, 3, 'pupil')
-      // Wider front-facing eyes and a low nose tip so the pot-helmet face reads head-on.
-      b.head.face(-3, 3, '*eye').face(-3, 4, '*eye').face(2, 3, '*eye').face(2, 4, '*eye')
-      b.head.box([-2, 1, 3], [1, 3, 8], 'furLight').box([-1, 1, 7], [0, 2, 8], 'nose')
+      // Glowing high-res amber canine eyes + sculpted protruding snout + sharp canine ears.
+      for (const gx of [-6, -5, -4, 3, 4, 5])
+        for (let gy = 6; gy <= 8; gy++) b.head.rawFace(gx, gy, '*eye', '+z', 2)
+      b.head.rawFace(-5, 7, 'pupil', '+z', 2).rawFace(4, 7, 'pupil', '+z', 2)
+      b.head.rawBox([-3, 2, 6], [2, 6, 15], 'furLight').rawBox([-2, 3, 15], [1, 5, 17], 'nose')
       // Big pointed canine ears sticking out above & beside the pot helmet.
-      b.head.box([-5, 6, -1], [-3, 10, 0], 'fur').box([2, 6, -1], [4, 10, 0], 'fur')
+      b.head.segment([-4.2, 6.2, -0.5], [-4.8, 10.4, -0.8], 1.1, 'fur', 0.4)
+      b.head.segment([3.2, 6.2, -0.5], [3.8, 10.4, -0.8], 1.1, 'fur', 0.4)
       b.head.fill([-5, 6, -5], [4, 9, 4], 'pot', (x, y, z) => Math.hypot(x / 4.7, (y - 6) / 3.4, z / 4.5) <= 1)
       b.head.fill([-6, 6, -6], [5, 6, 5], 'potDark', (x, y, z) => Math.hypot(x / 5.4, z / 5.2) <= 1)
       b.head.box([2, 8, 1], [3, 8, 2], 'potDark')

@@ -4,8 +4,8 @@ import type { PaletteBook, Vec3, VoxelPart } from './Voxel'
 export const STACK_SQUASH = 0.75
 /** Default vertical lift per slice in art pixels. */
 export const STACK_SPACING = 1.0
-/** Maximum slice height supported by the stack shader. */
-export const MAX_STACK_SLICES = 48
+/** Maximum slice height supported by the stack shader (supports 2x high-density characters). */
+export const MAX_STACK_SLICES = 80
 /** Maximum hierarchical parts supported per blueprint. */
 export const MAX_STACK_PARTS = 24
 
@@ -18,6 +18,7 @@ export interface BakeableModel {
   readonly parts: readonly BakeablePart[]
   readonly voxels: readonly VoxelPart[]
   readonly palette: PaletteBook
+  readonly density?: number
   readonly softShade?: boolean
   readonly simpleShadow?: boolean
 }
@@ -36,6 +37,8 @@ export interface SliceSheet {
   readonly cy: number
   /** Lowest voxel layer represented by slice 0 (0 for grounded objects, >0 for flyers). */
   readonly baseLift: number
+  /** Voxel sub-resolution multiplier (1 = standard, 2 = 2x high-density art pixels). */
+  readonly density?: number
   /** Horizontal strip RGBA bytes: `(width * count) x height x 4`. */
   readonly pixels: Uint8ClampedArray
   /** Compact grounded contact-shadow footprint mask (`width x height`, 255 = core, 160 = rim, 0 = empty). */
@@ -284,11 +287,16 @@ export function bakePoseSliceSheet(
   const rawCount = Math.max(1, gMaxY - baseLift + 1)
   const count = Math.min(MAX_STACK_SLICES, options.count ?? rawCount)
 
+  const density = model.density ?? 1
   const layerSize = width * height
   const vol = new Uint16Array(count * layerSize)
+  const hasGlow = model.palette.glow.size > 0
 
   for (const box of boxes) {
-    const voxels = model.voxels[box.index]
+    const grid = model.voxels[box.index].toDenseGrid()
+    if (!grid) continue
+    const { minX, minY, minZ, sx, sy, sz, data } = grid
+    const strideZ = sx * sy
     const inv = box.inv
     const yStart = Math.max(baseLift, box.y0)
     const yEnd = Math.min(baseLift + count - 1, box.y1)
@@ -300,43 +308,76 @@ export function bakePoseSliceSheet(
     for (let gy = yStart; gy <= yEnd; gy++) {
       const py = gy + 0.5
       const layerOff = (gy - baseLift) * layerSize
+      const inv1y = inv[1] * py + inv[9]
+      const inv4y = inv[4] * py + inv[10]
+      const inv7y = inv[7] * py + inv[11]
       for (let gz = zStart; gz <= zEnd; gz++) {
         const pz = gz + 0.5
         const rowOff = layerOff + (gz + cy) * width
+        const baseX = inv[2] * pz + inv1y
+        const baseY = inv[5] * pz + inv4y
+        const baseZ = inv[8] * pz + inv7y
         for (let gx = xStart; gx <= xEnd; gx++) {
           const px = gx + 0.5
-          const lx = inv[0] * px + inv[1] * py + inv[2] * pz + inv[9]
-          const ly = inv[3] * px + inv[4] * py + inv[5] * pz + inv[10]
-          const lz = inv[6] * px + inv[7] * py + inv[8] * pz + inv[11]
-          const color = voxels.get(Math.floor(lx), Math.floor(ly), Math.floor(lz))
+          const ix = Math.floor(inv[0] * px + baseX) - minX
+          if (ix < 0 || ix >= sx) continue
+          const iy = Math.floor(inv[3] * px + baseY) - minY
+          if (iy < 0 || iy >= sy) continue
+          const iz = Math.floor(inv[6] * px + baseZ) - minZ
+          if (iz < 0 || iz >= sz) continue
+          const color = data[iz * strideZ + iy * sx + ix]
           if (color) vol[rowOff + (gx + cx)] = color
         }
       }
     }
 
     // Forward-stamp glowing accents (eyes, gems, embers) so oblique rotations never drop them.
-    const o = box.index * 16
-    for (const [vx, vy, vz, color] of voxels.entries()) {
-      if (!model.palette.glow.has(color)) continue
-      const px = vx + 0.5,
-        py = vy + 0.5,
-        pz = vz + 0.5
-      const gx = Math.floor(matrices[o] * px + matrices[o + 4] * py + matrices[o + 8] * pz + matrices[o + 12])
-      const gy = Math.floor(matrices[o + 1] * px + matrices[o + 5] * py + matrices[o + 9] * pz + matrices[o + 13])
-      const gz = Math.floor(matrices[o + 2] * px + matrices[o + 6] * py + matrices[o + 10] * pz + matrices[o + 14])
-      const layer = gy - baseLift
-      const sx = gx + cx
-      const sy = gz + cy
-      if (layer >= 0 && layer < count && sx >= 0 && sx < width && sy >= 0 && sy < height)
-        vol[layer * layerSize + sy * width + sx] = color
+    if (hasGlow) {
+      const o = box.index * 16
+      const m0 = matrices[o],
+        m1 = matrices[o + 1],
+        m2 = matrices[o + 2],
+        m4 = matrices[o + 4],
+        m5 = matrices[o + 5],
+        m6 = matrices[o + 6],
+        m8 = matrices[o + 8],
+        m9 = matrices[o + 9],
+        m10 = matrices[o + 10],
+        m12 = matrices[o + 12],
+        m13 = matrices[o + 13],
+        m14 = matrices[o + 14]
+      for (let iz = 0; iz < sz; iz++) {
+        const pz = iz + minZ + 0.5
+        const zOff = iz * strideZ
+        for (let iy = 0; iy < sy; iy++) {
+          const py = iy + minY + 0.5
+          const yOff = zOff + iy * sx
+          for (let ix = 0; ix < sx; ix++) {
+            const color = data[yOff + ix]
+            if (!color || !model.palette.glow.has(color)) continue
+            const px = ix + minX + 0.5
+            const gx = Math.floor(m0 * px + m4 * py + m8 * pz + m12)
+            const gy = Math.floor(m1 * px + m5 * py + m9 * pz + m13)
+            const gz = Math.floor(m2 * px + m6 * py + m10 * pz + m14)
+            const layer = gy - baseLift
+            const sxOut = gx + cx
+            const syOut = gz + cy
+            if (layer >= 0 && layer < count && sxOut >= 0 && sxOut < width && syOut >= 0 && syOut < height)
+              vol[layer * layerSize + syOut * width + sxOut] = color
+          }
+        }
+      }
     }
   }
 
   // Pack horizontal strip with quantized directional top-left shading + compact grounded shadow mask.
   const stripWidth = width * count
   const pixels = new Uint8ClampedArray(stripWidth * height * 4)
-  const colCounts = new Uint8Array(layerSize)
+  const colCounts = new Uint16Array(layerSize)
   const paletteRgb = model.palette.colors.map(hexRgb)
+  const sampleStep = Math.round(3 * density)
+  const occStep1 = Math.round(2 * density)
+  const occStep2 = Math.round(3 * density)
 
   const hasAt = (z: number, sx: number, sy: number) =>
     z >= 0 && z < count && sx >= 0 && sx < width && sy >= 0 && sy < height && vol[z * layerSize + sy * width + sx] !== 0
@@ -353,22 +394,22 @@ export function bakePoseSliceSheet(
         colCounts[idx]++
 
         const topExposed = !hasAt(z + 1, sx, sy)
-        // Broad 2-voxel macro-normal bias (prevents 1px checkerboard noise on curved ellipsoids & helmets!).
-        const openLeft2 = !hasAt(z, sx - 3, sy) ? 1 : 0
-        const openRight2 = !hasAt(z, sx + 3, sy) ? 1 : 0
-        const openBack2 = !hasAt(z, sx, sy - 3) ? 1 : 0
-        const openFront2 = !hasAt(z, sx, sy + 3) ? 1 : 0
+        // Broad macro-normal bias scaled with voxel density (prevents 1px checkerboard noise on curved surfaces!).
+        const openLeft2 = !hasAt(z, sx - sampleStep, sy) ? 1 : 0
+        const openRight2 = !hasAt(z, sx + sampleStep, sy) ? 1 : 0
+        const openBack2 = !hasAt(z, sx, sy - sampleStep) ? 1 : 0
+        const openFront2 = !hasAt(z, sx, sy + sampleStep) ? 1 : 0
         const openFront = !hasAt(z, sx, sy + 1) ? 1 : 0
         const softShade = model.softShade === true
         const occluded = !softShade && topExposed
-          ? hasAt(z + 2, sx, sy) || hasAt(z + 3, sx, sy)
-          : !softShade && openFront === 1 && hasAt(z + 1, sx, sy + 1)
+          ? hasAt(z + occStep1, sx, sy) || hasAt(z + occStep2, sx, sy)
+          : !softShade && openFront === 1 && hasAt(z + density, sx, sy + density)
         const sideOpen = openLeft2 + openRight2,
           depthOpen = openFront2 + openBack2
         // Soft-shaded curved bodies (ogre, paladin, wraith) use pure smooth spatial volumetric shading:
         // zero 1px checkerboard shimmer while preserving rich 3-tone 16-bit sculptural volume!
-        const nx = (sx - cx) / Math.max(3, cx)
-        const ny = (sy - cy) / Math.max(3, cy)
+        const nx = (sx - cx) / Math.max(3 * density, cx)
+        const ny = (sy - cy) / Math.max(3 * density, cy)
         const smoothBias = -nx * 0.45 + ny * 0.35
         const lightBias = softShade
           ? topExposed
@@ -377,7 +418,7 @@ export function bakePoseSliceSheet(
               : 0
             : smoothBias
           : topExposed
-            ? z >= count * 0.48 && (sx - cx) + (sy - cy) * 0.45 < -1.5
+            ? z >= count * 0.48 && (sx - cx) + (sy - cy) * 0.45 < -1.5 * density
               ? 0.4
               : 0
             : sideOpen === 2 || depthOpen === 2
@@ -406,11 +447,9 @@ export function bakePoseSliceSheet(
     }
   }
 
-  // Build compact grounded contact-shadow footprint from columns with solid vertical mass (>= 3 voxels,
-  // or >= 2 for short sprites like slimes/bats) + 1px morphological gap close so notched wings cast solid shadows.
-  // Three voxels of vertical mass removes detached wing-tip specks from flying shadows while
-  // keeping the body and wing roots joined.
-  const minColMass = 3
+  // Build compact grounded contact-shadow footprint from columns with solid vertical mass (>= 3 * density voxels)
+  // + 1px morphological gap close so notched wings cast solid shadows.
+  const minColMass = Math.round(3 * density)
   const shadow = new Uint8Array(layerSize)
   for (let sy = 0; sy < height; sy++) {
     for (let sx = 0; sx < width; sx++) {
@@ -430,14 +469,15 @@ export function bakePoseSliceSheet(
   }
   // Small flying sprites (bats) leave 2px notches between wing fingers; close those too so the
   // contact shadow reads as one solid shape instead of broken glyph fragments.
-  if (count < 12) {
+  if (count < 12 * density) {
     const wide = new Uint8Array(shadow)
-    for (let sy = 2; sy < height - 2; sy++) {
-      for (let sx = 2; sx < width - 2; sx++) {
+    const gap = Math.round(2 * density)
+    for (let sy = gap; sy < height - gap; sy++) {
+      for (let sx = gap; sx < width - gap; sx++) {
         const idx = sy * width + sx
         if (wide[idx] >= 200) continue
-        if (wide[idx - 2] >= 200 && wide[idx + 2] >= 200) shadow[idx] = 255
-        else if (wide[idx - width * 2] >= 200 && wide[idx + width * 2] >= 200) shadow[idx] = 255
+        if (wide[idx - gap] >= 200 && wide[idx + gap] >= 200) shadow[idx] = 255
+        else if (wide[idx - width * gap] >= 200 && wide[idx + width * gap] >= 200) shadow[idx] = 255
       }
     }
   }
@@ -499,7 +539,7 @@ export function bakePoseSliceSheet(
     }
   }
 
-  return { width, height, count, cx, cy, baseLift, pixels, shadow }
+  return { width, height, count, cx, cy, baseLift, density, pixels, shadow }
 }
 
 /**
@@ -508,13 +548,15 @@ export function bakePoseSliceSheet(
  * and crisp 2-tone pixel-art stepped contact shadow.
  */
 export function drawStackPixels(sheet: SliceSheet, options: DrawStackOptions = {}): RenderedStack {
+  const density = sheet.density ?? 1
   const turn = options.turn ?? 0
   const squash = options.squash ?? STACK_SQUASH
   const spacing = options.spacing ?? STACK_SPACING
   const outline = options.outline ?? false
   const wantShadow = options.shadow ?? false
-  const [sdx, sdy] = options.shadowOffset ?? [2, 2]
+  const [sdx, sdy] = options.shadowOffset ?? [Math.round(2 * density), Math.round(2 * density)]
   const fall = options.fall ?? 0
+  const creaseStep = Math.round(7 * density)
 
   const { width: w, height: h, count, cx, cy, baseLift } = sheet
   const stripWidth = w * count
@@ -641,7 +683,7 @@ export function drawStackPixels(sheet: SliceSheet, options: DrawStackOptions = {
               ny = oy + dy
             if (nx < 0 || nx >= outW || ny < 0 || ny >= outH) continue
             const nz = hitZ[ny * outW + nx]
-            if (nz >= 0 && nz - zHere >= 7) {
+            if (nz >= 0 && nz - zHere >= creaseStep) {
               stepUp = true
               break
             }

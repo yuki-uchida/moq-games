@@ -129,9 +129,12 @@ export function paintStack(context: CanvasRenderingContext2D, design: StackDesig
   const rawScale = bust
     ? Math.min(usable / windowW, usable / cropH)
     : Math.min(usable / Math.max(cropW, cropH), circleDiameter / Math.hypot(cropW, cropH))
-  // Integer texels keep each portrait internally uniform; the 1..6 clamp keeps neighbouring
-  // badges within roughly two density steps of each other.
-  const scale = Math.max(1, Math.min(6, Math.floor(rawScale)))
+  // Integer texels keep each portrait internally uniform; promote one integer step when floor leaves wide empty margins.
+  let scale = Math.max(1, Math.min(6, Math.floor(rawScale)))
+  const maxDim = Math.max(windowW, cropH)
+  if (scale < 6 && (scale + 1) * maxDim <= options.size * 0.96 && scale * maxDim < usable * 0.78) {
+    scale += 1
+  }
   const ox = Math.floor((options.size - windowW * scale) / 2)
   const oy = Math.floor((options.size - cropH * scale) / 2)
 
@@ -170,7 +173,7 @@ export function paintStack(context: CanvasRenderingContext2D, design: StackDesig
 const portraits = new Map<string, string>()
 
 /** Cached data URL of a design's crisp SpriteCook bust or full-body figure. */
-export function stackPortrait(design: StackDesign | undefined, size = 128, full?: { yaw: number }): string {
+export function stackPortrait(design: StackDesign | undefined, size = 192, full?: { yaw: number }): string {
   if (!design || typeof document === 'undefined') return ''
   const key = `${design.type}:${size}:${full?.yaw ?? 'bust'}`
   const cached = portraits.get(key)
