@@ -17,6 +17,7 @@ import {
 } from './game'
 import { PREDATOR_KINDS, STEALTH } from './stealth'
 import { bindAudioResume, RabbitersAudio } from './audio'
+import { prefetchSounds } from './sound-bank'
 import { GameFeel } from './feel'
 import { GuestView, type InputAck } from './guest-view'
 import { bindUiSounds, playSharedUiSound, warmUpAudio } from '../../shared/UiSound'
@@ -946,6 +947,7 @@ for (const selector of ['#help-close', '#help-done'])
 document.querySelectorAll<HTMLElement>('.touch-buttons button').forEach((button) => (button.dataset.sfx = 'none'))
 bindUiSounds(document, (kind) => playSharedUiSound(kind, soundEnabled ? 1 : 0), 'button:not(.touch-buttons *)')
 warmUpAudio()
+prefetchSounds()
 
 const allowedKeys = new Set([
   'KeyW',

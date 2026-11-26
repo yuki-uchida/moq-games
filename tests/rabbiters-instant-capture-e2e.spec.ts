@@ -60,7 +60,7 @@ window.rabbitersFinalCapture = {
       silenced: number
     }>('window.rabbitersFinalCapture.read()')
   await expect.poll(read).toMatchObject({ phase: 'lost', downed: true, discoveries: 1 })
-  expect(await read()).toMatchObject({ alarms: 1, spots: 1, alarmVoices: 4 })
+  expect(await read()).toMatchObject({ alarms: 1, spots: 1, alarmVoices: 2 })
   const detection = page.locator('.fx-detection')
   await expect(detection).toHaveClass(/fx-on/)
   await expect(page.locator('.fx-detection-hint')).toHaveText('ぴんち！')

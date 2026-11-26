@@ -892,7 +892,7 @@ window.rabbitersAudioPriority = {
     audio.alarm = () => {
       this.alarms++;
       if (this.alarms === 2) {
-        const voices = [...audio.voices];
+        const voices = [...audio.loops.values()].map((layer) => layer.source);
         this.musicVoices = voices.length;
         for (const voice of voices) {
           const stop = voice.stop.bind(voice);
@@ -914,7 +914,7 @@ window.rabbitersAudioPriority = {
     audio.music = () => {
       music();
       if (this.localTriggered || audio.previous?.threat !== 'chase' ||
-          audio.context.currentTime < audio.musicAfter || !audio.voices.size) return;
+          audio.context.currentTime < audio.musicAfter || !audio.loops.size) return;
       this.localTriggered = true;
       Object.assign(game.state.predators[1], { state: 'chase', targetId: localId });
       game.state.time += 0.01;
@@ -1019,11 +1019,12 @@ window.rabbitersRetarget = {
     game.state.nests.forEach((nest) => { nest.active = false; });
     game.state.predators = [{ id: 'retarget-fox', kind: 'fox', x: -125, z: -2,
       y: 0, angle: 0.6, state: 'patrol', targetId: null, suspicion: 0 }];
-    const tone = audio.tone.bind(audio);
-    audio.tone = (...args) => {
+    const play = audio.play.bind(audio);
+    audio.play = (...args) => {
       const before = audio.voices.size;
-      tone(...args);
-      if (args[0] === 494 && audio.voices.size > before) this.queries++;
+      const layer = play(...args);
+      if (args[0] === 'query' && audio.voices.size > before) this.queries++;
+      return layer;
     };
     const emit = feel.emit.bind(feel);
     feel.emit = (event) => { if (event.type === 'suspicious') this.cues++; emit(event); };

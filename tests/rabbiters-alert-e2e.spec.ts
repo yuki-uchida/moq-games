@@ -326,7 +326,7 @@ window.rabbitersFirstChase = {
   await expect(page.locator('#condition')).toContainText('見つかった！')
   await expect.poll(async () => (await read()).alarms).toBe(1)
   await expect.poll(async () => (await read()).peak).toBeGreaterThan(0.001)
-  expect(await read()).toMatchObject({ audioState: 'running', alarms: 1, voices: 4 })
+  expect(await read()).toMatchObject({ audioState: 'running', alarms: 1, voices: 2 })
   expect((await read()).target).toBe((await read()).localId)
   for (let index = 0; index < 4; index++) {
     await deliver()
