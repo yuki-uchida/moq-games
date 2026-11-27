@@ -3209,6 +3209,21 @@ dialog::backdrop {
   white-space: nowrap;
   box-shadow: 0 4px 14px #0a1c1488;
 }
+/* Stage-1 guided tour callouts share the coach look but may wrap on narrow screens. */
+.tut-bubble {
+  width: max-content;
+  max-width: calc(100vw - 16px);
+  white-space: normal;
+  line-height: 1.25;
+  font-size: 14px;
+}
+.tut-bubble[data-step='after'] {
+  background: #fff6cf;
+  padding-right: 14px;
+}
+.tut-bubble[data-step='after'] .coach-skip {
+  display: none;
+}
 .coach-skip {
   pointer-events: auto;
   min-width: 30px;

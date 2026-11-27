@@ -111,6 +111,11 @@ export class CoachMarks {
     this.lastUpdate = 0
   }
 
+  /** A hint bubble is on screen right now. */
+  get showing(): boolean {
+    return !this.root.hidden
+  }
+
   get active(): boolean {
     return !this.done
   }
