@@ -65,13 +65,16 @@ export function defeatAdvice(
   stage: number,
   leaks: ReadonlyArray<{ type: UnitType; boss: boolean }>,
   unspentGold: number,
-  recruitName?: string
+  recruitName?: string,
+  /** Cost of the cheapest next upgrade among the deployed allies; leftover gold below it bought nothing. */
+  cheapestUpgrade = 60
 ): string {
   if (recruitName) return `コインで${recruitName}を招集しよう（総力戦は仲間全員で出撃）`
   if (leaks.some((l) => l.boss)) return 'ボスには必殺技を集中しよう（AUTOか長押しで場所を指定）。↑で強化も'
   if (leaks.some((l) => isAirborneEnemy(l.type)))
     return '空の敵には射手・魔法使いなど射程のある仲間を道の曲がり角の内側へ'
-  if (unspentGold >= 60) return `${unspentGold}Gが残っていました。仲間の頭上の↑をタップすると戦闘中でも強化できます`
+  if (unspentGold >= 60 && unspentGold >= cheapestUpgrade)
+    return `${unspentGold}Gが残っていました（次の強化は${cheapestUpgrade}G）。仲間の頭上の↑をタップすると戦闘中でも強化できます`
   return defeatTip(stage)
 }
 
