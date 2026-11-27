@@ -19,6 +19,10 @@ import {
   waveClearGold,
   waveStatus,
   WAVE_BOSS_BREACH,
+  LEGACY_UNIT_LEVEL_STEP,
+  PREVIOUS_WAVE_ENEMY_STRENGTH,
+  WAVE_UNIT_LEVEL_STEP,
+  allyLevelMultiplier,
   type AllyType
 } from '../src/game/model'
 import { DRAGON_BREATH_MOUTHS } from '../src/rendering/DragonBreathArt'
@@ -27,7 +31,7 @@ import { GameEngine } from '../src/game/GameEngine'
 import { RuleBasedAI } from '../src/ai/AIController'
 import { validateCampaignCheckpoint, type CampaignCheckpoint } from '../src/game/CampaignCheckpoint'
 import { MAX_RUN_GOLD } from '../src/progression/ProgressionData'
-import { stageStartGold } from '../src/progression/StageProgress'
+import { FORMATION_SLOTS, cumulativeStageGold, stageStartGold } from '../src/progression/StageProgress'
 import {
   availableAllies,
   freshProfile,
@@ -35,7 +39,7 @@ import {
   resumeProgress,
   upgradeCost
 } from '../src/progression/UpgradeSystem'
-import { DEPLOYMENT_COST } from '../src/game/DefenderRoster'
+import { DEPLOYMENT_COST, STARTING_GOLD } from '../src/game/DefenderRoster'
 import { COMMANDER_SUPPORT } from '../src/game/CommanderSupport'
 
 const OFFSETS: Record<AllyType, [number, number]> = {
@@ -108,6 +112,31 @@ describe('wave campaign (policy 5)', () => {
       for (let stage = 1; stage <= 10; stage++) expect(stageRules(stage, policy).waves).toBeUndefined()
   })
 
+  it('starts stage-select battles on a modest purse and makes each level a clear step up', () => {
+    // Policy 5: the formation plus a little, growing gently; kills, wave clears and early calls fund the upgrades.
+    expect(stageStartGold(1)).toBe(STARTING_GOLD)
+    for (let stage = 2; stage <= CONFIG.stages; stage++) {
+      expect(stageStartGold(stage)).toBeGreaterThanOrEqual(FORMATION_SLOTS * DEPLOYMENT_COST)
+      expect(stageStartGold(stage)).toBeGreaterThan(stageStartGold(stage - 1))
+      expect(stageStartGold(stage)).toBeLessThanOrEqual(cumulativeStageGold(stage))
+    }
+    expect(stageStartGold(10)).toBeLessThanOrEqual(400)
+    // Earlier policies (the title demo, old runs) keep the cumulative run gold.
+    for (const policy of [1, 2, 3, 4] as const)
+      for (let stage = 1; stage <= CONFIG.stages; stage++)
+        expect(stageStartGold(stage, policy)).toBe(cumulativeStageGold(stage))
+    // Per-ally levels under policy 5 grow by 40% each (Lv4 about x2.7); per-type and pre-wave levels keep 12%.
+    expect(allyLevelMultiplier(1, 5, 2)).toBe(1)
+    expect(allyLevelMultiplier(4, 5, 2)).toBeCloseTo(WAVE_UNIT_LEVEL_STEP ** 3, 9)
+    expect(allyLevelMultiplier(4, 5, 2)).toBeGreaterThan(2.5)
+    for (const [policy, economy] of [
+      [4, 2],
+      [5, undefined],
+      [1, undefined]
+    ] as const)
+      expect(allyLevelMultiplier(4, policy, economy)).toBeCloseTo(LEGACY_UNIT_LEVEL_STEP ** 3, 9)
+  })
+
   it('a competent stage-select player clears all ten stages on the real road with a paced, threatening curve', async () => {
     /** Pacing targets every stage meets, on any seed. */
     const checkPacing = (log: StageLog, label: string) => {
@@ -124,11 +153,12 @@ describe('wave campaign (policy 5)', () => {
     expect(logs).toHaveLength(10)
     expect(logs.at(-1)!.result).toBe('victory')
     for (const log of logs.slice(0, -1)) expect(log.result, `stage ${log.stage}`).toBe('cleared')
-    // Stage 1 is a short tutorial; the finale runs three to about five and a half minutes.
+    // Stage 1 is a short tutorial; the finale runs three to about six and a half minutes (the modest policy-5 purse
+    // buys fewer upgrades up front, so the last waves take longer to grind down).
     expect(logs[0].seconds).toBeGreaterThanOrEqual(90)
     expect(logs[0].seconds).toBeLessThanOrEqual(150)
     expect(logs[9].seconds).toBeGreaterThanOrEqual(180)
-    expect(logs[9].seconds).toBeLessThanOrEqual(330)
+    expect(logs[9].seconds).toBeLessThanOrEqual(400)
     for (const log of logs) checkPacing(log, `stage ${log.stage}`)
     for (const seconds of logs[0].waveSeconds) expect(seconds).toBeLessThanOrEqual(60)
     // Even optimized play is threatened somewhere from stage 4 on (the medium player carries the tension target).
@@ -146,14 +176,15 @@ describe('wave campaign (policy 5)', () => {
         checkPacing(log, `stage ${log.stage} +${offset}`)
       }
       expect(late[2].seconds).toBeGreaterThanOrEqual(180)
-      expect(late[2].seconds).toBeLessThanOrEqual(330)
+      expect(late[2].seconds).toBeLessThanOrEqual(400)
     }
   }, 1800000)
 
   it('a medium (reasonable human) player clears every stage on two of three seeds while the castle is threatened', async () => {
     const seeds = [0, 1000, 2000],
       byStage = new Map<number, StageLog[]>()
-    let tenseSeeds = 0
+    let tenseSeeds = 0,
+      clearSeeds = 0
     for (const offset of seeds) {
       const logs: StageLog[] = []
       // Stages 1-4 are the tutorial stretch: one seed is enough there; the extra seeds play 5-10.
@@ -166,6 +197,7 @@ describe('wave campaign (policy 5)', () => {
       }
       console.log(table(`medium player, seed offset ${offset}`, logs))
       if (logs.filter((log) => log.stage >= 5 && log.minHp < 70).length >= 3) tenseSeeds++
+      if (logs.every((log) => log.result !== 'defeat')) clearSeeds++
       for (const log of logs) expect(log.earlyCalls + log.midBattleSpend, `stage ${log.stage}`).toBeGreaterThan(0)
     }
     for (const [stage, logs] of byStage) {
@@ -174,6 +206,22 @@ describe('wave campaign (policy 5)', () => {
     }
     // Tension: on at least two seeds the castle dips below 70 HP in three or more of stages 5-10.
     expect(tenseSeeds).toBeGreaterThanOrEqual(2)
+    // Two of the three seeds are cleared from start to finish.
+    expect(clearSeeds).toBeGreaterThanOrEqual(2)
+  }, 1800000)
+
+  it('a passive player (medium placement and AUTO, never upgrades or calls early) loses late stages but clears the tutorial', async () => {
+    const logs: StageLog[] = []
+    for (const stage of [1, 2, 3, 5, 6, 7, 8, 9, 10])
+      logs.push(await playStage(stage, progressBefore(stage, 'passive'), 'passive'))
+    console.log(table('passive player, default seed', logs))
+    for (const log of logs) {
+      expect(log.levels.every((level) => level === 1), `stage ${log.stage} levels`).toBe(true)
+      expect(log.earlyCalls, `stage ${log.stage} early calls`).toBe(0)
+    }
+    // Stages 1-3 stay winnable on placement alone; from stage 5 on, unspent gold loses battles.
+    for (const log of logs.filter((log) => log.stage <= 3)) expect(log.result, `stage ${log.stage}`).toBe('cleared')
+    expect(logs.filter((log) => log.stage >= 5 && log.result === 'defeat').length).toBeGreaterThanOrEqual(3)
   }, 1800000)
 
   it('a weak player with two cheap allies who never spends falls on stage 2 or 3; three allies clear the tutorial', async () => {
@@ -291,6 +339,63 @@ describe('wave road pacing and scaling (policy 5 only)', () => {
       s.units.filter((unit) => unit.owner === 'ai').every((unit) => unit.speed > DEFINITIONS[unit.type].speed)
     ).toBe(true)
     expect(checked).toBeGreaterThan(3)
+  }, 120000)
+
+  it('keeps stage-8 hordes saved before the retuned strength checkpoint-valid with their saved stats', async () => {
+    let clock = 0
+    const stage = 8,
+      save = freshRunFromProfile(freshProfile(), 2, 1)
+    save.gold = stageStartGold(stage)
+    const engine = new GameEngine(new RuleBasedAI(), save, 'meadow', 5, () => clock, DRAGON_BREATH_MOUTHS, 2, 4),
+      s = engine.state,
+      slots = getField('meadow', 2, 4).slots
+    expect(engine.startAtStage(stage)).toBe(true)
+    for (const [type, slot] of [
+      ['soldier', 3],
+      ['archer', 4],
+      ['tank', 10]
+    ] as const)
+      expect(engine.place(type, slots[slot])).toBe(true)
+    expect(engine.startAssault()).toBe(true)
+    const enemyAttacking = () =>
+      s.attacks.some((attack) => attack.owner === 'ai' && !attack.boss && attack.power > 0 && attack.status !== 'hit')
+    for (let i = 0; i < 4000 && !(enemyAttacking() && s.units.filter((u) => u.owner === 'ai').length >= 3); i++) {
+      clock += 50
+      engine.update(0.05)
+      s.playerBaseHp = CONFIG.baseHp
+      s.stageSummary.baseDamage = 0
+      for (let j = 0; j < 12; j++) await Promise.resolve()
+    }
+    expect(enemyAttacking()).toBe(true)
+    const checkpoint = engine.exportCheckpoint()!
+    expect(checkpoint).not.toBeNull()
+    const rules = stageRules(stage, 5),
+      previous = rules.bossStrength! * PREVIOUS_WAVE_ENEMY_STRENGTH[stage]!,
+      hpRatio = previous / rules.strength,
+      attackRatio = (1 + (previous - 1) * 0.5) / rules.attackStrength!
+    expect(hpRatio).not.toBeCloseTo(1, 3)
+    const saved = (hp: number, attack: number) => {
+      const raw = JSON.parse(JSON.stringify(checkpoint)) as CampaignCheckpoint,
+        regular = new Set(raw.state.units.filter((u) => u.owner === 'ai' && !u.boss).map((u) => u.id))
+      for (const unit of raw.state.units)
+        if (regular.has(unit.id)) {
+          unit.maxHp *= hp
+          unit.hp *= hp
+          unit.attack *= attack
+        }
+      for (const pending of raw.state.attacks) if (regular.has(pending.attackerId)) pending.power *= attack
+      // Defender interception caches fingerprint the enemies' saved attack; start them afresh as migrations do.
+      raw.runtime.interception = { context: '', lastTime: 0, intents: [], forecasts: [] }
+      return raw
+    }
+    const resumed = roundTrip(saved(hpRatio, attackRatio))
+    expect(resumed).not.toBeNull()
+    const enemy = s.units.find((u) => u.owner === 'ai' && !u.boss)!
+    expect(resumed!.state.units.find((u) => u.id === enemy.id)!.maxHp).toBeCloseTo(enemy.maxHp * hpRatio, 6)
+    expect(resumed!.exportCheckpoint()).not.toBeNull()
+    // Mixed or unknown balances are still refused.
+    expect(roundTrip(saved(hpRatio, 1))).toBeNull()
+    expect(roundTrip(saved(1.05, 1.05))).toBeNull()
   }, 120000)
 })
 
@@ -493,7 +598,8 @@ describe('mid-wave upgrades and wave-clear gold (policy 5 only)', () => {
   it('upgrades and equips a living ally while a wave is on, keeps other build actions closed and stays checkpoint-valid', async () => {
     let clock = 0
     const save = freshRunFromProfile(freshProfile(), 2, 1)
-    save.gold = stageStartGold(2)
+    // Mechanics, not economy: enough gold for the upgrade and the gear mid-wave.
+    save.gold = cumulativeStageGold(2)
     const engine = new GameEngine(new RuleBasedAI(), save, 'meadow', 11, () => clock, DRAGON_BREATH_MOUTHS, 2, 4),
       s = engine.state,
       slots = getField('meadow', 2, 4).slots
@@ -537,7 +643,8 @@ describe('mid-wave upgrades and wave-clear gold (policy 5 only)', () => {
       attack = archer.attack
     expect(engine.upgradeDefender(archer.id)).toBe(true)
     expect(archer.level).toBe(2)
-    expect(archer.attack).toBeGreaterThan(attack)
+    // Policy-5 per-ally levels grow by WAVE_UNIT_LEVEL_STEP (the classic per-type upgrades keep 1.12).
+    expect(archer.attack / attack).toBeCloseTo(WAVE_UNIT_LEVEL_STEP, 6)
     for (const pending of s.attacks.filter((value) => value.attackerId === archer.id && value.power > 0))
       expect(pending.power / archer.attack).toBeCloseTo(
         pending.supportAttack ? COMMANDER_SUPPORT.attackMultiplier : 1,
@@ -549,6 +656,24 @@ describe('mid-wave upgrades and wave-clear gold (policy 5 only)', () => {
     const checkpoint = engine.exportCheckpoint()
     expect(checkpoint).not.toBeNull()
     expect(roundTrip(checkpoint!)!.exportCheckpoint()).toEqual(checkpoint)
+    // A policy-5 checkpoint saved before the stronger level growth keeps its Lv2 archer (and that archer's attacks
+    // under way) on the classic growth; stats matching neither growth are refused.
+    const legacy = (factor: number) => {
+      const raw = JSON.parse(JSON.stringify(checkpoint)) as CampaignCheckpoint,
+        saved = raw.state.units.find((unit) => unit.id === archer.id)!
+      saved.maxHp *= factor
+      saved.hp *= factor
+      saved.attack *= factor
+      for (const pending of raw.state.attacks) if (pending.attackerId === archer.id) pending.power *= factor
+      return raw
+    }
+    const classic = LEGACY_UNIT_LEVEL_STEP / WAVE_UNIT_LEVEL_STEP,
+      resumed = roundTrip(legacy(classic))
+    expect(resumed).not.toBeNull()
+    const legacyArcher = resumed!.state.units.find((unit) => unit.id === archer.id)!
+    expect(legacyArcher.attack).toBeCloseTo(archer.attack * classic, 6)
+    expect(resumed!.exportCheckpoint()).not.toBeNull()
+    expect(roundTrip(legacy(1.05))).toBeNull()
     for (let i = 0; i < 200 && s.phase === 'assault'; i++) {
       clock += 50
       engine.update(0.05)

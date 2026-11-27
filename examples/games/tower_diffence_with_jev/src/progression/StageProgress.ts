@@ -1,4 +1,13 @@
-import { ALLY_TYPES, CONFIG, DEFINITIONS, stageRules, type AllyType } from '../game/model'
+import {
+  ALLY_TYPES,
+  CONFIG,
+  CURRENT_WAVE_BOSS_POLICY,
+  DEFINITIONS,
+  isWaveCampaign,
+  stageRules,
+  type AllyType,
+  type WaveBossPolicy
+} from '../game/model'
 import { STARTING_GOLD } from '../game/DefenderRoster'
 import { isRecord, parseBoundedJson } from './ProgressionData'
 
@@ -36,9 +45,23 @@ export const battleFormation = (p: StageProgress, stage: number): AllyType[] =>
 export const stageUnlocked = (p: StageProgress, stage: number): boolean =>
   Number.isInteger(stage) && stage >= 1 && stage <= Math.min(CONFIG.stages, p.cleared + 1)
 export const stageReward = (stage: number): number => stageRules(stage).reward
-/** Battle gold matches what a run would have earned reaching this stage, so checkpoints stay valid. */
-export const stageStartGold = (stage: number): number =>
+/** What a continuous run would have earned reaching this stage: the most battle gold a checkpoint accepts there. */
+export const cumulativeStageGold = (stage: number): number =>
   STARTING_GOLD + Array.from({ length: stage - 1 }, (_, i) => stageReward(i + 1)).reduce((a, b) => a + b, 0)
+/** Policy 5 battle gold at stage 2 (the first five-ally formation) and its growth per later stage. */
+export const WAVE_START_GOLD = { second: 200, perStage: 15 } as const
+/**
+ * Battle gold a stage-select battle starts with. Policy 5 hands out a modest purse (the formation plus a little), so
+ * kills, wave clears and early calls pay for the upgrades; earlier policies keep the cumulative run gold. Never above
+ * {@link cumulativeStageGold}, so checkpoints stay valid.
+ */
+export const stageStartGold = (stage: number, waveBossPolicy: WaveBossPolicy = CURRENT_WAVE_BOSS_POLICY): number =>
+  isWaveCampaign(waveBossPolicy)
+    ? Math.min(
+        cumulativeStageGold(stage),
+        stage <= 1 ? STARTING_GOLD : WAVE_START_GOLD.second + WAVE_START_GOLD.perStage * (stage - 2)
+      )
+    : cumulativeStageGold(stage)
 
 export function parseStageProgress(value: unknown): StageProgress | null {
   if (
