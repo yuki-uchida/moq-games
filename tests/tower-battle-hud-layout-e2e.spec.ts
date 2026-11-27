@@ -64,13 +64,18 @@ async function measure(page: Page, state: State) {
         const element = q(selector)
         if (shown(element)) controls[name] = rect(element)
       }
-      const overflow = [...probe.querySelectorAll<HTMLElement>('.bhud-main, .bhud-side, .bhud-num, .wave-call *, .bhud-boss *')]
+      const overflow = [
+        ...probe.querySelectorAll<HTMLElement>('.bhud-main, .bhud-side, .bhud-num, .wave-call *, .bhud-boss *')
+      ]
         .filter((element) => element.scrollWidth > element.clientWidth + 1 && element.clientWidth > 0)
         .map((element) => `${element.className}:${element.scrollWidth}>${element.clientWidth}`)
       // Every visible descendant of the frame (text, icons, bars) must sit inside it.
       const inner = [...probe.querySelectorAll(':scope > .bhud-main *, :scope > .bhud-side *')]
         .filter(shown)
-        .map((element) => ({ name: String((element as HTMLElement).className?.baseVal ?? element.className ?? element.tagName), rect: rect(element) }))
+        .map((element) => ({
+          name: String((element as HTMLElement).className?.baseVal ?? element.className ?? element.tagName),
+          rect: rect(element)
+        }))
       const top = ['#back', '#gold', '#settings-open', '.map-heading', '.field-controls', '.stage-label']
         .map((selector) => [selector, document.querySelector(selector)] as const)
         .filter(([, element]) => element && element.getClientRects().length > 0)
@@ -137,11 +142,14 @@ for (const size of [
       const names = Object.keys(m.controls).filter((name) => name !== 'call' && name !== 'boss' && name !== 'crown')
       for (let i = 0; i < names.length; i++)
         for (let j = i + 1; j < names.length; j++)
-          expect(intersects(m.controls[names[i]], m.controls[names[j]]), `${label} ${names[i]} vs ${names[j]}`).toBe(false)
+          expect(intersects(m.controls[names[i]], m.controls[names[j]]), `${label} ${names[i]} vs ${names[j]}`).toBe(
+            false
+          )
       for (const hanging of ['call', 'boss'] as const)
         if (m.controls[hanging]) {
           expect(intersects(m.controls[hanging], m.hud), `${label} ${hanging} vs hud`).toBe(false)
-          for (const name of names) expect(intersects(m.controls[hanging], m.controls[name]), `${label} ${hanging} vs ${name}`).toBe(false)
+          for (const name of names)
+            expect(intersects(m.controls[hanging], m.controls[name]), `${label} ${hanging} vs ${name}`).toBe(false)
         }
       // The frame never runs under the top bar controls.
       for (const top of m.top) expect(intersects(top.rect, m.hud), `${label} hud vs ${top.name}`).toBe(false)
