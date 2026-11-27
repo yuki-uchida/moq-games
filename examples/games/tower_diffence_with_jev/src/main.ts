@@ -138,6 +138,7 @@ import {
   totalStars
 } from './progression/StageProgress'
 import { CoachMarks } from './ui/CoachMarks'
+import { BattleTutorial } from './ui/BattleTutorial'
 import { REVEAL_DELAY_MS, createResultCard, defeatAdvice, prefersReducedMotion, resultMarkup } from './ui/ResultCard'
 import { BattleSpecialCounter } from './ui/BattleFeelLogic'
 import { PanelDialog } from './input/PanelDialog'
@@ -526,6 +527,17 @@ const coach = new CoachMarks(
   })(),
   stageProgress.cleared >= 1
 )
+const battleTutorial = new BattleTutorial(
+  $('app'),
+  (() => {
+    try {
+      return localStorage
+    } catch {
+      return undefined
+    }
+  })(),
+  () => coach.showing
+)
 const resultCard = createResultCard($('result'), (kind, param) => soundPlayer.playFeel(kind, param))
 function closeResult() {
   resultCard.cancel()
@@ -819,6 +831,7 @@ function upgradeAlly(id: number): boolean {
   if (!unit || !paidRoster() || !improvable() || paused || !engine.upgradeDefender(id)) return false
   const level = defenderLevel(unit, save)
   persist()
+  battleTutorial.noteUpgrade(performance.now(), id)
   renderer.levelUp(id)
   battleFeedback.levelUp(unit.x, unit.y, level)
   updateSelectionContext()
@@ -3197,7 +3210,9 @@ function frame(now: number) {
     !!placingSandbag || !!placingRoadItem
   )
   battleFeedback.update(state, performance.now(), engine.takeSpecialImpacts())
-  battleFeedback.goldGains(engine.takeGoldGains())
+  const goldGains = engine.takeGoldGains()
+  if (goldGains.some((gain) => gain.kind === 'kill')) battleTutorial.noteGold(now)
+  battleFeedback.goldGains(goldGains)
   battleHud.update(state, battleFeedback.bountyArrived)
   tickGold(now)
   const buildWindow = engine.buildWindowOpen
@@ -3257,6 +3272,16 @@ function frame(now: number) {
         dragging: $('app').classList.contains('unit-dragging'),
         modal: !!document.querySelector('dialog[open]'),
         roadTools: activeTray === 'item' || placingSandbag || placingRoadItem !== null
+      },
+      now
+    )
+    battleTutorial.update(
+      {
+        started,
+        phase: state.phase,
+        stage: state.stage,
+        fresh: stageProgress.cleared === 0,
+        blocked: paused || !!document.querySelector('dialog[open]')
       },
       now
     )
