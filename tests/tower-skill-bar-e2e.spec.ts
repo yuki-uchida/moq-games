@@ -17,6 +17,8 @@ async function seed(
   save.gold = wolf ? stageStartGold(2) : 120
   for (const type of casters) if (!['soldier', 'archer', 'runner', 'tank'].includes(type)) save.purchased.push(type)
   const engine = new GameEngine({ decide: async () => null }, save, 'meadow', 42, () => 0, undefined, 2, 4)
+  // These scenarios script exact enemy speeds, HP and damage sums; pin the pre-wave rule set (policy 4) they were tuned for.
+  engine.state.waveBossPolicy = 4
   // wolf: a runner and an archer next to the entrance and one fast wolf (hp 143) that runs out of the runner's circle.
   if (wolf) {
     save.formation = ['runner', 'archer']
@@ -157,7 +159,7 @@ test('nothing in range: a tap says so on the button, long press and Shift+click 
   await expect(soldier.locator('.skill-name')).toHaveText('回転斬撃 · 長押しで場所を指定')
   // The first no-target tap teaches long-press once (and only once).
   await expect(page.locator('.coach[data-step="aim"]')).toBeVisible()
-  await expect(page.locator('.coach-bubble')).toContainText('長押しで場所を選べる')
+  await expect(page.locator('.coach[data-step="aim"] .coach-bubble')).toContainText('長押しで場所を選べる')
   expect(await page.evaluate(() => localStorage.getItem('tower-jev-coach-aim-v1'))).toBe('1')
   const box = (await soldier.boundingBox())!
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
