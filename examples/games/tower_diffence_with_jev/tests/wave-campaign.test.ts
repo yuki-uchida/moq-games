@@ -216,7 +216,10 @@ describe('wave campaign (policy 5)', () => {
       logs.push(await playStage(stage, progressBefore(stage, 'passive'), 'passive'))
     console.log(table('passive player, default seed', logs))
     for (const log of logs) {
-      expect(log.levels.every((level) => level === 1), `stage ${log.stage} levels`).toBe(true)
+      expect(
+        log.levels.every((level) => level === 1),
+        `stage ${log.stage} levels`
+      ).toBe(true)
       expect(log.earlyCalls, `stage ${log.stage} early calls`).toBe(0)
     }
     // Stages 1-3 stay winnable on placement alone; from stage 5 on, unspent gold loses battles.

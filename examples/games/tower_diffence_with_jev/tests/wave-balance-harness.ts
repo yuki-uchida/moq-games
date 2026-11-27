@@ -586,7 +586,11 @@ export function mediumOpening(stage: number, progress: StageProgress = progressB
   save.formation = battleFormation(progress, stage)
   const e = new GameEngine(new RuleBasedAI(), save, 'meadow', 1, () => 0, DRAGON_BREATH_MOUTHS, 2, REAL_LAYOUT)
   if (!e.startAtStage(stage)) throw new Error(`startAtStage(${stage}) refused`)
-  mediumDeploy(e, ALLY_TYPES.filter((t) => save.formation!.includes(t)), roadSamples(e.state))
+  mediumDeploy(
+    e,
+    ALLY_TYPES.filter((t) => save.formation!.includes(t)),
+    roadSamples(e.state)
+  )
   return e.state.units
     .filter((u) => u.owner === 'player')
     .map((u) => ({ type: u.type as AllyType, x: u.homeX, y: u.homeY }))
