@@ -79,6 +79,7 @@ import {
   type BattlefieldVersion,
   type LayoutRevision,
   stageRules,
+  allyLevelMultiplier,
   combatStats,
   deploymentCooldown,
   attackSplash,
@@ -932,7 +933,14 @@ export class GameEngine {
     unit.facingY = facing.y
   }
   private refreshDefender(unit: Unit): void {
-    const stats = combatStats(unit, this.state.stage, defenderLevel(unit, this.save), this.state.waveBossPolicy),
+    const level = defenderLevel(unit, this.save),
+      stats = combatStats(
+        unit,
+        this.state.stage,
+        level,
+        this.state.waveBossPolicy,
+        allyLevelMultiplier(level, this.state.waveBossPolicy, this.state.economyVersion)
+      ),
       healthFraction = unit.hp / unit.maxHp
     if (stats.attack > unit.attack && this.state.units.includes(unit))
       this.history.change(this.state, 'upgrade', unit, canInitiateDamage(unit) ? stats.attack - unit.attack : 0)
@@ -1080,11 +1088,13 @@ export class GameEngine {
   }
   private createUnit(owner: Owner, type: UnitType, slot?: Point & { id: number }, boss = false): Unit {
     const d = DEFINITIONS[type],
+      level = owner === 'player' && this.save.economyVersion !== 2 ? this.save.unitLevels[type as AllyType] : 1,
       stats = combatStats(
         { owner, type, boss },
         this.state.stage,
-        this.save.economyVersion === 2 ? 1 : this.save.unitLevels[type as AllyType],
-        this.state.waveBossPolicy
+        level,
+        this.state.waveBossPolicy,
+        allyLevelMultiplier(level, this.state.waveBossPolicy, this.state.economyVersion)
       )
     const p = slot ?? fieldFor(this.state).path[0],
       hp = stats.maxHp,

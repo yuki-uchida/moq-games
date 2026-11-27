@@ -46,6 +46,12 @@ import {
   waveStart,
   WAVE_BREAK_SECONDS,
   WAVE_BOSS_POLICIES,
+  LEGACY_UNIT_LEVEL_STEP,
+  WAVE_UNIT_LEVEL_STEP,
+  allyLevelMultiplier,
+  isWaveCampaign,
+  PREVIOUS_WAVE_ENEMY_STRENGTH,
+  WAVE_ATTACK_SCALING,
   type AIAction,
   type AllyType,
   type CombatAttack,
@@ -360,7 +366,7 @@ const epsilon = 1e-6,
     Math.max(...Object.values(FORMATIONS).map((formation) => (formation.types.length - 1) * formation.interval)),
   maximumPower =
     Math.max(...Object.values(DEFINITIONS).map((definition) => definition.attack)) *
-    Math.max(multiplier(4), MAX_ENEMY_STRENGTH * 2.6),
+    Math.max(WAVE_UNIT_LEVEL_STEP ** 3, multiplier(4), MAX_ENEMY_STRENGTH * 2.6),
   maximumSpeed =
     Math.max(52, ...Object.values(DEFINITIONS).map((definition) => definition.speed)) * WAVE_ROAD_SPEED_FACTOR,
   battlefieldFields = Object.values(FIELDS).flatMap((field) => [
@@ -400,7 +406,7 @@ function checked<T>(value: T | null): T {
 function checkpointBounds(version: CheckpointVersion) {
   const cooldown = version === 1 ? 11 : maximumCooldown,
     strength = version === 1 ? legacyCheckpointRules(CONFIG.stages).strength : MAX_ENEMY_STRENGTH,
-    scale = Math.max(multiplier(4), strength * 2.6),
+    scale = Math.max(WAVE_UNIT_LEVEL_STEP ** 3, multiplier(4), strength * 2.6),
     power =
       Math.max(...Object.values(DEFINITIONS).map((definition) => definition.attack)) *
       scale *
@@ -428,9 +434,52 @@ function checkpointRules(checkpoint: DecodedCheckpoint): StageRules {
 }
 const checkpointPolicy = (checkpoint: DecodedCheckpoint): WaveBossPolicy =>
   checkpoint.version === 1 ? 1 : checkpoint.state.waveBossPolicy
+/**
+ * Current combat stats of a checkpoint unit, then the policy-5 balance it may have been saved under: an upgraded ally
+ * on the classic level growth (before {@link WAVE_UNIT_LEVEL_STEP}), or a regular enemy of a stage whose horde
+ * strength was retuned since ({@link PREVIOUS_WAVE_ENEMY_STRENGTH}).
+ */
+function waveBalanceVariants(
+  checkpoint: DecodedCheckpoint,
+  unit: Pick<Unit, 'owner' | 'type' | 'boss' | 'equipment'>,
+  level: number
+): ReturnType<typeof combatStats>[] {
+  const policy = checkpointPolicy(checkpoint),
+    stage = checkpoint.state.stage,
+    current = combatStats(unit, stage, level, policy, allyLevelMultiplier(level, policy, checkpoint.progress.economyVersion))
+  if (checkpoint.version < 21 || !isWaveCampaign(policy)) return [current]
+  if (unit.owner === 'player') {
+    const legacy = LEGACY_UNIT_LEVEL_STEP ** (level - 1)
+    return checkpoint.progress.economyVersion === 2 && level > 1
+      ? [current, combatStats(unit, stage, level, policy, legacy)]
+      : [current]
+  }
+  const previous = PREVIOUS_WAVE_ENEMY_STRENGTH[stage],
+    rules = stageRules(stage, policy)
+  if (unit.boss || previous === undefined) return [current]
+  const strength = rules.bossStrength! * previous,
+    attackStrength = 1 + (strength - 1) * WAVE_ATTACK_SCALING
+  return [
+    current,
+    {
+      ...current,
+      maxHp: (current.maxHp * strength) / rules.strength,
+      attack: (current.attack * attackStrength) / rules.attackStrength!
+    }
+  ]
+}
+/** The balance variant whose attack matches the unit's own (the current one when none does or it is unknown). */
+function waveBalanceStats(
+  checkpoint: DecodedCheckpoint,
+  unit: Pick<Unit, 'owner' | 'type' | 'boss' | 'equipment'> & Partial<Pick<Unit, 'attack'>>,
+  level: number
+): ReturnType<typeof combatStats> {
+  const variants = waveBalanceVariants(checkpoint, unit, level)
+  return (unit.attack === undefined ? undefined : variants.find((v) => near(v.attack, unit.attack!))) ?? variants[0]
+}
 function checkpointStats(
   checkpoint: DecodedCheckpoint,
-  unit: Pick<Unit, 'owner' | 'type' | 'boss' | 'level' | 'equipment'> & Partial<Pick<Unit, 'maxHp'>>,
+  unit: Pick<Unit, 'owner' | 'type' | 'boss' | 'level' | 'equipment'> & Partial<Pick<Unit, 'maxHp' | 'attack'>>,
   version: CheckpointVersion = checkpoint.version
 ) {
   const level =
@@ -446,7 +495,7 @@ function checkpointStats(
         ? preBalanceCheckpointCombatStats(unit, checkpoint.state.stage, level)
         : version === 8
           ? versionEightCheckpointCombatStats(unit, checkpoint.state.stage, level)
-          : combatStats(unit, checkpoint.state.stage, level, checkpointPolicy(checkpoint))
+          : waveBalanceStats(checkpoint, unit, level)
   // Frozen pre-v15 balance must validate before any migration is applied.
   if (version >= 9 && version < 15 && unit.owner === 'player') {
     if (RANGED_ALLY_TYPES.includes(unit.type as AllyType)) stats.maxHp *= 2
@@ -1398,7 +1447,7 @@ function migrateHealthBalance(checkpoint: DecodedCheckpoint): void {
           : checkpoint.progress.economyVersion === 2
             ? unit.level!
             : checkpoint.progress.unitLevels[unit.type as AllyType],
-      maxHp = combatStats(unit, checkpoint.state.stage, level, checkpointPolicy(checkpoint)).maxHp
+      maxHp = waveBalanceStats(checkpoint, unit, level).maxHp
     if (near(unit.maxHp, maxHp)) continue
     unit.hp = unit.hp === 0 ? 0 : Math.max(Number.MIN_VALUE, Math.min(maxHp, unit.hp * (maxHp / unit.maxHp)))
     unit.maxHp = maxHp
@@ -2516,7 +2565,8 @@ function validateAttacks(checkpoint: DecodedCheckpoint): void {
         ...attack,
         boss: !!attack.boss,
         level: attacker?.level,
-        equipment: attacker?.equipment
+        equipment: attacker?.equipment,
+        attack: attacker?.attack
       },
       attack.legacyRegularAttack ? 8 : checkpoint.version
     )
@@ -2558,8 +2608,14 @@ function validateAttacks(checkpoint: DecodedCheckpoint): void {
           attack.breath === undefined &&
           attack.supportAttack === undefined
       )
+    // An attack whose attacker has left the field may come from either policy-5 balance of its stage.
+    const powers =
+      attacker || healAction || attack.legacyRegularAttack || checkpoint.version < 9
+        ? [stats.attack]
+        : waveBalanceVariants(checkpoint, { ...attack, boss: !!attack.boss }, 1).map((variant) => variant.attack)
     requireCheckpoint(
-      near(attack.power, healAction ? 0 : stats.attack * powerMultiplier) && near(attack.range, expectedRange)
+      (healAction ? near(attack.power, 0) : powers.some((power) => near(attack.power, power * powerMultiplier))) &&
+        near(attack.range, expectedRange)
     )
     const breath = attack.variant === 'breath',
       profile = healAction ? HEALING_ACTIONS[checkpointHealingRole(attack)!] : ATTACK_PROFILES[attack.type],

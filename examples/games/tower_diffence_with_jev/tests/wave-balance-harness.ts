@@ -63,14 +63,21 @@ export interface StageLog {
   peakEnemies: number
   /** Castle HP when each wave was cleared (the last one: at the end). */
   waveHp: number[]
+  /** Battle gold at the start and left unspent at the end. */
+  startGold: number
+  endGold: number
+  /** Ally levels at the end, formation order. */
+  levels: number[]
 }
 
 /**
  * - competent: pixel-optimal road coverage, gate upgrades, equipment, tuned specials and planned upgrades.
  * - medium: a reasonable first-time human (see {@link playMedium}).
  * - weak: a few allies, never spends.
+ * - passive: the medium player's formation, placement and AUTO specials, but never upgrades and never calls a
+ *   wave early (it still deploys a missing formation ally when the gold allows).
  */
-export type PlayerKind = 'competent' | 'medium' | 'weak'
+export type PlayerKind = 'competent' | 'medium' | 'weak' | 'passive'
 
 interface Plan {
   /** Ally types the player fields, most wanted first. */
@@ -371,7 +378,7 @@ function coinFlips(seed: number): () => boolean {
 
 /** Coins and recruits between stages, then the five ally types to field. */
 function prepareFormation(progress: StageProgress, kind: PlayerKind, stage: number): void {
-  if (kind === 'medium') {
+  if (kind === 'medium' || kind === 'passive') {
     recruit(progress, 'mage')
     if (stage >= ALL_OUT_FROM_STAGE)
       for (let type = affordableRecruit(progress); type; type = affordableRecruit(progress)) recruit(progress, type)
@@ -412,16 +419,17 @@ export async function playStage(
   const plan: Plan =
     kind === 'competent'
       ? { types: FORMATION_PREFERENCE.filter((t) => fielded.includes(t)), frugal: false }
-      : kind === 'medium'
+      : kind === 'medium' || kind === 'passive'
         ? { types: ALLY_TYPES.filter((t) => save.formation!.includes(t)), frugal: false }
         : { types: ['soldier', 'archer', 'tank'], frugal: true, opening: options.weakUnits ?? 2 }
-  const medium = kind === 'medium',
+  const medium = kind === 'medium' || kind === 'passive',
+    upgrades = kind === 'medium',
     auto = new AutoButton(),
     flip = coinFlips((options.seed ?? 20261003 + stage) * 7 + 3)
   let callAt = -1
   if (medium) {
     mediumDeploy(e, plan.types, samples)
-    tapUpgradeBadges(e)
+    if (upgrades) tapUpgradeBadges(e)
   } else if (plan.frugal) {
     for (let i = 0; i < plan.opening!; i++) deploy(e, plan.types[i % plan.types.length], samples)
   } else spend(e, save, plan, samples)
@@ -477,15 +485,15 @@ export async function playStage(
         handledBreak = wave.wave
         const before = save.gold
         mediumDeploy(e, plan.types, samples)
-        tapUpgradeBadges(e)
+        if (upgrades) tapUpgradeBadges(e)
         midBattleSpend += before - save.gold
-        callAt = flip() ? s.time + 3 : -1
+        callAt = flip() && upgrades ? s.time + 3 : -1
       }
       if (callAt >= 0 && s.time >= callAt) {
         callAt = -1
         if (e.callNextWave() > 0) earlyCalls++
       }
-      if (i % 40 === 0) midBattleSpend += tapUpgradeBadges(e)
+      if (upgrades && i % 40 === 0) midBattleSpend += tapUpgradeBadges(e)
       auto.tick(e)
     } else if (!plan.frugal) {
       if (wave.inBreak && e.buildWindowOpen && handledBreak !== wave.wave) {
@@ -498,7 +506,8 @@ export async function playStage(
     }
     for (let j = 0; j < 12; j++) await Promise.resolve()
   }
-  const s = e.state
+  const s = e.state,
+    endGold = save.gold - (s.result === 'win' ? rules.reward : 0)
   if (s.result === 'win') awardStageClear(progress, stage, bounty)
   else awardBounty(progress, bounty)
   return {
@@ -521,7 +530,10 @@ export async function playStage(
     ),
     longestQuiet: Math.round(longestQuiet),
     peakEnemies,
-    waveHp: waves.map((_, w) => waveHp[w] ?? Math.round(s.playerBaseHp))
+    waveHp: waves.map((_, w) => waveHp[w] ?? Math.round(s.playerBaseHp)),
+    startGold: stageStartGold(stage),
+    endGold,
+    levels: s.units.filter((u) => u.owner === 'player').map((u) => u.level ?? 1)
   }
 }
 
@@ -558,10 +570,28 @@ export function table(title: string, logs: StageLog[]): string {
   const pad = (v: unknown, n: number) => String(v).padStart(n)
   return [
     title,
-    'stage | result  | sec | HP  | minHP | waves | foes | allies | waveG | early | mid | peak | quiet | spawn s / wave s',
+    'stage | result  | sec | HP  | minHP | waves | foes | allies | startG | waveG | endG | early | mid | peak | quiet | levels | spawn s / wave s',
     ...logs.map(
       (l) =>
-        `${pad(l.stage, 5)} | ${l.result.padEnd(7)} | ${pad(l.seconds, 3)} | ${pad(l.hp, 3)} | ${pad(l.minHp, 5)} | ${pad(l.waves, 5)} | ${pad(l.enemies, 4)} | ${pad(l.defenders, 6)} | ${pad(l.goldEarned, 5)} | ${pad(l.earlyCalls, 5)} | ${pad(l.midBattleSpend, 3)} | ${pad(l.peakEnemies, 4)} | ${pad(l.longestQuiet, 5)} | ${l.waveSpawnSeconds.join(',')} / ${l.waveSeconds.join(',')} / hp ${l.waveHp.join(',')}`
+        `${pad(l.stage, 5)} | ${l.result.padEnd(7)} | ${pad(l.seconds, 3)} | ${pad(l.hp, 3)} | ${pad(l.minHp, 5)} | ${pad(l.waves, 5)} | ${pad(l.enemies, 4)} | ${pad(l.defenders, 6)} | ${pad(l.startGold, 6)} | ${pad(l.goldEarned, 5)} | ${pad(l.endGold, 4)} | ${pad(l.earlyCalls, 5)} | ${pad(l.midBattleSpend, 3)} | ${pad(l.peakEnemies, 4)} | ${pad(l.longestQuiet, 5)} | ${l.levels.join('')} | ${l.waveSpawnSeconds.join(',')} / ${l.waveSeconds.join(',')} / hp ${l.waveHp.join(',')}`
     )
   ].join('\n')
+}
+
+/** The medium (and passive) player's opening placement for `stage`, in placement order (browser replays). */
+export function mediumOpening(stage: number, progress: StageProgress = progressBefore(stage, 'medium')) {
+  prepareFormation(progress, 'medium', stage)
+  const save = freshRunFromProfile({ version: 1, purchased: [...progress.recruited] }, 2, 1)
+  save.gold = stageStartGold(stage)
+  save.formation = battleFormation(progress, stage)
+  const e = new GameEngine(new RuleBasedAI(), save, 'meadow', 1, () => 0, DRAGON_BREATH_MOUTHS, 2, REAL_LAYOUT)
+  if (!e.startAtStage(stage)) throw new Error(`startAtStage(${stage}) refused`)
+  mediumDeploy(
+    e,
+    ALLY_TYPES.filter((t) => save.formation!.includes(t)),
+    roadSamples(e.state)
+  )
+  return e.state.units
+    .filter((u) => u.owner === 'player')
+    .map((u) => ({ type: u.type as AllyType, x: u.homeX, y: u.homeY }))
 }

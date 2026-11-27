@@ -63,7 +63,8 @@ import {
   type Point,
   type Equipment,
   type RoadItemKind,
-  CURRENT_WAVE_BOSS_POLICY
+  CURRENT_WAVE_BOSS_POLICY,
+  allyLevelMultiplier
 } from './game/model'
 import { RuleBasedAI, JevAI } from './ai/AIController'
 import { GameRenderer } from './rendering/GameRenderer'
@@ -836,7 +837,15 @@ function upgradeAlly(id: number): boolean {
   battleFeedback.levelUp(unit.x, unit.y, level)
   updateSelectionContext()
   updateRosterControls()
-  announce(`${DEFINITIONS[unit.type].name}をレベル${level}に強化しました。残りHPの割合を保ち、回復はしません。`)
+  const growth = Math.round(
+    (allyLevelMultiplier(level, engine.state.waveBossPolicy, engine.state.economyVersion) /
+      allyLevelMultiplier(level - 1, engine.state.waveBossPolicy, engine.state.economyVersion) -
+      1) *
+      100
+  )
+  announce(
+    `${DEFINITIONS[unit.type].name}をレベル${level}に強化しました。HP・攻撃力+${growth}%。残りHPの割合を保ち、回復はしません。`
+  )
   return true
 }
 function announce(message: string) {

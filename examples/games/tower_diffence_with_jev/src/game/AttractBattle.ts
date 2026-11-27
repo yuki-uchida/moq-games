@@ -80,7 +80,8 @@ export function createAttractBattle(
 ): AttractBattle {
   const stage = attractStage(loop)
   const save = freshRunFromProfile(freshProfile(), 2)
-  save.gold = stageStartGold(stage)
+  // The demo's single assault (policy 4, below) keeps that policy's run gold.
+  save.gold = stageStartGold(stage, 4)
   save.formation = battleFormation(freshStageProgress(), stage)
   let clockMs = 0
   const engine = new GameEngine(

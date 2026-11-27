@@ -854,10 +854,12 @@ export const WAVE_ENEMY_STRENGTH: Readonly<Record<number, number>> = {
   5: 0.95,
   6: 0.95,
   7: 1.05,
-  8: 0.85,
+  8: 0.95,
   9: 1.2,
   10: 1.7
 }
+/** Policy 5: horde strengths retuned since policy 5 shipped; checkpoints saved before keep their enemies' stats. */
+export const PREVIOUS_WAVE_ENEMY_STRENGTH: Readonly<Partial<Record<number, number>>> = { 8: 0.85 }
 /**
  * Policy 5: share of the stage strength that enemy attacks receive. Late hordes grow tougher rather than
  * deadlier, so a defense bends (and leaks) instead of collapsing at once.
@@ -1030,7 +1032,24 @@ export function waveStart(waves: readonly number[], wave: number): number {
   return waves.slice(0, Math.max(0, wave - 1)).reduce((sum, count) => sum + count, 0)
 }
 export const REGULAR_ENEMY_ATTACK_MULTIPLIER = 1.3
-export const unitLevelMultiplier = (level: number): number => 1.12 ** (level - 1)
+/**
+ * Ally HP and attack growth per level: before policy 5, in the per-type (economy 1) upgrades, and in policy-5
+ * checkpoints saved before {@link WAVE_UNIT_LEVEL_STEP}.
+ */
+export const LEGACY_UNIT_LEVEL_STEP = 1.12
+/** Policy 5 per-ally levels: HP and attack growth per level, so a Lv3-4 defender is clearly stronger than a fresh one. */
+export const WAVE_UNIT_LEVEL_STEP = 1.4
+/** The classic ally HP and attack scale at `level`. */
+export const unitLevelMultiplier = (level: number): number => LEGACY_UNIT_LEVEL_STEP ** (level - 1)
+/** Ally HP and attack scale at `level` in a battle of this policy and economy. */
+export const allyLevelMultiplier = (
+  level: number,
+  waveBossPolicy: WaveBossPolicy,
+  economyVersion: 1 | 2 | undefined
+): number =>
+  economyVersion === 2 && isWaveCampaign(waveBossPolicy)
+    ? WAVE_UNIT_LEVEL_STEP ** (level - 1)
+    : unitLevelMultiplier(level)
 /** Policy 3 stage-10 boss dragon: shorter reach, softer hits and unscaled attack geometry. */
 export const FINALE_DRAGON_BOSS_ATTACK = 0.75
 /** Policy 5: a boss arrives behind a whole wave of escorts, so it hits softer than a single-assault boss. */
@@ -1047,12 +1066,13 @@ export function combatStats(
   unit: Pick<Unit, 'owner' | 'type' | 'boss'> & Partial<Pick<Unit, 'equipment'>>,
   stage: number,
   allyLevel = 1,
-  waveBossPolicy: WaveBossPolicy
+  waveBossPolicy: WaveBossPolicy,
+  levelMultiplier = unitLevelMultiplier(allyLevel)
 ) {
   const definition = DEFINITIONS[unit.type],
     rules = unit.owner === 'player' ? null : stageRules(stage, waveBossPolicy),
     bossScale = unit.boss ? rules?.bossStrength : undefined,
-    scale = rules ? (bossScale ?? rules.strength) : unitLevelMultiplier(allyLevel),
+    scale = rules ? (bossScale ?? rules.strength) : levelMultiplier,
     attackScale = !rules
       ? scale
       : bossScale !== undefined
