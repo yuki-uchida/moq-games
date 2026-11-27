@@ -208,15 +208,19 @@
   .battle-hud svg { width: 16px; height: 16px; }
 }
 @media (min-width: 821px) and (max-width: 950px) {
-  .battle-hud { left: calc(50% - 48px); }
   .bhud-bar { width: 40px; }
+}
+/* Keep the centred HUD (with its wave chip) clear of the top-right controls. */
+@media (min-width: 821px) and (max-width: 1023px) {
+  .battle-hud { left: calc(50% - 48px); }
 }
 @media (max-width: 820px) {
   .bhud-coins { padding-inline: 3px; }
   .bhud-crown { width: 18px; height: 18px; margin-left: 0; }
   .bhud-crown svg { width: 12px; height: 12px; }
 }
-@media (max-width: 420px) {
+/* Narrow phones stack the HUD under the top bar; up to 460px the one-row HUD with its wave chip would overflow. */
+@media (max-width: 460px) {
   .battle-hud {
     left: auto;
     right: max(8px, env(safe-area-inset-right));
@@ -1223,10 +1227,16 @@
     animation-duration: 0.01ms;
   }
 }
-@media (max-width: 420px) {
+@media (max-width: 1359px) {
+  .bhud-wave {
+    gap: 3px;
+    height: 26px;
+    padding: 0 5px;
+  }
+}
+@media (max-width: 460px) {
   .bhud-wave {
     height: 22px;
-    padding: 0 5px;
   }
   .wave-call {
     left: auto;

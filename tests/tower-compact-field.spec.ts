@@ -173,9 +173,20 @@ test('compact battlefield fits every supported viewport without scrolling', asyn
       await page.screenshot({ path: test.info().outputPath(`field-${viewport.width}x${viewport.height}.png`) })
     })
   await page.emulateMedia({ reducedMotion: 'reduce' })
+  // The 1.3 s banner can end before a loaded machine polls for it: record it as it is added.
+  await page.evaluate(() => {
+    const w = window as unknown as { __assaultBanner: boolean }
+    w.__assaultBanner = false
+    new MutationObserver((records) => {
+      for (const record of records)
+        for (const node of Array.from(record.addedNodes))
+          if (node instanceof HTMLElement && node.matches('.fx-banner.assault') && node.textContent?.includes('襲撃開始') && node.checkVisibility())
+            w.__assaultBanner = true
+    }).observe(document.body, { childList: true, subtree: true })
+  })
   await page.locator('#assault').click()
   await expect(page.locator('.bhud-pause')).toBeVisible()
-  await expect(page.locator('.fx-banner.assault')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => (window as any).__assaultBanner)).toBe(true)
   for (const [width, height] of [[320, 568], [390, 844], [768, 650], [844, 390], [951, 750], [1440, 900]]) {
     await page.setViewportSize({ width, height })
     await expect.poll(() => page.evaluate(() => {
@@ -303,6 +314,9 @@ test.describe('compact road inputs', () => {
   test.use({ hasTouch: true })
   for (const [width, height, touch] of [[390, 844, true], [320, 568, true], [844, 390, true], [1440, 900, false]] as const) {
     test(`road tools commit only on the logical board (${width}x${height})`, async ({ page }) => {
+      // Three tools through arm/cancel/place/move plus four tray hand-offs take 2.4–2.8 min alone (same on the
+      // pre-wave build), too close to the 3 min default once the full suite loads the machine.
+      test.setTimeout(300_000)
       await page.setViewportSize({ width, height })
       await openOfflineCampaign(page)
       const tap = (point: { x: number; y: number }) =>

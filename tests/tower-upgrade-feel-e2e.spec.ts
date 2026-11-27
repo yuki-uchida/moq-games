@@ -107,8 +107,19 @@ for (const size of [
       if (await page.locator('#selection-context').isVisible()) await page.locator('#selection-close').click()
       await page.locator('#deck-toggle').click()
       await expect(page.locator('#unit-tray')).toBeVisible()
-      if (!(await page.locator('#unit-tray .unit:visible').count()))
-        await expect(page.locator('#unit-tray-empty')).toBeVisible()
+      // Read cards and message in one snapshot: a wave break can open between two separate reads and turn
+      // the empty message into deployable cards.
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const cards = Array.from(document.querySelectorAll('#unit-tray .unit')).filter((card) =>
+              card.checkVisibility()
+            ).length
+            const empty = document.getElementById('unit-tray-empty')!.checkVisibility()
+            return cards > 0 !== empty ? 'ok' : `cards=${cards} empty=${empty}`
+          })
+        )
+        .toBe('ok')
       await shot(page, info, `tray-${size.width}`)
     })
   })
