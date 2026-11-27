@@ -5,12 +5,14 @@ import { freshSave } from '../examples/games/tower_diffence_with_jev/src/progres
 import { pointOnVisibleMap, towerPath } from './tower-defense-e2e-arrange'
 
 test.use({ hasTouch: true })
+/** The meadow slot farthest from the road, next to the castle. */
+const CASTLE_SLOT = 26
 
-async function seed(page: Page, type: AllyType = 'soldier', waitEffects = true, sandbagPathStart = 1) {
+async function seed(page: Page, type: AllyType = 'soldier', waitEffects = true, sandbagPathStart = 1, slot = 0) {
   const save = freshSave()
   if (!['soldier', 'archer', 'runner', 'tank'].includes(type)) save.purchased.push(type)
   const engine = new GameEngine({ decide: async () => null }, save, 'meadow', 42, () => 0)
-  engine.place(type, FIELDS.meadow.slots[0].id)
+  engine.place(type, FIELDS.meadow.slots[slot].id)
   const bagPoint = engine.state.units[0]
   for (const point of FIELDS.meadow.path.slice(sandbagPathStart, -1)) if (engine.placeSandbag(point).valid) break
   const unit = engine.state.units[0],
@@ -140,7 +142,10 @@ for (const mobile of [false, true])
 
 for (const type of ALLY_TYPES.filter((type) => type !== 'soldier'))
   test(`${type} plays its dedicated cast and authored field in the game`, async ({ page }, info) => {
-    const { unit } = await seed(page, type)
+    // The wave campaign's first wave (six enemies, 0.9 s apart) overruns a lone level-1 caster at the entrance
+    // slot within the seconds a software-GPU run needs to aim. Cast from the slot by the castle, far off the road,
+    // which the wave reaches last.
+    const { unit } = await seed(page, type, true, 1, CASTLE_SLOT)
     await pointOnVisibleMap(page, unit)
     await page.locator(`.defender-handle[data-unit-id="${unit.id}"]`).click()
     const target = await pointOnVisibleMap(page, { x: unit.x + 85, y: unit.y + 30 })
@@ -155,9 +160,9 @@ for (const type of ALLY_TYPES.filter((type) => type !== 'soldier'))
       .toBe(true)
     // Save before the screenshot: a software-GPU capture can outlast a short field (ranger: 5.7 s),
     // and the checkpoint below must be taken while the field is still active.
-    await page.locator('#settings-toggle').click()
-    await page.locator('[data-settings-tab=save]').click()
-    await page.locator('#save-now').click()
+    // The fields last 5.7–9 game seconds and the three settings clicks alone took 5–7 s on a loaded software-GPU
+    // run, so press the same explicit-save button straight away while the field is still active.
+    await page.locator('#save-now').evaluate((button: HTMLButtonElement) => button.click())
     const saved = (await stored(page)).state
     await page.screenshot({ path: info.outputPath(`${type}-special-impact.png`) })
     expect(saved.units[0].specialCooldown).toBeGreaterThan(0)
