@@ -158,8 +158,7 @@ const save = freshRunFromProfile(loadedCampaign.profile, 2, 1),
 let stageProgress = loadStageProgress(loadedCampaign.profile.purchased),
   selectedStage = Math.min(CONFIG.stages, stageProgress.cleared + 1),
   lastStageReward = 0
-let assaultGold = 0,
-  lastBounty = 0,
+let lastBounty = 0,
   lastKills: number | null = null,
   starImproved = false,
   newUnlock: number | null = null,
@@ -2108,7 +2107,6 @@ function resumeRun() {
   // A battle won before the stage select existed still unlocks its next stage (once: cleared then covers it).
   lastBounty = 0
   lastKills = null
-  assaultGold = 0
   starImproved = false
   newUnlock = null
   resultLive = false
@@ -2771,9 +2769,7 @@ $('assault').onclick = () => {
     return
   }
   clearPlacementModes()
-  const goldBefore = save.gold
   if (engine.startAssault()) {
-    assaultGold = goldBefore
     discardedClockMs = 0
     resumedAfterSuspension = false
     battleClock.start()
@@ -3371,7 +3367,7 @@ function frame(now: number) {
       ? `${FIELDS[state.fieldId].name}を守り抜きました。`
       : won
         ? `所持コイン ${stageProgress.coins}。ステージ選択で仲間を招集できます。`
-        : `ヒント: ${defeatAdvice(state.stage, battleFeedback.leaked, Math.max(assaultGold, save.gold), allOutRecruitName(state.stage))}`
+        : `ヒント: ${defeatAdvice(state.stage, battleFeedback.leaked, save.gold, allOutRecruitName(state.stage))}`
     settingsPanel.close(false)
     upgradePanel.close(false)
     sandbagConfirm.close(false)
