@@ -14,6 +14,16 @@ test('defeat advice priority: boss, flier, unspent gold, rotating tip', () => {
   expect(defeatAdvice(3, [ground], 59)).toBe(defeatTip(3))
   expect(defeatAdvice(3, [], 0)).toBe(defeatTip(3))
 })
+test('unspent-gold advice only when the leftover gold buys the cheapest next upgrade', () => {
+  // A Lv1 ally upgrades for 60 G: 111 G left over was a missed upgrade.
+  expect(defeatAdvice(1, [ground], 111, undefined, 60)).toBe(
+    '111Gが残っていました（次の強化は60G）。仲間の頭上の↑をタップすると戦闘中でも強化できます'
+  )
+  // Every next upgrade costs 120 G: 111 G could not buy one, so no gold-based advice.
+  expect(defeatAdvice(1, [ground], 111, undefined, 120)).toBe(defeatTip(1))
+  // Every ally at the level cap.
+  expect(defeatAdvice(1, [ground], 500, undefined, Infinity)).toBe(defeatTip(1))
+})
 test('a 総力戦 defeat with an affordable missing ally points to recruiting first', () => {
   expect(defeatAdvice(10, [{ ...ground, boss: true }], 100, '光の守護者')).toBe(
     'コインで光の守護者を招集しよう（総力戦は仲間全員で出撃）'

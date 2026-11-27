@@ -2976,6 +2976,10 @@ function allOutRecruitName(stage: number): string | undefined {
   return type ? DEFINITIONS[type].name : undefined
 }
 /** Pay the stage (win) and kill bonus coins, record the star rating, and remember what the result card shows. */
+/** The cheapest next level among the deployed allies (Infinity when every one is at the cap). */
+function cheapestUpgrade(state: Readonly<typeof engine.state>): number {
+  return Math.min(Infinity, ...retainedDefenders(state).map((unit) => upgradeCost(defenderLevel(unit, save))))
+}
 function settleOutcome(state: Readonly<typeof engine.state>, bounty: number) {
   const first = state.stage > stageProgress.cleared,
     stars = starsFor(state.playerBaseHp),
@@ -3367,7 +3371,7 @@ function frame(now: number) {
       ? `${FIELDS[state.fieldId].name}を守り抜きました。`
       : won
         ? `所持コイン ${stageProgress.coins}。ステージ選択で仲間を招集できます。`
-        : `ヒント: ${defeatAdvice(state.stage, battleFeedback.leaked, save.gold, allOutRecruitName(state.stage))}`
+        : `ヒント: ${defeatAdvice(state.stage, battleFeedback.leaked, save.gold, allOutRecruitName(state.stage), cheapestUpgrade(state))}`
     settingsPanel.close(false)
     upgradePanel.close(false)
     sandbagConfirm.close(false)
