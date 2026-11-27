@@ -28,7 +28,9 @@ async function measureCallout(page: Page, targetSelector: string, step?: string)
         if (target && (el === target || el.contains(target) || target.contains(el))) continue
         const r = el.getBoundingClientRect()
         if (!r.width || !r.height || !(el as HTMLElement).checkVisibility()) continue
-        const overlap = Math.min(box.right, r.right) - Math.max(box.left, r.left) > 2 && Math.min(box.bottom, r.bottom) - Math.max(box.top, r.top) > 2
+        const overlap =
+          Math.min(box.right, r.right) - Math.max(box.left, r.left) > 2 &&
+          Math.min(box.bottom, r.bottom) - Math.max(box.top, r.top) > 2
         if (overlap) hits.push(el.className || el.id)
       }
       return {
@@ -132,7 +134,10 @@ for (const size of [
           expect(fit.text).toContain(step === 'wave' ? '早く呼ぶほどボーナスG' : '✦で必殺技／AUTOで自動発動')
           if (step === 'wave') {
             // Pressing the button (or the break ending first) dismisses the callout.
-            await page.locator('.wave-call').click({ timeout: 1500 }).catch(() => undefined)
+            await page
+              .locator('.wave-call')
+              .click({ timeout: 1500 })
+              .catch(() => undefined)
             await expect(bubble(page, 'wave')).toBeHidden()
           }
         }

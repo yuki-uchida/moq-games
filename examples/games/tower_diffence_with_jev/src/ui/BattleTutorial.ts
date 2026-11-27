@@ -115,7 +115,8 @@ export class BattleTutorial {
     if (now - this.lastUpdate < 80) return
     this.lastUpdate = now
     if (this.finished || !ctx.started || !ctx.fresh || ctx.stage !== 1 || ctx.phase !== 'assault') return this.hide()
-    if (ctx.blocked || document.getElementById('skill-cutin')?.hidden === false || this.isCoachShowing()) return this.hide()
+    if (ctx.blocked || document.getElementById('skill-cutin')?.hidden === false || this.isCoachShowing())
+      return this.hide()
     const pick = this.pick(now)
     if (!pick) return this.hide()
     this.show(pick.step, pick.rect)
@@ -222,7 +223,10 @@ export class BattleTutorial {
     this.ring.hidden = step === 'after'
     // A bubble dropped below the HUD is too far from its target for the arrow; the ring alone points back.
     this.pointer.hidden = step === 'after' || clear
-    set(this.pointer, `left:${px(cx)};top:${px(below ? rect.bottom + 4 : rect.top - 38)};rotate:${below ? '-20deg' : '160deg'}`)
+    set(
+      this.pointer,
+      `left:${px(cx)};top:${px(below ? rect.bottom + 4 : rect.top - 38)};rotate:${below ? '-20deg' : '160deg'}`
+    )
     set(this.bubble, `left:${px(left)};top:${px(top)}`)
   }
 }
