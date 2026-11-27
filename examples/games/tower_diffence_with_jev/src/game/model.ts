@@ -851,12 +851,12 @@ export const WAVE_ENEMY_STRENGTH: Readonly<Record<number, number>> = {
   2: 1.05,
   3: 0.95,
   4: 1.05,
-  5: 1.1,
-  6: 1.2,
-  7: 1.15,
-  8: 1.1,
+  5: 0.95,
+  6: 0.95,
+  7: 1.05,
+  8: 0.85,
   9: 1.2,
-  10: 1.55
+  10: 1.7
 }
 /**
  * Policy 5: share of the stage strength that enemy attacks receive. Late hordes grow tougher rather than

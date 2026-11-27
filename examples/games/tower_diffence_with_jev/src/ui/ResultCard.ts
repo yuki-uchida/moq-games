@@ -49,11 +49,13 @@ const CLOCK =
 export const resultMarkup = (icon: string): string =>
   `<dialog id="result" class="result" aria-labelledby="result-title" aria-describedby="reward"><div id="result-confetti" class="result-confetti" aria-hidden="true"></div><div class="result-main"><div id="result-icon" class="result-icon" aria-hidden="true">${icon}</div><span id="result-eyebrow" class="eyebrow">MOSSVALE EXPEDITION</span><h2 id="result-title"></h2><div id="result-stars" class="result-stars" role="img" aria-label="">${STAR.repeat(3).replaceAll('<svg', '<svg class="rs"')}</div><p id="result-hint" class="result-hint"></p><div class="result-tags"><span id="result-new" class="result-tag new" hidden></span><span id="result-best" class="result-tag best" hidden>ベスト更新!</span></div></div><div class="result-side"><ul class="result-lines"><li id="result-line-clear" data-line>${COIN}<span>クリア報酬</span><b id="result-clear-gold"></b></li><li id="result-line-bounty" data-line>${SWORD}<span>撃破ボーナス</span><b id="result-bounty"></b></li></ul><div class="result-summary" data-line><span id="result-stage"></span><b id="result-gold"></b></div><ul class="result-chips" data-line><li id="chip-kills">${SWORD}<span></span></li><li id="chip-specials">${SPARK}<span></span></li><li id="chip-hp">${HEART}<span></span></li><li id="chip-time">${CLOCK}<span></span></li></ul><p id="result-leaks" class="result-leaks" hidden></p><p id="reward" data-line></p><div class="result-actions"><button id="next" class="primary">次のステージへ →</button><button id="retry-stage">もう一度</button><button id="retry" class="text-button">ステージ選択へ</button></div></div><button id="result-title-return" class="text-button unused-navigation" tabindex="-1">保存してタイトルに戻る</button><details class="ui-help result-note"><summary>次のステージへの引き継ぎ</summary><small>コイン・招集した仲間・編成は引き継ぎます。配置・レベル・装備・道のアイテム・門の強化はステージごとにリセット。</small></details></dialog>`
 
+/** Each tip names one lever the player can pull on the next try. */
 const TIPS = [
-  '盾の騎士を道の上に置くと敵を足止めできる',
-  '必殺技は敵が固まった時に',
-  '射程の長い仲間は道の曲がり角の内側へ',
-  '×2速で待ち時間を短縮'
+  '仲間の頭上の↑をタップして強化しよう（戦闘中もできる）',
+  '射程の長い仲間は道の曲がり角の内側へ置こう',
+  '必殺技はAUTOで自動発動。敵が固まった所で強い',
+  '仲間をタップして装備、道の備えで門の大砲・装甲を強化できる',
+  '盾の騎士を道の上に置くと敵を足止めできる'
 ]
 /** Deterministic so a retried stage keeps its hint instead of flickering between loads. */
 export const defeatTip = (stage: number): string => TIPS[(stage - 1) % TIPS.length]
@@ -66,9 +68,10 @@ export function defeatAdvice(
   recruitName?: string
 ): string {
   if (recruitName) return `コインで${recruitName}を招集しよう（総力戦は仲間全員で出撃）`
-  if (leaks.some((l) => l.boss)) return 'ボスには必殺技を集中しよう（長押しで場所を指定）'
-  if (leaks.some((l) => isAirborneEnemy(l.type))) return '空の敵には射手・魔法使いなど射程のある仲間を'
-  if (unspentGold >= 60) return `ゴールドが${unspentGold}G残っていました。準備中に仲間をタップして強化しよう`
+  if (leaks.some((l) => l.boss)) return 'ボスには必殺技を集中しよう（AUTOか長押しで場所を指定）。↑で強化も'
+  if (leaks.some((l) => isAirborneEnemy(l.type)))
+    return '空の敵には射手・魔法使いなど射程のある仲間を道の曲がり角の内側へ'
+  if (unspentGold >= 60) return `${unspentGold}Gが残っていました。仲間の頭上の↑をタップすると戦闘中でも強化できます`
   return defeatTip(stage)
 }
 
