@@ -12,38 +12,66 @@ const bubble = (page: Page, step: string) => page.locator(`.tut:not([hidden]) .t
 const flags = (page: Page) => page.evaluate(() => localStorage.getItem('tower-jev-tutorial-v1') ?? '')
 
 /** The visible callout must stay on screen and clear of the HUD controls it does not point at. */
-async function measureCallout(page: Page, targetSelector: string, step?: string) {
-  return page.evaluate(
-    ([targetSel, stepName]) => {
-      const bubble = document.querySelector('.tut:not([hidden]) .tut-bubble') as HTMLElement | null
-      if (!bubble || (stepName && bubble.dataset.step !== stepName)) return null
-      const box = bubble.getBoundingClientRect()
-      const target = document.querySelector(targetSel)
-      const hits: string[] = []
-      for (const el of Array.from(
-        document.querySelectorAll(
-          '.bhud-main, .bhud-side button, .bhud-coins, .wave-call, #skill-bar .skill-btn, #skill-auto, .gold-purse, #settings-toggle, #deck-toggle, #assault'
-        )
-      )) {
-        if (target && (el === target || el.contains(target) || target.contains(el))) continue
-        const r = el.getBoundingClientRect()
-        if (!r.width || !r.height || !(el as HTMLElement).checkVisibility()) continue
-        const overlap =
-          Math.min(box.right, r.right) - Math.max(box.left, r.left) > 2 &&
-          Math.min(box.bottom, r.bottom) - Math.max(box.top, r.top) > 2
-        if (overlap) hits.push(el.className || el.id)
+const measureInPage = ([targetSel, stepName]: readonly [string, string | undefined]) => {
+  const bubble = document.querySelector('.tut:not([hidden]) .tut-bubble') as HTMLElement | null
+  if (!bubble || (stepName && bubble.dataset.step !== stepName)) return null
+  const box = bubble.getBoundingClientRect()
+  const target = document.querySelector(targetSel)
+  const hits: string[] = []
+  for (const el of Array.from(
+    document.querySelectorAll(
+      '.bhud-main, .bhud-side button, .bhud-coins, .wave-call, #skill-bar .skill-btn, #skill-auto, .gold-purse, #settings-toggle, #deck-toggle, #assault'
+    )
+  )) {
+    if (target && (el === target || el.contains(target) || target.contains(el))) continue
+    const r = el.getBoundingClientRect()
+    if (!r.width || !r.height || !(el as HTMLElement).checkVisibility()) continue
+    const overlap =
+      Math.min(box.right, r.right) - Math.max(box.left, r.left) > 2 &&
+      Math.min(box.bottom, r.bottom) - Math.max(box.top, r.top) > 2
+    if (overlap) hits.push(el.className || el.id)
+  }
+  return {
+    text: bubble.textContent ?? '',
+    hits,
+    inside: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight
+  }
+}
+const measureCallout = (page: Page, targetSelector: string, step?: string) =>
+  page.evaluate(measureInPage, [targetSelector, step] as const)
+
+const STEP_TARGETS = {
+  wave: '.wave-call',
+  skill: '#skill-bar .skill-btn[data-state="ready"]'
+} as const
+/**
+ * The wave break and the ready special can arrive while the test is still busy with the earlier steps (how soon the first
+ * upgrade is affordable depends on the economy). Record the first on-screen measurement of each in the page itself, every
+ * frame, so no callout is missed whatever order things happen in.
+ */
+async function recordCallouts(page: Page) {
+  await page.addInitScript(
+    ({ source, targets }) => {
+      const measure = new Function('arg', `return (${source})(arg)`) as (arg: readonly [string, string]) => unknown
+      const fits: Record<string, unknown> = {}
+      ;(window as unknown as { __tutFits: unknown }).__tutFits = fits
+      const tick = () => {
+        const step = (document.querySelector('.tut:not([hidden]) .tut-bubble') as HTMLElement | null)?.dataset.step
+        if (step && step in targets && !fits[step]) fits[step] = measure([targets[step as keyof typeof targets], step])
+        requestAnimationFrame(tick)
       }
-      return {
-        text: bubble.textContent ?? '',
-        hits,
-        inside: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight
-      }
+      requestAnimationFrame(tick)
     },
-    [targetSelector, step] as const
+    { source: measureInPage.toString(), targets: STEP_TARGETS }
   )
 }
+const recordedFit = (page: Page, step: string) =>
+  page.evaluate(
+    (name) => (window as unknown as { __tutFits: Record<string, unknown> }).__tutFits?.[name] ?? null,
+    step
+  ) as Promise<Measure | null>
 
-type Measure = NonNullable<Awaited<ReturnType<typeof measureCallout>>>
+type Measure = { text: string; hits: string[]; inside: boolean }
 function expectClear(step: string, result: Measure) {
   expect(result.inside, `${step} callout inside viewport`).toBe(true)
   expect(result.hits, `${step} callout overlaps HUD`).toEqual([])
@@ -65,6 +93,7 @@ for (const size of [
       page
     }, info) => {
       test.setTimeout(600_000)
+      await recordCallouts(page)
       await page.addInitScript(() => {
         if (!sessionStorage.getItem('tut-init')) {
           sessionStorage.setItem('tut-init', '1')
@@ -116,23 +145,21 @@ for (const size of [
       await expect(bubble(page, 'upgrade')).toBeHidden()
       expect(await flags(page)).toContain('upgrade')
 
-      // 3 and 4 arrive in either order: wave break button, ready special.
+      // 3 and 4 arrive in either order, and either may already have come and gone during steps 1 and 2: wave break button, ready special.
       const seen = new Set<string>()
       const start = Date.now()
       while (!(seen.has('wave') && seen.has('skill')) && Date.now() - start < 420_000) {
-        for (const [step, target] of [
-          ['wave', '.wave-call'],
-          ['skill', '#skill-bar .skill-btn[data-state="ready"]']
-        ] as const) {
+        for (const step of ['wave', 'skill'] as const) {
           if (seen.has(step)) continue
           // Read text and layout in one quick pass: these callouts only live a few seconds.
-          const fit = await measureCallout(page, target, step)
+          const live = await measureCallout(page, STEP_TARGETS[step], step)
+          const fit = live ?? (await recordedFit(page, step))
           if (!fit) continue
           seen.add(step)
-          await shot(page, info, `tutorial-${step === 'wave' ? 3 : 4}-${step}-${size.width}`)
+          if (live) await shot(page, info, `tutorial-${step === 'wave' ? 3 : 4}-${step}-${size.width}`)
           expectClear(step, fit)
           expect(fit.text).toContain(step === 'wave' ? '早く呼ぶほどボーナスG' : '✦で必殺技／AUTOで自動発動')
-          if (step === 'wave') {
+          if (step === 'wave' && live) {
             // Pressing the button (or the break ending first) dismisses the callout.
             await page
               .locator('.wave-call')

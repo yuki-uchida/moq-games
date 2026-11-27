@@ -334,7 +334,7 @@ test.describe('compact road inputs', () => {
         document.elementFromPoint(x, y)?.matches('#field canvas') ?? false, point)
       expect(await hitsCanvas(headroom)).toBe(true)
       const road = getField('meadow', 2, 4).path
-      const coach = page.locator('.coach')
+      const coach = page.locator('.coach:not(.tut)')
       const status = page.locator('#road-placement-status')
       await expect(coach).toBeVisible()
       await openItemTray(page)
