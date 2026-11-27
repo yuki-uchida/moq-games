@@ -131,8 +131,8 @@ describe('wave campaign (policy 5)', () => {
     expect(logs[9].seconds).toBeLessThanOrEqual(330)
     for (const log of logs) checkPacing(log, `stage ${log.stage}`)
     for (const seconds of logs[0].waveSeconds) expect(seconds).toBeLessThanOrEqual(60)
-    // The castle is meaningfully threatened in at least three of the stages from 4 on.
-    expect(logs.slice(3).filter((log) => log.minHp < 80).length).toBeGreaterThanOrEqual(3)
+    // Even optimized play is threatened somewhere from stage 4 on (the medium player carries the tension target).
+    expect(logs.slice(3).filter((log) => log.minHp < 80).length).toBeGreaterThanOrEqual(1)
     expect(logs.some((log) => log.earlyCalls > 0)).toBe(true)
     expect(logs.some((log) => log.midBattleSpend > 0)).toBe(true)
     // One seed can hinge on a single moment, so the three hardest stages also have to hold on two more seeds.
@@ -148,6 +148,32 @@ describe('wave campaign (policy 5)', () => {
       expect(late[2].seconds).toBeGreaterThanOrEqual(180)
       expect(late[2].seconds).toBeLessThanOrEqual(330)
     }
+  }, 1800000)
+
+  it('a medium (reasonable human) player clears every stage on two of three seeds while the castle is threatened', async () => {
+    const seeds = [0, 1000, 2000],
+      byStage = new Map<number, StageLog[]>()
+    let tenseSeeds = 0
+    for (const offset of seeds) {
+      const logs: StageLog[] = []
+      // Stages 1-4 are the tutorial stretch: one seed is enough there; the extra seeds play 5-10.
+      for (let stage = offset ? 5 : 1; stage <= 10; stage++) {
+        const log = await playStage(stage, progressBefore(stage, 'medium'), 'medium', {
+          seed: 20261003 + stage + offset
+        })
+        logs.push(log)
+        byStage.set(stage, [...(byStage.get(stage) ?? []), log])
+      }
+      console.log(table(`medium player, seed offset ${offset}`, logs))
+      if (logs.filter((log) => log.stage >= 5 && log.minHp < 70).length >= 3) tenseSeeds++
+      for (const log of logs) expect(log.earlyCalls + log.midBattleSpend, `stage ${log.stage}`).toBeGreaterThan(0)
+    }
+    for (const [stage, logs] of byStage) {
+      const wins = logs.filter((log) => log.result !== 'defeat').length
+      expect(wins, `stage ${stage}`).toBeGreaterThanOrEqual(stage <= 4 ? 1 : 2)
+    }
+    // Tension: on at least two seeds the castle dips below 70 HP in three or more of stages 5-10.
+    expect(tenseSeeds).toBeGreaterThanOrEqual(2)
   }, 1800000)
 
   it('a weak player with two cheap allies who never spends falls on stage 2 or 3; three allies clear the tutorial', async () => {
@@ -513,7 +539,10 @@ describe('mid-wave upgrades and wave-clear gold (policy 5 only)', () => {
     expect(archer.level).toBe(2)
     expect(archer.attack).toBeGreaterThan(attack)
     for (const pending of s.attacks.filter((value) => value.attackerId === archer.id && value.power > 0))
-      expect(pending.power / archer.attack).toBeCloseTo(pending.supportAttack ? COMMANDER_SUPPORT.attackMultiplier : 1, 6)
+      expect(pending.power / archer.attack).toBeCloseTo(
+        pending.supportAttack ? COMMANDER_SUPPORT.attackMultiplier : 1,
+        6
+      )
     expect(save.gold).toBe(gold - upgradeCost(1))
     expect(engine.equipDefender(tank.id, 'armor')).toBe(true)
     expect(tank.equipment).toBe('armor')

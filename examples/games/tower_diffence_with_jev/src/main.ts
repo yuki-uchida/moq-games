@@ -3337,7 +3337,7 @@ function frame(now: number) {
       ? `${FIELDS[state.fieldId].name}を守り抜きました。`
       : won
         ? `所持コイン ${stageProgress.coins}。ステージ選択で仲間を招集できます。`
-        : `ヒント: ${defeatAdvice(state.stage, battleFeedback.leaked, assaultGold, allOutRecruitName(state.stage))}`
+        : `ヒント: ${defeatAdvice(state.stage, battleFeedback.leaked, Math.max(assaultGold, save.gold), allOutRecruitName(state.stage))}`
     settingsPanel.close(false)
     upgradePanel.close(false)
     sandbagConfirm.close(false)

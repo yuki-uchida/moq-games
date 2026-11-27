@@ -4,7 +4,9 @@
  * up to five ally types) and the Rule commander. Scripted players place along the actual road.
  */
 import { SPECIALS, specialReady } from '../src/game/SpecialAbilities'
+import { autoShouldCast, bestSpecialTarget, bossInSpecialArea } from '../src/game/SpecialTargeting'
 import {
+  ALLY_TYPES,
   CURRENT_WAVE_BOSS_POLICY,
   DEFINITIONS,
   fieldFor,
@@ -22,6 +24,8 @@ import { DRAGON_BREATH_MOUTHS } from '../src/rendering/DragonBreathArt'
 import { freshRunFromProfile, upgradeCost } from '../src/progression/UpgradeSystem'
 import { DEPLOYMENT_COST } from '../src/game/DefenderRoster'
 import {
+  ALL_OUT_FROM_STAGE,
+  affordableRecruit,
   awardBounty,
   awardStageClear,
   battleFormation,
@@ -61,7 +65,12 @@ export interface StageLog {
   waveHp: number[]
 }
 
-export type PlayerKind = 'competent' | 'weak'
+/**
+ * - competent: pixel-optimal road coverage, gate upgrades, equipment, tuned specials and planned upgrades.
+ * - medium: a reasonable first-time human (see {@link playMedium}).
+ * - weak: a few allies, never spends.
+ */
+export type PlayerKind = 'competent' | 'medium' | 'weak'
 
 interface Plan {
   /** Ally types the player fields, most wanted first. */
@@ -214,8 +223,161 @@ function castSpecials(e: GameEngine): void {
   }
 }
 
+/**
+ * The medium player: a reasonable human on a first or second try, using only what the battle screen offers.
+ * - Formation: the four starters plus the 星の魔法使い, the first recruit (100 coins, affordable after stage 1)
+ *   and the one the independent stage-8 tries fielded. Five slots are then full, so later coins only matter for
+ *   総力戦 (stage 9 on), where every owned type fights: the player then recruits whatever the coins pay for,
+ *   cheapest first, as the defeat advice and the stage select suggest.
+ * - Placement: one bend of the road's middle third; melee allies stand on the road at that bend, ranged allies on
+ *   the grass slots (the + marks) nearest that bend whose road lies within reach. Sensible, not pixel-optimal.
+ * - Upgrades: taps whichever on-field ↑ badge is cheapest, in preparation, during breaks and about every two
+ *   seconds of a wave. Never buys gate upgrades, equipment or road items.
+ * - Specials: only the AUTO button (main.ts autoSkills: a check every 250 ms, one cast per 600 ms, at ×2 speed).
+ * - Calls the next wave early in about half of the breaks, a few seconds in.
+ */
+export const MEDIUM_FORMATION: readonly AllyType[] = ['soldier', 'archer', 'runner', 'tank', 'mage']
+
+type Sample = Point & { share: number }
+
+/** Road bends: runs of samples whose heading turns by more than 45° over ±48 px, as their middle sample. */
+function roadBends(samples: Sample[]): { index: number; point: Sample }[] {
+  const heading = (a: Point, b: Point) => Math.atan2(b.y - a.y, b.x - a.x),
+    out: { index: number; point: Sample }[] = []
+  let run: number[] = []
+  for (let i = 3; i < samples.length - 3; i++) {
+    const raw = heading(samples[i], samples[i + 3]) - heading(samples[i - 3], samples[i]),
+      turn = Math.atan2(Math.sin(raw), Math.cos(raw))
+    if (Math.abs(turn) > Math.PI / 4) run.push(i)
+    else if (run.length) {
+      const index = run[run.length >> 1]
+      out.push({ index, point: samples[index] })
+      run = []
+    }
+  }
+  return out
+}
+
+/** Melee offsets along the road (in 16 px samples) from the chosen bend, per type. */
+const MELEE_OFFSETS: Partial<Record<AllyType, number>> = { tank: 0, soldier: -3, runner: 3, paladin: -6 }
+
+/** The bend the medium player builds around: the middle-third bend closest to the road's midpoint. */
+export function mediumBend(samples: Sample[]): { index: number; point: Sample } {
+  const bends = roadBends(samples),
+    middle = bends.filter((b) => b.point.share >= 1 / 3 && b.point.share <= 2 / 3)
+  return (middle.length ? middle : bends).reduce((a, b) =>
+    Math.abs(b.point.share - 0.5) < Math.abs(a.point.share - 0.5) ? b : a
+  )
+}
+
+function mediumDeploy(e: GameEngine, types: readonly AllyType[], samples: Sample[]): void {
+  const field = fieldFor(e.state),
+    bend = mediumBend(samples),
+    nearest = (p: Point) => {
+      let best = { d: Infinity, share: 0 }
+      for (const sample of samples) {
+        const d = Math.hypot(sample.x - p.x, sample.y - p.y)
+        if (d < best.d) best = { d, share: sample.share }
+      }
+      return best
+    }
+  for (const type of types) {
+    if (e.state.units.some((u) => u.owner === 'player' && u.type === type)) continue
+    if (e.previewPlacement(type, bend.point).reason === 'funds') return
+    if (MELEE.includes(type)) {
+      const base = bend.index + (MELEE_OFFSETS[type] ?? 0)
+      for (const step of [0, 1, -1, 2, -2, 3, -3, 4, -4]) {
+        const p = samples[Math.max(0, Math.min(samples.length - 1, base + step))]
+        if (e.previewPlacement(type, p).valid && e.place(type, { x: p.x, y: p.y })) break
+      }
+      continue
+    }
+    const reach = DEFINITIONS[type].range * 0.7,
+      byBend = [...field.slots].sort(
+        (a, b) =>
+          Math.hypot(a.x - bend.point.x, a.y - bend.point.y) - Math.hypot(b.x - bend.point.x, b.y - bend.point.y)
+      ),
+      good = byBend.filter((slot) => {
+        const n = nearest(slot)
+        return n.d <= reach && n.share >= 1 / 3 && n.share <= 2 / 3
+      })
+    for (const slot of [...good, ...byBend])
+      if (e.previewPlacement(type, slot).valid && e.place(type, { x: slot.x, y: slot.y })) break
+  }
+}
+
+/** Tap the cheapest ↑ badge on the field until none is affordable. */
+function tapUpgradeBadges(e: GameEngine): number {
+  let spent = 0
+  for (;;) {
+    const offers: { id: number; type: AllyType; cost: number }[] = []
+    for (const u of e.state.units) {
+      if (u.owner !== 'player' || u.hp <= 0 || u.slotId === undefined) continue
+      const cost = e.upgradeOffer(u.id)
+      if (cost !== null) offers.push({ id: u.id, type: u.type as AllyType, cost })
+    }
+    offers.sort((a, b) => a.cost - b.cost || ALLY_TYPES.indexOf(a.type) - ALLY_TYPES.indexOf(b.type))
+    if (!offers.length || !e.upgradeDefender(offers[0].id)) return spent
+    spent += offers[0].cost
+  }
+}
+
+/** The AUTO button in game time at ×2 speed: a check every 0.5 s, at most one cast per 1.2 s (main.ts autoSkills). */
+class AutoButton {
+  private readySince = new Map<number, number>()
+  private nextCheck = 0
+  private lastCast = -Infinity
+  tick(e: GameEngine): void {
+    const s = e.state
+    if (s.time < this.nextCheck) return
+    this.nextCheck = s.time + 0.5
+    if (s.time - this.lastCast < 1.2) return
+    let best: { id: number; point: Point; score: number } | null = null
+    for (const unit of s.units) {
+      if (unit.owner !== 'player') continue
+      if (!specialReady(s, unit.id)) {
+        this.readySince.delete(unit.id)
+        continue
+      }
+      if (!this.readySince.has(unit.id)) this.readySince.set(unit.id, s.time)
+      const type = unit.type as AllyType,
+        target = bestSpecialTarget(s, unit.id)
+      if (
+        !target ||
+        !autoShouldCast(
+          type,
+          target.score,
+          bossInSpecialArea(s, type, target.point),
+          s.time - this.readySince.get(unit.id)!
+        )
+      )
+        continue
+      if (!best || target.score > best.score) best = { id: unit.id, point: target.point, score: target.score }
+    }
+    if (best && e.castSpecial(best.id, best.point)) this.lastCast = s.time
+  }
+}
+
+/** Deterministic coin flips (xorshift) for the medium player's early calls. */
+function coinFlips(seed: number): () => boolean {
+  let x = seed >>> 0 || 1
+  return () => {
+    x ^= x << 13
+    x ^= x >>> 17
+    x ^= x << 5
+    return (x >>> 0) % 2 === 0
+  }
+}
+
 /** Coins and recruits between stages, then the five ally types to field. */
-function prepareFormation(progress: StageProgress, kind: PlayerKind): void {
+function prepareFormation(progress: StageProgress, kind: PlayerKind, stage: number): void {
+  if (kind === 'medium') {
+    recruit(progress, 'mage')
+    if (stage >= ALL_OUT_FROM_STAGE)
+      for (let type = affordableRecruit(progress); type; type = affordableRecruit(progress)) recruit(progress, type)
+    progress.formation = MEDIUM_FORMATION.filter((t) => owned(progress).includes(t))
+    return
+  }
   if (kind !== 'competent') return
   for (const type of RECRUIT_ORDER) recruit(progress, type)
   const have = owned(progress)
@@ -226,10 +388,10 @@ export async function playStage(
   stage: number,
   progress: StageProgress,
   kind: PlayerKind,
-  options: { seed?: number; weakUnits?: number } = {}
+  options: { seed?: number; weakUnits?: number; onOpening?: (engine: GameEngine) => void } = {}
 ): Promise<StageLog> {
   let clock = 0
-  prepareFormation(progress, kind)
+  prepareFormation(progress, kind, stage)
   const save = freshRunFromProfile({ version: 1, purchased: [...progress.recruited] }, 2, 1)
   save.gold = stageStartGold(stage)
   save.formation = battleFormation(progress, stage)
@@ -250,10 +412,20 @@ export async function playStage(
   const plan: Plan =
     kind === 'competent'
       ? { types: FORMATION_PREFERENCE.filter((t) => fielded.includes(t)), frugal: false }
-      : { types: ['soldier', 'archer', 'tank'], frugal: true, opening: options.weakUnits ?? 2 }
-  if (plan.frugal) {
+      : kind === 'medium'
+        ? { types: ALLY_TYPES.filter((t) => save.formation!.includes(t)), frugal: false }
+        : { types: ['soldier', 'archer', 'tank'], frugal: true, opening: options.weakUnits ?? 2 }
+  const medium = kind === 'medium',
+    auto = new AutoButton(),
+    flip = coinFlips((options.seed ?? 20261003 + stage) * 7 + 3)
+  let callAt = -1
+  if (medium) {
+    mediumDeploy(e, plan.types, samples)
+    tapUpgradeBadges(e)
+  } else if (plan.frugal) {
     for (let i = 0; i < plan.opening!; i++) deploy(e, plan.types[i % plan.types.length], samples)
   } else spend(e, save, plan, samples)
+  options.onOpening?.(e)
   const rules = stageRules(stage, e.state.waveBossPolicy),
     waves = rules.waves!
   let earlyCalls = 0,
@@ -300,7 +472,22 @@ export async function playStage(
       lastEvent = s.time
     } else if (!wave.inBreak) longestQuiet = Math.max(longestQuiet, s.time - lastEvent)
     else lastEvent = s.time
-    if (!plan.frugal) {
+    if (medium) {
+      if (wave.inBreak && e.buildWindowOpen && handledBreak !== wave.wave) {
+        handledBreak = wave.wave
+        const before = save.gold
+        mediumDeploy(e, plan.types, samples)
+        tapUpgradeBadges(e)
+        midBattleSpend += before - save.gold
+        callAt = flip() ? s.time + 3 : -1
+      }
+      if (callAt >= 0 && s.time >= callAt) {
+        callAt = -1
+        if (e.callNextWave() > 0) earlyCalls++
+      }
+      if (i % 40 === 0) midBattleSpend += tapUpgradeBadges(e)
+      auto.tick(e)
+    } else if (!plan.frugal) {
       if (wave.inBreak && e.buildWindowOpen && handledBreak !== wave.wave) {
         handledBreak = wave.wave
         midBattleSpend += spend(e, save, plan, samples)
@@ -338,22 +525,29 @@ export async function playStage(
   }
 }
 
-/** Stage progress a competent player would have before `stage` (coin bounty estimated at two per enemy). */
-export function progressBefore(stage: number): StageProgress {
+/** Stage progress a player would have before `stage` (coin bounty estimated at two per enemy). */
+export function progressBefore(stage: number, kind: PlayerKind = 'competent'): StageProgress {
   const progress = freshStageProgress()
   for (let k = 1; k < stage; k++) {
-    prepareFormation(progress, 'competent')
+    prepareFormation(progress, kind, k)
     awardStageClear(progress, k, stageRules(k, CURRENT_WAVE_BOSS_POLICY).enemyCount * 2)
   }
   return progress
 }
 
 /** Stage select in order 1..`last`, each stage a fresh battle; stops at the first defeat. */
-export async function playCampaign(kind: PlayerKind, last = 10, options: { weakUnits?: number } = {}) {
+export async function playCampaign(
+  kind: PlayerKind,
+  last = 10,
+  options: { weakUnits?: number; seedOffset?: number } = {}
+) {
   const progress = freshStageProgress(),
     logs: StageLog[] = []
   for (let stage = 1; stage <= last; stage++) {
-    const log = await playStage(stage, progress, kind, options)
+    const log = await playStage(stage, progress, kind, {
+      weakUnits: options.weakUnits,
+      seed: options.seedOffset === undefined ? undefined : 20261003 + stage + options.seedOffset
+    })
     logs.push(log)
     if (log.result === 'defeat') break
   }
